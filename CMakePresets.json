@@ -130,6 +130,30 @@
         "QTMCP_BUILD_TESTS": "ON",
         "QTMCP_BUILD_TEST_APP": "ON"
       }
+    },
+    {
+      "name": "qt5-release",
+      "displayName": "Qt 5 Linux/Mac Release",
+      "description": "Release build targeting Qt 5.15.x",
+      "inherits": "release",
+      "cacheVariables": {
+        "QTMCP_QT_DIR": {
+          "type": "PATH",
+          "value": ""
+        }
+      }
+    },
+    {
+      "name": "qt5-windows-release",
+      "displayName": "Qt 5 Windows Release",
+      "description": "Windows release build targeting Qt 5.15.x",
+      "inherits": "windows-release",
+      "cacheVariables": {
+        "QTMCP_QT_DIR": {
+          "type": "PATH",
+          "value": ""
+        }
+      }
     }
   ],
   "buildPresets": [
@@ -159,6 +183,15 @@
     {
       "name": "windows-x86-release",
       "configurePreset": "windows-x86-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "qt5-release",
+      "configurePreset": "qt5-release"
+    },
+    {
+      "name": "qt5-windows-release",
+      "configurePreset": "qt5-windows-release",
       "configuration": "Release"
     }
   ],
@@ -204,6 +237,21 @@
     {
       "name": "windows-x86-release",
       "configurePreset": "windows-x86-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "qt5-release",
+      "configurePreset": "qt5-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "qt5-windows-release",
+      "configurePreset": "qt5-windows-release",
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
