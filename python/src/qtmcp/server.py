@@ -93,6 +93,7 @@ def create_server(
     discovery_port: int = 9221,
     discovery_enabled: bool = True,
     qt_version: str | None = None,
+    qt_dir: str | None = None,
 ) -> FastMCP:
     """Create a FastMCP server for the given mode.
 
@@ -105,6 +106,7 @@ def create_server(
         discovery_port: UDP port for probe discovery (default: 9221).
         discovery_enabled: Whether to start the discovery listener.
         qt_version: Optional Qt version for probe auto-detection (e.g. "5.15").
+        qt_dir: Optional path to Qt installation prefix for env auto-setup.
 
     Returns:
         Configured FastMCP instance ready to run.
@@ -127,6 +129,7 @@ def create_server(
             actual_ws_url = ws_url
             if target is not None:
                 from qtmcp.download import get_launcher_filename
+                from qtmcp.qt_env import build_subprocess_env
 
                 launcher = (
                     launcher_path
@@ -136,6 +139,13 @@ def create_server(
                 logger.debug(
                     "Launching target %s via %s on port %d", target, launcher, port
                 )
+
+                # Build environment with Qt paths detected/configured
+                env = build_subprocess_env(
+                    target_path=target,
+                    qt_dir=qt_dir,
+                )
+
                 launch_args = [
                     launcher,
                     target,
@@ -144,11 +154,14 @@ def create_server(
                 ]
                 if qt_version:
                     launch_args.extend(["--qt-version", qt_version])
+                if qt_dir:
+                    launch_args.extend(["--qt-dir", qt_dir])
                 try:
                     process = await asyncio.create_subprocess_exec(
                         *launch_args,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
+                        env=env,
                     )
                 except FileNotFoundError:
                     raise FileNotFoundError(

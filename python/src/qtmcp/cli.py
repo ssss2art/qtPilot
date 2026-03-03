@@ -28,6 +28,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         discovery_port=args.discovery_port,
         discovery_enabled=not args.no_discovery,
         qt_version=args.qt_version,
+        qt_dir=args.qt_dir,
     )
     server.run()
     return 0
@@ -130,6 +131,13 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="VERSION",
         help="Qt version for probe auto-detection (e.g., 5.15, 6.8)",
+    )
+    serve_parser.add_argument(
+        "--qt-dir",
+        default=os.environ.get("QTMCP_QT_DIR"),
+        metavar="PATH",
+        help="Path to Qt installation prefix (e.g., C:/Qt/6.8.0/msvc2022_64). "
+             "Auto-sets QT_PLUGIN_PATH and PATH for the target application.",
     )
     serve_parser.add_argument(
         "--no-discovery",
