@@ -129,14 +129,54 @@ qint64 launchWithProbe(const LaunchOptions& options) {
             static_cast<long long>(processId));
   }
 
-  // 4. Inject probe DLL (LoadLibraryW + qtmcpProbeInit via shared utility)
+  // 4. Pre-flight: try loading probe DLL locally with full dependency resolution
+  //    to catch missing Qt DLLs before remote injection.
   std::wstring dllPath = options.probePath.toStdWString();
+  {
+    // Suppress probe initialization in the launcher process
+    SetEnvironmentVariableW(L"QTMCP_ENABLED", L"0");
+
+    HMODULE localCheck = LoadLibraryExW(dllPath.c_str(), nullptr, 0);
+    DWORD loadError = localCheck ? 0 : GetLastError();
+
+    if (localCheck) {
+      FreeLibrary(localCheck);
+    }
+
+    // Clear QTMCP_ENABLED so the target process doesn't inherit "0"
+    SetEnvironmentVariableW(L"QTMCP_ENABLED", nullptr);
+
+    if (!localCheck) {
+      if (!options.quiet) {
+        fprintf(stderr, "\n[injector] ERROR: Probe DLL failed pre-flight dependency check.\n");
+        fprintf(stderr, "[injector]   Probe: %ls\n", dllPath.c_str());
+        printWindowsError("[injector]   Cause", loadError);
+        fprintf(stderr, "\n");
+
+        if (loadError == ERROR_MOD_NOT_FOUND) {
+          fprintf(stderr, "[injector] This usually means Qt runtime DLLs are not on PATH.\n");
+          fprintf(stderr, "[injector] Fix: specify your Qt installation:\n");
+          fprintf(stderr,
+                  "[injector]   qtmcp-launcher.exe --qt-dir C:\\Qt\\6.8.0\\msvc2022_64 "
+                  "your-app.exe\n\n");
+        } else if (loadError == ERROR_BAD_EXE_FORMAT) {
+          fprintf(stderr,
+                  "[injector] Architecture mismatch: the probe DLL does not match "
+                  "this process's bitness.\n\n");
+        }
+      }
+      TerminateProcess(processHandle.get(), 1);
+      return -1;
+    }
+  }
+
+  // 5. Inject probe DLL (LoadLibraryW + qtmcpProbeInit via shared utility)
   if (!qtmcp::injectProbeDll(processHandle.get(), pi.dwProcessId, dllPath.c_str(), options.quiet)) {
     TerminateProcess(processHandle.get(), 1);
     return -1;
   }
 
-  // 5. Resume the main thread
+  // 6. Resume the main thread
   DWORD suspendCount = ResumeThread(threadHandle.get());
   if (suspendCount == static_cast<DWORD>(-1)) {
     if (!options.quiet) {
@@ -150,7 +190,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
     fprintf(stderr, "[injector] Resumed main thread (suspend count was %lu)\n", suspendCount);
   }
 
-  // 6. Wait for process if not detaching
+  // 7. Wait for process if not detaching
   if (!options.detach) {
     if (!options.quiet) {
       fprintf(stderr, "[injector] Waiting for process to exit...\n");

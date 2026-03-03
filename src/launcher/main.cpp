@@ -6,6 +6,7 @@
 // Works on both Windows (DLL injection) and Linux (LD_PRELOAD).
 
 #include "injector.h"
+#include "qt_env_setup.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +15,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+
+#ifdef Q_OS_WIN
+#include "elevation_windows.h"
+#endif
 
 namespace {
 
@@ -124,6 +129,24 @@ int main(int argc, char* argv[]) {
       QStringLiteral("Automatically inject probe into child processes"));
   parser.addOption(injectChildrenOption);
 
+  QCommandLineOption qtDirOption(
+      QStringLiteral("qt-dir"),
+      QStringLiteral("Path to Qt installation prefix (e.g., C:\\Qt\\6.8.0\\msvc2022_64). "
+                     "Auto-detected if not specified."),
+      QStringLiteral("path"));
+  parser.addOption(qtDirOption);
+
+  QCommandLineOption runAsAdminOption(
+      QStringLiteral("run-as-admin"),
+      QStringLiteral("Launch target with administrator privileges (Windows only)"));
+  parser.addOption(runAsAdminOption);
+
+  // Internal flag: signals this instance was re-launched elevated
+  QCommandLineOption elevatedOption(QStringLiteral("elevated"),
+                                     QStringLiteral("Internal: already elevated"));
+  elevatedOption.setFlags(QCommandLineOption::HiddenFromHelp);
+  parser.addOption(elevatedOption);
+
   // Positional arguments: target executable and its arguments
   parser.addPositionalArgument(QStringLiteral("target"),
                                QStringLiteral("Target executable to launch"));
@@ -133,6 +156,23 @@ int main(int argc, char* argv[]) {
 
   // Parse arguments
   parser.process(app);
+
+  // Handle --run-as-admin: self-elevate if not already elevated
+#ifdef Q_OS_WIN
+  if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
+    if (!qtmcp::isProcessElevated()) {
+      // Re-launch self as admin, forwarding all arguments
+      return qtmcp::relaunchElevated(QCoreApplication::applicationFilePath(),
+                                     QCoreApplication::arguments().mid(1));
+    }
+    // Already elevated — fall through to normal launch
+  }
+#else
+  if (parser.isSet(runAsAdminOption)) {
+    fprintf(stderr, "Warning: --run-as-admin is only supported on Windows. "
+                    "Use sudo on Linux.\n");
+  }
+#endif
 
   // Get positional arguments
   QStringList positionalArgs = parser.positionalArguments();
@@ -148,6 +188,8 @@ int main(int argc, char* argv[]) {
   options.detach = parser.isSet(detachOption);
   options.quiet = parser.isSet(quietOption);
   options.injectChildren = parser.isSet(injectChildrenOption);
+  options.runAsAdmin = parser.isSet(runAsAdminOption) || parser.isSet(elevatedOption);
+  options.qtDir = parser.value(qtDirOption);
 
   // Parse and validate port
   bool portOk = false;
@@ -210,13 +252,22 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  // Auto-detect and configure Qt environment for probe injection
+  qtmcp::QtEnvironmentResult envResult =
+      qtmcp::ensureQtEnvironment(options.qtDir, options.targetExecutable, options.quiet);
+
   // Print startup message unless quiet
   if (!options.quiet) {
     fprintf(stderr, "[qtmcp-launch] Target: %s\n", qPrintable(options.targetExecutable));
     fprintf(stderr, "[qtmcp-launch] Probe: %s\n", qPrintable(options.probePath));
-    fprintf(stderr, "[qtmcp-launch] Port: %u, Detach: %s, Inject children: %s\n",
+    fprintf(stderr, "[qtmcp-launch] Port: %u, Detach: %s, Inject children: %s, Admin: %s\n",
             static_cast<unsigned>(options.port), options.detach ? "yes" : "no",
-            options.injectChildren ? "yes" : "no");
+            options.injectChildren ? "yes" : "no", options.runAsAdmin ? "yes" : "no");
+    if (envResult.applied) {
+      fprintf(stderr, "[qtmcp-launch] Qt env: %s (via %s)\n",
+              qPrintable(QDir::toNativeSeparators(envResult.qtDir)),
+              qPrintable(envResult.source));
+    }
   }
 
   // Launch with probe injection
