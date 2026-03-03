@@ -8,50 +8,6 @@
 - **Language**: C++ with Qt Framework
 - **Status**: Active development (v0.3.0)
 
-## Repository Structure
-
-```
-QtMcp/
-├── CMakeLists.txt          # Top-level build configuration
-├── CLAUDE.md               # This file - AI assistant guidelines
-├── README.md               # Project description
-├── LICENSE                 # MIT License
-├── src/
-│   ├── probe/              # Probe shared library (DLL/SO injected into target apps)
-│   │   ├── CMakeLists.txt
-│   │   ├── core/           # Probe lifecycle, object registry, hooks
-│   │   │   ├── probe.h/cpp
-│   │   │   ├── probe_init_windows.cpp   # DllMain, qtmcpProbeInit export
-│   │   │   ├── child_injector_windows.h/cpp  # Detours CreateProcessW hook
-│   │   │   ├── object_registry.h/cpp
-│   │   │   └── object_resolver.h/cpp
-│   │   ├── introspection/  # Object inspection, signals, events, QML
-│   │   ├── interaction/    # Input simulation, screenshots, hit testing
-│   │   ├── transport/      # WebSocket server, JSON-RPC, UDP discovery
-│   │   ├── api/            # Native, Chrome, and Computer Use mode APIs
-│   │   └── accessibility/  # Accessibility tree walker, role mapper
-│   ├── launcher/           # Launcher executable (injects probe into target)
-│   │   ├── CMakeLists.txt
-│   │   ├── main.cpp        # CLI with --port, --detach, --inject-children
-│   │   ├── injector.h      # LaunchOptions struct
-│   │   ├── injector_windows.cpp  # CreateProcessW + shared injectProbeDll()
-│   │   └── injector_linux.cpp    # fork/exec + LD_PRELOAD
-│   ├── shared/             # Shared static library (Win32 injection utilities)
-│   │   ├── CMakeLists.txt
-│   │   ├── process_inject_windows.h   # HandleGuard, injectProbeDll() API
-│   │   └── process_inject_windows.cpp
-│   └── compat/             # Qt5/Qt6 compatibility helpers
-├── test_app/               # Test Qt application for E2E testing
-│   ├── main.cpp            # Supports --child mode for injection testing
-│   ├── mainwindow.h/cpp    # Main window with "Spawn Child Process" button
-│   ├── childwindow.h/cpp   # Simple child window (First Name / Last Name)
-│   └── mainwindow.ui
-├── tests/                  # Unit tests (Qt Test framework)
-├── docs/                   # User documentation
-├── cmake/                  # CMake package config and helpers
-└── python/                 # Python MCP server and CLI
-```
-
 ## Build System
 
 ### Expected Build Tools
@@ -61,13 +17,45 @@ QtMcp/
 
 ### Build Commands
 ```bash
-# CMake build
-cmake -B build -DQTMCP_QT_DIR=/path/to/Qt/6.x/msvc2022_64
+# CMake configure + build (set QTMCP_QT_DIR to your local Qt installation)
+cmake -B build -DQTMCP_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64
 cmake --build build --config Release
+```
 
-# Run tests
+### Running Tests (Windows)
+
+The Qt directory used during the build is stored in `build/CMakeCache.txt` as `QTMCP_QT_DIR`.
+Tests need the Qt `bin/` on PATH and `plugins/` as QT_PLUGIN_PATH, otherwise they fail
+with exit code `0xc0000135` (DLL not found).
+
+```bash
+# From bash/git-bash — extract Qt dir from CMake cache, then run via cmd //c
+# (bash requires //c double-slash which it converts to /c for cmd.exe)
+QT_DIR=$(grep "QTMCP_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
+cmd //c "set PATH=${QT_DIR}\bin;%PATH% && set QT_PLUGIN_PATH=${QT_DIR}\plugins && ctest --test-dir build -C Release --output-on-failure"
+```
+
+```bat
+:: From native cmd.exe — extract Qt dir from cache and run
+for /f "tokens=2 delims==" %Q in ('findstr "QTMCP_QT_DIR:PATH=" build\CMakeCache.txt') do set QT_DIR=%Q
+set PATH=%QT_DIR%\bin;%PATH%
+set QT_PLUGIN_PATH=%QT_DIR%\plugins
 ctest --test-dir build -C Release --output-on-failure
 ```
+
+### Running Tests (Linux)
+```bash
+QT_DIR=$(grep "QTMCP_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
+QT_PLUGIN_PATH="${QT_DIR}/plugins" LD_LIBRARY_PATH="${QT_DIR}/lib" ctest --test-dir build -C Release --output-on-failure
+```
+
+**Windows test caveat:** On Windows, env vars set in bash/git-bash do NOT propagate
+through ctest to child processes. You **must** use one of these approaches:
+1. **From bash/git-bash:** Use `cmd //c` (double-slash — bash converts `//c` to `/c` for cmd.exe).
+2. **From native cmd.exe:** Set PATH and QT_PLUGIN_PATH before running ctest.
+
+Env vars set inline (e.g., `PATH=... ctest ...`) do **not** work because ctest spawns
+child processes that inherit the Windows environment, not the bash-local overrides.
 
 ## Development Conventions
 
@@ -120,14 +108,16 @@ The MCP (Model Context Protocol) defines how AI assistants communicate with exte
 - Tests should be in the `tests/` directory
 - Each test file should test a single class or module
 
-### Running Tests (once implemented)
-```bash
-# After building
-ctest --output-on-failure
+### Running Tests
+See "Running Tests (Windows)" and "Running Tests (Linux)" in the Build System section above.
 
-# Or run test executable directly
-./tests/test_mcp_server
+```bash
+# Run a single test directly (Qt DLLs are copied to the same directory during build):
+build/bin/Release/test_jsonrpc.exe
 ```
+
+### Test Labels
+- `admin` -- Tests requiring administrator privileges. Run with `ctest -L admin`. Auto-skipped when not elevated.
 
 ## Git Workflow
 
@@ -198,10 +188,11 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 
 | Task | Command/Location |
 |------|------------------|
-| Build | `cmake --build build/` |
-| Test | `ctest --test-dir build/` |
+| Build | `cmake --build build --config Release` |
+| Test (bash) | Extract `QT_DIR` from cache, then `cmd //c "set PATH=...&& ctest ..."` (see Build System section) |
+| Test (cmd.exe) | Set `PATH` and `QT_PLUGIN_PATH` from `QTMCP_QT_DIR` in cache, then `ctest --test-dir build -C Release` |
+| Launch | `build/bin/Release/qtmcp-launcher.exe [--qt-dir <path>] app.exe` |
 | Source | `src/` directory |
-| Headers | `include/` directory |
 | Tests | `tests/` directory |
 
 ## Important Files
