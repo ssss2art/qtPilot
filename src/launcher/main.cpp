@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
 
   // Internal flag: signals this instance was re-launched elevated
   QCommandLineOption elevatedOption(QStringLiteral("elevated"),
-                                     QStringLiteral("Internal: already elevated"));
+                                    QStringLiteral("Internal: already elevated"));
   elevatedOption.setFlags(QCommandLineOption::HiddenFromHelp);
   parser.addOption(elevatedOption);
 
@@ -169,8 +169,9 @@ int main(int argc, char* argv[]) {
   }
 #else
   if (parser.isSet(runAsAdminOption)) {
-    fprintf(stderr, "Warning: --run-as-admin is only supported on Windows. "
-                    "Use sudo on Linux.\n");
+    fprintf(stderr,
+            "Warning: --run-as-admin is only supported on Windows. "
+            "Use sudo on Linux.\n");
   }
 #endif
 
@@ -265,8 +266,7 @@ int main(int argc, char* argv[]) {
             options.injectChildren ? "yes" : "no", options.runAsAdmin ? "yes" : "no");
     if (envResult.applied) {
       fprintf(stderr, "[qtmcp-launch] Qt env: %s (via %s)\n",
-              qPrintable(QDir::toNativeSeparators(envResult.qtDir)),
-              qPrintable(envResult.source));
+              qPrintable(QDir::toNativeSeparators(envResult.qtDir)), qPrintable(envResult.source));
     }
   }
 
