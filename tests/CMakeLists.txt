@@ -127,3 +127,12 @@ qtmcp_add_test(NAME test_model_navigator SOURCES test_model_navigator.cpp
 qtmcp_add_test(NAME test_event_capture SOURCES test_event_capture.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+# E2E admin injection test — requires elevated terminal to run.
+# Skips automatically (QSKIP) when not running as admin.
+# Target with: ctest -L admin    Exclude with: ctest -LE admin
+qtmcp_add_test(NAME test_admin_injection
+    SOURCES test_admin_injection.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
+    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+set_tests_properties(test_admin_injection PROPERTIES LABELS "admin")
