@@ -195,6 +195,40 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 | Source | `src/` directory |
 | Tests | `tests/` directory |
 
+## Using QtMCP Tools (MCP Integration)
+
+When QtMCP is configured as an MCP server (see `.mcp.json`), you can interact with
+live Qt applications using the `mcp__qtmcp__*` tools. Follow these steps:
+
+### 1. Launch the Test App
+
+Use `qtmcp-launcher.exe` to launch any Qt app with the probe auto-injected:
+
+```bash
+build/bin/Release/qtmcp-launcher.exe build/bin/Release/qtmcp-test-app.exe
+```
+
+Run this in the background (`run_in_background: true`) so the app stays alive.
+The launcher handles Qt DLL paths and probe injection automatically — no need to
+manually set `PATH` or `QT_PLUGIN_PATH`.
+
+### 2. Discover and Connect
+
+```
+qtmcp_list_probes()        # find running probes
+qtmcp_connect_probe(ws_url="ws://...")  # connect using the URL from list
+qt_ping()                  # verify connectivity
+```
+
+### 3. Interact
+
+- **Find widgets:** `qt_objects_findByClass`, `qt_objects_query` (by property/text), `qt_objects_find` (by objectName)
+- **Read properties:** `qt_properties_get` / `qt_properties_list`
+- **Click & type:** `qt_ui_click`, `qt_ui_sendKeys` (use `text` for typing, `sequence` for shortcuts like `"Ctrl+A"`)
+- **Trigger menu actions:** Find QActions with `qt_objects_query(className="QAction", properties={"text": "Copy"})`, then use `qt_ui_sendKeys` with the action's shortcut sequence. Note: `qt_methods_invoke(method="trigger")` on QActions may not preserve widget focus context.
+- **Screenshots:** `qt_ui_screenshot(objectId="...", fullWindow=true)`
+- **Object tree:** `qt_objects_tree(maxDepth=5)` for full hierarchy
+
 ## Important Files
 
 - `/home/user/QtMcp/README.md` - Project description
