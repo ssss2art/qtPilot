@@ -284,3 +284,95 @@ class TestMessageLoggerVerbosity:
         logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
         logger._on_notification("qtmcp.signalEmitted", {})
         assert logger.tail()["count"] == 0
+
+
+class TestMessageLoggerBuffer:
+    def test_tail_returns_recent_entries(self):
+        """tail() returns the most recent N entries."""
+        logger = MessageLogger()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.jsonl")
+            logger.start(path=path, level=1, buffer_size=100)
+            for i in range(10):
+                logger.log_mcp_in(f"tool_{i}", {})
+            result = logger.tail(count=3)
+            assert result["count"] == 3
+            assert result["total_logged"] == 10
+            assert result["entries"][-1]["tool"] == "tool_9"
+            logger.stop()
+
+    def test_buffer_respects_maxlen(self):
+        """Buffer drops oldest entries when full."""
+        logger = MessageLogger()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.jsonl")
+            logger.start(path=path, level=1, buffer_size=5)
+            for i in range(10):
+                logger.log_mcp_in(f"tool_{i}", {})
+            result = logger.tail(count=100)
+            assert result["count"] == 5
+            assert result["entries"][0]["tool"] == "tool_5"
+            logger.stop()
+
+    def test_tail_survives_stop(self):
+        """tail() works after stop() -- buffer persists."""
+        logger = MessageLogger()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.jsonl")
+            logger.start(path=path, level=1)
+            logger.log_mcp_in("qt_ping", {})
+            logger.stop()
+            result = logger.tail()
+            assert result["count"] == 1
+
+    def test_start_clears_buffer(self):
+        """start() resets the buffer from the previous session."""
+        logger = MessageLogger()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path1 = os.path.join(tmpdir, "log1.jsonl")
+            path2 = os.path.join(tmpdir, "log2.jsonl")
+            logger.start(path=path1, level=1)
+            logger.log_mcp_in("qt_ping", {})
+            logger.stop()
+            logger.start(path=path2, level=1)
+            assert logger.tail()["count"] == 0
+            logger.stop()
+
+
+class TestMessageLoggerTruncation:
+    def test_truncate_long_string(self):
+        """Strings longer than max_len are truncated."""
+        long_str = "x" * 5000
+        result = MessageLogger._truncate(long_str, max_len=4096)
+        assert len(result) < 5000
+        assert "truncated" in result
+        assert "5000c" in result
+
+    def test_truncate_base64_image(self):
+        """Base64-like strings are replaced with placeholder."""
+        # Simulate base64 image data (long alphanumeric string)
+        b64 = "A" * 300
+        result = MessageLogger._truncate(b64, max_len=4096)
+        assert result == f"<image:{len(b64)}b>"
+
+    def test_truncate_dict_recursive(self):
+        """Truncation recurses into dicts."""
+        data = {"key": "x" * 5000}
+        result = MessageLogger._truncate(data, max_len=100)
+        assert "truncated" in result["key"]
+
+    def test_truncate_list_recursive(self):
+        """Truncation recurses into lists."""
+        data = ["x" * 5000]
+        result = MessageLogger._truncate(data, max_len=100)
+        assert "truncated" in result[0]
+
+    def test_truncate_short_string_unchanged(self):
+        """Short strings pass through unchanged."""
+        assert MessageLogger._truncate("hello") == "hello"
+
+    def test_truncate_non_string_unchanged(self):
+        """Numbers, booleans, None pass through unchanged."""
+        assert MessageLogger._truncate(42) == 42
+        assert MessageLogger._truncate(True) is True
+        assert MessageLogger._truncate(None) is None
