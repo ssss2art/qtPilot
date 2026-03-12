@@ -33,7 +33,7 @@ class TestNotificationRouting:
         probe, mock_ws = mock_probe
         received = []
 
-        probe.on_notification(lambda method, params: received.append((method, params)))
+        probe.add_notification_handler(lambda method, params: received.append((method, params)))
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
@@ -52,7 +52,7 @@ class TestNotificationRouting:
         probe, mock_ws = mock_probe
         received = []
 
-        probe.on_notification(lambda method, params: received.append((method, params)))
+        probe.add_notification_handler(lambda method, params: received.append((method, params)))
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
@@ -83,7 +83,7 @@ class TestNotificationRouting:
         def bad_handler(method, params):
             raise RuntimeError("handler crash")
 
-        probe.on_notification(bad_handler)
+        probe.add_notification_handler(bad_handler)
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
@@ -102,11 +102,12 @@ class TestNotificationRouting:
         assert result == {"pong": True}
 
     async def test_unregister_handler(self, mock_probe):
-        """Setting handler to None stops routing."""
+        """Removing handler stops routing."""
         probe, mock_ws = mock_probe
         received = []
 
-        probe.on_notification(lambda m, p: received.append(m))
+        received_handler = lambda m, p: received.append(m)
+        probe.add_notification_handler(received_handler)
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
@@ -116,7 +117,7 @@ class TestNotificationRouting:
         await asyncio.sleep(0.1)
         assert len(received) == 1
 
-        probe.on_notification(None)
+        probe.remove_notification_handler(received_handler)
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",

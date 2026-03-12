@@ -164,7 +164,7 @@ class EventRecorder:
         self._start_time = time.monotonic()
 
         # Install notification handler
-        probe.on_notification(self._handle_notification)
+        probe.add_notification_handler(self._handle_notification)
 
         # Enable lifecycle notifications if requested
         if include_lifecycle:
@@ -209,7 +209,7 @@ class EventRecorder:
         await self._cleanup_subscriptions(probe)
 
         # Unregister notification handler
-        probe.on_notification(None)
+        probe.remove_notification_handler(self._handle_notification)
 
         # Disable lifecycle if we enabled it
         if self._include_lifecycle:
