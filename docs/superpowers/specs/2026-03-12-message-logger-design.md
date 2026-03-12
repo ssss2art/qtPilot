@@ -28,9 +28,28 @@ Replace `_notification_handler` (single callable) with two lists:
 
 - `add_call_observer(observer)` / `remove_call_observer(observer)`
 - Observer signature: `(request: dict, result_or_exc: dict | Exception, duration_ms: float) -> None`
-- In `call()`: record `t0 = time.monotonic()` before send, compute duration after the future resolves, then iterate observers
+- Modified `call()` method wraps `await future` in try/except to capture both success and error:
 
-### EventRecorder migration
+```python
+async def call(self, method, params=None):
+    request = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": self._next_id}
+    # ... send request, create future ...
+    t0 = time.monotonic()
+    try:
+        result = await future
+    except Exception as exc:
+        duration_ms = (time.monotonic() - t0) * 1000
+        self._notify_call_observers(request, exc, duration_ms)
+        raise
+    else:
+        duration_ms = (time.monotonic() - t0) * 1000
+        self._notify_call_observers(request, result, duration_ms)
+        return result
+```
+
+- `_notify_call_observers` iterates observers safely (catching per-observer exceptions)
+
+### EventRecorder migration (required prerequisite)
 
 **File:** `python/src/qtmcp/event_recorder.py`
 
@@ -38,7 +57,9 @@ Two-line change:
 - `start()`: `probe.add_notification_handler(self._handle_notification)`
 - `stop()`: `probe.remove_notification_handler(self._handle_notification)`
 
-Backward-compatible. Existing code using `on_notification()` still works — it clears the list first.
+This migration is **required** before the MessageLogger can coexist with EventRecorder. The old `on_notification()` API clears the entire handler list, so any code still using it will silently remove other handlers.
+
+The `on_notification()` shim remains for external backward compat but should emit a `DeprecationWarning` to discourage use within the project.
 
 ---
 
@@ -54,8 +75,8 @@ Backward-compatible. Existing code using `on_notification()` still works — it 
 - `_level: int` — verbosity (1/2/3)
 - `_start_time: float` — monotonic clock at start
 - `_entry_count: int` — total entries written
-- `_pending_methods: dict[int, str]` — maps JSON-RPC request IDs to method names (so responses can include the method)
 - `_buffer: deque[dict]` — ring buffer of recent entries, `maxlen` configurable (default 200)
+- `_attached_probe: ProbeConnection | None` — the probe we're currently attached to (for safe detach)
 
 ### Public API
 
@@ -81,10 +102,14 @@ Backward-compatible. Existing code using `on_notification()` still works — it 
 ### Key behaviors
 
 - `start()`/`stop()` are synchronous — just file management
+- If `start()` is called while already active, it calls `stop()` first (closing the current file), then begins a new session
 - `attach()`/`detach()` are separate from start/stop because the probe may reconnect mid-session
+- `attach()` can be called regardless of active state — handlers are registered but produce no output until `start()` is called
+- `detach(probe)` is safe to call even if `attach(probe)` was never called (remove operations are no-ops for unregistered handlers)
 - File flushes after each write for crash safety
 - Ring buffer always populated when active, regardless of whether a file is open
 - Ring buffer persists after `stop()` until next `start()` — `tail()` works after stopping
+- Thread safety is not required — all access is from the same async event loop
 
 ---
 
@@ -93,19 +118,26 @@ Backward-compatible. Existing code using `on_notification()` still works — it 
 **New file:** `python/src/qtmcp/logging_middleware.py`
 
 ```python
+from fastmcp.server.middleware import Middleware
+
 class LoggingMiddleware(Middleware):
     async def on_call_tool(self, context, call_next):
+        # context is MiddlewareContext[CallToolRequestParams]
+        tool_name = context.message.name
+        args = context.message.arguments or {}
+        # ... intercept, time, forward via call_next(context) ...
+        # result is a ToolResult with .content (list of ContentBlock)
 ```
 
 ### Behavior
 
 - Grabs the `MessageLogger` via `from qtmcp.server import get_message_logger`
-- Extracts `tool_name` and `args` from the context
+- Extracts tool name via `context.message.name` and arguments via `context.message.arguments`
 - Skips `qtmcp_log_*` tools to avoid recursion
 - Calls `logger.log_mcp_in(tool_name, args)` before forwarding
 - Times the call with `time.monotonic()`
 - Calls `logger.log_mcp_out(tool_name, summary, duration_ms)` after — or with `is_error=True` on exception
-- `_summarize_tool_result()` helper extracts text from `ToolResult.content` blocks, truncates large values, replaces image content with placeholders
+- `_summarize_tool_result()` helper extracts text from `ToolResult.content` blocks (each has a `.type` and content attributes), truncates large values, replaces image content with placeholders
 
 ---
 
@@ -164,8 +196,16 @@ JSON Lines — each line is a self-contained JSON object:
 {"ts":"2026-03-06T14:23:01.235Z","dir":"req","id":7,"method":"qt.objects.tree","params":{"maxDepth":3}}
 {"ts":"2026-03-06T14:23:01.312Z","dir":"res","id":7,"method":"qt.objects.tree","dur_ms":77.2,"result":{...}}
 {"ts":"2026-03-06T14:23:01.313Z","dir":"mcp_out","tool":"qt_objects_tree","dur_ms":79.1,"ok":true}
+{"ts":"2026-03-06T14:23:02.100Z","dir":"req","id":8,"method":"qt.properties.get","params":{"objectId":"gone"}}
+{"ts":"2026-03-06T14:23:02.150Z","dir":"err","id":8,"method":"qt.properties.get","dur_ms":50.0,"error":"Object not found: gone"}
+{"ts":"2026-03-06T14:23:02.151Z","dir":"mcp_out","tool":"qt_properties_get","dur_ms":52.3,"ok":false,"error":"Object not found: gone"}
 {"ts":"2026-03-06T14:23:06.500Z","dir":"ntf","method":"qtmcp.signalEmitted","params":{"objectId":"btn","signal":"clicked"}}
 ```
+
+### Error entry semantics
+
+- **`err`** (level 2+): JSON-RPC error from the probe — produced by the call observer when `result_or_exc` is an Exception. Contains the error message.
+- **`mcp_out` with `"ok": false`** (level 1+): MCP-layer error — produced by the middleware when the tool raises. These often correspond to an `err` entry at level 2+, giving both perspectives.
 
 ### `dir` field values by level
 
@@ -218,6 +258,8 @@ JSON Lines — each line is a self-contained JSON object:
 - One handler crashing doesn't kill others
 - Call observers fire with correct request/result/duration
 - Backward compat: `on_notification()` still works (clears list, sets one)
+- Backward compat destruction: adding handlers via `add_notification_handler`, then calling `on_notification(new_handler)`, results in only the new handler receiving notifications (verifies the list-clearing behavior)
+- `on_notification()` emits `DeprecationWarning`
 
 ---
 
