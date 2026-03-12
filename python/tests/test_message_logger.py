@@ -376,3 +376,39 @@ class TestMessageLoggerTruncation:
         assert MessageLogger._truncate(42) == 42
         assert MessageLogger._truncate(True) is True
         assert MessageLogger._truncate(None) is None
+
+
+class TestMessageLoggerAttachDetach:
+    async def test_attach_registers_handlers(self, mock_probe):
+        """attach() adds send observer, call observer, and notification handler to probe."""
+        probe, mock_ws = mock_probe
+        logger = MessageLogger()
+        initial_handlers = len(probe._notification_handlers)
+        initial_call_observers = len(probe._call_observers)
+        initial_send_observers = len(probe._send_observers)
+
+        logger.attach(probe)
+
+        assert len(probe._notification_handlers) == initial_handlers + 1
+        assert len(probe._call_observers) == initial_call_observers + 1
+        assert len(probe._send_observers) == initial_send_observers + 1
+
+        logger.detach(probe)
+
+    async def test_detach_removes_handlers(self, mock_probe):
+        """detach() removes all observers and handlers."""
+        probe, mock_ws = mock_probe
+        logger = MessageLogger()
+
+        logger.attach(probe)
+        logger.detach(probe)
+
+        assert logger._on_notification not in probe._notification_handlers
+        assert logger._on_call_complete not in probe._call_observers
+        assert logger._on_call_send not in probe._send_observers
+
+    async def test_detach_without_attach_is_noop(self, mock_probe):
+        """detach() on a probe that was never attached does not raise."""
+        probe, mock_ws = mock_probe
+        logger = MessageLogger()
+        logger.detach(probe)  # no error
