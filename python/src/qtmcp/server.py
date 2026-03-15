@@ -13,79 +13,213 @@ from fastmcp import FastMCP
 from qtmcp.connection import ProbeConnection, ProbeError
 from qtmcp.discovery import DiscoveryListener
 from qtmcp.event_recorder import EventRecorder
+from qtmcp.message_logger import MessageLogger
 
 logger = logging.getLogger(__name__)
 
-# Module-level state so resources/tools can access the connection and discovery
-_probe: ProbeConnection | None = None
-_discovery: DiscoveryListener | None = None
-_recorder: EventRecorder = EventRecorder()
-_mode: str = "native"
+# ---------------------------------------------------------------------------
+# Prefix mapping: mode -> tool name prefixes
+# ---------------------------------------------------------------------------
+_MODE_PREFIXES: dict[str, list[str]] = {
+    "native": ["qt_"],
+    "cu": ["cu_"],
+    "chrome": ["chr_"],
+}
 
+
+# ---------------------------------------------------------------------------
+# ServerState — replaces module-level globals for testability
+# ---------------------------------------------------------------------------
+class ServerState:
+    """Encapsulates runtime state for the MCP server."""
+
+    def __init__(self, mcp: FastMCP, mode: str = "native") -> None:
+        self.mcp = mcp
+        self.mode = mode
+        self.probe: ProbeConnection | None = None
+        self.discovery: DiscoveryListener | None = None
+        self.recorder: EventRecorder = EventRecorder()
+        self.message_logger: MessageLogger = MessageLogger()
+
+    # -- mode switching -----------------------------------------------------
+
+    def set_mode(self, new_mode: str) -> dict:
+        """Switch the active tool set. Returns previous and new mode."""
+        valid = {"native", "cu", "chrome", "all"}
+        if new_mode not in valid:
+            return {"error": f"Invalid mode '{new_mode}'. Choose from: {', '.join(sorted(valid))}"}
+
+        if new_mode == self.mode:
+            return {"mode": new_mode, "changed": False}
+
+        old_mode = self.mode
+
+        if new_mode == "all":
+            # Switching to "all": just add any missing mode tool sets
+            for mode_key in _MODE_PREFIXES:
+                _register_mode_tools_if_absent(self.mcp, mode_key)
+        else:
+            # Switching to a single mode: remove everything except target
+            prefixes_to_remove: list[str] = []
+            for mode_key, pfx in _MODE_PREFIXES.items():
+                if mode_key != new_mode:
+                    prefixes_to_remove.extend(pfx)
+            _remove_tools_by_prefixes(self.mcp, prefixes_to_remove)
+            _register_mode_tools_if_absent(self.mcp, new_mode)
+
+        self.mode = new_mode
+        return {"mode": new_mode, "previous_mode": old_mode, "changed": True}
+
+
+_state: ServerState | None = None
+
+
+def get_state() -> ServerState:
+    """Get the server state. Raises RuntimeError if not initialised."""
+    if _state is None:
+        raise RuntimeError("Server not initialized")
+    return _state
+
+
+# ---------------------------------------------------------------------------
+# Convenience accessors (thin wrappers around ServerState)
+# ---------------------------------------------------------------------------
 
 def get_probe() -> ProbeConnection | None:
     """Get the current probe connection, or None if not connected."""
-    return _probe
+    return _state.probe if _state else None
 
 
 def require_probe() -> ProbeConnection:
-    """Get the current probe connection. Raises ProbeError if not connected.
-
-    Tools should call this to get a connected probe; the error message
-    guides Claude to use qtmcp_list_probes / qtmcp_connect_probe.
-    """
-    if _probe is None or not _probe.is_connected:
+    """Get the current probe connection. Raises ProbeError if not connected."""
+    probe = get_probe()
+    if probe is None or not probe.is_connected:
         raise ProbeError(
             "No probe connected. Use qtmcp_list_probes to see available probes, "
             "then qtmcp_connect_probe to connect to one."
         )
-    return _probe
+    return probe
 
 
 def get_discovery() -> DiscoveryListener | None:
     """Get the discovery listener, or None if discovery is disabled."""
-    return _discovery
+    return _state.discovery if _state else None
 
 
 def get_mode() -> str:
     """Get the current server mode."""
-    return _mode
+    return _state.mode if _state else "native"
 
 
 def get_recorder() -> EventRecorder:
     """Get the shared EventRecorder instance."""
-    return _recorder
+    if _state is None:
+        raise RuntimeError("Server not initialized")
+    return _state.recorder
 
+
+def get_message_logger() -> MessageLogger:
+    """Get the shared MessageLogger instance."""
+    if _state is None:
+        raise RuntimeError("Server not initialized")
+    return _state.message_logger
+
+
+# ---------------------------------------------------------------------------
+# Probe connection helpers
+# ---------------------------------------------------------------------------
 
 async def connect_to_probe(ws_url: str) -> ProbeConnection:
-    """Connect to a probe at the given WebSocket URL.
+    """Connect to a probe at the given WebSocket URL."""
+    state = get_state()
 
-    Disconnects any existing probe connection first.
-    """
-    global _probe
-
-    if _probe is not None and _probe.is_connected:
-        logger.info("Disconnecting from current probe at %s", _probe.ws_url)
-        await _probe.disconnect()
-        _probe = None
+    if state.probe is not None and state.probe.is_connected:
+        logger.info("Disconnecting from current probe at %s", state.probe.ws_url)
+        # Detach logger from old probe
+        if state.message_logger._attached_probe is not None:
+            state.message_logger.detach(state.message_logger._attached_probe)
+        await state.probe.disconnect()
+        state.probe = None
 
     conn = ProbeConnection(ws_url)
     await conn.connect()
-    _probe = conn
+    state.probe = conn
     logger.info("Connected to probe at %s", ws_url)
+
+    # Attach logger if active
+    if state.message_logger.is_active:
+        state.message_logger.attach(conn)
+
     return conn
 
 
 async def disconnect_probe() -> None:
     """Disconnect the current probe connection if any."""
-    global _probe
-    if _probe is not None:
-        await _probe.disconnect()
-        _probe = None
+    state = get_state()
+    if state.probe is not None:
+        if state.message_logger._attached_probe is state.probe:
+            state.message_logger.detach(state.probe)
+        await state.probe.disconnect()
+        state.probe = None
 
+
+# ---------------------------------------------------------------------------
+# Tool registration helpers
+# ---------------------------------------------------------------------------
+
+def _has_tools_with_prefix(mcp: FastMCP, prefixes: list[str]) -> bool:
+    """Check if any tools with the given prefixes are already registered."""
+    for name in mcp._tool_manager._tools:
+        if any(name.startswith(p) for p in prefixes):
+            return True
+    return False
+
+
+def _remove_tools_by_prefixes(mcp: FastMCP, prefixes: list[str]) -> None:
+    """Remove all tools whose names match any of the given prefixes."""
+    to_remove = [
+        name for name in list(mcp._tool_manager._tools)
+        if any(name.startswith(p) for p in prefixes)
+    ]
+    for name in to_remove:
+        mcp.remove_tool(name)
+
+
+def _register_mode_tools_if_absent(mcp: FastMCP, mode: str) -> None:
+    """Register tools for a mode, skipping if tools with that prefix already exist."""
+    prefixes = _MODE_PREFIXES.get(mode, [])
+    if _has_tools_with_prefix(mcp, prefixes):
+        return
+    if mode == "native":
+        from qtmcp.tools.native import register_native_tools
+        register_native_tools(mcp)
+    elif mode == "cu":
+        from qtmcp.tools.cu import register_cu_tools
+        register_cu_tools(mcp)
+    elif mode == "chrome":
+        from qtmcp.tools.chrome import register_chrome_tools
+        register_chrome_tools(mcp)
+
+
+def _register_tools_for_mode(mcp: FastMCP, mode: str) -> None:
+    """Register all tool sets for a given mode (including 'all')."""
+    if mode == "all":
+        for mode_key in _MODE_PREFIXES:
+            _register_mode_tools_if_absent(mcp, mode_key)
+    else:
+        _register_mode_tools_if_absent(mcp, mode)
+
+    # Recording tools are always useful (only 3 tools)
+    from qtmcp.tools.recording_tools import register_recording_tools
+    register_recording_tools(mcp)
+
+
+# ---------------------------------------------------------------------------
+# Server factory
+# ---------------------------------------------------------------------------
 
 def create_server(
-    mode: str,
+    mode: str = "native",
     ws_url: str | None = None,
     target: str | None = None,
     port: int = 9222,
@@ -98,7 +232,7 @@ def create_server(
     """Create a FastMCP server for the given mode.
 
     Args:
-        mode: API mode - "native", "cu", or "chrome".
+        mode: API mode - "native", "cu", "chrome", or "all".
         ws_url: Optional WebSocket URL to auto-connect on startup.
         target: Optional path to Qt application exe to auto-launch.
         port: Port for auto-launched probe.
@@ -111,19 +245,18 @@ def create_server(
     Returns:
         Configured FastMCP instance ready to run.
     """
-    global _mode
-    _mode = mode
+    global _state
 
     @asynccontextmanager
     async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
-        global _probe, _discovery
+        state = get_state()
         process = None
 
         try:
             # Start discovery listener
             if discovery_enabled:
-                _discovery = DiscoveryListener(port=discovery_port)
-                await _discovery.start()
+                state.discovery = DiscoveryListener(port=discovery_port)
+                await state.discovery.start()
 
             # Auto-launch target if specified
             actual_ws_url = ws_url
@@ -188,13 +321,17 @@ def create_server(
                         e,
                     )
 
-            yield {"probe": _probe, "discovery": _discovery}
+            yield {"probe": state.probe, "discovery": state.discovery}
 
         finally:
+            # Stop message logger if active
+            if state.message_logger.is_active:
+                state.message_logger.stop()
+
             # Stop recording if active
-            if _recorder.is_recording and _probe is not None and _probe.is_connected:
+            if state.recorder.is_recording and state.probe is not None and state.probe.is_connected:
                 try:
-                    await _recorder.stop(_probe)
+                    await state.recorder.stop(state.probe)
                 except Exception:
                     logger.debug("Failed to stop recording during shutdown", exc_info=True)
 
@@ -202,9 +339,9 @@ def create_server(
             await disconnect_probe()
 
             # Stop discovery
-            if _discovery is not None:
-                await _discovery.stop()
-                _discovery = None
+            if state.discovery is not None:
+                await state.discovery.stop()
+                state.discovery = None
 
             # Terminate launched process
             if process is not None:
@@ -214,34 +351,29 @@ def create_server(
                 except asyncio.TimeoutError:
                     process.kill()
 
-    mcp = FastMCP(f"QtMCP {mode.title()}", lifespan=lifespan)
+    mode_label = mode.title() if mode != "all" else "All"
+    mcp = FastMCP(f"QtMCP {mode_label}", lifespan=lifespan)
+
+    # Initialise server state
+    _state = ServerState(mcp, mode=mode)
+
+    # Register logging middleware (before tool registration)
+    from qtmcp.logging_middleware import LoggingMiddleware
+    mcp.add_middleware(LoggingMiddleware())
 
     # Register discovery tools (always available regardless of mode)
     from qtmcp.tools.discovery_tools import register_discovery_tools
-
     register_discovery_tools(mcp)
 
+    # Register logging tools (always available regardless of mode)
+    from qtmcp.tools.logging_tools import register_logging_tools
+    register_logging_tools(mcp)
+
     # Register mode-specific tools
-    if mode == "native":
-        from qtmcp.tools.native import register_native_tools
-
-        register_native_tools(mcp)
-
-        from qtmcp.tools.recording_tools import register_recording_tools
-
-        register_recording_tools(mcp)
-    elif mode == "cu":
-        from qtmcp.tools.cu import register_cu_tools
-
-        register_cu_tools(mcp)
-    elif mode == "chrome":
-        from qtmcp.tools.chrome import register_chrome_tools
-
-        register_chrome_tools(mcp)
+    _register_tools_for_mode(mcp, mode)
 
     # Register status resource
     from qtmcp.status import register_status_resource
-
     register_status_resource(mcp)
 
     return mcp
