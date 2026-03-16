@@ -71,6 +71,12 @@ jobs:
                 [ -f "$f" ] && cp "$f" "$staging/qtPilot-launcher"
               done
             fi
+
+            # Copy bundled test app (self-contained with Qt DLLs)
+            if [ -d "$dir/testapp/" ]; then
+              mkdir -p "$staging/testapp"
+              cp -r "$dir/testapp/"* "$staging/testapp/"
+            fi
           done
 
           # Create archives from staged directories.
@@ -84,7 +90,7 @@ jobs:
 
             if [ "$platform" = "windows" ]; then
               archive="qtpilot-${qt_tag}-${platform}-${arch}.zip"
-              (cd "$staging_dir" && zip -j "../../release/$archive" *)
+              (cd "$staging_dir" && zip -r "../../release/$archive" .)
             else
               if [ "$arch" = "x86" ]; then
                 archive="qtpilot-${qt_tag}-${platform}-x86.tar.gz"
