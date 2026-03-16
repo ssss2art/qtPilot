@@ -10,6 +10,21 @@ import sys
 
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the MCP server."""
+    # Handle --demo flag
+    if getattr(args, "demo", False):
+        if args.target:
+            print("Error: Cannot use --demo with --target", file=sys.stderr)
+            return 1
+        from qtpilot.download import get_testapp_path
+        testapp = get_testapp_path()
+        if testapp is None:
+            print(
+                "Error: Test app not found. Run: qtpilot download-tools --qt-version <version>",
+                file=sys.stderr,
+            )
+            return 1
+        args.target = str(testapp)
+
     # ws_url is None unless explicitly provided or a target is specified
     ws_url = None
     if args.target:
@@ -55,6 +70,11 @@ def cmd_download_tools(args: argparse.Namespace) -> int:
         )
         print(f"Extracted probe:    {probe_path}")
         print(f"Extracted launcher: {launcher_path}")
+        from qtpilot.download import get_testapp_path
+        testapp = get_testapp_path(output_dir=args.output)
+        if testapp:
+            print(f"Test app:           {testapp}")
+            print(f"\nRun 'qtpilot serve --demo' to try it out!")
     except VersionNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         print(f"Available versions: {', '.join(sorted(AVAILABLE_VERSIONS))}", file=sys.stderr)
@@ -149,6 +169,11 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         choices=["x64", "x86"],
         help="Target architecture (default: x64). Must match target app bitness.",
+    )
+    serve_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Launch the bundled test app (requires download-tools first)",
     )
     serve_parser.set_defaults(func=cmd_serve)
 
