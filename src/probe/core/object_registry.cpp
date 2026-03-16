@@ -174,15 +174,18 @@ void ObjectRegistry::registerObject(QObject* obj) {
           // changes post-construction. Done here (on main thread, after
           // construction) rather than in the hook callback to avoid
           // thread safety issues with cross-thread signal connections.
-          connect(obj, &QObject::objectNameChanged, this, [this, obj]() {
-            QMutexLocker lock(&m_mutex);
-            if (!m_objects.contains(obj)) {
-              return;
-            }
-            lock.unlock();
-            refreshObjectId(obj);
-            refreshDescendantIds(obj);
-          }, Qt::QueuedConnection);
+          connect(
+              obj, &QObject::objectNameChanged, this,
+              [this, obj]() {
+                QMutexLocker lock(&m_mutex);
+                if (!m_objects.contains(obj)) {
+                  return;
+                }
+                lock.unlock();
+                refreshObjectId(obj);
+                refreshDescendantIds(obj);
+              },
+              Qt::QueuedConnection);
 
           emit objectAdded(obj);
         },

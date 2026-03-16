@@ -61,8 +61,8 @@ class QTPILOT_EXPORT NotificationQueue : public QObject {
   int m_dropCount = 0;
   bool m_paused = false;
 
-  static constexpr qint64 kHighWaterMark = 1024 * 1024;       // 1 MB
-  static constexpr qint64 kLowWaterMark = 512 * 1024;         // 512 KB
+  static constexpr qint64 kHighWaterMark = 1024 * 1024;  // 1 MB
+  static constexpr qint64 kLowWaterMark = 512 * 1024;    // 512 KB
 };
 
 }  // namespace qtPilot

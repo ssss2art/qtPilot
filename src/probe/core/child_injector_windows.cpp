@@ -64,7 +64,7 @@ BOOL WINAPI Hooked_CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLin
   const wchar_t* dllPath = qtpilotGetProbeDllPath();
   if (dllPath && dllPath[0] != L'\0') {
     qtPilot::injectProbeDll(lpProcessInformation->hProcess, lpProcessInformation->dwProcessId,
-                          dllPath, /*quiet=*/true);
+                            dllPath, /*quiet=*/true);
   }
 
   // If the caller did NOT request suspended, resume the main thread now

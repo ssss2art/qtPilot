@@ -1,13 +1,13 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "transport/notification_queue.h"
+
 #include <QCoreApplication>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTimer>
 #include <QWebSocket>
-
-#include "transport/notification_queue.h"
 
 class TestNotificationQueue : public QObject {
   Q_OBJECT

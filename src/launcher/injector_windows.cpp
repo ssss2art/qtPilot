@@ -171,8 +171,8 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   }
 
   // 5. Inject probe DLL (LoadLibraryW + qtpilotProbeInit via shared utility)
-  if (!qtPilot::injectProbeDll(
-          processHandle.get(), pi.dwProcessId, dllPath.c_str(), options.quiet)) {
+  if (!qtPilot::injectProbeDll(processHandle.get(), pi.dwProcessId, dllPath.c_str(),
+                               options.quiet)) {
     TerminateProcess(processHandle.get(), 1);
     return -1;
   }

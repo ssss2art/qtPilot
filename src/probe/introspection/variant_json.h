@@ -41,7 +41,7 @@ QTPILOT_EXPORT QJsonValue variantToJson(const QVariant& value);
 ///                     Use QMetaType::UnknownType to infer from JSON type.
 /// @return QVariant containing the converted value.
 QTPILOT_EXPORT QVariant jsonToVariant(const QJsonValue& value,
-                                    int targetTypeId = QMetaType::UnknownType);
+                                      int targetTypeId = QMetaType::UnknownType);
 
 /// @brief Get a human-readable type name for a QVariant.
 ///

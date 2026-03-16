@@ -134,8 +134,8 @@ bool Probe::initialize() {
     }
   }
 
-  LOG_INFO("[qtPilot] Object hooks installed, tracking " + QString::number(registry->objectCount()) +
-           " existing objects");
+  LOG_INFO("[qtPilot] Object hooks installed, tracking " +
+           QString::number(registry->objectCount()) + " existing objects");
   fprintf(stderr, "[qtPilot] Object hooks installed, tracking %d existing objects\n",
           registry->objectCount());
 

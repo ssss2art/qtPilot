@@ -159,7 +159,8 @@ void TestAdminInjection::testElevatedLaunchAndConnect() {
 
         QJsonObject msg = QJsonDocument::fromJson(data).object();
         if (msg.value(QStringLiteral("type")).toString() == QStringLiteral("announce") &&
-            msg.value(QStringLiteral("protocol")).toString() == QStringLiteral("qtPilot-discovery")) {
+            msg.value(QStringLiteral("protocol")).toString() ==
+                QStringLiteral("qtPilot-discovery")) {
           int wsPort = msg.value(QStringLiteral("wsPort")).toInt();
           m_targetPid = static_cast<qint64>(msg.value(QStringLiteral("pid")).toDouble());
           wsUrl = QStringLiteral("ws://127.0.0.1:%1").arg(wsPort);

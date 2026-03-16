@@ -1,6 +1,8 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "transport/jsonrpc_handler.h"
+
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -8,8 +10,6 @@
 #include <QSignalSpy>
 #include <QString>
 #include <QTest>
-
-#include "transport/jsonrpc_handler.h"
 
 class TestJsonRpc : public QObject {
   Q_OBJECT
@@ -136,8 +136,7 @@ class TestJsonRpc : public QObject {
 
   // Test: echo returns params
   void test_echoReturnsParams() {
-    QString request =
-        R"({"jsonrpc":"2.0","id":3,"method":"echo","params":{"foo":"bar"}})";
+    QString request = R"({"jsonrpc":"2.0","id":3,"method":"echo","params":{"foo":"bar"}})";
     QString response = handler_->HandleMessage(request);
 
     QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
@@ -150,8 +149,7 @@ class TestJsonRpc : public QObject {
 
   // Test: String id is preserved
   void test_stringIdIsPreserved() {
-    QString request =
-        R"({"jsonrpc":"2.0","id":"my-request-id","method":"ping"})";
+    QString request = R"({"jsonrpc":"2.0","id":"my-request-id","method":"ping"})";
     QString response = handler_->HandleMessage(request);
 
     QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
@@ -175,10 +173,9 @@ class TestJsonRpc : public QObject {
 
   // Test: Custom method can be registered
   void test_customMethodCanBeRegistered() {
-    handler_->RegisterMethod("customMethod",
-                             [](const QString& /*params*/) -> QString {
-                               return R"({"custom":"response"})";
-                             });
+    handler_->RegisterMethod("customMethod", [](const QString& /*params*/) -> QString {
+      return R"({"custom":"response"})";
+    });
 
     QString request = R"({"jsonrpc":"2.0","id":6,"method":"customMethod"})";
     QString response = handler_->HandleMessage(request);
@@ -186,8 +183,7 @@ class TestJsonRpc : public QObject {
     QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
     QJsonObject obj = doc.object();
 
-    QCOMPARE(obj["result"].toObject()["custom"].toString(),
-             QString("response"));
+    QCOMPARE(obj["result"].toObject()["custom"].toString(), QString("response"));
   }
 
   // Test: qtpilot.echo method works (per RESEARCH.md spec)
