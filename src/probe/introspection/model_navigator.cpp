@@ -39,6 +39,12 @@ QJsonArray ModelNavigator::listModels() {
   const auto objects = registry->allObjects();
 
   for (QObject* obj : objects) {
+    // Verify the object is still alive — allObjects() returns a snapshot of
+    // raw pointers, and objects may have been destroyed since the snapshot
+    // was taken (e.g., Qt internal models destroyed during widget teardown).
+    if (!registry->contains(obj))
+      continue;
+
     auto* model = qobject_cast<QAbstractItemModel*>(obj);
     if (!model)
       continue;

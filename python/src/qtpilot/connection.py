@@ -130,7 +130,12 @@ class ProbeConnection:
     async def connect(self) -> None:
         """Establish the WebSocket connection and start receiving."""
         logger.debug("Connecting to probe at %s", self._ws_url)
-        self._ws = await connect(self._ws_url)
+        self._ws = await connect(
+            self._ws_url,
+            ping_interval=10,   # send ping every 10s to keep connection alive
+            ping_timeout=30,    # allow 30s for pong response
+            close_timeout=5,    # 5s grace period on close
+        )
         self._connected = True
         self._recv_task = asyncio.create_task(self._recv_loop())
         logger.debug("Connected to probe at %s", self._ws_url)

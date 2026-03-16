@@ -63,13 +63,18 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         return await require_probe().call("chr.find", {"query": query})
 
     @mcp.tool
-    async def chr_navigate(ref: str, ctx: Context = None) -> dict:
+    async def chr_navigate(ref: str, action: str = "activateTab", ctx: Context = None) -> dict:
         """Navigate to or activate an element by reference.
-        Example: chr_navigate(ref="tab_settings")
+
+        Args:
+            ref: Element reference from chr_readPage/chr_find.
+            action: One of "activateTab", "activateMenuItem", "back", "forward".
+
+        Example: chr_navigate(ref="ref_65", action="activateTab")
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call("chr.navigate", {"ref": ref})
+        return await require_probe().call("chr.navigate", {"ref": ref, "action": action})
 
     @mcp.tool
     async def chr_tabsContext(ctx: Context) -> dict:

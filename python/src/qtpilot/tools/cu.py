@@ -34,7 +34,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["screenAbsolute"] = screenAbsolute
         if delay_ms is not None:
             params["delay_ms"] = delay_ms
-        return await require_probe().call("cu.leftClick", params)
+        return await require_probe().call("cu.click", params)
 
     @mcp.tool
     async def cu_rightClick(
