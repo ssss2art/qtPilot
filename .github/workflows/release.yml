@@ -30,7 +30,7 @@ jobs:
           # Extract probe + launcher for each Qt version, platform, and
           # architecture, then package into per-(qt_version, platform, arch)
           # archives.
-          for dir in artifacts/qtmcp-*/; do
+          for dir in artifacts/qtpilot-*/; do
             basename=$(basename "$dir")
 
             # Determine platform from preset name
@@ -57,18 +57,18 @@ jobs:
 
             # Copy probe binary with simplified name (no version/compiler suffix)
             if [ "$platform" = "windows" ]; then
-              for f in "$dir"/lib/qtmcp-probe-*.dll; do
-                [ -f "$f" ] && cp "$f" "$staging/qtmcp-probe.dll"
+              for f in "$dir"/lib/qtPilot-probe-*.dll; do
+                [ -f "$f" ] && cp "$f" "$staging/qtPilot-probe.dll"
               done
-              for f in "$dir"/bin/qtmcp-launcher*; do
-                [ -f "$f" ] && cp "$f" "$staging/qtmcp-launcher.exe"
+              for f in "$dir"/bin/qtPilot-launcher*; do
+                [ -f "$f" ] && cp "$f" "$staging/qtPilot-launcher.exe"
               done
             else
-              for f in "$dir"/lib/libqtmcp-probe-*.so; do
-                [ -f "$f" ] && cp "$f" "$staging/qtmcp-probe.so"
+              for f in "$dir"/lib/libqtPilot-probe-*.so; do
+                [ -f "$f" ] && cp "$f" "$staging/qtPilot-probe.so"
               done
-              for f in "$dir"/bin/qtmcp-launcher*; do
-                [ -f "$f" ] && cp "$f" "$staging/qtmcp-launcher"
+              for f in "$dir"/bin/qtPilot-launcher*; do
+                [ -f "$f" ] && cp "$f" "$staging/qtPilot-launcher"
               done
             fi
           done
@@ -83,13 +83,13 @@ jobs:
             arch=$(echo "$tag_platform_arch" | grep -oP '(x64|x86)$')
 
             if [ "$platform" = "windows" ]; then
-              archive="qtmcp-${qt_tag}-${platform}-${arch}.zip"
+              archive="qtpilot-${qt_tag}-${platform}-${arch}.zip"
               (cd "$staging_dir" && zip -j "../../release/$archive" *)
             else
               if [ "$arch" = "x86" ]; then
-                archive="qtmcp-${qt_tag}-${platform}-x86.tar.gz"
+                archive="qtpilot-${qt_tag}-${platform}-x86.tar.gz"
               else
-                archive="qtmcp-${qt_tag}-${platform}.tar.gz"
+                archive="qtpilot-${qt_tag}-${platform}.tar.gz"
               fi
               tar -czf "release/$archive" -C "$staging_dir" .
             fi
@@ -114,7 +114,7 @@ jobs:
       id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/project/qtmcp/
+      url: https://pypi.org/project/qtpilot/
     steps:
       - uses: actions/checkout@v4
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "core/probe.h"
@@ -9,7 +9,7 @@
 #include <QDebug>
 
 // Logging macros - use spdlog if available, otherwise Qt logging
-#ifdef QTMCP_HAS_SPDLOG
+#ifdef QTPILOT_HAS_SPDLOG
 #include <spdlog/spdlog.h>
 #define LOG_INFO(msg) spdlog::info(msg)
 #define LOG_WARN(msg) spdlog::warn(msg)
@@ -43,7 +43,7 @@
 #include <QJsonObject>
 #include <QWindow>
 
-namespace qtmcp {
+namespace qtPilot {
 
 // Thread-safe singleton storage using Q_GLOBAL_STATIC
 // This is safe for dynamically loaded DLLs (no TLS issues)
@@ -65,18 +65,18 @@ Probe::Probe()
 
   // Log creation to stderr for debugging injection issues
   // Using fprintf because qDebug may not work before Qt is fully initialized
-  fprintf(stderr, "[QtMCP] Probe singleton created (port=%u, mode=%s)\n",
+  fprintf(stderr, "[qtPilot] Probe singleton created (port=%u, mode=%s)\n",
           static_cast<unsigned>(m_port), qPrintable(m_mode));
 }
 
 Probe::~Probe() {
   shutdown();
-  fprintf(stderr, "[QtMCP] Probe singleton destroyed\n");
+  fprintf(stderr, "[qtPilot] Probe singleton destroyed\n");
 }
 
 void Probe::readConfiguration() {
   // Read port from environment
-  QByteArray portEnv = qgetenv("QTMCP_PORT");
+  QByteArray portEnv = qgetenv("QTPILOT_PORT");
   if (!portEnv.isEmpty()) {
     bool ok = false;
     int envPort = portEnv.toInt(&ok);
@@ -86,7 +86,7 @@ void Probe::readConfiguration() {
   }
 
   // Read mode from environment
-  QByteArray modeEnv = qgetenv("QTMCP_MODE");
+  QByteArray modeEnv = qgetenv("QTPILOT_MODE");
   if (!modeEnv.isEmpty()) {
     QString modeStr = QString::fromUtf8(modeEnv).toLower();
     if (modeStr == QLatin1String("native") || modeStr == QLatin1String("computer_use") ||
@@ -99,15 +99,15 @@ void Probe::readConfiguration() {
 bool Probe::initialize() {
   // Guard against multiple initialization
   if (m_initialized) {
-    LOG_WARN("[QtMCP] Probe::initialize() called but already initialized");
+    LOG_WARN("[qtPilot] Probe::initialize() called but already initialized");
     return true;
   }
 
   // CRITICAL: Verify QCoreApplication exists before using any Qt functionality
   // This is the main safety check for deferred initialization
   if (!QCoreApplication::instance()) {
-    LOG_ERROR("[QtMCP] Probe::initialize() called but QCoreApplication does not exist!");
-    fprintf(stderr, "[QtMCP] ERROR: Cannot initialize - QCoreApplication not created yet\n");
+    LOG_ERROR("[qtPilot] Probe::initialize() called but QCoreApplication does not exist!");
+    fprintf(stderr, "[qtPilot] ERROR: Cannot initialize - QCoreApplication not created yet\n");
     return false;
   }
 
@@ -134,9 +134,9 @@ bool Probe::initialize() {
     }
   }
 
-  LOG_INFO("[QtMCP] Object hooks installed, tracking " + QString::number(registry->objectCount()) +
+  LOG_INFO("[qtPilot] Object hooks installed, tracking " + QString::number(registry->objectCount()) +
            " existing objects");
-  fprintf(stderr, "[QtMCP] Object hooks installed, tracking %d existing objects\n",
+  fprintf(stderr, "[qtPilot] Object hooks installed, tracking %d existing objects\n",
           registry->objectCount());
 
   // Create and start WebSocket server
@@ -149,8 +149,8 @@ bool Probe::initialize() {
 
   // Start the server
   if (!m_server->start()) {
-    LOG_ERROR("[QtMCP] Failed to start WebSocket server");
-    fprintf(stderr, "[QtMCP] ERROR: Failed to start WebSocket server on port %u\n",
+    LOG_ERROR("[qtPilot] Failed to start WebSocket server");
+    fprintf(stderr, "[qtPilot] ERROR: Failed to start WebSocket server on port %u\n",
             static_cast<unsigned>(m_port));
     delete m_server;
     m_server = nullptr;
@@ -162,11 +162,11 @@ bool Probe::initialize() {
   m_port = m_server->port();
 
   // Ensure child processes auto-assign their own port to avoid conflicts
-  qputenv("QTMCP_PORT", "0");
+  qputenv("QTPILOT_PORT", "0");
 
 #ifdef Q_OS_WIN
   // If child injection is requested, hook CreateProcessW so children get the probe
-  if (qgetenv("QTMCP_INJECT_CHILDREN") == "1") {
+  if (qgetenv("QTPILOT_INJECT_CHILDREN") == "1") {
     installChildProcessHook();
   }
 #endif
@@ -180,54 +180,54 @@ bool Probe::initialize() {
   // Install console message capture (before API registration so early messages are caught)
   try {
     ConsoleMessageCapture::instance()->install();
-    fprintf(stderr, "[QtMCP] Console message capture installed\n");
+    fprintf(stderr, "[qtPilot] Console message capture installed\n");
   } catch (...) {
-    fprintf(stderr, "[QtMCP] WARNING: Failed to install console message capture\n");
+    fprintf(stderr, "[qtPilot] WARNING: Failed to install console message capture\n");
   }
 
   // Register Native Mode API (qt.* namespaced methods)
   try {
     auto* nativeApi = new NativeModeApi(m_server->rpcHandler(), this);
     Q_UNUSED(nativeApi);
-    fprintf(stderr, "[QtMCP] Native Mode API (qt.*) registered\n");
+    fprintf(stderr, "[qtPilot] Native Mode API (qt.*) registered\n");
   } catch (const std::exception& e) {
-    fprintf(stderr, "[QtMCP] WARNING: Failed to register Native Mode API: %s\n", e.what());
+    fprintf(stderr, "[qtPilot] WARNING: Failed to register Native Mode API: %s\n", e.what());
   } catch (...) {
-    fprintf(stderr, "[QtMCP] WARNING: Failed to register Native Mode API (unknown exception)\n");
+    fprintf(stderr, "[qtPilot] WARNING: Failed to register Native Mode API (unknown exception)\n");
   }
 
   // Register Computer Use Mode API (cu.* namespaced methods)
   try {
     auto* cuApi = new ComputerUseModeApi(m_server->rpcHandler(), this);
     Q_UNUSED(cuApi);
-    fprintf(stderr, "[QtMCP] Computer Use Mode API (cu.*) registered\n");
+    fprintf(stderr, "[qtPilot] Computer Use Mode API (cu.*) registered\n");
   } catch (const std::exception& e) {
-    fprintf(stderr, "[QtMCP] WARNING: Failed to register Computer Use Mode API: %s\n", e.what());
+    fprintf(stderr, "[qtPilot] WARNING: Failed to register Computer Use Mode API: %s\n", e.what());
   } catch (...) {
     fprintf(stderr,
-            "[QtMCP] WARNING: Failed to register Computer Use Mode API (unknown exception)\n");
+            "[qtPilot] WARNING: Failed to register Computer Use Mode API (unknown exception)\n");
   }
 
   // Register Chrome Mode API (chr.* namespaced methods)
   try {
     auto* chrApi = new ChromeModeApi(m_server->rpcHandler(), this);
     Q_UNUSED(chrApi);
-    fprintf(stderr, "[QtMCP] Chrome Mode API (chr.*) registered\n");
+    fprintf(stderr, "[qtPilot] Chrome Mode API (chr.*) registered\n");
   } catch (const std::exception& e) {
-    fprintf(stderr, "[QtMCP] WARNING: Failed to register Chrome Mode API: %s\n", e.what());
+    fprintf(stderr, "[qtPilot] WARNING: Failed to register Chrome Mode API: %s\n", e.what());
   } catch (...) {
-    fprintf(stderr, "[QtMCP] WARNING: Failed to register Chrome Mode API (unknown exception)\n");
+    fprintf(stderr, "[qtPilot] WARNING: Failed to register Chrome Mode API (unknown exception)\n");
   }
 
   // Auto-load symbolic name map from env var or default file
-  QString nameMapPath = qEnvironmentVariable("QTMCP_NAME_MAP");
+  QString nameMapPath = qEnvironmentVariable("QTPILOT_NAME_MAP");
   if (nameMapPath.isEmpty()) {
-    nameMapPath = QDir::currentPath() + QStringLiteral("/qtmcp-names.json");
+    nameMapPath = QDir::currentPath() + QStringLiteral("/qtPilot-names.json");
   }
   if (QFile::exists(nameMapPath)) {
     SymbolicNameMap::instance()->loadFromFile(nameMapPath);
-    LOG_INFO("[QtMCP] Loaded symbolic name map from " + nameMapPath);
-    fprintf(stderr, "[QtMCP] Loaded name map from %s\n", qPrintable(nameMapPath));
+    LOG_INFO("[qtPilot] Loaded symbolic name map from " + nameMapPath);
+    fprintf(stderr, "[qtPilot] Loaded name map from %s\n", qPrintable(nameMapPath));
   }
 
   // Clear numeric IDs and Chrome Mode refs on client disconnect
@@ -242,7 +242,7 @@ bool Probe::initialize() {
             if (m_server) {
               QJsonObject rpcNotification;
               rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtmcp.signalEmitted";
+              rpcNotification["method"] = "qtpilot.signalEmitted";
               rpcNotification["params"] = notification;
               m_server->sendMessage(
                   QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
@@ -254,7 +254,7 @@ bool Probe::initialize() {
             if (m_server) {
               QJsonObject rpcNotification;
               rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtmcp.objectCreated";
+              rpcNotification["method"] = "qtpilot.objectCreated";
               rpcNotification["params"] = notification;
               m_server->sendMessage(
                   QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
@@ -266,7 +266,7 @@ bool Probe::initialize() {
             if (m_server) {
               QJsonObject rpcNotification;
               rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtmcp.objectDestroyed";
+              rpcNotification["method"] = "qtpilot.objectDestroyed";
               rpcNotification["params"] = notification;
               m_server->sendMessage(
                   QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
@@ -279,15 +279,15 @@ bool Probe::initialize() {
             if (m_server) {
               QJsonObject rpcNotification;
               rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtmcp.eventCaptured";
+              rpcNotification["method"] = "qtpilot.eventCaptured";
               rpcNotification["params"] = notification;
               m_server->sendMessage(
                   QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
             }
           });
 
-  LOG_INFO("[QtMCP] Probe initialized successfully");
-  fprintf(stderr, "[QtMCP] Probe initialized on port %u\n", static_cast<unsigned>(m_port));
+  LOG_INFO("[qtPilot] Probe initialized successfully");
+  fprintf(stderr, "[qtPilot] Probe initialized on port %u\n", static_cast<unsigned>(m_port));
 
   return true;
 }
@@ -301,8 +301,8 @@ void Probe::shutdown() {
     return;
   }
 
-  LOG_INFO("[QtMCP] Probe shutting down...");
-  fprintf(stderr, "[QtMCP] Probe shutting down\n");
+  LOG_INFO("[qtPilot] Probe shutting down...");
+  fprintf(stderr, "[qtPilot] Probe shutting down\n");
 
 #ifdef Q_OS_WIN
   // Remove the CreateProcessW hook before tearing down anything else
@@ -332,7 +332,7 @@ void Probe::shutdown() {
 
 void Probe::setPort(quint16 port) {
   if (m_initialized) {
-    LOG_WARN("[QtMCP] Cannot change port after initialization");
+    LOG_WARN("[qtPilot] Cannot change port after initialization");
     return;
   }
   m_port = port;
@@ -354,4 +354,4 @@ WebSocketServer* Probe::server() const {
   return m_server;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

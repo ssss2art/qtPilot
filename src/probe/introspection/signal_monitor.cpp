@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "introspection/signal_monitor.h"
@@ -12,7 +12,7 @@
 #include <QMetaMethod>
 #include <QMutexLocker>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Helper class that acts as a relay between dynamic signals and SignalMonitor.
 ///
@@ -80,7 +80,7 @@ SignalMonitor::SignalMonitor() : QObject(nullptr) {
             }
           });
 
-  qDebug() << "[QtMCP] SignalMonitor created";
+  qDebug() << "[qtPilot] SignalMonitor created";
 }
 
 SignalMonitor::~SignalMonitor() {
@@ -94,7 +94,7 @@ SignalMonitor::~SignalMonitor() {
   }
   m_subscriptions.clear();
 
-  qDebug() << "[QtMCP] SignalMonitor destroyed";
+  qDebug() << "[qtPilot] SignalMonitor destroyed";
 }
 
 QString SignalMonitor::subscribe(const QString& objectId, const QString& signalName) {
@@ -170,7 +170,7 @@ QString SignalMonitor::subscribe(const QString& objectId, const QString& signalN
     m_subscriptions.insert(subId, sub);
   }
 
-  qDebug() << "[QtMCP] Subscribed to" << objectId << "::" << signalName << "as" << subId;
+  qDebug() << "[qtPilot] Subscribed to" << objectId << "::" << signalName << "as" << subId;
   return subId;
 }
 
@@ -179,7 +179,7 @@ void SignalMonitor::unsubscribe(const QString& subscriptionId) {
 
   auto it = m_subscriptions.find(subscriptionId);
   if (it == m_subscriptions.end()) {
-    qWarning() << "[QtMCP] Unsubscribe: subscription not found:" << subscriptionId;
+    qWarning() << "[qtPilot] Unsubscribe: subscription not found:" << subscriptionId;
     return;
   }
 
@@ -191,7 +191,7 @@ void SignalMonitor::unsubscribe(const QString& subscriptionId) {
   // Delete the relay
   delete it->relay;
 
-  qDebug() << "[QtMCP] Unsubscribed" << subscriptionId << "from" << it->objectId
+  qDebug() << "[qtPilot] Unsubscribed" << subscriptionId << "from" << it->objectId
            << "::" << it->signalName;
 
   m_subscriptions.erase(it);
@@ -216,14 +216,14 @@ void SignalMonitor::unsubscribeAll(const QString& objectId) {
   }
 
   if (!toRemove.isEmpty()) {
-    qDebug() << "[QtMCP] Unsubscribed all" << toRemove.size() << "subscriptions for" << objectId;
+    qDebug() << "[qtPilot] Unsubscribed all" << toRemove.size() << "subscriptions for" << objectId;
   }
 }
 
 void SignalMonitor::setLifecycleNotificationsEnabled(bool enabled) {
   QMutexLocker lock(&m_mutex);
   m_lifecycleEnabled = enabled;
-  qDebug() << "[QtMCP] Lifecycle notifications" << (enabled ? "enabled" : "disabled");
+  qDebug() << "[qtPilot] Lifecycle notifications" << (enabled ? "enabled" : "disabled");
 }
 
 bool SignalMonitor::lifecycleNotificationsEnabled() const {
@@ -322,12 +322,12 @@ void SignalMonitor::onSubscribedObjectDestroyed(QObject* obj) {
   }
 
   for (const QString& id : toRemove) {
-    qDebug() << "[QtMCP] Auto-unsubscribed" << id << "due to object destruction";
+    qDebug() << "[qtPilot] Auto-unsubscribed" << id << "due to object destruction";
     m_subscriptions.remove(id);
   }
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 // Include the moc file for SignalRelay (defined in this cpp file)
 #include "signal_monitor.moc"

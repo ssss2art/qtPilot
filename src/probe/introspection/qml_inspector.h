@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <QObject>
 #include <QString>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Metadata extracted from a QML item.
 struct QmlItemInfo {
@@ -16,7 +16,7 @@ struct QmlItemInfo {
   QString shortTypeName;
 };
 
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
 
 /// @brief Extract QML metadata from a QObject.
 ///
@@ -61,6 +61,6 @@ inline bool isQmlItem(QObject* /*obj*/) {
   return false;
 }
 
-#endif  // QTMCP_HAS_QML
+#endif  // QTPILOT_HAS_QML
 
-}  // namespace qtmcp
+}  // namespace qtPilot

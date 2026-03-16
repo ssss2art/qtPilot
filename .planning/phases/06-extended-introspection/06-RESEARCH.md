@@ -53,8 +53,8 @@ find_package(Qt6 COMPONENTS Qml Quick QUIET)
 
 # Add to src/probe/CMakeLists.txt target_link_libraries:
 if(Qt6Qml_FOUND AND Qt6Quick_FOUND)
-    target_link_libraries(qtmcp_probe PUBLIC Qt6::Qml Qt6::Quick)
-    target_compile_definitions(qtmcp_probe PUBLIC QTMCP_HAS_QML)
+    target_link_libraries(qtPilot_probe PUBLIC Qt6::Qml Qt6::Quick)
+    target_compile_definitions(qtPilot_probe PUBLIC QTPILOT_HAS_QML)
 endif()
 ```
 
@@ -87,7 +87,7 @@ src/probe/
 
 ```cpp
 // Source: Qt6 public API — QQmlContext::nameForObject, qmlContext()
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -97,7 +97,7 @@ QString generateIdSegment(QObject* obj) {
     if (!obj) return QString();
 
     // Priority 0 (NEW): QML id — replaces className per CONTEXT.md decision
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
     if (qobject_cast<QQuickItem*>(obj)) {
         QQmlContext* ctx = qmlContext(obj);
         if (ctx) {
@@ -228,7 +228,7 @@ QAbstractItemModel* resolveModel(QObject* obj) {
 
 ```cpp
 // Extend serializeObjectInfo() in object_id.cpp
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
 if (auto* quickItem = qobject_cast<QQuickItem*>(obj)) {
     result["isQmlItem"] = true;
 
@@ -303,7 +303,7 @@ if (auto* quickItem = qobject_cast<QQuickItem*>(obj)) {
 
 **What goes wrong:** Build fails because `Qt6::Qml` or `Qt6::Quick` is not found by CMake.
 **Why it happens:** Target Qt installation may be widgets-only (no Qt Quick). Server environments commonly lack Qt Quick.
-**How to avoid:** Make Qt Quick/QML an optional dependency with compile-time feature guard (`QTMCP_HAS_QML`). All QML-specific code guarded by `#ifdef QTMCP_HAS_QML`. Model/View support (QAbstractItemModel) is in Qt Core and always available.
+**How to avoid:** Make Qt Quick/QML an optional dependency with compile-time feature guard (`QTPILOT_HAS_QML`). All QML-specific code guarded by `#ifdef QTPILOT_HAS_QML`. Model/View support (QAbstractItemModel) is in Qt Core and always available.
 **Warning signs:** CMake warnings about missing Qt6::Qml or Qt6::Quick.
 
 ### Pitfall 6: Model Data Fetching Performance
@@ -487,7 +487,7 @@ int resolveRoleName(QAbstractItemModel* model, const QString& roleName) {
 4. **Qt5 fallback for QML features**
    - What we know: The project supports Qt5 fallback. Qt5 has QQmlContext::nameForObject(), QQuickItem, etc.
    - What's unclear: Whether all the APIs used are available in Qt 5.15.
-   - Recommendation: Qt 5.15 supports all the public APIs discussed here. Guard with `#ifdef QTMCP_HAS_QML` (compile-time check for Qt Qml/Quick availability), not Qt version checks. The only difference is the `objectForName()` method was added in Qt 6.2 — avoid using it; use `nameForObject()` which exists in both Qt5 and Qt6.
+   - Recommendation: Qt 5.15 supports all the public APIs discussed here. Guard with `#ifdef QTPILOT_HAS_QML` (compile-time check for Qt Qml/Quick availability), not Qt version checks. The only difference is the `objectForName()` method was added in Qt 6.2 — avoid using it; use `nameForObject()` which exists in both Qt5 and Qt6.
 
 ## Sources
 

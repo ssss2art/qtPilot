@@ -20,11 +20,11 @@ The v1.1 distribution architecture adds multi-Qt-version builds, CI/CD, and mult
        v
   CMake Build System (Qt-version-aware)
        |
-       +--- Qt 5.15.2 build -------> qtmcp-probe-qt5.15.2-{os}-{arch}.{dll/so}
-       +--- Qt 5.15.1-patched -----> qtmcp-probe-qt5.15.1p-{os}-{arch}.{dll/so}
-       +--- Qt 6.2.x build --------> qtmcp-probe-qt6.2-{os}-{arch}.{dll/so}
-       +--- Qt 6.8.x build --------> qtmcp-probe-qt6.8-{os}-{arch}.{dll/so}
-       +--- Qt 6.9.x build --------> qtmcp-probe-qt6.9-{os}-{arch}.{dll/so}
+       +--- Qt 5.15.2 build -------> qtPilot-probe-qt5.15.2-{os}-{arch}.{dll/so}
+       +--- Qt 5.15.1-patched -----> qtPilot-probe-qt5.15.1p-{os}-{arch}.{dll/so}
+       +--- Qt 6.2.x build --------> qtPilot-probe-qt6.2-{os}-{arch}.{dll/so}
+       +--- Qt 6.8.x build --------> qtPilot-probe-qt6.8-{os}-{arch}.{dll/so}
+       +--- Qt 6.9.x build --------> qtPilot-probe-qt6.9-{os}-{arch}.{dll/so}
        |
        v
   Distribution Channels:
@@ -39,13 +39,13 @@ The v1.1 distribution architecture adds multi-Qt-version builds, CI/CD, and mult
 |-----------|--------|---------|---------|
 | Root CMakeLists.txt | **MODIFY** | `CMakeLists.txt` | Add Qt version encoding in output names |
 | CMakePresets.json | **MODIFY** | `CMakePresets.json` | Add per-Qt-version presets |
-| QtMCPConfig.cmake.in | **MODIFY** | `cmake/QtMCPConfig.cmake.in` | Fix Qt5-only hardcode, support both Qt versions |
+| qtPilotConfig.cmake.in | **MODIFY** | `cmake/qtPilotConfig.cmake.in` | Fix Qt5-only hardcode, support both Qt versions |
 | CI workflow | **MODIFY** | `.github/workflows/ci.yml` | Matrix build, artifact upload |
 | Release workflow | **NEW** | `.github/workflows/release.yml` | Tag-triggered release with all artifacts |
 | Custom Qt build workflow | **NEW** | `.github/workflows/build-qt.yml` | Build patched Qt 5.15.1 from source, cache it |
-| vcpkg overlay port | **NEW** | `ports/qtmcp/portfile.cmake`, `ports/qtmcp/vcpkg.json` | Source-build port |
+| vcpkg overlay port | **NEW** | `ports/qtpilot/portfile.cmake`, `ports/qtpilot/vcpkg.json` | Source-build port |
 | Python pyproject.toml | **MODIFY** | `python/pyproject.toml` | Add metadata for PyPI, optional extras |
-| Python probe downloader | **NEW** | `python/src/qtmcp/probe.py` | Download prebuilt probe from GitHub Releases |
+| Python probe downloader | **NEW** | `python/src/qtpilot/probe.py` | Download prebuilt probe from GitHub Releases |
 | Probe CMakeLists.txt | **MODIFY** | `src/probe/CMakeLists.txt` | Encode Qt version in output name |
 
 ---
@@ -54,11 +54,11 @@ The v1.1 distribution architecture adds multi-Qt-version builds, CI/CD, and mult
 
 #### Current State
 
-The root `CMakeLists.txt` already has a working dual Qt 5/6 discovery pattern (lines 43-88). It tries Qt6 first, falls back to Qt5. The probe CMakeLists.txt branches on `QT_VERSION_MAJOR` for link targets. Output name is `qtmcp-probe` regardless of Qt version.
+The root `CMakeLists.txt` already has a working dual Qt 5/6 discovery pattern (lines 43-88). It tries Qt6 first, falls back to Qt5. The probe CMakeLists.txt branches on `QT_VERSION_MAJOR` for link targets. Output name is `qtPilot-probe` regardless of Qt version.
 
 #### Problem
 
-A single build produces `qtmcp-probe.dll` whether built against Qt 5.15 or Qt 6.8. Users cannot distinguish them. Installing both to the same prefix would overwrite.
+A single build produces `qtPilot-probe.dll` whether built against Qt 5.15 or Qt 6.8. Users cannot distinguish them. Installing both to the same prefix would overwrite.
 
 #### Recommended Change: Qt-Version-Encoded Output Names
 
@@ -68,25 +68,25 @@ Encode the Qt major.minor version in the library output name. This is the approa
 # In src/probe/CMakeLists.txt, replace the OUTPUT_NAME line:
 
 # Encode Qt version in library name for side-by-side installation
-set(QTMCP_QT_SUFFIX "qt${QT_VERSION_MAJOR}.${Qt${QT_VERSION_MAJOR}_VERSION_MINOR}")
+set(QTPILOT_QT_SUFFIX "qt${QT_VERSION_MAJOR}.${Qt${QT_VERSION_MAJOR}_VERSION_MINOR}")
 # Produces: qt5.15, qt6.2, qt6.8, qt6.9
 
-set_target_properties(qtmcp_probe PROPERTIES
+set_target_properties(qtPilot_probe PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
-    OUTPUT_NAME "qtmcp-probe-${QTMCP_QT_SUFFIX}"
+    OUTPUT_NAME "qtPilot-probe-${QTPILOT_QT_SUFFIX}"
     EXPORT_NAME probe
 )
 ```
 
 This produces:
-- `qtmcp-probe-qt5.15.dll` / `libqtmcp-probe-qt5.15.so`
-- `qtmcp-probe-qt6.8.dll` / `libqtmcp-probe-qt6.8.so`
+- `qtPilot-probe-qt5.15.dll` / `libqtPilot-probe-qt5.15.so`
+- `qtPilot-probe-qt6.8.dll` / `libqtPilot-probe-qt6.8.so`
 
 Similarly for the launcher:
 ```cmake
-set_target_properties(qtmcp_launcher PROPERTIES
-    OUTPUT_NAME "qtmcp-launch-${QTMCP_QT_SUFFIX}"
+set_target_properties(qtPilot_launcher PROPERTIES
+    OUTPUT_NAME "qtpilot-launch-${QTPILOT_QT_SUFFIX}"
 )
 ```
 
@@ -103,7 +103,7 @@ Add per-Qt-version presets that explicitly set `CMAKE_PREFIX_PATH`. The current 
     "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_PREFIX_PATH": "$env{Qt5_DIR}",
-        "QTMCP_BUILD_TESTS": "ON"
+        "QTPILOT_BUILD_TESTS": "ON"
     }
 },
 {
@@ -113,16 +113,16 @@ Add per-Qt-version presets that explicitly set `CMAKE_PREFIX_PATH`. The current 
     "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_PREFIX_PATH": "$env{Qt6_DIR}",
-        "QTMCP_BUILD_TESTS": "ON"
+        "QTPILOT_BUILD_TESTS": "ON"
     }
 }
 ```
 
 Each preset produces a separate build directory (`build/ci-linux-qt515/`, `build/ci-linux-qt68/`), so artifacts do not collide.
 
-#### QtMCPConfig.cmake.in Fix (Critical Bug)
+#### qtPilotConfig.cmake.in Fix (Critical Bug)
 
-The current `cmake/QtMCPConfig.cmake.in` hardcodes Qt5:
+The current `cmake/qtPilotConfig.cmake.in` hardcodes Qt5:
 
 ```cmake
 find_dependency(Qt5 5.15 COMPONENTS Core Widgets WebSockets)  # BUG: hardcoded Qt5
@@ -138,24 +138,24 @@ This must be fixed to be Qt-version-aware and handle optional deps:
 include(CMakeFindDependencyMacro)
 
 # Qt version detected at build time
-set(QTMCP_QT_VERSION_MAJOR @QT_VERSION_MAJOR@)
+set(QTPILOT_QT_VERSION_MAJOR @QT_VERSION_MAJOR@)
 
-if(QTMCP_QT_VERSION_MAJOR EQUAL 6)
+if(QTPILOT_QT_VERSION_MAJOR EQUAL 6)
     find_dependency(Qt6 @QT_MIN_VERSION_6@ COMPONENTS Core Widgets WebSockets)
 else()
     find_dependency(Qt5 @QT_MIN_VERSION_5@ COMPONENTS Core Widgets WebSockets)
 endif()
 
-if(@QTMCP_HAS_NLOHMANN_JSON@)
+if(@QTPILOT_HAS_NLOHMANN_JSON@)
     find_dependency(nlohmann_json)
 endif()
 
-if(@QTMCP_HAS_SPDLOG@)
+if(@QTPILOT_HAS_SPDLOG@)
     find_dependency(spdlog)
 endif()
 
-include("${CMAKE_CURRENT_LIST_DIR}/QtMCPTargets.cmake")
-check_required_components(QtMCP)
+include("${CMAKE_CURRENT_LIST_DIR}/qtPilotTargets.cmake")
+check_required_components(qtPilot)
 ```
 
 **Confidence: HIGH** -- This is standard CMake `configure_package_config_file` practice documented in the [CMake packaging guide](https://cmake.org/cmake/help/latest/guide/importing-exporting/index.html).
@@ -301,7 +301,7 @@ build-patched-qt:
 
 **Option B: Pre-built Qt as release artifact (alternative)**
 
-Build the patched Qt once locally, upload as a release artifact to a separate repo or as a GitHub Release asset on the QtMCP repo itself. CI downloads it instead of building.
+Build the patched Qt once locally, upload as a release artifact to a separate repo or as a GitHub Release asset on the qtPilot repo itself. CI downloads it instead of building.
 
 Pros: Faster CI, no Qt build in pipeline.
 Cons: Manual process, harder to keep in sync with patches.
@@ -316,26 +316,26 @@ Cons: Manual process, harder to keep in sync with patches.
 
 #### Port Type: Source Build (Overlay Port)
 
-vcpkg's philosophy is build-from-source. The official curated registry does not accept ports that download prebuilt binaries. QtMCP should provide an overlay port that builds the probe from source against whatever Qt the user has installed.
+vcpkg's philosophy is build-from-source. The official curated registry does not accept ports that download prebuilt binaries. qtPilot should provide an overlay port that builds the probe from source against whatever Qt the user has installed.
 
 #### Directory Structure
 
 ```
 ports/
-  qtmcp/
+  qtpilot/
     portfile.cmake      # Build instructions
     vcpkg.json          # Port manifest
     usage               # Post-install usage instructions
 ```
 
-**Note:** This goes in the QtMCP repo root under `ports/`, not in the vcpkg tree. Users add it as `--overlay-ports=./ports`.
+**Note:** This goes in the qtPilot repo root under `ports/`, not in the vcpkg tree. Users add it as `--overlay-ports=./ports`.
 
 #### portfile.cmake
 
 ```cmake
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO ssss2art/QtMcp
+    REPO ssss2art/qtPilot
     REF "v${VERSION}"
     SHA512 0  # Updated on each release
 )
@@ -343,15 +343,15 @@ vcpkg_from_github(
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
-        -DQTMCP_BUILD_TESTS=OFF
-        -DQTMCP_BUILD_TEST_APP=OFF
+        -DQTPILOT_BUILD_TESTS=OFF
+        -DQTPILOT_BUILD_TEST_APP=OFF
 )
 
 vcpkg_cmake_install()
 
 vcpkg_cmake_config_fixup(
-    PACKAGE_NAME QtMCP
-    CONFIG_PATH lib/cmake/QtMCP
+    PACKAGE_NAME qtPilot
+    CONFIG_PATH lib/cmake/qtPilot
 )
 
 file(REMOVE_RECURSE
@@ -369,10 +369,10 @@ file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage"
 
 ```json
 {
-  "name": "qtmcp",
+  "name": "qtpilot",
   "version": "1.1.0",
   "description": "Qt application introspection and automation library with MCP integration",
-  "homepage": "https://github.com/ssss2art/QtMcp",
+  "homepage": "https://github.com/ssss2art/qtPilot",
   "license": "MIT",
   "supports": "windows | linux",
   "dependencies": [
@@ -396,11 +396,11 @@ file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage"
 Instead, the port relies on `CMAKE_PREFIX_PATH` to find Qt at configure time. The `usage` file explains this:
 
 ```
-qtmcp provides CMake targets:
-    find_package(QtMCP CONFIG REQUIRED)
-    target_link_libraries(main PRIVATE QtMCP::probe)
+qtpilot provides CMake targets:
+    find_package(qtPilot CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE qtPilot::probe)
 
-Note: QtMCP requires Qt (5.15+ or 6.x) with Core, Widgets, Network, and
+Note: qtPilot requires Qt (5.15+ or 6.x) with Core, Widgets, Network, and
 WebSockets modules. Set CMAKE_PREFIX_PATH to your Qt installation.
 ```
 
@@ -412,11 +412,11 @@ For users who want prebuilt binaries without building from source, provide a sec
 
 ```
 ports/
-  qtmcp/          # Source build (primary)
-  qtmcp-prebuilt/ # Binary download (convenience)
+  qtpilot/          # Source build (primary)
+  qtpilot-prebuilt/ # Binary download (convenience)
 ```
 
-The `qtmcp-prebuilt` portfile downloads from GitHub Releases instead of building:
+The `qtpilot-prebuilt` portfile downloads from GitHub Releases instead of building:
 
 ```cmake
 # Determine Qt version and platform
@@ -428,14 +428,14 @@ else()
     set(EXT "tar.gz")
 endif()
 
-# User must set QTMCP_QT_VERSION (e.g., "qt5.15", "qt6.8")
-if(NOT DEFINED QTMCP_QT_VERSION)
-    message(FATAL_ERROR "Set QTMCP_QT_VERSION to match your Qt (e.g., qt5.15, qt6.8)")
+# User must set QTPILOT_QT_VERSION (e.g., "qt5.15", "qt6.8")
+if(NOT DEFINED QTPILOT_QT_VERSION)
+    message(FATAL_ERROR "Set QTPILOT_QT_VERSION to match your Qt (e.g., qt5.15, qt6.8)")
 endif()
 
 vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/ssss2art/QtMcp/releases/download/v${VERSION}/qtmcp-${VERSION}-${QTMCP_QT_VERSION}-${PLATFORM}-x64.${EXT}"
-    FILENAME "qtmcp-${VERSION}-${QTMCP_QT_VERSION}-${PLATFORM}-x64.${EXT}"
+    URLS "https://github.com/ssss2art/qtPilot/releases/download/v${VERSION}/qtpilot-${VERSION}-${QTPILOT_QT_VERSION}-${PLATFORM}-x64.${EXT}"
+    FILENAME "qtpilot-${VERSION}-${QTPILOT_QT_VERSION}-${PLATFORM}-x64.${EXT}"
     SHA512 0
 )
 
@@ -456,17 +456,17 @@ file(INSTALL "${SOURCE_PATH}/include/" DESTINATION "${CURRENT_PACKAGES_DIR}/incl
 #### Current State
 
 The Python package at `python/` uses hatchling with a simple `pyproject.toml`:
-- Name: `qtmcp`
-- Entry point: `qtmcp = "qtmcp.cli:main"`
+- Name: `qtpilot`
+- Entry point: `qtpilot = "qtpilot.cli:main"`
 - Dependencies: `fastmcp>=2.0,<3`, `websockets>=14.0`
 
 #### Recommended PyPI Distribution Strategy
 
 The Python package is **pure Python** (no native code). It connects to the C++ probe over WebSocket. The probe binary is NOT included in the wheel. Instead:
 
-1. `pip install qtmcp` installs the pure-Python MCP server
+1. `pip install qtpilot` installs the pure-Python MCP server
 2. Users obtain the probe DLL/SO separately (GitHub Releases, vcpkg, or manual build)
-3. Optionally, `qtmcp` provides a CLI command to download the probe: `qtmcp probe download --qt-version 5.15`
+3. Optionally, `qtpilot` provides a CLI command to download the probe: `qtpilot probe download --qt-version 5.15`
 
 This avoids the hatchling platform-specific wheel issue (hatchling produces `py3-none-any` wheels even with binary artifacts, as documented in [pypa/hatch#1955](https://github.com/pypa/hatch/issues/1955)).
 
@@ -474,13 +474,13 @@ This avoids the hatchling platform-specific wheel issue (hatchling produces `py3
 
 ```toml
 [project]
-name = "qtmcp"
+name = "qtpilot"
 version = "1.1.0"
-description = "MCP server for controlling Qt applications via QtMCP probe"
+description = "MCP server for controlling Qt applications via qtPilot probe"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "QtMCP Contributors"}
+    {name = "qtPilot Contributors"}
 ]
 readme = "README.md"
 keywords = ["qt", "mcp", "automation", "introspection", "claude"]
@@ -508,28 +508,28 @@ dev = [
 ]
 
 [project.scripts]
-qtmcp = "qtmcp.cli:main"
+qtpilot = "qtpilot.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ssss2art/QtMcp"
-Documentation = "https://github.com/ssss2art/QtMcp/blob/main/python/README.md"
-Issues = "https://github.com/ssss2art/QtMcp/issues"
-Changelog = "https://github.com/ssss2art/QtMcp/releases"
+Homepage = "https://github.com/ssss2art/qtPilot"
+Documentation = "https://github.com/ssss2art/qtPilot/blob/main/python/README.md"
+Issues = "https://github.com/ssss2art/qtPilot/issues"
+Changelog = "https://github.com/ssss2art/qtPilot/releases"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/qtmcp"]
+include = ["src/qtpilot"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/qtmcp"]
+packages = ["src/qtpilot"]
 ```
 
 #### Probe Download Helper
 
-New file: `python/src/qtmcp/probe.py`
+New file: `python/src/qtpilot/probe.py`
 
 ```python
 """Download prebuilt probe binaries from GitHub Releases."""
@@ -538,13 +538,13 @@ import platform
 import httpx
 from pathlib import Path
 
-GITHUB_RELEASE_URL = "https://github.com/ssss2art/QtMcp/releases/download"
+GITHUB_RELEASE_URL = "https://github.com/ssss2art/qtPilot/releases/download"
 
 def get_probe_filename(qt_version: str) -> str:
     """Get the expected probe filename for this platform."""
     os_name = "windows" if platform.system() == "Windows" else "linux"
     ext = "dll" if os_name == "windows" else "so"
-    return f"qtmcp-probe-{qt_version}.{ext}"
+    return f"qtPilot-probe-{qt_version}.{ext}"
 
 def download_probe(qt_version: str, version: str = "latest", dest: Path | None = None) -> Path:
     """Download probe binary from GitHub Releases."""
@@ -555,9 +555,9 @@ def download_probe(qt_version: str, version: str = "latest", dest: Path | None =
 This is integrated into the CLI:
 
 ```
-qtmcp probe download --qt-version qt5.15
-qtmcp probe download --qt-version qt6.8 --dest /usr/local/lib
-qtmcp probe list  # Show available versions from GitHub Releases API
+qtpilot probe download --qt-version qt5.15
+qtpilot probe download --qt-version qt6.8 --dest /usr/local/lib
+qtpilot probe list  # Show available versions from GitHub Releases API
 ```
 
 **Confidence: HIGH** for the pure-Python wheel approach. MEDIUM for the probe download helper (needs GitHub API integration).
@@ -569,7 +569,7 @@ qtmcp probe list  # Show available versions from GitHub Releases API
 #### Naming Convention
 
 ```
-qtmcp-{version}-{qt-suffix}-{os}-{arch}.{ext}
+qtpilot-{version}-{qt-suffix}-{os}-{arch}.{ext}
 ```
 
 | Component | Values | Example |
@@ -585,26 +585,26 @@ The `p` suffix on `qt5.15.1p` denotes the patched build, distinguishing it from 
 #### Full Release Artifact List (v1.1.0 example)
 
 ```
-qtmcp-1.1.0-qt5.15-linux-x64.tar.gz
-qtmcp-1.1.0-qt5.15-linux-x64.tar.gz.sha256
-qtmcp-1.1.0-qt5.15-windows-x64.zip
-qtmcp-1.1.0-qt5.15-windows-x64.zip.sha256
-qtmcp-1.1.0-qt5.15.1p-linux-x64.tar.gz
-qtmcp-1.1.0-qt5.15.1p-linux-x64.tar.gz.sha256
-qtmcp-1.1.0-qt5.15.1p-windows-x64.zip
-qtmcp-1.1.0-qt5.15.1p-windows-x64.zip.sha256
-qtmcp-1.1.0-qt6.2-linux-x64.tar.gz
-qtmcp-1.1.0-qt6.2-linux-x64.tar.gz.sha256
-qtmcp-1.1.0-qt6.2-windows-x64.zip
-qtmcp-1.1.0-qt6.2-windows-x64.zip.sha256
-qtmcp-1.1.0-qt6.8-linux-x64.tar.gz
-qtmcp-1.1.0-qt6.8-linux-x64.tar.gz.sha256
-qtmcp-1.1.0-qt6.8-windows-x64.zip
-qtmcp-1.1.0-qt6.8-windows-x64.zip.sha256
-qtmcp-1.1.0-qt6.9-linux-x64.tar.gz
-qtmcp-1.1.0-qt6.9-linux-x64.tar.gz.sha256
-qtmcp-1.1.0-qt6.9-windows-x64.zip
-qtmcp-1.1.0-qt6.9-windows-x64.zip.sha256
+qtpilot-1.1.0-qt5.15-linux-x64.tar.gz
+qtpilot-1.1.0-qt5.15-linux-x64.tar.gz.sha256
+qtpilot-1.1.0-qt5.15-windows-x64.zip
+qtpilot-1.1.0-qt5.15-windows-x64.zip.sha256
+qtpilot-1.1.0-qt5.15.1p-linux-x64.tar.gz
+qtpilot-1.1.0-qt5.15.1p-linux-x64.tar.gz.sha256
+qtpilot-1.1.0-qt5.15.1p-windows-x64.zip
+qtpilot-1.1.0-qt5.15.1p-windows-x64.zip.sha256
+qtpilot-1.1.0-qt6.2-linux-x64.tar.gz
+qtpilot-1.1.0-qt6.2-linux-x64.tar.gz.sha256
+qtpilot-1.1.0-qt6.2-windows-x64.zip
+qtpilot-1.1.0-qt6.2-windows-x64.zip.sha256
+qtpilot-1.1.0-qt6.8-linux-x64.tar.gz
+qtpilot-1.1.0-qt6.8-linux-x64.tar.gz.sha256
+qtpilot-1.1.0-qt6.8-windows-x64.zip
+qtpilot-1.1.0-qt6.8-windows-x64.zip.sha256
+qtpilot-1.1.0-qt6.9-linux-x64.tar.gz
+qtpilot-1.1.0-qt6.9-linux-x64.tar.gz.sha256
+qtpilot-1.1.0-qt6.9-windows-x64.zip
+qtpilot-1.1.0-qt6.9-windows-x64.zip.sha256
 ```
 
 That is 20 files (10 archives + 10 checksums).
@@ -614,23 +614,23 @@ That is 20 files (10 archives + 10 checksums).
 Each archive contains:
 
 ```
-qtmcp-1.1.0-qt5.15-linux-x64/
+qtpilot-1.1.0-qt5.15-linux-x64/
   lib/
-    libqtmcp-probe-qt5.15.so
-    libqtmcp-probe-qt5.15.so.1
-    libqtmcp-probe-qt5.15.so.1.1.0
+    libqtPilot-probe-qt5.15.so
+    libqtPilot-probe-qt5.15.so.1
+    libqtPilot-probe-qt5.15.so.1.1.0
   bin/
-    qtmcp-launch-qt5.15
+    qtpilot-launch-qt5.15
   include/
-    qtmcp/
+    qtpilot/
       core/probe.h
       core/injector.h
       ...
-  lib/cmake/QtMCP/
-    QtMCPConfig.cmake
-    QtMCPConfigVersion.cmake
-    QtMCPTargets.cmake
-    QtMCPTargets-release.cmake
+  lib/cmake/qtPilot/
+    qtPilotConfig.cmake
+    qtPilotConfigVersion.cmake
+    qtPilotTargets.cmake
+    qtPilotTargets-release.cmake
   LICENSE
   README.md
 ```
@@ -642,11 +642,11 @@ Windows variant uses `.dll`, `.lib`, `.exe` extensions.
 ```
 Matrix Build Jobs (parallel)
   |
-  +-- Job 1: qt5.15 + linux --> upload-artifact: "qtmcp-qt5.15-linux-x64"
-  +-- Job 2: qt5.15 + windows --> upload-artifact: "qtmcp-qt5.15-windows-x64"
-  +-- Job 3: qt5.15.1p + linux --> upload-artifact: "qtmcp-qt5.15.1p-linux-x64"
+  +-- Job 1: qt5.15 + linux --> upload-artifact: "qtpilot-qt5.15-linux-x64"
+  +-- Job 2: qt5.15 + windows --> upload-artifact: "qtpilot-qt5.15-windows-x64"
+  +-- Job 3: qt5.15.1p + linux --> upload-artifact: "qtpilot-qt5.15.1p-linux-x64"
   ...
-  +-- Job 10: qt6.9 + windows --> upload-artifact: "qtmcp-qt6.9-windows-x64"
+  +-- Job 10: qt6.9 + windows --> upload-artifact: "qtpilot-qt6.9-windows-x64"
   |
   v
 Release Job (depends on all build jobs)
@@ -668,10 +668,10 @@ Release Job (depends on all build jobs)
 
 | File | Change | Risk |
 |------|--------|------|
-| `CMakeLists.txt` | Add `QTMCP_QT_SUFFIX` variable, pass to subdirectories | LOW - additive |
+| `CMakeLists.txt` | Add `QTPILOT_QT_SUFFIX` variable, pass to subdirectories | LOW - additive |
 | `src/probe/CMakeLists.txt` | Change `OUTPUT_NAME` to include Qt suffix | LOW - rename only |
 | `src/launcher/CMakeLists.txt` | Change `OUTPUT_NAME` to include Qt suffix | LOW - rename only |
-| `cmake/QtMCPConfig.cmake.in` | Fix Qt5 hardcode, handle optional deps | MEDIUM - consumers affected |
+| `cmake/qtPilotConfig.cmake.in` | Fix Qt5 hardcode, handle optional deps | MEDIUM - consumers affected |
 | `CMakePresets.json` | Add per-Qt-version presets | LOW - additive |
 | `.github/workflows/ci.yml` | Matrix expansion, artifact naming | MEDIUM - full rewrite of build jobs |
 | `python/pyproject.toml` | Add PyPI metadata, bump version | LOW - additive |
@@ -680,7 +680,7 @@ Release Job (depends on all build jobs)
 #### What Does NOT Change
 
 - All source code in `src/probe/` and `src/launcher/` (zero C++ changes needed)
-- Python source code in `python/src/qtmcp/` (existing code unchanged)
+- Python source code in `python/src/qtpilot/` (existing code unchanged)
 - Test code in `tests/`
 - The runtime architecture (probe injection, WebSocket, JSON-RPC)
 
@@ -690,9 +690,9 @@ Release Job (depends on all build jobs)
 
 ```
 Phase 1: CMake Multi-Qt Foundation
-  1.1 Add QTMCP_QT_SUFFIX to root CMakeLists.txt
+  1.1 Add QTPILOT_QT_SUFFIX to root CMakeLists.txt
   1.2 Update OUTPUT_NAME in probe and launcher CMakeLists.txt
-  1.3 Fix QtMCPConfig.cmake.in (Qt version + optional deps)
+  1.3 Fix qtPilotConfig.cmake.in (Qt version + optional deps)
   1.4 Add per-Qt-version presets to CMakePresets.json
   1.5 Verify: build locally against Qt 5.15 and Qt 6.x, confirm different output names
   Depends on: nothing (pure CMake changes)
@@ -708,7 +708,7 @@ Phase 3: Patched Qt 5.15.1 CI
   3.1 Create patches/ directory with Qt source patches
   3.2 Create build-qt.yml workflow for building patched Qt
   3.3 Add patched Qt job to ci.yml (download cached build)
-  3.4 Verify: patched Qt builds produce qtmcp-probe-qt5.15.1p
+  3.4 Verify: patched Qt builds produce qtPilot-probe-qt5.15.1p
   Depends on: Phase 2 (CI infrastructure must exist)
 
 Phase 4: GitHub Releases
@@ -720,19 +720,19 @@ Phase 4: GitHub Releases
   Depends on: Phase 2 + 3 (all matrix builds must work)
 
 Phase 5: vcpkg Port
-  5.1 Create ports/qtmcp/vcpkg.json
-  5.2 Create ports/qtmcp/portfile.cmake
-  5.3 Create ports/qtmcp/usage
-  5.4 Test: vcpkg install qtmcp --overlay-ports=./ports
-  5.5 (Optional) Create ports/qtmcp-prebuilt/ for binary download variant
+  5.1 Create ports/qtpilot/vcpkg.json
+  5.2 Create ports/qtpilot/portfile.cmake
+  5.3 Create ports/qtpilot/usage
+  5.4 Test: vcpkg install qtpilot --overlay-ports=./ports
+  5.5 (Optional) Create ports/qtpilot-prebuilt/ for binary download variant
   Depends on: Phase 4 (source build port needs tagged releases for vcpkg_from_github)
 
 Phase 6: PyPI Publication
   6.1 Enhance python/pyproject.toml with PyPI metadata
-  6.2 Add probe download helper (python/src/qtmcp/probe.py)
+  6.2 Add probe download helper (python/src/qtpilot/probe.py)
   6.3 Add CLI commands for probe management
   6.4 Configure trusted publishing in release.yml
-  6.5 Verify: pip install qtmcp works, qtmcp probe download works
+  6.5 Verify: pip install qtpilot works, qtpilot probe download works
   Depends on: Phase 4 (probe download needs GitHub Releases to exist)
 ```
 
@@ -748,7 +748,7 @@ Phase 6: PyPI Publication
 
 ### Recommended Architecture
 
-QtMCP follows the established architecture patterns used by GammaRay, Qt-Inspector, and Qat for Qt introspection tools. The architecture separates into four primary components with clear boundaries:
+qtPilot follows the established architecture patterns used by GammaRay, Qt-Inspector, and Qat for Qt introspection tools. The architecture separates into four primary components with clear boundaries:
 
 ```
                                     +---------------------------+
@@ -772,7 +772,7 @@ QtMCP follows the established architecture patterns used by GammaRay, Qt-Inspect
 |  +---------------------------------------------------------v-------------+   |
 |  |  TARGET Qt APPLICATION PROCESS                                        |   |
 |  |  +------------------------------------------------------------------+ |   |
-|  |  |  C++ PROBE (libqtmcp.so / qtmcp.dll)                             | |   |
+|  |  |  C++ PROBE (libqtpilot.so / qtpilot.dll)                             | |   |
 |  |  |                                                                   | |   |
 |  |  |  +--------------------------------------------------------------+ | |   |
 |  |  |  |  TRANSPORT LAYER                                             | | |   |

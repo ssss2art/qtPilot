@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "role_mapper.h"
@@ -6,7 +6,7 @@
 #include <QHash>
 #include <QSet>
 
-namespace qtmcp {
+namespace qtPilot {
 
 // Complete QAccessible::Role to Chrome/ARIA role name mapping (~55 entries)
 // Source: Qt 6 QAccessible::Role enum + ARIA role definitions
@@ -114,4 +114,4 @@ bool RoleMapper::isInteractive(QAccessible::Role role) {
   return s_interactiveRoles.contains(role);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

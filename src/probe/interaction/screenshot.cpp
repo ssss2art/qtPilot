@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "screenshot.h"
@@ -10,7 +10,7 @@
 #include <QPixmap>
 #include <QScreen>
 
-namespace qtmcp {
+namespace qtPilot {
 
 QByteArray Screenshot::captureWidget(QWidget* widget) {
   if (!widget) {
@@ -126,4 +126,4 @@ QByteArray Screenshot::captureWindowLogical(QWidget* window) {
   return bytes.toBase64();
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

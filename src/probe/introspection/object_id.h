@@ -1,15 +1,15 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Generate a hierarchical ID for a QObject.
 ///
@@ -23,7 +23,7 @@ namespace qtmcp {
 ///
 /// @param obj The object to generate an ID for.
 /// @return The hierarchical ID string (e.g., "mainWindow/central/submitBtn").
-QTMCP_EXPORT QString generateObjectId(QObject* obj);
+QTPILOT_EXPORT QString generateObjectId(QObject* obj);
 
 /// @brief Find an object by its hierarchical ID.
 ///
@@ -33,7 +33,7 @@ QTMCP_EXPORT QString generateObjectId(QObject* obj);
 /// @param id The hierarchical ID (e.g., "mainWindow/central/submitBtn").
 /// @param root Starting point for search (nullptr = search all top-level objects).
 /// @return The object, or nullptr if not found.
-QTMCP_EXPORT QObject* findByObjectId(const QString& id, QObject* root = nullptr);
+QTPILOT_EXPORT QObject* findByObjectId(const QString& id, QObject* root = nullptr);
 
 /// @brief Serialize an object tree to JSON.
 ///
@@ -44,7 +44,7 @@ QTMCP_EXPORT QObject* findByObjectId(const QString& id, QObject* root = nullptr)
 /// @param root Root object to serialize (nullptr = all top-level objects).
 /// @param maxDepth Maximum depth to recurse (-1 = unlimited).
 /// @return JSON object representing the tree.
-QTMCP_EXPORT QJsonObject serializeObjectTree(QObject* root, int maxDepth = -1);
+QTPILOT_EXPORT QJsonObject serializeObjectTree(QObject* root, int maxDepth = -1);
 
 /// @brief Serialize a single object's basic info (no children).
 ///
@@ -53,7 +53,7 @@ QTMCP_EXPORT QJsonObject serializeObjectTree(QObject* root, int maxDepth = -1);
 ///
 /// @param obj The object to serialize.
 /// @return JSON object with id, className, objectName, etc.
-QTMCP_EXPORT QJsonObject serializeObjectInfo(QObject* obj);
+QTPILOT_EXPORT QJsonObject serializeObjectInfo(QObject* obj);
 
 /// @brief Generate a single ID segment for an object.
 ///
@@ -65,6 +65,6 @@ QTMCP_EXPORT QJsonObject serializeObjectInfo(QObject* obj);
 ///
 /// @param obj The object to generate a segment for.
 /// @return The ID segment string.
-QTMCP_EXPORT QString generateIdSegment(QObject* obj);
+QTPILOT_EXPORT QString generateIdSegment(QObject* obj);
 
-}  // namespace qtmcp
+}  // namespace qtPilot

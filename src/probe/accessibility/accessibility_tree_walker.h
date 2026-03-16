@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -9,7 +9,7 @@
 #include <QString>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Options controlling accessibility tree traversal.
 struct WalkOptions {
@@ -68,4 +68,4 @@ class AccessibilityTreeWalker {
                               int& charCount, bool& truncated);
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

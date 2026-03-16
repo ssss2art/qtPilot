@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "variant_json.h"
@@ -18,7 +18,7 @@
 #include <QStringList>
 #include <QUrl>
 
-namespace qtmcp {
+namespace qtPilot {
 
 QJsonValue variantToJson(const QVariant& value) {
   if (!value.isValid()) {
@@ -204,7 +204,7 @@ QVariant jsonToVariant(const QJsonValue& value, int targetTypeId) {
         // Check for special typed object (from variantToJson fallback)
         if (obj.contains(QStringLiteral("_type")) && obj.contains(QStringLiteral("value"))) {
           QString typeName = obj[QStringLiteral("_type")].toString();
-          int metaType = qtmcp::compat::metaTypeIdFromName(typeName.toLatin1().constData());
+          int metaType = qtPilot::compat::metaTypeIdFromName(typeName.toLatin1().constData());
           if (metaType != QMetaType::UnknownType) {
             return jsonToVariant(obj[QStringLiteral("value")], metaType);
           }
@@ -398,8 +398,8 @@ QVariant jsonToVariant(const QJsonValue& value, int targetTypeId) {
     default:
       // Try QMetaType conversion for other types
       QVariant result = jsonToVariant(value);  // Infer type first
-      if (qtmcp::compat::variantCanConvert(result, targetTypeId)) {
-        qtmcp::compat::variantConvert(result, targetTypeId);
+      if (qtPilot::compat::variantCanConvert(result, targetTypeId)) {
+        qtPilot::compat::variantConvert(result, targetTypeId);
         return result;
       }
       break;
@@ -422,4 +422,4 @@ QString variantTypeName(const QVariant& value) {
   return QStringLiteral("Unknown");
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

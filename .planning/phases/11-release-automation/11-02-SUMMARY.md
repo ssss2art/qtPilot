@@ -10,7 +10,7 @@ Created `.github/workflows/release.yml` — a complete release automation workfl
 2. **build-patched** job calls `ci-patched-qt.yml` to produce 2 patched Qt 5.15.1 probe binaries
 3. **release** job downloads all 10 artifacts, extracts and renames probes with platform-encoded filenames, generates SHA256SUMS, and creates a GitHub Release via `softprops/action-gh-release@v2`
 
-Release asset naming convention: `qtmcp-probe-{qt_tag}-{platform}.{ext}` (e.g., `qtmcp-probe-qt6.8-linux-gcc.so`, `qtmcp-probe-qt5.15-patched-windows-msvc.dll`). Windows artifacts also include `.lib` import libraries.
+Release asset naming convention: `qtPilot-probe-{qt_tag}-{platform}.{ext}` (e.g., `qtPilot-probe-qt6.8-linux-gcc.so`, `qtPilot-probe-qt5.15-patched-windows-msvc.dll`). Windows artifacts also include `.lib` import libraries.
 
 ## Tasks Completed
 
@@ -24,7 +24,7 @@ Release asset naming convention: `qtmcp-probe-{qt_tag}-{platform}.{ext}` (e.g., 
 |----------|-----------|
 | `fail_on_unmatched_files: true` | Fails release if any expected binary is missing — prevents incomplete releases |
 | `generate_release_notes: true` | Auto-generates changelog from commits since last tag — zero manual effort |
-| find-based binary discovery | Resilient to path changes; locates .so/.dll under lib/qtmcp/ regardless of nested structure |
+| find-based binary discovery | Resilient to path changes; locates .so/.dll under lib/qtpilot/ regardless of nested structure |
 | Error-on-missing probe | Script exits with error if any of the 10 probes is not found — catches CI regressions early |
 
 ## Deviations from Plan
@@ -48,21 +48,21 @@ When triggered, the workflow produces these release assets:
 
 | # | Filename | Source |
 |---|----------|--------|
-| 1 | qtmcp-probe-qt5.15-linux-gcc.so | ci.yml |
-| 2 | qtmcp-probe-qt5.15-windows-msvc.dll | ci.yml |
-| 3 | qtmcp-probe-qt5.15-windows-msvc.lib | ci.yml |
-| 4 | qtmcp-probe-qt6.2-linux-gcc.so | ci.yml |
-| 5 | qtmcp-probe-qt6.2-windows-msvc.dll | ci.yml |
-| 6 | qtmcp-probe-qt6.2-windows-msvc.lib | ci.yml |
-| 7 | qtmcp-probe-qt6.8-linux-gcc.so | ci.yml |
-| 8 | qtmcp-probe-qt6.8-windows-msvc.dll | ci.yml |
-| 9 | qtmcp-probe-qt6.8-windows-msvc.lib | ci.yml |
-| 10 | qtmcp-probe-qt6.9-linux-gcc.so | ci.yml |
-| 11 | qtmcp-probe-qt6.9-windows-msvc.dll | ci.yml |
-| 12 | qtmcp-probe-qt6.9-windows-msvc.lib | ci.yml |
-| 13 | qtmcp-probe-qt5.15-patched-linux-gcc.so | ci-patched-qt.yml |
-| 14 | qtmcp-probe-qt5.15-patched-windows-msvc.dll | ci-patched-qt.yml |
-| 15 | qtmcp-probe-qt5.15-patched-windows-msvc.lib | ci-patched-qt.yml |
+| 1 | qtPilot-probe-qt5.15-linux-gcc.so | ci.yml |
+| 2 | qtPilot-probe-qt5.15-windows-msvc.dll | ci.yml |
+| 3 | qtPilot-probe-qt5.15-windows-msvc.lib | ci.yml |
+| 4 | qtPilot-probe-qt6.2-linux-gcc.so | ci.yml |
+| 5 | qtPilot-probe-qt6.2-windows-msvc.dll | ci.yml |
+| 6 | qtPilot-probe-qt6.2-windows-msvc.lib | ci.yml |
+| 7 | qtPilot-probe-qt6.8-linux-gcc.so | ci.yml |
+| 8 | qtPilot-probe-qt6.8-windows-msvc.dll | ci.yml |
+| 9 | qtPilot-probe-qt6.8-windows-msvc.lib | ci.yml |
+| 10 | qtPilot-probe-qt6.9-linux-gcc.so | ci.yml |
+| 11 | qtPilot-probe-qt6.9-windows-msvc.dll | ci.yml |
+| 12 | qtPilot-probe-qt6.9-windows-msvc.lib | ci.yml |
+| 13 | qtPilot-probe-qt5.15-patched-linux-gcc.so | ci-patched-qt.yml |
+| 14 | qtPilot-probe-qt5.15-patched-windows-msvc.dll | ci-patched-qt.yml |
+| 15 | qtPilot-probe-qt5.15-patched-windows-msvc.lib | ci-patched-qt.yml |
 | 16 | SHA256SUMS | generated |
 
 ## Next Phase Readiness

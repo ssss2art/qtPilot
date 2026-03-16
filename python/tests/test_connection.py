@@ -8,7 +8,7 @@ import json
 import pytest
 import pytest_asyncio
 
-from qtmcp.connection import ProbeConnection, ProbeError
+from qtpilot.connection import ProbeConnection, ProbeError
 
 
 pytestmark = pytest.mark.asyncio

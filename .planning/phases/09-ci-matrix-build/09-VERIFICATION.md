@@ -99,14 +99,14 @@ Result: CI only installs nlohmann-json and spdlog from vcpkg, NOT Qt (which come
 
 Artifact upload configuration:
 - Action: actions/upload-artifact@v4
-- Naming pattern: qtmcp-$artifact_tag-$platform (e.g., qtmcp-qt6.9-windows-msvc)
+- Naming pattern: qtpilot-$artifact_tag-$platform (e.g., qtpilot-qt6.9-windows-msvc)
 - Error handling: if-no-files-found: error (ensures missing artifacts fail workflow)
 - Retention: 7 days (appropriate for development workflow)
 - Path: install/$preset/ (full install directory)
 
 #### 6. Install Layout Verification (VERIFIED)
 
-Both Linux and Windows have dedicated verification steps that check for probe binary existence in install/$preset/lib/qtmcp/$artifact_tag/ directory before artifact upload. Steps fail with error if no files found, catching install layout issues early.
+Both Linux and Windows have dedicated verification steps that check for probe binary existence in install/$preset/lib/qtpilot/$artifact_tag/ directory before artifact upload. Steps fail with error if no files found, catching install layout issues early.
 
 #### 7. Workflow Triggers (VERIFIED)
 

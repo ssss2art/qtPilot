@@ -112,7 +112,7 @@ None - no external service configuration required.
 
 - Phase 3 (Native Mode) is now complete: infrastructure (03-01), API (03-02), and testing (03-03)
 - All 29 qt.* methods verified working end-to-end
-- Old qtmcp.* backward compatibility tested via separate test suite (test_jsonrpc_introspection)
+- Old qtpilot.* backward compatibility tested via separate test suite (test_jsonrpc_introspection)
 - Ready for Phase 4 (Testing/UAT) or Phase 5 (Chrome Mode)
 
 ---

@@ -20,7 +20,7 @@ decisions:
     description: "qt.qml.inspect returns isQmlItem:false for non-QML objects (not an error)"
     rationale: "Non-QML objects are common; agents should get info without catching exceptions"
   - id: "compile-guard-throws-not-stubs"
-    description: "Without QTMCP_HAS_QML, qt.qml.inspect throws kQmlNotAvailable"
+    description: "Without QTPILOT_HAS_QML, qt.qml.inspect throws kQmlNotAvailable"
     rationale: "Agent should know QML is unavailable rather than getting silent false"
 metrics:
   duration: "4 min"
@@ -38,8 +38,8 @@ metrics:
 Registered `qt.qml.inspect` on JsonRpcHandler via new `registerQmlMethods()` private method:
 
 - Takes `objectId` parameter, resolves via `resolveObjectParam()`
-- When `QTMCP_HAS_QML` defined: calls `inspectQmlItem(obj)` and returns `{isQmlItem, qmlId, qmlFile, qmlTypeName}`
-- When `QTMCP_HAS_QML` not defined: throws `kQmlNotAvailable` with clear message
+- When `QTPILOT_HAS_QML` defined: calls `inspectQmlItem(obj)` and returns `{isQmlItem, qmlId, qmlFile, qmlTypeName}`
+- When `QTPILOT_HAS_QML` not defined: throws `kQmlNotAvailable` with clear message
 - Non-QML objects return `{isQmlItem: false}` (informational, not an error)
 
 ### Task 2: Add qt.models.* Methods (7e9fff6)

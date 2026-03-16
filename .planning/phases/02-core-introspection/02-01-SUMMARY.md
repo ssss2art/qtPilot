@@ -38,8 +38,8 @@ decisions:
   - id: destructor-hook-cleanup
     choice: "Uninstall hooks in ObjectRegistry destructor"
     rationale: "Prevents crash from hooks calling into partially-destroyed registry"
-  - id: qtmcp-enabled-check
-    choice: "Add QTMCP_ENABLED=0 check to Windows probe_init"
+  - id: qtpilot-enabled-check
+    choice: "Add QTPILOT_ENABLED=0 check to Windows probe_init"
     rationale: "Allows isolated testing of ObjectRegistry without full probe"
 
 metrics:
@@ -98,10 +98,10 @@ Created the ObjectRegistry singleton that tracks all QObjects in target applicat
 - **Fix:** Uninstall hooks in ObjectRegistry destructor before any cleanup
 - **Files modified:** src/probe/core/object_registry.cpp
 
-**3. [Rule 2 - Missing Critical] QTMCP_ENABLED check on Windows**
+**3. [Rule 2 - Missing Critical] QTPILOT_ENABLED check on Windows**
 - **Found during:** Task 3 (testing)
 - **Issue:** Tests couldn't disable probe auto-initialization on Windows, causing full probe startup during unit tests
-- **Fix:** Added QTMCP_ENABLED=0 check to qtmcpAutoInit() in probe_init_windows.cpp
+- **Fix:** Added QTPILOT_ENABLED=0 check to qtpilotAutoInit() in probe_init_windows.cpp
 - **Files modified:** src/probe/core/probe_init_windows.cpp
 
 ## Test Results

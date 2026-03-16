@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from qtmcp.logging_middleware import LoggingMiddleware
+from qtpilot.logging_middleware import LoggingMiddleware
 
 pytestmark = pytest.mark.asyncio
 
@@ -41,7 +41,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(return_value=_make_result("pong"))
 
-        with patch("qtmcp.server.get_message_logger", create=True, return_value=mock_logger):
+        with patch("qtpilot.server.get_message_logger", create=True, return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         mock_logger.log_mcp_in.assert_called_once_with("qt_ping", {})
@@ -51,16 +51,16 @@ class TestLoggingMiddleware:
         assert args[1].get("is_error", False) is False or args[0][3] is False
 
     async def test_skips_log_tools(self):
-        """Middleware does not log qtmcp_log_* tools."""
+        """Middleware does not log qtpilot_log_* tools."""
         mock_logger = MagicMock()
         mock_logger.is_active = True
 
         middleware = LoggingMiddleware()
 
-        ctx = _make_context("qtmcp_log_start", {"level": 2})
+        ctx = _make_context("qtpilot_log_start", {"level": 2})
         call_next = AsyncMock(return_value=_make_result())
 
-        with patch("qtmcp.server.get_message_logger", create=True, return_value=mock_logger):
+        with patch("qtpilot.server.get_message_logger", create=True, return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         mock_logger.log_mcp_in.assert_not_called()
@@ -76,7 +76,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(side_effect=RuntimeError("probe down"))
 
-        with patch("qtmcp.server.get_message_logger", create=True, return_value=mock_logger):
+        with patch("qtpilot.server.get_message_logger", create=True, return_value=mock_logger):
             with pytest.raises(RuntimeError, match="probe down"):
                 await middleware.on_call_tool(ctx, call_next)
 
@@ -96,7 +96,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(return_value=_make_result())
 
-        with patch("qtmcp.server.get_message_logger", create=True, return_value=mock_logger):
+        with patch("qtpilot.server.get_message_logger", create=True, return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         mock_logger.log_mcp_in.assert_not_called()
@@ -112,7 +112,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(return_value=_make_result())
 
-        with patch("qtmcp.server.get_message_logger", create=True, return_value=mock_logger):
+        with patch("qtpilot.server.get_message_logger", create=True, return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         out_args = mock_logger.log_mcp_out.call_args

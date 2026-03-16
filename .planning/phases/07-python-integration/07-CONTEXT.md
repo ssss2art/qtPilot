@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Python MCP server that bridges Claude to the QtMCP probe via WebSocket, exposing all three API modes (Native, Computer Use, Chrome) as MCP tools. No standalone Python client library — MCP servers are the only Python deliverable.
+Python MCP server that bridges Claude to the qtPilot probe via WebSocket, exposing all three API modes (Native, Computer Use, Chrome) as MCP tools. No standalone Python client library — MCP servers are the only Python deliverable.
 
 </domain>
 
@@ -14,15 +14,15 @@ Python MCP server that bridges Claude to the QtMCP probe via WebSocket, exposing
 ## Implementation Decisions
 
 ### Server Architecture
-- 3 logical server modes, delivered as a single `qtmcp` package with `--mode native|cu|chrome` flag
+- 3 logical server modes, delivered as a single `qtpilot` package with `--mode native|cu|chrome` flag
 - Each mode exposes only its own tools: native (~33 qt.* tools), cu (13 cu.* tools), chrome (8 chr.* tools)
 - One server connects to one probe at a time (exclusive connection, matching probe's single-client WebSocket)
-- User configures one QtMCP server entry in Claude config, mode passed as server arg
+- User configures one qtPilot server entry in Claude config, mode passed as server arg
 
 ### Connection Lifecycle
 - Support both auto-launch (pass target exe path) and connect-to-running (pass ws:// URL)
-- CLI args take priority, environment variables (QTMCP_TARGET, QTMCP_PORT, etc.) as fallback
-- Auto-launch: MCP server runs qtmcp-launch internally, starts target app + probe, then connects
+- CLI args take priority, environment variables (QTPILOT_TARGET, QTPILOT_PORT, etc.) as fallback
+- Auto-launch: MCP server runs qtpilot-launch internally, starts target app + probe, then connects
 - On disconnect: retry with exponential backoff (3 attempts), tools return errors during downtime
 
 ### MCP SDK & Features

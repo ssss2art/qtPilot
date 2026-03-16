@@ -10,20 +10,20 @@ The two specs have **5 breaking conflicts** that must be resolved before either 
 
 | | Build Spec | Plugin Spec |
 |---|---|---|
-| Probe name | `qtmcp-probe` (no version) | `qtmcp-probe-qt6.8-windows-msvc.dll` (versioned + platform) |
-| Launcher name | `qtmcp-launcher` | `qtmcp-launch` |
+| Probe name | `qtPilot-probe` (no version) | `qtPilot-probe-qt6.8-windows-msvc.dll` (versioned + platform) |
+| Launcher name | `qtPilot-launcher` | `qtpilot-launch` |
 
 **Why it matters:** The plugin's download cache stores multiple Qt-version-specific probe binaries side-by-side. Stripping the Qt version from the filename makes this impossible.
 
 **Resolution:** Use two naming layers:
 
-1. **CMake build output** — keep Qt version tag in probe name: `qtmcp-probe-qt6.8.dll`. This is the status quo and costs nothing to keep.
-2. **GitHub Release artifacts** — add platform suffix: `qtmcp-probe-qt6.8-windows-msvc.dll`. This is already how `release.yml` and `download.py` work.
-3. **Launcher** — standardize on `qtmcp-launch` (current name), not `qtmcp-launcher` (build spec's proposed rename). The launcher is NOT Qt-version-specific, so drop the Qt tag from it.
+1. **CMake build output** — keep Qt version tag in probe name: `qtPilot-probe-qt6.8.dll`. This is the status quo and costs nothing to keep.
+2. **GitHub Release artifacts** — add platform suffix: `qtPilot-probe-qt6.8-windows-msvc.dll`. This is already how `release.yml` and `download.py` work.
+3. **Launcher** — standardize on `qtpilot-launch` (current name), not `qtPilot-launcher` (build spec's proposed rename). The launcher is NOT Qt-version-specific, so drop the Qt tag from it.
 
 **Changes needed:**
 - Build spec: remove the line about stripping Qt version from probe filename
-- Build spec: keep launcher name as `qtmcp-launch`, not `qtmcp-launcher`
+- Build spec: keep launcher name as `qtpilot-launch`, not `qtPilot-launcher`
 - Plugin spec: no changes needed (its naming is already correct)
 
 ---
@@ -34,11 +34,11 @@ The build spec says: *"Delete `.github/` (entire directory)"*
 
 The plugin spec depends on:
 - `release.yml` — creates GitHub Releases with probe binaries (the plugin's download source)
-- `publish-pypi.yml` — publishes the Python package (required for `uvx qtmcp` to work)
+- `publish-pypi.yml` — publishes the Python package (required for `uvx qtpilot` to work)
 - `ci.yml` — builds the 8 probe binaries that `release.yml` packages
 - `ci-patched-qt.yml` + `actions/build-qt/` — builds 2 patched-Qt binaries
 
-**If .github/ is deleted:** `download.py` can't download anything, `uvx qtmcp` can't install anything, the plugin is dead on arrival.
+**If .github/ is deleted:** `download.py` can't download anything, `uvx qtpilot` can't install anything, the plugin is dead on arrival.
 
 **Resolution:** Change "delete `.github/`" to "simplify `.github/`":
 
@@ -103,9 +103,9 @@ The build spec says: *"Delete `.ci/` (entire directory)"*
 
 | Concern | Why it's fine |
 |---|---|
-| **Install path simplification** (`lib/qtmcp/qt6.8/` → `lib/`) | Plugin/Python side has ZERO dependency on CMake install paths. It uses its own cache dir. |
-| **QtMCPConfig.cmake.in simplification** | Only affects `find_package(QtMCP)` consumers. Plugin uses `uvx`, not CMake. |
-| **qtmcp_inject_probe.cmake** | Uses CMake generator expressions only — immune to path changes. |
+| **Install path simplification** (`lib/qtpilot/qt6.8/` → `lib/`) | Plugin/Python side has ZERO dependency on CMake install paths. It uses its own cache dir. |
+| **qtPilotConfig.cmake.in simplification** | Only affects `find_package(qtPilot)` consumers. Plugin uses `uvx`, not CMake. |
+| **qtPilot_inject_probe.cmake** | Uses CMake generator expressions only — immune to path changes. |
 | **tests/CMakeLists.txt simplification** | Purely internal build concern, no plugin impact. |
 | **Removing nlohmann_json/spdlog** | Project already uses QJsonDocument and QDebug. |
 | **Root CMakeLists.txt cleanup** | Internal build concern. |
@@ -124,7 +124,7 @@ Update `build-simplification-spec.md` to resolve all 5 conflicts:
 
 ### Phase 2: Implement Build Simplification (amended)
 Execute the build spec with amendments. This must go first because:
-- The plugin spec's `.mcp.json` references `uvx qtmcp` — the Python package must exist on PyPI
+- The plugin spec's `.mcp.json` references `uvx qtpilot` — the Python package must exist on PyPI
 - The plugin spec's download system depends on GitHub Releases — the release workflow must work
 - Binary naming must be stable before the plugin hardcodes expectations
 

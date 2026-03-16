@@ -88,7 +88,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qtmcp-${{ matrix.preset }}-qt${{ matrix.qt }}-${{ matrix.compiler }}
+          name: qtpilot-${{ matrix.preset }}-qt${{ matrix.qt }}-${{ matrix.compiler }}
           path: install/${{ matrix.preset }}
 
   python:

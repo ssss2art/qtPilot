@@ -2,11 +2,11 @@
 
 **Domain:** Distributing a C++/Qt injection library + Python MCP server
 **Researched:** 2026-02-01
-**Context:** QtMCP v1.0 is complete. This covers what users expect when consuming the library via vcpkg, GitHub Releases, and pip install.
+**Context:** qtPilot v1.0 is complete. This covers what users expect when consuming the library via vcpkg, GitHub Releases, and pip install.
 
 ## Executive Summary
 
-QtMCP has a uniquely challenging distribution story: the C++ probe (DLL/SO) must match the target application's Qt version at the ABI level, the launcher executables are standalone, and the Python MCP server is pure Python with no native extensions. Each distribution channel serves a different user persona and has different table-stakes expectations. The Qt version matrix (5.15, 6.2, 6.5, 6.8, 6.9) combined with platforms (Windows MSVC, Linux GCC) creates a combinatorial explosion that must be managed deliberately.
+qtPilot has a uniquely challenging distribution story: the C++ probe (DLL/SO) must match the target application's Qt version at the ABI level, the launcher executables are standalone, and the Python MCP server is pure Python with no native extensions. Each distribution channel serves a different user persona and has different table-stakes expectations. The Qt version matrix (5.15, 6.2, 6.5, 6.8, 6.9) combined with platforms (Windows MSVC, Linux GCC) creates a combinatorial explosion that must be managed deliberately.
 
 ---
 
@@ -21,7 +21,7 @@ C++ developers building the probe from source, integrating into their own build 
 |---------|--------------|------------|--------------|
 | **Valid vcpkg.json manifest** | Without it, vcpkg cannot resolve the package | Low | Already exists |
 | **portfile.cmake that builds from source** | Core requirement for any vcpkg port | Medium | CMakeLists.txt must be vcpkg-compatible |
-| **Proper find_package() support** | Users expect `find_package(QtMCP CONFIG)` + `target_link_libraries(... QtMCP::probe)` | Medium | CMake config already partially exists |
+| **Proper find_package() support** | Users expect `find_package(qtPilot CONFIG)` + `target_link_libraries(... qtPilot::probe)` | Medium | CMake config already partially exists |
 | **vcpkg-cmake and vcpkg-cmake-config dependencies** | Standard vcpkg port convention; required for portfile helpers | Low | None |
 | **Usage file** | vcpkg displays this after install; tells user how to consume | Low | None |
 | **Feature flags for optional deps** | `extras` (nlohmann-json, spdlog), `tests` (gtest) already defined | Low | Already exists in vcpkg.json |
@@ -37,7 +37,7 @@ C++ developers building the probe from source, integrating into their own build 
 | **Custom vcpkg registry on GitHub** | Users add registry URL to vcpkg-configuration.json and get the port without copying files | Medium | GitHub repo + versions database |
 | **Binary caching CI workflow** | Pre-built binaries cached via GitHub Packages/NuGet; speeds up consumer builds | Medium | GitHub Actions + NuGet setup |
 | **Overlay port documentation** | Quick-start for users who just want to copy the port into their overlay | Low | Docs only |
-| **Qt version feature flag** | e.g., `vcpkg install qtmcp[qt6]` to explicitly control which Qt major version | Medium | portfile logic to force Qt version |
+| **Qt version feature flag** | e.g., `vcpkg install qtpilot[qt6]` to explicitly control which Qt major version | Medium | portfile logic to force Qt version |
 | **Version constraints in manifest** | Proper `version-semver` and baseline pinning for reproducible builds | Low | versions database |
 
 ### Anti-Features
@@ -61,9 +61,9 @@ Users who want to inject the probe into a Qt application without setting up a C+
 | Feature | Why Expected | Complexity | Dependencies |
 |---------|--------------|------------|--------------|
 | **Release archive per Qt version + platform** | Probe DLL/SO must match target's Qt ABI exactly; users need to pick the right one | Medium | CI matrix build |
-| **Clear naming convention** | User must identify correct archive instantly: `qtmcp-v1.1.0-qt6.8-win-x64-msvc.zip` | Low | Release automation |
-| **Probe DLL/SO included** | The primary artifact; `qtmcp_probe.dll` / `libqtmcp_probe.so` | Low | Build output |
-| **Launcher included** | `qtmcp-launch.exe` (Windows) or launcher script (Linux) | Low | Build output |
+| **Clear naming convention** | User must identify correct archive instantly: `qtpilot-v1.1.0-qt6.8-win-x64-msvc.zip` | Low | Release automation |
+| **Probe DLL/SO included** | The primary artifact; `qtPilot_probe.dll` / `libqtPilot_probe.so` | Low | Build output |
+| **Launcher included** | `qtpilot-launch.exe` (Windows) or launcher script (Linux) | Low | Build output |
 | **README/QUICKSTART in archive** | User opens zip, sees how to use it immediately | Low | Template |
 | **SHA256 checksums** | Security baseline; users verify downloads | Low | CI generates |
 | **Changelog / release notes** | What changed since last version | Low | Manual or generated |
@@ -76,8 +76,8 @@ Users who want to inject the probe into a Qt application without setting up a C+
 |---------|-------------------|------------|--------------|
 | **GitHub Actions CI matrix** | Automated builds for every Qt version x platform combination on tag push | High | Qt installation in CI, matrix config |
 | **Version compatibility table** | Clear docs: "Qt 6.8.0-6.8.x: use qt6.8 build. Qt 6.9.0+: use qt6.9 build" | Low | Testing/docs |
-| **Probe version embedding** | `qtmcp_probe.dll` reports its version and compatible Qt version at runtime | Low | Compile-time defines |
-| **Single-file launcher with embedded config** | `qtmcp-launch.exe --qt-version 6.8 target.exe` auto-selects correct probe DLL | Medium | Launcher enhancement |
+| **Probe version embedding** | `qtPilot_probe.dll` reports its version and compatible Qt version at runtime | Low | Compile-time defines |
+| **Single-file launcher with embedded config** | `qtpilot-launch.exe --qt-version 6.8 target.exe` auto-selects correct probe DLL | Medium | Launcher enhancement |
 | **Signed binaries** | Code signing for Windows DLLs builds trust | Medium | Code signing certificate, CI integration |
 | **GitHub Release via `gh release create`** | Automated release workflow triggered by git tag | Medium | GitHub Actions |
 | **Install script** | `install.ps1` / `install.sh` that copies probe + launcher to a sensible location | Low | Script |
@@ -103,12 +103,12 @@ Python developers and AI agent operators who want to connect Claude (or other MC
 
 | Feature | Why Expected | Complexity | Dependencies |
 |---------|--------------|------------|--------------|
-| **`pip install qtmcp` works** | Basic expectation; pure Python wheel from PyPI | Medium | PyPI account, build pipeline |
-| **CLI entry point** | `qtmcp` command available after install (already defined in pyproject.toml) | Low | Already exists |
+| **`pip install qtpilot` works** | Basic expectation; pure Python wheel from PyPI | Medium | PyPI account, build pipeline |
+| **CLI entry point** | `qtpilot` command available after install (already defined in pyproject.toml) | Low | Already exists |
 | **Correct dependency declaration** | `fastmcp>=2.0,<3` and `websockets>=14.0` pinned properly | Low | Already exists |
 | **Pure Python wheel** | No native extensions needed; the Python server is pure Python connecting via WebSocket | Low | hatchling build backend handles this |
 | **Python version constraint** | `requires-python = ">=3.11"` clearly stated | Low | Already exists |
-| **Works with `uvx`** | MCP servers are commonly run via `uvx qtmcp` for zero-install usage | Low | Proper package metadata |
+| **Works with `uvx`** | MCP servers are commonly run via `uvx qtpilot` for zero-install usage | Low | Proper package metadata |
 | **sdist + wheel on PyPI** | Both source distribution and wheel published | Low | Standard practice |
 | **LICENSE in package** | PyPI requires it; users expect it | Low | Add to hatch config |
 | **Package description/README on PyPI** | PyPI page should explain what this is and how to use it | Low | Add `readme` to pyproject.toml |
@@ -117,14 +117,14 @@ Python developers and AI agent operators who want to connect Claude (or other MC
 
 | Feature | Value Proposition | Complexity | Dependencies |
 |---------|-------------------|------------|--------------|
-| **`qtmcp[probe]` extra that bundles probe binaries** | One-stop install: `pip install qtmcp[probe]` downloads platform-specific probe | High | Platform-specific wheels, complex packaging |
+| **`qtpilot[probe]` extra that bundles probe binaries** | One-stop install: `pip install qtpilot[probe]` downloads platform-specific probe | High | Platform-specific wheels, complex packaging |
 | **Claude Desktop config snippet in docs** | Copy-paste JSON for `claude_desktop_config.json` | Low | Docs only |
-| **`qtmcp --version` and `qtmcp --help`** | Standard CLI UX | Low | CLI implementation |
-| **`qtmcp doctor` command** | Diagnoses connection issues: is probe running? WebSocket reachable? | Medium | CLI enhancement |
-| **`qtmcp list-tools`** | Shows available tools without connecting to Claude | Low | CLI enhancement |
+| **`qtpilot --version` and `qtpilot --help`** | Standard CLI UX | Low | CLI implementation |
+| **`qtpilot doctor` command** | Diagnoses connection issues: is probe running? WebSocket reachable? | Medium | CLI enhancement |
+| **`qtpilot list-tools`** | Shows available tools without connecting to Claude | Low | CLI enhancement |
 | **Typed tool definitions** | Full type hints and docstrings on all 53 tools for IDE support | Low | Already partially done |
-| **Probe download helper** | `qtmcp download-probe --qt-version 6.8 --platform windows` fetches from GitHub Releases | Medium | GitHub Releases API integration |
-| **MCP config auto-generation** | `qtmcp config` outputs the JSON config block for Claude Desktop | Low | CLI enhancement |
+| **Probe download helper** | `qtpilot download-probe --qt-version 6.8 --platform windows` fetches from GitHub Releases | Medium | GitHub Releases API integration |
+| **MCP config auto-generation** | `qtpilot config` outputs the JSON config block for Claude Desktop | Low | CLI enhancement |
 | **Published to PyPI with trusted publisher** | GitHub Actions OIDC-based publishing; no API tokens to manage | Medium | GitHub Actions + PyPI setup |
 
 ### Anti-Features
@@ -227,26 +227,26 @@ vcpkg Port (independent track)
 2. CHANGELOG.md
 3. GitHub Actions CI matrix for C++ builds (all Qt versions x platforms)
 4. GitHub Releases with proper naming convention and SHA256 checksums
-5. `pip install qtmcp` working from PyPI (pure Python wheel)
-6. `qtmcp` CLI with `--version` and `--help`
+5. `pip install qtpilot` working from PyPI (pure Python wheel)
+6. `qtpilot` CLI with `--version` and `--help`
 7. Compatibility matrix documentation
 
 ### Phase 2: Developer Experience
 8. vcpkg custom registry on GitHub
 9. portfile.cmake + usage file
-10. `qtmcp doctor` diagnostic command
+10. `qtpilot doctor` diagnostic command
 11. Claude Desktop config snippet in README
 12. Getting Started guide (end-to-end)
 
 ### Phase 3: Polish
 13. Monorepo release automation (tag triggers all channels)
 14. Trusted publisher on PyPI
-15. `qtmcp download-probe` helper command
+15. `qtpilot download-probe` helper command
 16. Integration test in CI
 17. Signed Windows binaries (if certificate available)
 
 ### Defer
-- `qtmcp[probe]` extra with bundled binaries (very high complexity, marginal value)
+- `qtpilot[probe]` extra with bundled binaries (very high complexity, marginal value)
 - Submission to vcpkg curated registry (niche tool)
 - MSI/NSIS installer
 - Auto-update mechanism

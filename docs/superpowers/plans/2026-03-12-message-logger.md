@@ -47,14 +47,14 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {"objectId": "btn", "signal": "clicked"},
         })
         await asyncio.sleep(0.1)
 
         assert len(received_a) == 1
         assert len(received_b) == 1
-        assert received_a[0] == "qtmcp.signalEmitted"
+        assert received_a[0] == "qtpilot.signalEmitted"
 
     async def test_remove_handler(self, mock_probe):
         """Removed handler stops receiving notifications."""
@@ -66,7 +66,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -76,7 +76,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -100,7 +100,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -117,7 +117,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -134,7 +134,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -159,7 +159,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -173,7 +173,7 @@ Expected: FAIL — `ProbeConnection` has no `add_notification_handler` method
 
 - [ ] **Step 3: Implement multi-handler notifications in ProbeConnection**
 
-In `python/src/qtmcp/connection.py`:
+In `python/src/qtpilot/connection.py`:
 
 1. Add `import warnings` at top (line 2 area).
 
@@ -240,7 +240,7 @@ Expected: All 8 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add python/tests/test_connection_multi_handler.py python/src/qtmcp/connection.py
+git add python/tests/test_connection_multi_handler.py python/src/qtpilot/connection.py
 git commit -m "feat: evolve ProbeConnection to support multiple notification handlers"
 ```
 
@@ -250,7 +250,7 @@ git commit -m "feat: evolve ProbeConnection to support multiple notification han
 
 **Files:**
 - Modify: `python/tests/test_connection_multi_handler.py`
-- Modify: `python/src/qtmcp/connection.py`
+- Modify: `python/src/qtpilot/connection.py`
 
 - [ ] **Step 1: Write call observer and send observer tests**
 
@@ -402,7 +402,7 @@ Expected: FAIL — `ProbeConnection` has no `add_call_observer` / `add_send_obse
 
 - [ ] **Step 3: Implement call observers and send observers in ProbeConnection**
 
-In `python/src/qtmcp/connection.py`:
+In `python/src/qtpilot/connection.py`:
 
 1. Add `import time` at top.
 
@@ -484,7 +484,7 @@ Expected: All 15 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add python/tests/test_connection_multi_handler.py python/src/qtmcp/connection.py
+git add python/tests/test_connection_multi_handler.py python/src/qtpilot/connection.py
 git commit -m "feat: add call observers and send observers to ProbeConnection"
 ```
 
@@ -493,12 +493,12 @@ git commit -m "feat: add call observers and send observers to ProbeConnection"
 ### Task 3: Migrate EventRecorder and update existing tests
 
 **Files:**
-- Modify: `python/src/qtmcp/event_recorder.py:167,212`
+- Modify: `python/src/qtpilot/event_recorder.py:167,212`
 - Modify: `python/tests/test_event_recorder.py:36,55,86,109,119`
 
 - [ ] **Step 1: Migrate EventRecorder to multi-handler API**
 
-In `python/src/qtmcp/event_recorder.py`:
+In `python/src/qtpilot/event_recorder.py`:
 
 Line 167 — change:
 ```python
@@ -586,7 +586,7 @@ Expected: All tests PASS (multi-handler tests + existing tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add python/src/qtmcp/event_recorder.py python/tests/test_event_recorder.py
+git add python/src/qtpilot/event_recorder.py python/tests/test_event_recorder.py
 git commit -m "refactor: migrate EventRecorder and tests to multi-handler notification API"
 ```
 
@@ -597,7 +597,7 @@ git commit -m "refactor: migrate EventRecorder and tests to multi-handler notifi
 ### Task 4: MessageLogger core — start/stop/status lifecycle tests
 
 **Files:**
-- Create: `python/src/qtmcp/message_logger.py`
+- Create: `python/src/qtpilot/message_logger.py`
 - Create: `python/tests/test_message_logger.py`
 
 - [ ] **Step 1: Write lifecycle tests**
@@ -615,7 +615,7 @@ import tempfile
 
 import pytest
 
-from qtmcp.message_logger import MessageLogger
+from qtpilot.message_logger import MessageLogger
 
 pytestmark = pytest.mark.asyncio
 
@@ -721,11 +721,11 @@ class TestMessageLoggerLifecycle:
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `pytest python/tests/test_message_logger.py::TestMessageLoggerLifecycle -v`
-Expected: FAIL — `qtmcp.message_logger` does not exist
+Expected: FAIL — `qtpilot.message_logger` does not exist
 
 - [ ] **Step 3: Write minimal MessageLogger implementation**
 
-Create `python/src/qtmcp/message_logger.py`:
+Create `python/src/qtpilot/message_logger.py`:
 
 ```python
 """Logs MCP and JSON-RPC messages to a JSON Lines file with ring buffer."""
@@ -777,7 +777,7 @@ class MessageLogger:
 
         if path is None:
             ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-            path = os.path.join(os.getcwd(), f"qtmcp-log-{ts}.jsonl")
+            path = os.path.join(os.getcwd(), f"qtPilot-log-{ts}.jsonl")
 
         self._path = path
         self._level = level
@@ -978,7 +978,7 @@ Expected: All 8 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add python/src/qtmcp/message_logger.py python/tests/test_message_logger.py
+git add python/src/qtpilot/message_logger.py python/tests/test_message_logger.py
 git commit -m "feat: add MessageLogger class with start/stop/status lifecycle"
 ```
 
@@ -1095,12 +1095,12 @@ class TestMessageLoggerEntries:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test.jsonl")
             logger.start(path=path, level=3)
-            logger._on_notification("qtmcp.signalEmitted", {"objectId": "btn"})
+            logger._on_notification("qtpilot.signalEmitted", {"objectId": "btn"})
             logger.stop()
             with open(path) as f:
                 entry = json.loads(f.readline())
             assert entry["dir"] == "ntf"
-            assert entry["method"] == "qtmcp.signalEmitted"
+            assert entry["method"] == "qtpilot.signalEmitted"
 
 
 class TestMessageLoggerVerbosity:
@@ -1113,7 +1113,7 @@ class TestMessageLoggerVerbosity:
             logger.log_mcp_in("qt_ping", {})
             logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
             logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-            logger._on_notification("qtmcp.signalEmitted", {})
+            logger._on_notification("qtpilot.signalEmitted", {})
             logger.log_mcp_out("qt_ping", "ok", 10.0)
             logger.stop()
             with open(path) as f:
@@ -1131,7 +1131,7 @@ class TestMessageLoggerVerbosity:
             logger.log_mcp_in("qt_ping", {})
             logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
             logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-            logger._on_notification("qtmcp.signalEmitted", {})
+            logger._on_notification("qtpilot.signalEmitted", {})
             logger.log_mcp_out("qt_ping", "ok", 10.0)
             logger.stop()
             with open(path) as f:
@@ -1151,7 +1151,7 @@ class TestMessageLoggerVerbosity:
             logger.log_mcp_in("qt_ping", {})
             logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
             logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-            logger._on_notification("qtmcp.signalEmitted", {})
+            logger._on_notification("qtpilot.signalEmitted", {})
             logger.log_mcp_out("qt_ping", "ok", 10.0)
             logger.stop()
             with open(path) as f:
@@ -1165,7 +1165,7 @@ class TestMessageLoggerVerbosity:
         logger.log_mcp_out("qt_ping", "ok", 10.0)
         logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
         logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-        logger._on_notification("qtmcp.signalEmitted", {})
+        logger._on_notification("qtpilot.signalEmitted", {})
         assert logger.tail()["count"] == 0
 ```
 
@@ -1364,7 +1364,7 @@ git commit -m "test: add attach/detach tests for MessageLogger"
 ### Task 8: LoggingMiddleware
 
 **Files:**
-- Create: `python/src/qtmcp/logging_middleware.py`
+- Create: `python/src/qtpilot/logging_middleware.py`
 - Create: `python/tests/test_logging_middleware.py`
 
 - [ ] **Step 1: Write middleware tests**
@@ -1381,7 +1381,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from qtmcp.logging_middleware import LoggingMiddleware
+from qtpilot.logging_middleware import LoggingMiddleware
 
 pytestmark = pytest.mark.asyncio
 
@@ -1415,7 +1415,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(return_value=_make_result("pong"))
 
-        with patch("qtmcp.logging_middleware.get_message_logger", return_value=mock_logger):
+        with patch("qtpilot.logging_middleware.get_message_logger", return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         mock_logger.log_mcp_in.assert_called_once_with("qt_ping", {})
@@ -1425,16 +1425,16 @@ class TestLoggingMiddleware:
         assert args[1].get("is_error", False) is False or args[0][3] is False
 
     async def test_skips_log_tools(self):
-        """Middleware does not log qtmcp_log_* tools."""
+        """Middleware does not log qtpilot_log_* tools."""
         mock_logger = MagicMock()
         mock_logger.is_active = True
 
         middleware = LoggingMiddleware()
 
-        ctx = _make_context("qtmcp_log_start", {"level": 2})
+        ctx = _make_context("qtpilot_log_start", {"level": 2})
         call_next = AsyncMock(return_value=_make_result())
 
-        with patch("qtmcp.logging_middleware.get_message_logger", return_value=mock_logger):
+        with patch("qtpilot.logging_middleware.get_message_logger", return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         mock_logger.log_mcp_in.assert_not_called()
@@ -1450,7 +1450,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(side_effect=RuntimeError("probe down"))
 
-        with patch("qtmcp.logging_middleware.get_message_logger", return_value=mock_logger):
+        with patch("qtpilot.logging_middleware.get_message_logger", return_value=mock_logger):
             with pytest.raises(RuntimeError, match="probe down"):
                 await middleware.on_call_tool(ctx, call_next)
 
@@ -1470,7 +1470,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(return_value=_make_result())
 
-        with patch("qtmcp.logging_middleware.get_message_logger", return_value=mock_logger):
+        with patch("qtpilot.logging_middleware.get_message_logger", return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         mock_logger.log_mcp_in.assert_not_called()
@@ -1486,7 +1486,7 @@ class TestLoggingMiddleware:
         ctx = _make_context("qt_ping", {})
         call_next = AsyncMock(return_value=_make_result())
 
-        with patch("qtmcp.logging_middleware.get_message_logger", return_value=mock_logger):
+        with patch("qtpilot.logging_middleware.get_message_logger", return_value=mock_logger):
             await middleware.on_call_tool(ctx, call_next)
 
         out_args = mock_logger.log_mcp_out.call_args
@@ -1497,11 +1497,11 @@ class TestLoggingMiddleware:
 - [ ] **Step 2: Run middleware tests to verify they fail**
 
 Run: `pytest python/tests/test_logging_middleware.py -v`
-Expected: FAIL — `qtmcp.logging_middleware` does not exist
+Expected: FAIL — `qtpilot.logging_middleware` does not exist
 
 - [ ] **Step 3: Write LoggingMiddleware implementation**
 
-Create `python/src/qtmcp/logging_middleware.py`:
+Create `python/src/qtpilot/logging_middleware.py`:
 
 ```python
 """FastMCP middleware that intercepts tool calls for message logging."""
@@ -1533,14 +1533,14 @@ class LoggingMiddleware(Middleware):
     """Intercepts MCP tool calls to log request/response at the MCP layer."""
 
     async def on_call_tool(self, context, call_next):
-        from qtmcp.server import get_message_logger
+        from qtpilot.server import get_message_logger
 
         logger = get_message_logger()
         tool_name = context.message.name
         args = context.message.arguments or {}
 
         # Skip logging our own tools to avoid recursion
-        if tool_name.startswith("qtmcp_log_"):
+        if tool_name.startswith("qtpilot_log_"):
             return await call_next(context)
 
         if not logger.is_active:
@@ -1569,7 +1569,7 @@ Expected: All 5 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add python/src/qtmcp/logging_middleware.py python/tests/test_logging_middleware.py
+git add python/src/qtpilot/logging_middleware.py python/tests/test_logging_middleware.py
 git commit -m "feat: add LoggingMiddleware for MCP-level message interception"
 ```
 
@@ -1578,7 +1578,7 @@ git commit -m "feat: add LoggingMiddleware for MCP-level message interception"
 ### Task 9: Logging tools
 
 **Files:**
-- Create: `python/src/qtmcp/tools/logging_tools.py`
+- Create: `python/src/qtpilot/tools/logging_tools.py`
 - Create: `python/tests/test_logging_tools.py`
 
 - [ ] **Step 1: Write tool registration tests**
@@ -1594,7 +1594,7 @@ import pytest
 
 from fastmcp import FastMCP
 
-from qtmcp.tools.logging_tools import register_logging_tools
+from qtpilot.tools.logging_tools import register_logging_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:
@@ -1613,10 +1613,10 @@ class TestLoggingTools:
         register_logging_tools(mock_mcp)
         names = _tool_names(mock_mcp)
         expected = {
-            "qtmcp_log_start",
-            "qtmcp_log_stop",
-            "qtmcp_log_status",
-            "qtmcp_log_tail",
+            "qtpilot_log_start",
+            "qtpilot_log_stop",
+            "qtpilot_log_status",
+            "qtpilot_log_tail",
         }
         missing = expected - names
         assert not missing, f"Missing logging tools: {missing}"
@@ -1625,11 +1625,11 @@ class TestLoggingTools:
 - [ ] **Step 2: Run tool tests to verify they fail**
 
 Run: `pytest python/tests/test_logging_tools.py -v`
-Expected: FAIL — `qtmcp.tools.logging_tools` does not exist
+Expected: FAIL — `qtpilot.tools.logging_tools` does not exist
 
 - [ ] **Step 3: Write logging tools implementation**
 
-Create `python/src/qtmcp/tools/logging_tools.py`:
+Create `python/src/qtpilot/tools/logging_tools.py`:
 
 ```python
 """Logging tools -- start/stop message logging and tail recent entries."""
@@ -1643,7 +1643,7 @@ def register_logging_tools(mcp: FastMCP) -> None:
     """Register message logging tools on the MCP server."""
 
     @mcp.tool
-    async def qtmcp_log_start(
+    async def qtpilot_log_start(
         path: str | None = None,
         level: int = 2,
         buffer_size: int = 200,
@@ -1653,19 +1653,19 @@ def register_logging_tools(mcp: FastMCP) -> None:
 
         Captures tool calls, probe wire traffic, and notifications at
         configurable verbosity levels. Also maintains an in-memory ring
-        buffer accessible via qtmcp_log_tail.
+        buffer accessible via qtpilot_log_tail.
 
         Args:
-            path: Output file path. Default: qtmcp-log-YYYYMMDD-HHMMSS.jsonl in cwd.
+            path: Output file path. Default: qtPilot-log-YYYYMMDD-HHMMSS.jsonl in cwd.
             level: Verbosity level:
                 1 = minimal (MCP tool calls only)
                 2 = normal (+ JSON-RPC wire traffic) [default]
                 3 = verbose (+ probe notifications)
             buffer_size: Ring buffer capacity (default 200 entries).
 
-        Example: qtmcp_log_start(level=3)
+        Example: qtpilot_log_start(level=3)
         """
-        from qtmcp.server import get_message_logger, get_probe
+        from qtpilot.server import get_message_logger, get_probe
 
         logger = get_message_logger()
         result = logger.start(path=path, level=level, buffer_size=buffer_size)
@@ -1678,16 +1678,16 @@ def register_logging_tools(mcp: FastMCP) -> None:
         return result
 
     @mcp.tool
-    async def qtmcp_log_stop(ctx: Context = None) -> dict:
+    async def qtpilot_log_stop(ctx: Context = None) -> dict:
         """Stop message logging and return summary.
 
         Returns the file path, total entries logged, and session duration.
-        The ring buffer is preserved — use qtmcp_log_tail to read entries
+        The ring buffer is preserved — use qtpilot_log_tail to read entries
         after stopping.
 
-        Example: qtmcp_log_stop()
+        Example: qtpilot_log_stop()
         """
-        from qtmcp.server import get_message_logger, get_probe
+        from qtpilot.server import get_message_logger, get_probe
 
         logger = get_message_logger()
 
@@ -1699,31 +1699,31 @@ def register_logging_tools(mcp: FastMCP) -> None:
         return logger.stop()
 
     @mcp.tool
-    async def qtmcp_log_status(ctx: Context = None) -> dict:
+    async def qtpilot_log_status(ctx: Context = None) -> dict:
         """Get current message logging status.
 
         Returns whether logging is active, file path, verbosity level,
         entry count, buffer size, and session duration.
 
-        Example: qtmcp_log_status()
+        Example: qtpilot_log_status()
         """
-        from qtmcp.server import get_message_logger
+        from qtpilot.server import get_message_logger
 
         return get_message_logger().status()
 
     @mcp.tool
-    async def qtmcp_log_tail(count: int = 50, ctx: Context = None) -> dict:
+    async def qtpilot_log_tail(count: int = 50, ctx: Context = None) -> dict:
         """Return recent log entries from the in-memory ring buffer.
 
-        Works even after qtmcp_log_stop — the buffer persists until the
-        next qtmcp_log_start.
+        Works even after qtpilot_log_stop — the buffer persists until the
+        next qtpilot_log_start.
 
         Args:
             count: Number of recent entries to return (default 50).
 
-        Example: qtmcp_log_tail(count=10)
+        Example: qtpilot_log_tail(count=10)
         """
-        from qtmcp.server import get_message_logger
+        from qtpilot.server import get_message_logger
 
         return get_message_logger().tail(count=count)
 ```
@@ -1736,8 +1736,8 @@ Expected: All 2 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add python/src/qtmcp/tools/logging_tools.py python/tests/test_logging_tools.py
-git commit -m "feat: add qtmcp_log_start/stop/status/tail MCP tools"
+git add python/src/qtpilot/tools/logging_tools.py python/tests/test_logging_tools.py
+git commit -m "feat: add qtpilot_log_start/stop/status/tail MCP tools"
 ```
 
 ---
@@ -1745,15 +1745,15 @@ git commit -m "feat: add qtmcp_log_start/stop/status/tail MCP tools"
 ### Task 10: Wire everything into server.py
 
 **Files:**
-- Modify: `python/src/qtmcp/server.py:15,35,40,112-116,123-136,139-144,307-313`
+- Modify: `python/src/qtpilot/server.py:15,35,40,112-116,123-136,139-144,307-313`
 
 - [ ] **Step 1: Add MessageLogger to ServerState**
 
-In `python/src/qtmcp/server.py`:
+In `python/src/qtpilot/server.py`:
 
 1. Add import at top (after line 15):
 ```python
-from qtmcp.message_logger import MessageLogger
+from qtpilot.message_logger import MessageLogger
 ```
 
 2. In `ServerState.__init__` (line 40), add after `self.recorder`:
@@ -1772,25 +1772,25 @@ def get_message_logger() -> MessageLogger:
 
 - [ ] **Step 2: Add middleware and tool registration to create_server()**
 
-In `python/src/qtmcp/server.py`, in `create_server()`:
+In `python/src/qtpilot/server.py`, in `create_server()`:
 
 1. After creating `_state` (line 335), add middleware registration:
 ```python
     # Register logging middleware (before tool registration)
-    from qtmcp.logging_middleware import LoggingMiddleware
+    from qtpilot.logging_middleware import LoggingMiddleware
     mcp.add_middleware(LoggingMiddleware())
 ```
 
 2. After discovery tools registration (line 339), add logging tools:
 ```python
     # Register logging tools (always available regardless of mode)
-    from qtmcp.tools.logging_tools import register_logging_tools
+    from qtpilot.tools.logging_tools import register_logging_tools
     register_logging_tools(mcp)
 ```
 
 - [ ] **Step 3: Add logger attach/detach to probe lifecycle**
 
-In `python/src/qtmcp/server.py`:
+In `python/src/qtpilot/server.py`:
 
 1. In `connect_to_probe()` (around line 130, after `state.probe = None`), add:
 ```python
@@ -1827,7 +1827,7 @@ Expected: All tests PASS — no regressions
 - [ ] **Step 5: Commit**
 
 ```bash
-git add python/src/qtmcp/server.py
+git add python/src/qtpilot/server.py
 git commit -m "feat: wire MessageLogger into ServerState, middleware, and probe lifecycle"
 ```
 
@@ -1842,10 +1842,10 @@ Expected: All tests PASS
 
 - [ ] **Step 2: Verify no import errors**
 
-Run: `python -c "from qtmcp.message_logger import MessageLogger; from qtmcp.logging_middleware import LoggingMiddleware; from qtmcp.tools.logging_tools import register_logging_tools; print('All imports OK')"`
+Run: `python -c "from qtpilot.message_logger import MessageLogger; from qtpilot.logging_middleware import LoggingMiddleware; from qtpilot.tools.logging_tools import register_logging_tools; print('All imports OK')"`
 Expected: `All imports OK`
 
 - [ ] **Step 3: Verify the module structure is correct**
 
-Run: `python -c "from qtmcp.server import get_message_logger; print('Server accessor OK')"`
+Run: `python -c "from qtpilot.server import get_message_logger; print('Server accessor OK')"`
 Expected: Should fail gracefully with `RuntimeError: Server not initialized` (expected — no server running)

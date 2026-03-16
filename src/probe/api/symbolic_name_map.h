@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "transport/jsonrpc_handler.h"  // For QTMCP_EXPORT
+#include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT
 
 #include <QHash>
 #include <QJsonArray>
@@ -11,7 +11,7 @@
 #include <QMutex>
 #include <QString>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Squish-style symbolic name map for object aliases.
 ///
@@ -20,10 +20,10 @@ namespace qtmcp {
 ///
 /// Thread Safety: All public methods are thread-safe (mutex-protected).
 ///
-/// Auto-loading: At construction, checks QTMCP_NAME_MAP env var for a
-/// file path, then falls back to "qtmcp-names.json" in CWD. If neither
+/// Auto-loading: At construction, checks QTPILOT_NAME_MAP env var for a
+/// file path, then falls back to "qtPilot-names.json" in CWD. If neither
 /// exists, starts with an empty map (no error).
-class QTMCP_EXPORT SymbolicNameMap {
+class QTPILOT_EXPORT SymbolicNameMap {
  public:
   SymbolicNameMap();
   ~SymbolicNameMap() = default;
@@ -80,4 +80,4 @@ class QTMCP_EXPORT SymbolicNameMap {
   void autoLoad();
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

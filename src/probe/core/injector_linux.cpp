@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "core/injector.h"
 
-#ifdef QTMCP_PLATFORM_LINUX
+#ifdef QTPILOT_PLATFORM_LINUX
 
 #include "core/probe.h"
 
@@ -13,21 +13,21 @@
 #include <QCoreApplication>
 #include <QTimer>
 
-namespace qtmcp {
+namespace qtPilot {
 
 void InitializeProbe() {
   // Check if probe is disabled
-  const char* enabled_env = std::getenv("QTMCP_ENABLED");
+  const char* enabled_env = std::getenv("QTPILOT_ENABLED");
   if (enabled_env != nullptr && std::string(enabled_env) == "0") {
-    spdlog::info("QtMCP Probe disabled via QTMCP_ENABLED=0");
+    spdlog::info("qtPilot Probe disabled via QTPILOT_ENABLED=0");
     return;
   }
 
-  spdlog::info("QtMCP Probe library loaded (Linux)");
+  spdlog::info("qtPilot Probe library loaded (Linux)");
 
   // Get port from environment or use default
   int port = 9999;
-  const char* port_env = std::getenv("QTMCP_PORT");
+  const char* port_env = std::getenv("QTPILOT_PORT");
   if (port_env != nullptr) {
     port = std::atoi(port_env);
     if (port <= 0 || port > 65535) {
@@ -43,7 +43,7 @@ void InitializeProbe() {
       // Use QTimer to ensure we're in the event loop
       QTimer::singleShot(0, []() {
         int port = 9999;
-        const char* port_env = std::getenv("QTMCP_PORT");
+        const char* port_env = std::getenv("QTPILOT_PORT");
         if (port_env != nullptr) {
           port = std::atoi(port_env);
           if (port <= 0 || port > 65535) {
@@ -71,22 +71,22 @@ void InitializeProbe() {
 }
 
 void ShutdownProbe() {
-  spdlog::info("QtMCP Probe library unloading (Linux)");
+  spdlog::info("qtPilot Probe library unloading (Linux)");
   if (Probe::Instance()->IsRunning()) {
     Probe::Instance()->Shutdown();
   }
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 // Library constructor - called when library is loaded via LD_PRELOAD
-__attribute__((constructor)) static void QtMcpLibraryInit() {
-  qtmcp::InitializeProbe();
+__attribute__((constructor)) static void qtPilotLibraryInit() {
+  qtPilot::InitializeProbe();
 }
 
 // Library destructor - called when library is unloaded
-__attribute__((destructor)) static void QtMcpLibraryFini() {
-  qtmcp::ShutdownProbe();
+__attribute__((destructor)) static void qtPilotLibraryFini() {
+  qtPilot::ShutdownProbe();
 }
 
-#endif  // QTMCP_PLATFORM_LINUX
+#endif  // QTPILOT_PLATFORM_LINUX

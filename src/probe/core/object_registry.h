@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "probe.h"  // For QTMCP_EXPORT
+#include "probe.h"  // For QTPILOT_EXPORT
 
 #include <QHash>
 #include <QObject>
@@ -12,10 +12,10 @@
 #include <QSet>
 
 // Forward declarations for hook callbacks (global functions)
-void qtmcpAddObjectHook(QObject*);
-void qtmcpRemoveObjectHook(QObject*);
+void qtpilotAddObjectHook(QObject*);
+void qtpilotRemoveObjectHook(QObject*);
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Registry that tracks all QObjects in the target application.
 ///
@@ -35,7 +35,7 @@ namespace qtmcp {
 /// time and automatically refreshed when objectName changes, so they stay
 /// human-readable once names are set post-construction. Stale IDs remain
 /// resolvable via an internal alias map for backward compatibility.
-class QTMCP_EXPORT ObjectRegistry : public QObject {
+class QTPILOT_EXPORT ObjectRegistry : public QObject {
   Q_OBJECT
 
  public:
@@ -113,8 +113,8 @@ class QTMCP_EXPORT ObjectRegistry : public QObject {
  private:
   // Hook callback friends - these are called from Qt's internal hooks
   // Note: These are global functions (not in namespace) for Qt hook compatibility
-  friend void ::qtmcpAddObjectHook(QObject*);
-  friend void ::qtmcpRemoveObjectHook(QObject*);
+  friend void ::qtpilotAddObjectHook(QObject*);
+  friend void ::qtpilotRemoveObjectHook(QObject*);
 
   /// @brief Register an object (called from hook).
   /// @param obj The object to register.
@@ -162,16 +162,16 @@ class QTMCP_EXPORT ObjectRegistry : public QObject {
 ///
 /// Installs AddQObject and RemoveQObject hooks into Qt's qtHookData array.
 /// Existing hooks are preserved via daisy-chaining for tool coexistence
-/// (e.g., GammaRay can run alongside QtMCP).
+/// (e.g., GammaRay can run alongside qtPilot).
 ///
 /// Must be called AFTER QCoreApplication exists.
 /// Should be called from Probe::initialize().
-QTMCP_EXPORT void installObjectHooks();
+QTPILOT_EXPORT void installObjectHooks();
 
 /// @brief Uninstall Qt object lifecycle hooks.
 ///
 /// Restores previous hooks (or nullptr if there were none).
 /// Should be called from Probe::shutdown().
-QTMCP_EXPORT void uninstallObjectHooks();
+QTPILOT_EXPORT void uninstallObjectHooks();
 
-}  // namespace qtmcp
+}  // namespace qtPilot

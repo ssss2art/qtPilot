@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "transport/jsonrpc_handler.h"
@@ -19,11 +19,11 @@
 
 #include <QWidget>
 
-#ifdef QTMCP_HAS_NLOHMANN_JSON
+#ifdef QTPILOT_HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
 #endif
 
-#ifdef QTMCP_HAS_SPDLOG
+#ifdef QTPILOT_HAS_SPDLOG
 #include <spdlog/spdlog.h>
 #define LOG_DEBUG(msg) spdlog::debug(msg)
 #define LOG_WARN(msg) spdlog::warn(msg)
@@ -34,9 +34,9 @@
 #define LOG_ERROR(msg) qCritical() << msg
 #endif
 
-namespace qtmcp {
+namespace qtPilot {
 
-#ifdef QTMCP_HAS_NLOHMANN_JSON
+#ifdef QTPILOT_HAS_NLOHMANN_JSON
 using json = nlohmann::json;
 #endif
 
@@ -45,7 +45,7 @@ JsonRpcHandler::JsonRpcHandler(QObject* parent) : QObject(parent) {
 }
 
 QString JsonRpcHandler::HandleMessage(const QString& message) {
-#ifdef QTMCP_HAS_NLOHMANN_JSON
+#ifdef QTPILOT_HAS_NLOHMANN_JSON
   // Use nlohmann_json for parsing
   json request;
   try {
@@ -141,7 +141,7 @@ QString JsonRpcHandler::HandleMessage(const QString& message) {
 
   // Handle notifications by emitting signal and returning empty
   if (is_notification) {
-#ifdef QTMCP_HAS_NLOHMANN_JSON
+#ifdef QTPILOT_HAS_NLOHMANN_JSON
     QJsonValue paramsValue;
     if (request.contains("params")) {
       // Convert nlohmann::json to QJsonValue
@@ -238,12 +238,12 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   // ping - basic connectivity test
   RegisterMethod("ping", [](const QString& /*params*/) -> QString { return R"("pong")"; });
 
-  // getVersion - return QtMCP version info
+  // getVersion - return qtPilot version info
   RegisterMethod("getVersion", [](const QString& /*params*/) -> QString {
     QJsonObject result;
     result["version"] = "0.1.0";
     result["protocol"] = "jsonrpc-2.0";
-    result["name"] = "QtMCP";
+    result["name"] = "qtPilot";
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
   });
 
@@ -259,15 +259,15 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   // echo - echo back params (for testing)
   RegisterMethod("echo", [](const QString& params) -> QString { return params; });
 
-  // qtmcp.echo - namespaced echo for integration testing (per RESEARCH.md spec)
-  RegisterMethod("qtmcp.echo", [](const QString& params) -> QString { return params; });
+  // qtpilot.echo - namespaced echo for integration testing (per RESEARCH.md spec)
+  RegisterMethod("qtpilot.echo", [](const QString& params) -> QString { return params; });
 
   // ========================================================================
   // Object Discovery Methods (OBJ-01, OBJ-02, OBJ-03, OBJ-04)
   // ========================================================================
 
   // OBJ-01: findByObjectName
-  RegisterMethod("qtmcp.findByObjectName", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.findByObjectName", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QString name = doc.object()["name"].toString();
     QString root = doc.object()["root"].toString();
@@ -284,7 +284,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // OBJ-02: findByClassName
-  RegisterMethod("qtmcp.findByClassName", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.findByClassName", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QString className = doc.object()["className"].toString();
     QString root = doc.object()["root"].toString();
@@ -302,7 +302,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // OBJ-03: getObjectTree
-  RegisterMethod("qtmcp.getObjectTree", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.getObjectTree", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QString root = doc.object()["root"].toString();
     int maxDepth = doc.object()["maxDepth"].toInt(-1);
@@ -314,7 +314,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // OBJ-04: getObjectInfo
-  RegisterMethod("qtmcp.getObjectInfo", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.getObjectInfo", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -335,7 +335,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   // ========================================================================
 
   // OBJ-05: listProperties
-  RegisterMethod("qtmcp.listProperties", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.listProperties", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -352,7 +352,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // OBJ-06: getProperty
-  RegisterMethod("qtmcp.getProperty", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.getProperty", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -371,7 +371,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // OBJ-07: setProperty
-  RegisterMethod("qtmcp.setProperty", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.setProperty", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -395,7 +395,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   // ========================================================================
 
   // OBJ-08: listMethods
-  RegisterMethod("qtmcp.listMethods", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.listMethods", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -412,7 +412,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // OBJ-09: invokeMethod
-  RegisterMethod("qtmcp.invokeMethod", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.invokeMethod", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -432,7 +432,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // OBJ-10: listSignals
-  RegisterMethod("qtmcp.listSignals", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.listSignals", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -453,7 +453,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   // ========================================================================
 
   // SIG-01: subscribeSignal
-  RegisterMethod("qtmcp.subscribeSignal", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.subscribeSignal", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QString objectId = doc.object()["objectId"].toString();
     QString signalName = doc.object()["signal"].toString();
@@ -464,7 +464,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // SIG-02: unsubscribeSignal
-  RegisterMethod("qtmcp.unsubscribeSignal", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.unsubscribeSignal", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QString subId = doc.object()["subscriptionId"].toString();
 
@@ -474,7 +474,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // Lifecycle notifications toggle
-  RegisterMethod("qtmcp.setLifecycleNotifications", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.setLifecycleNotifications", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     bool enabled = doc.object()["enabled"].toBool();
 
@@ -488,7 +488,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   // ========================================================================
 
   // UI-01: click
-  RegisterMethod("qtmcp.click", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.click", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -524,7 +524,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // UI-02: sendKeys
-  RegisterMethod("qtmcp.sendKeys", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.sendKeys", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -555,7 +555,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // UI-03: screenshot
-  RegisterMethod("qtmcp.screenshot", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.screenshot", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -590,7 +590,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // UI-04: getGeometry
-  RegisterMethod("qtmcp.getGeometry", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.getGeometry", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     QJsonObject params_obj = doc.object();
     QString id = params_obj["id"].toString();
@@ -612,7 +612,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 
   // UI-05: hitTest
-  RegisterMethod("qtmcp.hitTest", [](const QString& params) -> QString {
+  RegisterMethod("qtpilot.hitTest", [](const QString& params) -> QString {
     QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
     int x = doc.object()["x"].toInt();
     int y = doc.object()["y"].toInt();
@@ -648,4 +648,4 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   });
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

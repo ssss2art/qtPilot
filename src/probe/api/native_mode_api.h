@@ -1,13 +1,13 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "transport/jsonrpc_handler.h"  // For QTMCP_EXPORT, JsonRpcHandler
+#include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT, JsonRpcHandler
 
 #include <QObject>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Native Mode API surface registering all qt.* namespaced JSON-RPC methods.
 ///
@@ -26,9 +26,9 @@ namespace qtmcp {
 /// All methods use ObjectResolver for ID resolution, ResponseEnvelope for
 /// response wrapping, and ErrorCode constants for structured errors.
 ///
-/// Old qtmcp.* methods remain registered in JsonRpcHandler for backward
+/// Old qtpilot.* methods remain registered in JsonRpcHandler for backward
 /// compatibility.
-class QTMCP_EXPORT NativeModeApi : public QObject {
+class QTPILOT_EXPORT NativeModeApi : public QObject {
   Q_OBJECT
 
  public:
@@ -52,4 +52,4 @@ class QTMCP_EXPORT NativeModeApi : public QObject {
   JsonRpcHandler* m_handler;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

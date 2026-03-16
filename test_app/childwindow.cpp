@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "childwindow.h"
@@ -9,7 +9,7 @@
 #include <QVBoxLayout>
 
 ChildWindow::ChildWindow(QWidget* parent) : QWidget(parent) {
-  setWindowTitle(QStringLiteral("QtMCP Child Process"));
+  setWindowTitle(QStringLiteral("qtPilot Child Process"));
   setObjectName(QStringLiteral("ChildWindow"));
   resize(400, 200);
 

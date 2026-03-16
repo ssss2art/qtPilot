@@ -9,8 +9,8 @@ import time
 import pytest
 import pytest_asyncio
 
-from qtmcp.connection import ProbeConnection
-from qtmcp.event_recorder import (
+from qtpilot.connection import ProbeConnection
+from qtpilot.event_recorder import (
     FALLBACK_SIGNALS,
     INTERACTIVE_SIGNALS,
     EventRecorder,
@@ -37,14 +37,14 @@ class TestNotificationRouting:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {"objectId": "btn", "signal": "clicked"},
         })
         # Give the recv loop time to process
         await asyncio.sleep(0.1)
 
         assert len(received) == 1
-        assert received[0][0] == "qtmcp.signalEmitted"
+        assert received[0][0] == "qtpilot.signalEmitted"
         assert received[0][1]["signal"] == "clicked"
 
     async def test_handler_receives_lifecycle_notification(self, mock_probe):
@@ -56,13 +56,13 @@ class TestNotificationRouting:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.objectCreated",
+            "method": "qtpilot.objectCreated",
             "params": {"objectId": "dialog", "className": "QDialog"},
         })
         await asyncio.sleep(0.1)
 
         assert len(received) == 1
-        assert received[0][0] == "qtmcp.objectCreated"
+        assert received[0][0] == "qtpilot.objectCreated"
 
     async def test_no_handler_ignores_notification(self, mock_probe):
         """Without a handler, notifications are silently ignored (no crash)."""
@@ -70,7 +70,7 @@ class TestNotificationRouting:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -87,7 +87,7 @@ class TestNotificationRouting:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -111,7 +111,7 @@ class TestNotificationRouting:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -121,7 +121,7 @@ class TestNotificationRouting:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -196,7 +196,7 @@ class TestEventRecorder:
         recorder._subscriptions = ["sub_1"]
         recorder._include_lifecycle = True
 
-        recorder._handle_notification("qtmcp.signalEmitted", {
+        recorder._handle_notification("qtpilot.signalEmitted", {
             "subscriptionId": "sub_1",
             "objectId": "MainWindow/QPushButton#okBtn",
             "objectName": "okBtn",
@@ -220,13 +220,13 @@ class TestEventRecorder:
         recorder._subscriptions = []
         recorder._include_lifecycle = True
 
-        recorder._handle_notification("qtmcp.objectCreated", {
+        recorder._handle_notification("qtpilot.objectCreated", {
             "objectId": "MainWindow/QDialog#confirm",
             "objectName": "confirm",
             "className": "QDialog",
         })
 
-        recorder._handle_notification("qtmcp.objectDestroyed", {
+        recorder._handle_notification("qtpilot.objectDestroyed", {
             "objectId": "MainWindow/QDialog#confirm",
             "objectName": "confirm",
         })
@@ -243,7 +243,7 @@ class TestEventRecorder:
         recorder._subscriptions = ["sub_1"]
         recorder._include_lifecycle = False
 
-        recorder._handle_notification("qtmcp.signalEmitted", {
+        recorder._handle_notification("qtpilot.signalEmitted", {
             "subscriptionId": "foreign_sub",
             "objectId": "btn",
             "signal": "clicked",
@@ -259,7 +259,7 @@ class TestEventRecorder:
         recorder._subscriptions = []
         recorder._include_lifecycle = False
 
-        recorder._handle_notification("qtmcp.objectCreated", {
+        recorder._handle_notification("qtpilot.objectCreated", {
             "objectId": "obj",
             "className": "QWidget",
         })
@@ -271,7 +271,7 @@ class TestEventRecorder:
         recorder = EventRecorder()
         # _recording is False by default
 
-        recorder._handle_notification("qtmcp.signalEmitted", {
+        recorder._handle_notification("qtpilot.signalEmitted", {
             "subscriptionId": "sub_1",
             "objectId": "btn",
             "signal": "clicked",

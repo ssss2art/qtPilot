@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "transport/jsonrpc_handler.h"  // For QTMCP_EXPORT
+#include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT
 
 #include <atomic>
 
@@ -12,7 +12,7 @@
 #include <QPointer>
 #include <QString>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Multi-style object ID resolver.
 ///
@@ -25,7 +25,7 @@ namespace qtmcp {
 ///
 /// Numeric IDs are session-scoped: call clearNumericIds() on client
 /// disconnect to prevent stale references.
-class QTMCP_EXPORT ObjectResolver {
+class QTPILOT_EXPORT ObjectResolver {
  public:
   /// @brief Resolve an object identifier to a QObject pointer.
   ///
@@ -64,4 +64,4 @@ class QTMCP_EXPORT ObjectResolver {
   static std::atomic<int> s_nextId;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

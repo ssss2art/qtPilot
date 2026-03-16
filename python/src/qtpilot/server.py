@@ -10,10 +10,10 @@ from typing import AsyncIterator
 
 from fastmcp import FastMCP
 
-from qtmcp.connection import ProbeConnection, ProbeError
-from qtmcp.discovery import DiscoveryListener
-from qtmcp.event_recorder import EventRecorder
-from qtmcp.message_logger import MessageLogger
+from qtpilot.connection import ProbeConnection, ProbeError
+from qtpilot.discovery import DiscoveryListener
+from qtpilot.event_recorder import EventRecorder
+from qtpilot.message_logger import MessageLogger
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +95,8 @@ def require_probe() -> ProbeConnection:
     probe = get_probe()
     if probe is None or not probe.is_connected:
         raise ProbeError(
-            "No probe connected. Use qtmcp_list_probes to see available probes, "
-            "then qtmcp_connect_probe to connect to one."
+            "No probe connected. Use qtpilot_list_probes to see available probes, "
+            "then qtpilot_connect_probe to connect to one."
         )
     return probe
 
@@ -191,13 +191,13 @@ def _register_mode_tools_if_absent(mcp: FastMCP, mode: str) -> None:
     if _has_tools_with_prefix(mcp, prefixes):
         return
     if mode == "native":
-        from qtmcp.tools.native import register_native_tools
+        from qtpilot.tools.native import register_native_tools
         register_native_tools(mcp)
     elif mode == "cu":
-        from qtmcp.tools.cu import register_cu_tools
+        from qtpilot.tools.cu import register_cu_tools
         register_cu_tools(mcp)
     elif mode == "chrome":
-        from qtmcp.tools.chrome import register_chrome_tools
+        from qtpilot.tools.chrome import register_chrome_tools
         register_chrome_tools(mcp)
 
 
@@ -210,7 +210,7 @@ def _register_tools_for_mode(mcp: FastMCP, mode: str) -> None:
         _register_mode_tools_if_absent(mcp, mode)
 
     # Recording tools are always useful (only 3 tools)
-    from qtmcp.tools.recording_tools import register_recording_tools
+    from qtpilot.tools.recording_tools import register_recording_tools
     register_recording_tools(mcp)
 
 
@@ -236,7 +236,7 @@ def create_server(
         ws_url: Optional WebSocket URL to auto-connect on startup.
         target: Optional path to Qt application exe to auto-launch.
         port: Port for auto-launched probe.
-        launcher_path: Optional path to qtmcp-launch executable.
+        launcher_path: Optional path to qtpilot-launch executable.
         discovery_port: UDP port for probe discovery (default: 9221).
         discovery_enabled: Whether to start the discovery listener.
         qt_version: Optional Qt version for probe auto-detection (e.g. "5.15").
@@ -261,12 +261,12 @@ def create_server(
             # Auto-launch target if specified
             actual_ws_url = ws_url
             if target is not None:
-                from qtmcp.download import get_launcher_filename
-                from qtmcp.qt_env import build_subprocess_env
+                from qtpilot.download import get_launcher_filename
+                from qtpilot.qt_env import build_subprocess_env
 
                 launcher = (
                     launcher_path
-                    or os.environ.get("QTMCP_LAUNCHER")
+                    or os.environ.get("QTPILOT_LAUNCHER")
                     or get_launcher_filename()
                 )
                 logger.debug(
@@ -299,12 +299,12 @@ def create_server(
                 except FileNotFoundError:
                     raise FileNotFoundError(
                         f"Launcher not found: {launcher!r}. "
-                        "Install with: qtmcp download-tools --qt-version <VERSION>"
+                        "Install with: qtpilot download-tools --qt-version <VERSION>"
                     )
                 except OSError as e:
                     raise OSError(
                         f"Could not start launcher {launcher!r}: {e}. "
-                        "Install with: qtmcp download-tools --qt-version <VERSION>"
+                        "Install with: qtpilot download-tools --qt-version <VERSION>"
                     ) from e
                 await asyncio.sleep(1.5)
                 actual_ws_url = f"ws://localhost:{port}"
@@ -316,7 +316,7 @@ def create_server(
                 except Exception as e:
                     logger.warning(
                         "Could not auto-connect to %s: %s. "
-                        "Use qtmcp_list_probes and qtmcp_connect_probe to connect later.",
+                        "Use qtpilot_list_probes and qtpilot_connect_probe to connect later.",
                         actual_ws_url,
                         e,
                     )
@@ -352,28 +352,28 @@ def create_server(
                     process.kill()
 
     mode_label = mode.title() if mode != "all" else "All"
-    mcp = FastMCP(f"QtMCP {mode_label}", lifespan=lifespan)
+    mcp = FastMCP(f"qtPilot {mode_label}", lifespan=lifespan)
 
     # Initialise server state
     _state = ServerState(mcp, mode=mode)
 
     # Register logging middleware (before tool registration)
-    from qtmcp.logging_middleware import LoggingMiddleware
+    from qtpilot.logging_middleware import LoggingMiddleware
     mcp.add_middleware(LoggingMiddleware())
 
     # Register discovery tools (always available regardless of mode)
-    from qtmcp.tools.discovery_tools import register_discovery_tools
+    from qtpilot.tools.discovery_tools import register_discovery_tools
     register_discovery_tools(mcp)
 
     # Register logging tools (always available regardless of mode)
-    from qtmcp.tools.logging_tools import register_logging_tools
+    from qtpilot.tools.logging_tools import register_logging_tools
     register_logging_tools(mcp)
 
     # Register mode-specific tools
     _register_tools_for_mode(mcp, mode)
 
     # Register status resource
-    from qtmcp.status import register_status_resource
+    from qtpilot.status import register_status_resource
     register_status_resource(mcp)
 
     return mcp

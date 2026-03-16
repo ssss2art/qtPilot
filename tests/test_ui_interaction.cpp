@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -13,7 +13,7 @@
 #include "interaction/hit_test.h"
 #include "core/object_registry.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 class TestUIInteraction : public QObject {
     Q_OBJECT

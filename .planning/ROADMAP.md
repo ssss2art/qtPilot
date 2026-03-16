@@ -1,4 +1,4 @@
-# Roadmap: QtMCP
+# Roadmap: qtPilot
 
 ## Milestones
 

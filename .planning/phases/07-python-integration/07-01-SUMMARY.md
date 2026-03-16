@@ -12,7 +12,7 @@ provides:
   - Python package skeleton with pyproject.toml and CLI entry point
   - ProbeConnection async WebSocket JSON-RPC client
   - FastMCP server factory with lifespan-managed connection
-  - Status resource at qtmcp://status
+  - Status resource at qtpilot://status
   - Stub tool registration files for native/cu/chrome modes
 affects: [07-02, 07-03]
 
@@ -24,16 +24,16 @@ tech-stack:
 key-files:
   created:
     - python/pyproject.toml
-    - python/src/qtmcp/__init__.py
-    - python/src/qtmcp/__main__.py
-    - python/src/qtmcp/cli.py
-    - python/src/qtmcp/connection.py
-    - python/src/qtmcp/server.py
-    - python/src/qtmcp/status.py
-    - python/src/qtmcp/tools/__init__.py
-    - python/src/qtmcp/tools/native.py
-    - python/src/qtmcp/tools/cu.py
-    - python/src/qtmcp/tools/chrome.py
+    - python/src/qtpilot/__init__.py
+    - python/src/qtpilot/__main__.py
+    - python/src/qtpilot/cli.py
+    - python/src/qtpilot/connection.py
+    - python/src/qtpilot/server.py
+    - python/src/qtpilot/status.py
+    - python/src/qtpilot/tools/__init__.py
+    - python/src/qtpilot/tools/native.py
+    - python/src/qtpilot/tools/cu.py
+    - python/src/qtpilot/tools/chrome.py
   modified: []
 
 key-decisions:
@@ -67,7 +67,7 @@ completed: 2026-02-01
 - ProbeConnection class with async WebSocket JSON-RPC 2.0 request/response correlation
 - FastMCP server factory with lifespan-managed connection and auto-launch subprocess support
 - CLI with --mode, --ws-url, --target, --port, --launcher-path arguments
-- Status resource exposing connection state at qtmcp://status
+- Status resource exposing connection state at qtpilot://status
 - Stub tool registration files ready for Plans 02 and 03
 
 ## Task Commits
@@ -79,16 +79,16 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 - `python/pyproject.toml` - Package metadata with fastmcp/websockets deps and CLI entry point
-- `python/src/qtmcp/__init__.py` - Package init with version
-- `python/src/qtmcp/__main__.py` - python -m qtmcp support
-- `python/src/qtmcp/cli.py` - CLI entry point with argparse
-- `python/src/qtmcp/connection.py` - ProbeConnection async WebSocket JSON-RPC client
-- `python/src/qtmcp/server.py` - create_server() factory with lifespan pattern
-- `python/src/qtmcp/status.py` - Status resource registration
-- `python/src/qtmcp/tools/__init__.py` - Tools package init
-- `python/src/qtmcp/tools/native.py` - Native mode stub
-- `python/src/qtmcp/tools/cu.py` - Computer Use mode stub
-- `python/src/qtmcp/tools/chrome.py` - Chrome mode stub
+- `python/src/qtpilot/__init__.py` - Package init with version
+- `python/src/qtpilot/__main__.py` - python -m qtpilot support
+- `python/src/qtpilot/cli.py` - CLI entry point with argparse
+- `python/src/qtpilot/connection.py` - ProbeConnection async WebSocket JSON-RPC client
+- `python/src/qtpilot/server.py` - create_server() factory with lifespan pattern
+- `python/src/qtpilot/status.py` - Status resource registration
+- `python/src/qtpilot/tools/__init__.py` - Tools package init
+- `python/src/qtpilot/tools/native.py` - Native mode stub
+- `python/src/qtpilot/tools/cu.py` - Computer Use mode stub
+- `python/src/qtpilot/tools/chrome.py` - Chrome mode stub
 
 ## Decisions Made
 - Used module-level `_probe` reference with `get_probe()` accessor instead of `Context.lifespan_context` -- FastMCP v2.14 stores lifespan result on server object, not directly accessible from Context
@@ -106,7 +106,7 @@ None
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Package skeleton complete, `python -m qtmcp --help` works
+- Package skeleton complete, `python -m qtpilot --help` works
 - ProbeConnection ready for tool implementations to call `conn.call(method, params)`
 - Stub files in place for Plan 02 (native + CU tools) and Plan 03 (chrome tools)
 - FastMCP installed and verified working (v2.14.4)

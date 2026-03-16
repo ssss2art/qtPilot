@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <QAccessible>
 #include <QString>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Maps QAccessible::Role to Chrome/ARIA role name strings.
 ///
@@ -33,4 +33,4 @@ class RoleMapper {
   RoleMapper() = delete;  // Purely static, no instantiation
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

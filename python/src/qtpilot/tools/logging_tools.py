@@ -9,7 +9,7 @@ def register_logging_tools(mcp: FastMCP) -> None:
     """Register message logging tools on the MCP server."""
 
     @mcp.tool
-    async def qtmcp_log_start(
+    async def qtpilot_log_start(
         path: str | None = None,
         level: int = 2,
         buffer_size: int = 200,
@@ -19,19 +19,19 @@ def register_logging_tools(mcp: FastMCP) -> None:
 
         Captures tool calls, probe wire traffic, and notifications at
         configurable verbosity levels. Also maintains an in-memory ring
-        buffer accessible via qtmcp_log_tail.
+        buffer accessible via qtpilot_log_tail.
 
         Args:
-            path: Output file path. Default: qtmcp-log-YYYYMMDD-HHMMSS.jsonl in cwd.
+            path: Output file path. Default: qtPilot-log-YYYYMMDD-HHMMSS.jsonl in cwd.
             level: Verbosity level:
                 1 = minimal (MCP tool calls only)
                 2 = normal (+ JSON-RPC wire traffic) [default]
                 3 = verbose (+ probe notifications)
             buffer_size: Ring buffer capacity (default 200 entries).
 
-        Example: qtmcp_log_start(level=3)
+        Example: qtpilot_log_start(level=3)
         """
-        from qtmcp.server import get_message_logger, get_probe
+        from qtpilot.server import get_message_logger, get_probe
 
         logger = get_message_logger()
         result = logger.start(path=path, level=level, buffer_size=buffer_size)
@@ -44,16 +44,16 @@ def register_logging_tools(mcp: FastMCP) -> None:
         return result
 
     @mcp.tool
-    async def qtmcp_log_stop(ctx: Context = None) -> dict:
+    async def qtpilot_log_stop(ctx: Context = None) -> dict:
         """Stop message logging and return summary.
 
         Returns the file path, total entries logged, and session duration.
-        The ring buffer is preserved -- use qtmcp_log_tail to read entries
+        The ring buffer is preserved -- use qtpilot_log_tail to read entries
         after stopping.
 
-        Example: qtmcp_log_stop()
+        Example: qtpilot_log_stop()
         """
-        from qtmcp.server import get_message_logger, get_probe
+        from qtpilot.server import get_message_logger, get_probe
 
         logger = get_message_logger()
 
@@ -65,30 +65,30 @@ def register_logging_tools(mcp: FastMCP) -> None:
         return logger.stop()
 
     @mcp.tool
-    async def qtmcp_log_status(ctx: Context = None) -> dict:
+    async def qtpilot_log_status(ctx: Context = None) -> dict:
         """Get current message logging status.
 
         Returns whether logging is active, file path, verbosity level,
         entry count, buffer size, and session duration.
 
-        Example: qtmcp_log_status()
+        Example: qtpilot_log_status()
         """
-        from qtmcp.server import get_message_logger
+        from qtpilot.server import get_message_logger
 
         return get_message_logger().status()
 
     @mcp.tool
-    async def qtmcp_log_tail(count: int = 50, ctx: Context = None) -> dict:
+    async def qtpilot_log_tail(count: int = 50, ctx: Context = None) -> dict:
         """Return recent log entries from the in-memory ring buffer.
 
-        Works even after qtmcp_log_stop -- the buffer persists until the
-        next qtmcp_log_start.
+        Works even after qtpilot_log_stop -- the buffer persists until the
+        next qtpilot_log_start.
 
         Args:
             count: Number of recent entries to return (default 50).
 
-        Example: qtmcp_log_tail(count=10)
+        Example: qtpilot_log_tail(count=10)
         """
-        from qtmcp.server import get_message_logger
+        from qtpilot.server import get_message_logger
 
         return get_message_logger().tail(count=count)

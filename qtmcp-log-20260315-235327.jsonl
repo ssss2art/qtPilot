@@ -1,0 +1,64 @@
+{"dir": "mcp_in", "tool": "qt_ping", "args": {}, "ts": "2026-03-15T23:53:27.270Z"}
+{"dir": "req", "id": 1, "method": "qt.ping", "params": {}, "ts": "2026-03-15T23:53:27.270Z"}
+{"dir": "res", "id": 1, "method": "qt.ping", "dur_ms": 0.0, "result": {"meta": {"timestamp": 1773618807270}, "result": {"eventLoopLatency": 0, "pong": true, "timestamp": 1773618807270}}, "ts": "2026-03-15T23:53:27.271Z"}
+{"dir": "mcp_out", "tool": "qt_ping", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:27.271Z"}
+{"dir": "mcp_in", "tool": "qt_objects_tree", "args": {"maxDepth": 5}, "ts": "2026-03-15T23:53:34.859Z"}
+{"dir": "req", "id": 2, "method": "qt.objects.tree", "params": {"maxDepth": 5}, "ts": "2026-03-15T23:53:34.859Z"}
+{"dir": "res", "id": 2, "method": "qt.objects.tree", "dur_ms": 0.0, "result": {"meta": {"timestamp": 1773618814860}, "result": {"children": [{"children": [{"className": "QWindowsGuiEventDispatcher", "id": "QApplication/QWindowsGuiEventDispatcher", "objectName": "QWindowsGuiEventDispatcher"}, {"className": "QSessionManager", "id": "QApplication/QSessionManager"}, {"className": "QWindowsVistaStyle", "id": "QApplication/windowsvista", "objectName": "windowsvista"}, {"children": [{"className": "QPanGesture", "id": "QApplication/QGestureManager/QPanGesture#1"}, {"className": "QPanGesture", "id": "QApplication/QGestureManager/QPanGesture#2"}, {"className": "QPanGesture", "id": "QApplication/QGestureManager/QPanGesture#3"}, {"className": "QPanGesture", "id": "QApplication/QGestureManager/QPanGesture#4"}, {"className": "QPanGesture", "id": "QApplication/QGestureManager/QPanGesture#5"}, {"className": "QPanGesture", "id": "QApplication/QGestureManager/QPanGesture#6"}], "className": "QGestureManager", "id": "QApplication/QGestureManager"}], "className": "QApplication", "id": "QApplication"}], "className": "Root", "id": ""}}, "ts": "2026-03-15T23:53:34.860Z"}
+{"dir": "mcp_out", "tool": "qt_objects_tree", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:34.860Z"}
+{"dir": "mcp_in", "tool": "qt_objects_findByClass", "args": {"className": "QLineEdit"}, "ts": "2026-03-15T23:53:38.446Z"}
+{"dir": "req", "id": 3, "method": "qt.objects.findByClass", "params": {"className": "QLineEdit"}, "ts": "2026-03-15T23:53:38.446Z"}
+{"dir": "res", "id": 3, "method": "qt.objects.findByClass", "dur_ms": 0.0, "result": {"meta": {"timestamp": 1773618818447}, "result": {"objects": [{"className": "QLineEdit", "numericId": 1, "objectId": "QObject~22"}, {"className": "QLineEdit", "numericId": 2, "objectId": "QObject~17"}]}}, "ts": "2026-03-15T23:53:38.447Z"}
+{"dir": "mcp_out", "tool": "qt_objects_findByClass", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:38.447Z"}
+{"dir": "mcp_in", "tool": "qt_objects_findByClass", "args": {"className": "QMainWindow"}, "ts": "2026-03-15T23:53:38.855Z"}
+{"dir": "req", "id": 4, "method": "qt.objects.findByClass", "params": {"className": "QMainWindow"}, "ts": "2026-03-15T23:53:38.856Z"}
+{"dir": "res", "id": 4, "method": "qt.objects.findByClass", "dur_ms": 15.0, "result": {"meta": {"timestamp": 1773618818858}, "result": {"objects": []}}, "ts": "2026-03-15T23:53:38.859Z"}
+{"dir": "mcp_out", "tool": "qt_objects_findByClass", "dur_ms": 15.0, "ok": true, "ts": "2026-03-15T23:53:38.859Z"}
+{"dir": "mcp_in", "tool": "qt_objects_findByClass", "args": {"className": "QPushButton"}, "ts": "2026-03-15T23:53:38.876Z"}
+{"dir": "req", "id": 5, "method": "qt.objects.findByClass", "params": {"className": "QPushButton"}, "ts": "2026-03-15T23:53:38.877Z"}
+{"dir": "res", "id": 5, "method": "qt.objects.findByClass", "dur_ms": 0.0, "result": {"meta": {"timestamp": 1773618818878}, "result": {"objects": [{"className": "QPushButton", "numericId": 3, "objectId": "QObject~44"}, {"className": "QPushButton", "numericId": 4, "objectId": "QObject~126"}, {"className": "QPushButton", "numericId": 5, "objectId": "QObject~43"}]}}, "ts": "2026-03-15T23:53:38.879Z"}
+{"dir": "mcp_out", "tool": "qt_objects_findByClass", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:38.879Z"}
+{"dir": "mcp_in", "tool": "qt_properties_get", "args": {"objectId": "QObject~22", "name": "placeholderText"}, "ts": "2026-03-15T23:53:45.524Z"}
+{"dir": "req", "id": 6, "method": "qt.properties.get", "params": {"objectId": "QObject~22", "name": "placeholderText"}, "ts": "2026-03-15T23:53:45.524Z"}
+{"dir": "res", "id": 6, "method": "qt.properties.get", "dur_ms": 0.0, "result": {"meta": {"objectId": "QObject~22", "timestamp": 1773618825525}, "result": {"value": "Enter your email"}}, "ts": "2026-03-15T23:53:45.525Z"}
+{"dir": "mcp_out", "tool": "qt_properties_get", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:45.525Z"}
+{"dir": "mcp_in", "tool": "qt_properties_get", "args": {"objectId": "QObject~17", "name": "placeholderText"}, "ts": "2026-03-15T23:53:45.972Z"}
+{"dir": "req", "id": 7, "method": "qt.properties.get", "params": {"objectId": "QObject~17", "name": "placeholderText"}, "ts": "2026-03-15T23:53:45.973Z"}
+{"dir": "res", "id": 7, "method": "qt.properties.get", "dur_ms": 0.0, "result": {"meta": {"objectId": "QObject~17", "timestamp": 1773618825973}, "result": {"value": "Enter your name"}}, "ts": "2026-03-15T23:53:45.974Z"}
+{"dir": "mcp_out", "tool": "qt_properties_get", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:45.974Z"}
+{"dir": "mcp_in", "tool": "qt_properties_get", "args": {"objectId": "QObject~44", "name": "text"}, "ts": "2026-03-15T23:53:46.423Z"}
+{"dir": "req", "id": 8, "method": "qt.properties.get", "params": {"objectId": "QObject~44", "name": "text"}, "ts": "2026-03-15T23:53:46.424Z"}
+{"dir": "res", "id": 8, "method": "qt.properties.get", "dur_ms": 0.0, "result": {"meta": {"objectId": "QObject~44", "timestamp": 1773618826424}, "result": {"value": "Clear"}}, "ts": "2026-03-15T23:53:46.425Z"}
+{"dir": "mcp_out", "tool": "qt_properties_get", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:46.425Z"}
+{"dir": "mcp_in", "tool": "qt_properties_get", "args": {"objectId": "QObject~126", "name": "text"}, "ts": "2026-03-15T23:53:46.852Z"}
+{"dir": "req", "id": 9, "method": "qt.properties.get", "params": {"objectId": "QObject~126", "name": "text"}, "ts": "2026-03-15T23:53:46.852Z"}
+{"dir": "res", "id": 9, "method": "qt.properties.get", "dur_ms": 0.0, "result": {"meta": {"objectId": "QObject~126", "timestamp": 1773618826853}, "result": {"value": "Spawn Child Process"}}, "ts": "2026-03-15T23:53:46.853Z"}
+{"dir": "mcp_out", "tool": "qt_properties_get", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:46.853Z"}
+{"dir": "mcp_in", "tool": "qt_properties_get", "args": {"objectId": "QObject~43", "name": "text"}, "ts": "2026-03-15T23:53:47.065Z"}
+{"dir": "req", "id": 10, "method": "qt.properties.get", "params": {"objectId": "QObject~43", "name": "text"}, "ts": "2026-03-15T23:53:47.065Z"}
+{"dir": "res", "id": 10, "method": "qt.properties.get", "dur_ms": 0.0, "result": {"meta": {"objectId": "QObject~43", "timestamp": 1773618827066}, "result": {"value": "Submit"}}, "ts": "2026-03-15T23:53:47.067Z"}
+{"dir": "mcp_out", "tool": "qt_properties_get", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:53:47.067Z"}
+{"dir": "mcp_in", "tool": "qt_ui_click", "args": {"objectId": "QObject~17"}, "ts": "2026-03-15T23:53:51.438Z"}
+{"dir": "req", "id": 11, "method": "qt.ui.click", "params": {"objectId": "QObject~17"}, "ts": "2026-03-15T23:53:51.438Z"}
+{"dir": "res", "id": 11, "method": "qt.ui.click", "dur_ms": 15.0, "result": {"meta": {"objectId": "QObject~17", "timestamp": 1773618831450}, "result": {"success": true}}, "ts": "2026-03-15T23:53:51.453Z"}
+{"dir": "mcp_out", "tool": "qt_ui_click", "dur_ms": 15.0, "ok": true, "ts": "2026-03-15T23:53:51.453Z"}
+{"dir": "mcp_in", "tool": "qt_ui_sendKeys", "args": {"objectId": "QObject~17", "text": "Alice Johnson"}, "ts": "2026-03-15T23:53:54.087Z"}
+{"dir": "req", "id": 12, "method": "qt.ui.sendKeys", "params": {"objectId": "QObject~17", "text": "Alice Johnson"}, "ts": "2026-03-15T23:53:54.088Z"}
+{"dir": "res", "id": 12, "method": "qt.ui.sendKeys", "dur_ms": 16.0, "result": {"meta": {"objectId": "QObject~17", "timestamp": 1773618834095}, "result": {"success": true}}, "ts": "2026-03-15T23:53:54.098Z"}
+{"dir": "mcp_out", "tool": "qt_ui_sendKeys", "dur_ms": 16.0, "ok": true, "ts": "2026-03-15T23:53:54.098Z"}
+{"dir": "mcp_in", "tool": "qt_ui_click", "args": {"objectId": "QObject~22"}, "ts": "2026-03-15T23:53:56.732Z"}
+{"dir": "req", "id": 13, "method": "qt.ui.click", "params": {"objectId": "QObject~22"}, "ts": "2026-03-15T23:53:56.732Z"}
+{"dir": "res", "id": 13, "method": "qt.ui.click", "dur_ms": 15.0, "result": {"meta": {"objectId": "QObject~22", "timestamp": 1773618836738}, "result": {"success": true}}, "ts": "2026-03-15T23:53:56.739Z"}
+{"dir": "mcp_out", "tool": "qt_ui_click", "dur_ms": 15.0, "ok": true, "ts": "2026-03-15T23:53:56.739Z"}
+{"dir": "mcp_in", "tool": "qt_ui_sendKeys", "args": {"objectId": "QObject~22", "text": "alice@example.com"}, "ts": "2026-03-15T23:53:59.115Z"}
+{"dir": "req", "id": 14, "method": "qt.ui.sendKeys", "params": {"objectId": "QObject~22", "text": "alice@example.com"}, "ts": "2026-03-15T23:53:59.115Z"}
+{"dir": "res", "id": 14, "method": "qt.ui.sendKeys", "dur_ms": 16.0, "result": {"meta": {"objectId": "QObject~22", "timestamp": 1773618839124}, "result": {"success": true}}, "ts": "2026-03-15T23:53:59.126Z"}
+{"dir": "mcp_out", "tool": "qt_ui_sendKeys", "dur_ms": 16.0, "ok": true, "ts": "2026-03-15T23:53:59.126Z"}
+{"dir": "mcp_in", "tool": "qt_ui_screenshot", "args": {"objectId": "QObject~17", "fullWindow": true}, "ts": "2026-03-15T23:54:02.237Z"}
+{"dir": "req", "id": 15, "method": "qt.ui.screenshot", "params": {"objectId": "QObject~17", "fullWindow": true}, "ts": "2026-03-15T23:54:02.238Z"}
+{"dir": "res", "id": 15, "method": "qt.ui.screenshot", "dur_ms": 47.0, "result": {"meta": {"objectId": "QObject~17", "timestamp": 1773618842280}, "result": {"image": "<image:1012b>"}}, "ts": "2026-03-15T23:54:02.281Z"}
+{"dir": "mcp_out", "tool": "qt_ui_screenshot", "dur_ms": 47.0, "ok": true, "ts": "2026-03-15T23:54:02.281Z"}
+{"dir": "mcp_in", "tool": "qt_ui_click", "args": {"objectId": "QObject~43"}, "ts": "2026-03-15T23:54:14.032Z"}
+{"dir": "req", "id": 16, "method": "qt.ui.click", "params": {"objectId": "QObject~43"}, "ts": "2026-03-15T23:54:14.032Z"}
+{"dir": "res", "id": 16, "method": "qt.ui.click", "dur_ms": 0.0, "result": {"meta": {"objectId": "QObject~43", "timestamp": 1773618854039}, "result": {"success": true}}, "ts": "2026-03-15T23:54:14.043Z"}
+{"dir": "mcp_out", "tool": "qt_ui_click", "dur_ms": 0.0, "ok": true, "ts": "2026-03-15T23:54:14.043Z"}

@@ -29,7 +29,7 @@ score: 4/4 must-haves verified
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `src/probe/introspection/qml_inspector.h` | QmlItemInfo struct, inspectQmlItem(), stripQmlPrefix() functions | ✓ VERIFIED | 61 lines, proper #ifdef QTMCP_HAS_QML guards, inline stub fallbacks |
+| `src/probe/introspection/qml_inspector.h` | QmlItemInfo struct, inspectQmlItem(), stripQmlPrefix() functions | ✓ VERIFIED | 61 lines, proper #ifdef QTPILOT_HAS_QML guards, inline stub fallbacks |
 | `src/probe/introspection/qml_inspector.cpp` | QML metadata extraction implementation | ✓ VERIFIED | 62 lines, uses QQmlContext/QQmlEngine APIs, compile guards present |
 | `src/probe/introspection/model_navigator.h` | ModelNavigator class with 6 static methods | ✓ VERIFIED | 96 lines, listModels/getModelInfo/getModelData/resolveModel/resolveRoleName/getRoleNames |
 | `src/probe/introspection/model_navigator.cpp` | Model discovery, pagination, view-to-model resolution | ✓ VERIFIED | 247 lines, smart pagination (all if <=100, first 100 otherwise), 3-step resolveModel |
@@ -42,8 +42,8 @@ score: 4/4 must-haves verified
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| object_id.cpp | qml_inspector.h | #ifdef QTMCP_HAS_QML include and call inspectQmlItem() | ✓ WIRED | Line 224: `QmlItemInfo qmlInfo = inspectQmlItem(obj);` inside #ifdef guard |
-| CMakeLists.txt | src/probe/CMakeLists.txt | find_package(Qt6 Qml Quick QUIET) propagates QTMCP_HAS_QML | ✓ WIRED | Qt6::Qml/Qt6::Quick linked when available, compile definition set, build output shows [QML] |
+| object_id.cpp | qml_inspector.h | #ifdef QTPILOT_HAS_QML include and call inspectQmlItem() | ✓ WIRED | Line 224: `QmlItemInfo qmlInfo = inspectQmlItem(obj);` inside #ifdef guard |
+| CMakeLists.txt | src/probe/CMakeLists.txt | find_package(Qt6 Qml Quick QUIET) propagates QTPILOT_HAS_QML | ✓ WIRED | Qt6::Qml/Qt6::Quick linked when available, compile definition set, build output shows [QML] |
 | native_mode_api.cpp | model_navigator.h | ModelNavigator static methods called from qt.models.* handlers | ✓ WIRED | Lines 828-873: ModelNavigator::listModels/getModelInfo/getModelData called in lambdas |
 | native_mode_api.cpp | qml_inspector.h | inspectQmlItem() called from qt.qml.inspect handler | ✓ WIRED | Line 806: `QmlItemInfo qmlInfo = inspectQmlItem(obj);` in qt.qml.inspect method |
 | native_mode_api.cpp | response_envelope.h | ResponseEnvelope::wrap() on all new method responses | ✓ WIRED | All 4 new methods use ResponseEnvelope::wrap() pattern |
@@ -68,7 +68,7 @@ score: 4/4 must-haves verified
 ### Anti-Patterns Found
 
 None detected. All code follows established patterns:
-- Proper compile guards (#ifdef QTMCP_HAS_QML) with stub fallbacks
+- Proper compile guards (#ifdef QTPILOT_HAS_QML) with stub fallbacks
 - ResponseEnvelope wrapping on all API responses
 - ErrorCode constants for all error cases
 - Static utility class pattern (ModelNavigator, same as RoleMapper)
@@ -81,9 +81,9 @@ None detected. All code follows established patterns:
 ```
 cmake --build build/ --config Debug
 ✓ Compiles cleanly (0 errors, 0 warnings)
-✓ QTMCP_HAS_QML detected: ON
+✓ QTPILOT_HAS_QML detected: ON
 ✓ Qt6::Qml and Qt6::Quick linked
-✓ Build output shows: qtmcp-probe.dll 64 bit, debug executable [QML]
+✓ Build output shows: qtPilot-probe.dll 64 bit, debug executable [QML]
 ```
 
 **Tests:**

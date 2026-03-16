@@ -13,9 +13,9 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - python/src/qtmcp/tools/native.py
-    - python/src/qtmcp/tools/cu.py
-    - python/src/qtmcp/tools/chrome.py
+    - python/src/qtpilot/tools/native.py
+    - python/src/qtpilot/tools/cu.py
+    - python/src/qtpilot/tools/chrome.py
 decisions:
   - decision: "Deferred import of get_probe() inside each tool function"
     rationale: "Avoids circular import since tools module is imported by server module"

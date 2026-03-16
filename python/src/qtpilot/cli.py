@@ -1,4 +1,4 @@
-"""CLI entry point for the QtMCP MCP server."""
+"""CLI entry point for the qtPilot MCP server."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     elif args.ws_url:
         ws_url = args.ws_url
 
-    from qtmcp.server import create_server
+    from qtpilot.server import create_server
 
     server = create_server(
         mode=args.mode,
@@ -36,7 +36,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 def cmd_download_tools(args: argparse.Namespace) -> int:
     """Download probe + launcher archive from GitHub Releases."""
-    from qtmcp.download import (
+    from qtpilot.download import (
         AVAILABLE_VERSIONS,
         ChecksumError,
         DownloadError,
@@ -76,8 +76,8 @@ def cmd_download_tools(args: argparse.Namespace) -> int:
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser with subcommands."""
     parser = argparse.ArgumentParser(
-        prog="qtmcp",
-        description="QtMCP - MCP server for controlling Qt applications",
+        prog="qtpilot",
+        description="qtPilot - MCP server for controlling Qt applications",
     )
 
     subparsers = parser.add_subparsers(
@@ -91,18 +91,18 @@ def create_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser(
         "serve",
         help="Run the MCP server",
-        description="Start the MCP server to control Qt applications via the QtMCP probe.",
+        description="Start the MCP server to control Qt applications via the qtPilot probe.",
     )
     serve_parser.add_argument(
         "--mode",
-        required=True,
-        choices=["native", "cu", "chrome"],
-        help="API mode to expose (native, cu, or chrome)",
+        default="native",
+        choices=["native", "cu", "chrome", "all"],
+        help="API mode to expose (default: native). Use 'all' for every tool set.",
     )
     serve_parser.add_argument(
         "--ws-url",
-        default=os.environ.get("QTMCP_WS_URL"),
-        help="WebSocket URL of the QtMCP probe (auto-connect on startup)",
+        default=os.environ.get("QTPILOT_WS_URL"),
+        help="WebSocket URL of the qtPilot probe (auto-connect on startup)",
     )
     serve_parser.add_argument(
         "--target",
@@ -112,18 +112,18 @@ def create_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("QTMCP_PORT", "9222")),
+        default=int(os.environ.get("QTPILOT_PORT", "9222")),
         help="Port for auto-launched probe (default: 9222)",
     )
     serve_parser.add_argument(
         "--launcher-path",
-        default=os.environ.get("QTMCP_LAUNCHER"),
-        help="Path to qtmcp-launch executable",
+        default=os.environ.get("QTPILOT_LAUNCHER"),
+        help="Path to qtpilot-launch executable",
     )
     serve_parser.add_argument(
         "--discovery-port",
         type=int,
-        default=int(os.environ.get("QTMCP_DISCOVERY_PORT", "9221")),
+        default=int(os.environ.get("QTPILOT_DISCOVERY_PORT", "9221")),
         help="UDP port for probe discovery (default: 9221)",
     )
     serve_parser.add_argument(
@@ -134,7 +134,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     serve_parser.add_argument(
         "--qt-dir",
-        default=os.environ.get("QTMCP_QT_DIR"),
+        default=os.environ.get("QTPILOT_QT_DIR"),
         metavar="PATH",
         help="Path to Qt installation prefix (e.g., C:/Qt/6.8.0/msvc2022_64). "
              "Auto-sets QT_PLUGIN_PATH and PATH for the target application.",
@@ -157,14 +157,14 @@ def create_parser() -> argparse.ArgumentParser:
         "download-tools",
         help="Download probe + launcher from GitHub Releases",
         description=(
-            "Download the QtMCP probe and launcher for your Qt version from GitHub Releases.\n\n"
+            "Download the qtPilot probe and launcher for your Qt version from GitHub Releases.\n\n"
             "Available Qt versions: 5.15, 5.15-patched, 6.5, 6.8, 6.9\n\n"
             "Downloads a platform-specific archive (zip on Windows, tar.gz on Linux)\n"
-            "containing qtmcp-probe and qtmcp-launcher, then extracts them.\n\n"
+            "containing qtPilot-probe and qtPilot-launcher, then extracts them.\n\n"
             "Example:\n"
-            "  qtmcp download-tools --qt-version 6.8\n"
-            "  qtmcp download-tools --qt-version 5.15 --output ./tools\n"
-            "  qtmcp download-tools --qt-version 5.15-patched --release v0.3.0"
+            "  qtpilot download-tools --qt-version 6.8\n"
+            "  qtpilot download-tools --qt-version 5.15 --output ./tools\n"
+            "  qtpilot download-tools --qt-version 5.15-patched --release v0.3.0"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

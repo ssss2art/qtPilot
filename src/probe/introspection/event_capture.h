@@ -1,16 +1,16 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QJsonObject>
 #include <QMutex>
 #include <QObject>
 #include <QSet>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Global event filter that captures user-interaction QEvents.
 ///
@@ -20,10 +20,10 @@ namespace qtmcp {
 /// paint, timer, layout, and other noise is ignored.
 ///
 /// Each captured event is emitted as a JSON notification via eventCaptured(),
-/// which the probe wires to the WebSocket as "qtmcp.eventCaptured".
+/// which the probe wires to the WebSocket as "qtpilot.eventCaptured".
 ///
 /// Thread Safety: All public methods are thread-safe.
-class QTMCP_EXPORT EventCapture : public QObject {
+class QTPILOT_EXPORT EventCapture : public QObject {
   Q_OBJECT
 
  public:
@@ -81,4 +81,4 @@ class QTMCP_EXPORT EventCapture : public QObject {
   mutable QMutex m_mutex;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

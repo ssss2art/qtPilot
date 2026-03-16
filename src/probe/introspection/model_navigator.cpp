@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "introspection/model_navigator.h"
@@ -12,7 +12,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 
-namespace qtmcp {
+namespace qtPilot {
 
 // Standard Qt role name lookup table
 static const QHash<QString, int>& standardRoleNames() {
@@ -237,4 +237,4 @@ QJsonObject ModelNavigator::getRoleNames(QAbstractItemModel* model) {
   return result;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

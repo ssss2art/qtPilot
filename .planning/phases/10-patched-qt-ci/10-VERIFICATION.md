@@ -72,7 +72,7 @@ None detected. No TODO/FIXME/PLACEHOLDER comments, no stub patterns, no empty im
 Four runtime validations needed:
 
 1. **Cache Behavior** - Verify cache hit skips Qt build on second run (30-60 min -> 5 min)
-2. **Probe Artifacts** - Verify artifacts contain correct probe binaries in lib/qtmcp/qt5.15/
+2. **Probe Artifacts** - Verify artifacts contain correct probe binaries in lib/qtpilot/qt5.15/
 3. **Workflow Isolation** - Verify ci.yml and ci-patched-qt.yml run independently
 4. **Patch Application** - Verify patch application works with real patch file
 

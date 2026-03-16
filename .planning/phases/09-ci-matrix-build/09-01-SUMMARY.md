@@ -54,8 +54,8 @@ metrics:
 - **Qt installation:** jurplel/install-qt-action@v4 with caching
 - **vcpkg:** lukka/run-vcpkg@v11 installs only nlohmann-json and spdlog
 - **fail-fast: false** ensures all cells run to completion
-- **Install layout verification** step confirms probe binary exists in versioned `lib/qtmcp/{tag}/` dir
-- **Artifact naming:** `qtmcp-{artifact_tag}-{platform}` (e.g., `qtmcp-qt6.9-windows-msvc`)
+- **Install layout verification** step confirms probe binary exists in versioned `lib/qtpilot/{tag}/` dir
+- **Artifact naming:** `qtpilot-{artifact_tag}-{platform}` (e.g., `qtpilot-qt6.9-windows-msvc`)
 - **Triggers:** push/PR to main with path filters, plus workflow_dispatch
 - **Preserved jobs:** lint (ubuntu-24.04), python (ubuntu-24.04), codeql (ubuntu-24.04 with Qt 6.8)
 
@@ -77,11 +77,11 @@ None - plan executed exactly as written.
 - install-qt-action@v4: 2 usages (build matrix + codeql)
 - workflow_dispatch: present
 - Path filters: present on push and pull_request
-- Artifact names: `qtmcp-${{ matrix.artifact_tag }}-${{ matrix.platform }}`
+- Artifact names: `qtpilot-${{ matrix.artifact_tag }}-${{ matrix.platform }}`
 - Install layout verification: present for both Linux and Windows
 
 ## Next Phase Readiness
 
-- Artifact names follow `qtmcp-qt{M}.{m}-{platform}` format expected by Phase 11 (packaging)
-- Install layout `lib/qtmcp/qt{M}.{m}/` aligns with Phase 8 conventions
+- Artifact names follow `qtpilot-qt{M}.{m}-{platform}` format expected by Phase 11 (packaging)
+- Install layout `lib/qtpilot/qt{M}.{m}/` aligns with Phase 8 conventions
 - No blockers for subsequent phases

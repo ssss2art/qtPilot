@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "core/object_registry.h"
@@ -33,7 +33,7 @@ std::atomic<bool> g_singletonCreating{false};
 // Hook callbacks - these are called by Qt for every QObject creation/destruction
 // They must be minimal and thread-safe.
 
-void qtmcpAddObjectHook(QObject* obj) {
+void qtpilotAddObjectHook(QObject* obj) {
   // Guard against re-entry during ObjectRegistry singleton creation
   // When the singleton is being created, skip registration to avoid recursion
   if (g_singletonCreating.load(std::memory_order_acquire)) {
@@ -45,7 +45,7 @@ void qtmcpAddObjectHook(QObject* obj) {
   }
 
   // Register the object
-  qtmcp::ObjectRegistry::instance()->registerObject(obj);
+  qtPilot::ObjectRegistry::instance()->registerObject(obj);
 
   // Chain to previous callback (e.g., GammaRay)
   if (g_previousAddCallback) {
@@ -53,7 +53,7 @@ void qtmcpAddObjectHook(QObject* obj) {
   }
 }
 
-void qtmcpRemoveObjectHook(QObject* obj) {
+void qtpilotRemoveObjectHook(QObject* obj) {
   // Guard against re-entry during singleton creation
   if (g_singletonCreating.load(std::memory_order_acquire)) {
     if (g_previousRemoveCallback) {
@@ -63,7 +63,7 @@ void qtmcpRemoveObjectHook(QObject* obj) {
   }
 
   // Unregister the object
-  qtmcp::ObjectRegistry::instance()->unregisterObject(obj);
+  qtPilot::ObjectRegistry::instance()->unregisterObject(obj);
 
   // Chain to previous callback
   if (g_previousRemoveCallback) {
@@ -71,7 +71,7 @@ void qtmcpRemoveObjectHook(QObject* obj) {
   }
 }
 
-namespace qtmcp {
+namespace qtPilot {
 
 // Thread-safe singleton storage using Q_GLOBAL_STATIC
 Q_GLOBAL_STATIC(ObjectRegistry, s_objectRegistryInstance)
@@ -94,7 +94,7 @@ ObjectRegistry* ObjectRegistry::instance() {
 ObjectRegistry::ObjectRegistry() : QObject(nullptr) {
   // Log creation for debugging - use fprintf to avoid potential qDebug issues
   // during singleton initialization
-  fprintf(stderr, "[QtMCP] ObjectRegistry created\n");
+  fprintf(stderr, "[qtPilot] ObjectRegistry created\n");
 }
 
 ObjectRegistry::~ObjectRegistry() {
@@ -103,7 +103,7 @@ ObjectRegistry::~ObjectRegistry() {
   // into unregisterObject on a partially-destroyed object
   uninstallObjectHooks();
 
-  fprintf(stderr, "[QtMCP] ObjectRegistry destroyed\n");
+  fprintf(stderr, "[qtPilot] ObjectRegistry destroyed\n");
 }
 
 void ObjectRegistry::registerObject(QObject* obj) {
@@ -460,7 +460,7 @@ void ObjectRegistry::scanExistingObjects(QObject* root) {
 
 void installObjectHooks() {
   if (g_hooksInstalled) {
-    qWarning() << "[QtMCP] Object hooks already installed";
+    qWarning() << "[qtPilot] Object hooks already installed";
     return;
   }
 
@@ -468,11 +468,11 @@ void installObjectHooks() {
   // qtHookData[QHooks::HookDataVersion] contains the version number
   quintptr hookVersion = qtHookData[QHooks::HookDataVersion];
   if (hookVersion < 1) {
-    qWarning() << "[QtMCP] qtHookData version too old:" << hookVersion;
+    qWarning() << "[qtPilot] qtHookData version too old:" << hookVersion;
     return;
   }
 
-  qDebug() << "[QtMCP] Installing object hooks (qtHookData version:" << hookVersion << ")";
+  qDebug() << "[qtPilot] Installing object hooks (qtHookData version:" << hookVersion << ")";
 
   // Save existing callbacks for daisy-chaining
   g_previousAddCallback =
@@ -481,18 +481,18 @@ void installObjectHooks() {
       reinterpret_cast<QHooks::RemoveQObjectCallback>(qtHookData[QHooks::RemoveQObject]);
 
   if (g_previousAddCallback) {
-    qDebug() << "[QtMCP] Daisy-chaining to existing AddQObject hook";
+    qDebug() << "[qtPilot] Daisy-chaining to existing AddQObject hook";
   }
   if (g_previousRemoveCallback) {
-    qDebug() << "[QtMCP] Daisy-chaining to existing RemoveQObject hook";
+    qDebug() << "[qtPilot] Daisy-chaining to existing RemoveQObject hook";
   }
 
   // Install our callbacks
-  qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(&qtmcpAddObjectHook);
-  qtHookData[QHooks::RemoveQObject] = reinterpret_cast<quintptr>(&qtmcpRemoveObjectHook);
+  qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(&qtpilotAddObjectHook);
+  qtHookData[QHooks::RemoveQObject] = reinterpret_cast<quintptr>(&qtpilotRemoveObjectHook);
 
   g_hooksInstalled = true;
-  qDebug() << "[QtMCP] Object hooks installed successfully";
+  qDebug() << "[qtPilot] Object hooks installed successfully";
 }
 
 void uninstallObjectHooks() {
@@ -500,7 +500,7 @@ void uninstallObjectHooks() {
     return;
   }
 
-  qDebug() << "[QtMCP] Uninstalling object hooks";
+  qDebug() << "[qtPilot] Uninstalling object hooks";
 
   // Restore previous callbacks (or nullptr)
   qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(g_previousAddCallback);
@@ -510,7 +510,7 @@ void uninstallObjectHooks() {
   g_previousRemoveCallback = nullptr;
   g_hooksInstalled = false;
 
-  qDebug() << "[QtMCP] Object hooks uninstalled";
+  qDebug() << "[qtPilot] Object hooks uninstalled";
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

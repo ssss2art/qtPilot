@@ -33,7 +33,7 @@ expected: Objects can be referenced by hierarchical path (e.g., QMainWindow/cent
 result: pass
 
 ### 6. Symbolic Name Map Management
-expected: qt.names.register assigns a symbolic name to an object path. qt.names.list shows all registered names. qt.names.unregister removes a name. Names auto-load from QTMCP_NAME_MAP env var or qtmcp-names.json file.
+expected: qt.names.register assigns a symbolic name to an object path. qt.names.list shows all registered names. qt.names.unregister removes a name. Names auto-load from QTPILOT_NAME_MAP env var or qtPilot-names.json file.
 result: issue
 reported: "qt.names.register, qt.names.list, qt.names.unregister all work correctly. However, using a symbolic name (e.g., 'myStyle') as objectId in qt.objects.info returns 'Object not found' instead of resolving through the name map. The name map CRUD works, but symbolic names don't resolve when used as object IDs in other methods."
 severity: major
@@ -58,8 +58,8 @@ result: pass
 expected: Sending a request with missing required params (e.g., qt.objects.info without objectId) returns a JSON-RPC error with a specific error code (not generic -32603) and a data field with hints about what's wrong.
 result: pass
 
-### 12. Backward Compatibility with qtmcp.* Methods
-expected: Old-style methods like qtmcp.listObjects, qtmcp.getProperty, etc. still work alongside the new qt.* methods. No "method not found" errors for old method names.
+### 12. Backward Compatibility with qtpilot.* Methods
+expected: Old-style methods like qtpilot.listObjects, qtpilot.getProperty, etc. still work alongside the new qt.* methods. No "method not found" errors for old method names.
 result: pass
 
 ### 13. All Integration Tests Pass

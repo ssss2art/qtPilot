@@ -3,82 +3,82 @@
 include(CMakeFindDependencyMacro)
 
 # ---------------------------------------------------------------------------
-# QtMCP Package Configuration
+# qtPilot Package Configuration
 # Auto-detects the consumer's Qt version (Qt5 or Qt6) and resolves to
 # the correct probe binary under lib/.
 # ---------------------------------------------------------------------------
 
 # Detect which Qt version the consumer is using.
 if(TARGET Qt6::Core)
-    set(_qtmcp_qt_major 6)
+    set(_qtpilot_qt_major 6)
     get_target_property(_qt_version Qt6::Core VERSION)
     if(NOT _qt_version)
         set(_qt_version "${Qt6Core_VERSION}")
     endif()
 elseif(TARGET Qt5::Core)
-    set(_qtmcp_qt_major 5)
+    set(_qtpilot_qt_major 5)
     get_target_property(_qt_version Qt5::Core VERSION)
     if(NOT _qt_version)
         set(_qt_version "${Qt5Core_VERSION}")
     endif()
 else()
-    set(QtMCP_FOUND FALSE)
-    set(QtMCP_NOT_FOUND_MESSAGE
-        "QtMCP requires Qt5 (5.15+) or Qt6. No Qt found. "
-        "Call find_package(Qt6) or find_package(Qt5) before find_package(QtMCP).")
+    set(qtPilot_FOUND FALSE)
+    set(qtPilot_NOT_FOUND_MESSAGE
+        "qtPilot requires Qt5 (5.15+) or Qt6. No Qt found. "
+        "Call find_package(Qt6) or find_package(Qt5) before find_package(qtPilot).")
     return()
 endif()
 
 # Extract major.minor for versioned naming (e.g. "qt6.9")
-string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" _qtmcp_qt_version_match "${_qt_version}")
-set(_qtmcp_qt_version_tag "qt${_qtmcp_qt_version_match}")
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" _qtpilot_qt_version_match "${_qt_version}")
+set(_qtpilot_qt_version_tag "qt${_qtpilot_qt_version_match}")
 
 # Find Qt dependencies
-if(_qtmcp_qt_major EQUAL 6)
+if(_qtpilot_qt_major EQUAL 6)
     find_dependency(Qt6 COMPONENTS Core Network WebSockets Widgets)
 else()
     find_dependency(Qt5 5.15 COMPONENTS Core Network WebSockets Widgets)
 endif()
 
 # Compute paths relative to this config file location.
-# Config is installed at: <prefix>/share/cmake/QtMCP/QtMCPConfig.cmake
+# Config is installed at: <prefix>/share/cmake/qtPilot/qtPilotConfig.cmake
 # Libraries are at:       <prefix>/lib/
-set_and_check(QTMCP_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
-get_filename_component(QTMCP_PREFIX "${QTMCP_CMAKE_DIR}/../../.." ABSOLUTE)
+set_and_check(QTPILOT_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+get_filename_component(QTPILOT_PREFIX "${QTPILOT_CMAKE_DIR}/../../.." ABSOLUTE)
 
-set(QTMCP_LIB_DIR "${QTMCP_PREFIX}/lib")
-set(QTMCP_INCLUDE_DIR "${QTMCP_PREFIX}/include/qtmcp")
+set(QTPILOT_LIB_DIR "${QTPILOT_PREFIX}/lib")
+set(QTPILOT_INCLUDE_DIR "${QTPILOT_PREFIX}/include/qtpilot")
 
 # ---------------------------------------------------------------------------
-# Create imported target: QtMCP::Probe
+# Create imported target: qtPilot::Probe
 # ---------------------------------------------------------------------------
-if(NOT TARGET QtMCP::Probe)
-    add_library(QtMCP::Probe SHARED IMPORTED)
+if(NOT TARGET qtPilot::Probe)
+    add_library(qtPilot::Probe SHARED IMPORTED)
 
-    set_target_properties(QtMCP::Probe PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${QTMCP_INCLUDE_DIR}"
+    set_target_properties(qtPilot::Probe PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${QTPILOT_INCLUDE_DIR}"
     )
 
-    # Library base name matches the build output: qtmcp-probe-qt{M}.{m}
-    set(_probe_base_name "qtmcp-probe-${_qtmcp_qt_version_tag}")
+    # Library base name matches the build output: qtPilot-probe-qt{M}.{m}
+    set(_probe_base_name "qtPilot-probe-${_qtpilot_qt_version_tag}")
 
     if(WIN32)
         find_file(_probe_dll
             NAMES "${_probe_base_name}.dll"
-            PATHS "${QTMCP_LIB_DIR}"
+            PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
         )
         find_file(_probe_implib
             NAMES "${_probe_base_name}.lib" "${_probe_base_name}.dll.a"
-            PATHS "${QTMCP_LIB_DIR}"
+            PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
         )
         if(_probe_dll)
-            set_target_properties(QtMCP::Probe PROPERTIES
+            set_target_properties(qtPilot::Probe PROPERTIES
                 IMPORTED_LOCATION "${_probe_dll}"
             )
             if(_probe_implib)
-                set_target_properties(QtMCP::Probe PROPERTIES
+                set_target_properties(qtPilot::Probe PROPERTIES
                     IMPORTED_IMPLIB "${_probe_implib}"
                 )
             endif()
@@ -86,39 +86,39 @@ if(NOT TARGET QtMCP::Probe)
     else()
         find_file(_probe_so
             NAMES "lib${_probe_base_name}.so"
-            PATHS "${QTMCP_LIB_DIR}"
+            PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
         )
         if(_probe_so)
-            set_target_properties(QtMCP::Probe PROPERTIES
+            set_target_properties(qtPilot::Probe PROPERTIES
                 IMPORTED_LOCATION "${_probe_so}"
             )
         endif()
     endif()
 
     # Link Qt dependencies on the imported target
-    if(_qtmcp_qt_major EQUAL 6)
-        set_target_properties(QtMCP::Probe PROPERTIES
+    if(_qtpilot_qt_major EQUAL 6)
+        set_target_properties(qtPilot::Probe PROPERTIES
             INTERFACE_LINK_LIBRARIES "Qt6::Core;Qt6::Network;Qt6::WebSockets;Qt6::Widgets"
         )
     else()
-        set_target_properties(QtMCP::Probe PROPERTIES
+        set_target_properties(qtPilot::Probe PROPERTIES
             INTERFACE_LINK_LIBRARIES "Qt5::Core;Qt5::Network;Qt5::WebSockets;Qt5::Widgets"
         )
     endif()
 endif()
 
 # Include helper functions
-include("${CMAKE_CURRENT_LIST_DIR}/qtmcp_inject_probe.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/qtPilot_inject_probe.cmake")
 
 # Clean up temporary variables
-unset(_qtmcp_qt_major)
+unset(_qtpilot_qt_major)
 unset(_qt_version)
-unset(_qtmcp_qt_version_match)
-unset(_qtmcp_qt_version_tag)
+unset(_qtpilot_qt_version_match)
+unset(_qtpilot_qt_version_tag)
 unset(_probe_base_name)
 unset(_probe_dll CACHE)
 unset(_probe_implib CACHE)
 unset(_probe_so CACHE)
 
-check_required_components(QtMCP)
+check_required_components(qtPilot)

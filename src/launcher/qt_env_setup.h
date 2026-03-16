@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Describes the Qt environment that was detected and applied.
 struct QtEnvironmentResult {
@@ -37,4 +37,4 @@ struct QtEnvironmentResult {
 /// @return Result struct describing what was found and applied.
 QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& targetExe, bool quiet);
 
-}  // namespace qtmcp
+}  // namespace qtPilot

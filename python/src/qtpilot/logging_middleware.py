@@ -27,14 +27,14 @@ class LoggingMiddleware(Middleware):
     """Intercepts MCP tool calls to log request/response at the MCP layer."""
 
     async def on_call_tool(self, context, call_next):
-        from qtmcp.server import get_message_logger
+        from qtpilot.server import get_message_logger
 
         logger = get_message_logger()
         tool_name = context.message.name
         args = context.message.arguments or {}
 
         # Skip logging our own tools to avoid recursion
-        if tool_name.startswith("qtmcp_log_"):
+        if tool_name.startswith("qtpilot_log_"):
             return await call_next(context)
 
         if not logger.is_active:

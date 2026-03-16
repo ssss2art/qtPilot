@@ -13,7 +13,7 @@ from unittest import mock
 
 import pytest
 
-from qtmcp.download import (
+from qtpilot.download import (
     AVAILABLE_VERSIONS,
     DEFAULT_ARCH,
     LINUX_ARCHITECTURES,
@@ -42,22 +42,22 @@ class TestPlatformDetection:
 
     def test_linux_platform_detection(self) -> None:
         """Linux platforms should return 'linux'."""
-        with mock.patch("qtmcp.download.sys.platform", "linux"):
+        with mock.patch("qtpilot.download.sys.platform", "linux"):
             assert detect_platform() == "linux"
 
     def test_linux2_platform_detection(self) -> None:
         """linux2 (older Python) should also work."""
-        with mock.patch("qtmcp.download.sys.platform", "linux2"):
+        with mock.patch("qtpilot.download.sys.platform", "linux2"):
             assert detect_platform() == "linux"
 
     def test_win32_platform_detection(self) -> None:
         """Windows platforms should return 'windows'."""
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
             assert detect_platform() == "windows"
 
     def test_unsupported_platform_raises(self) -> None:
         """Unsupported platforms should raise UnsupportedPlatformError."""
-        with mock.patch("qtmcp.download.sys.platform", "darwin"):
+        with mock.patch("qtpilot.download.sys.platform", "darwin"):
             with pytest.raises(UnsupportedPlatformError) as exc_info:
                 detect_platform()
             assert "darwin" in str(exc_info.value)
@@ -69,17 +69,17 @@ class TestDefaultReleaseTag:
 
     def test_clean_version(self) -> None:
         """Clean version produces v-prefixed tag."""
-        with mock.patch("qtmcp.download._pkg_version", return_value="0.2.0"):
+        with mock.patch("qtpilot.download._pkg_version", return_value="0.2.0"):
             assert _default_release_tag() == "v0.2.0"
 
     def test_dev_suffix_stripped(self) -> None:
         """Dev suffix is stripped."""
-        with mock.patch("qtmcp.download._pkg_version", return_value="0.3.0.dev5+gabcdef"):
+        with mock.patch("qtpilot.download._pkg_version", return_value="0.3.0.dev5+gabcdef"):
             assert _default_release_tag() == "v0.3.0"
 
     def test_post_suffix_stripped(self) -> None:
         """Post suffix is stripped."""
-        with mock.patch("qtmcp.download._pkg_version", return_value="0.2.0.post1"):
+        with mock.patch("qtpilot.download._pkg_version", return_value="0.2.0.post1"):
             assert _default_release_tag() == "v0.2.0"
 
 
@@ -106,33 +106,33 @@ class TestFilenames:
 
     def test_probe_filename_windows(self) -> None:
         """Windows probe filename."""
-        assert get_probe_filename("windows") == "qtmcp-probe.dll"
+        assert get_probe_filename("windows") == "qtPilot-probe.dll"
 
     def test_probe_filename_linux(self) -> None:
         """Linux probe filename."""
-        assert get_probe_filename("linux") == "qtmcp-probe.so"
+        assert get_probe_filename("linux") == "qtPilot-probe.so"
 
     def test_probe_filename_auto_detect(self) -> None:
         """Probe filename auto-detects platform."""
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            assert get_probe_filename() == "qtmcp-probe.dll"
-        with mock.patch("qtmcp.download.sys.platform", "linux"):
-            assert get_probe_filename() == "qtmcp-probe.so"
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            assert get_probe_filename() == "qtPilot-probe.dll"
+        with mock.patch("qtpilot.download.sys.platform", "linux"):
+            assert get_probe_filename() == "qtPilot-probe.so"
 
     def test_launcher_filename_windows(self) -> None:
         """Windows launcher filename."""
-        assert get_launcher_filename("windows") == "qtmcp-launcher.exe"
+        assert get_launcher_filename("windows") == "qtPilot-launcher.exe"
 
     def test_launcher_filename_linux(self) -> None:
         """Linux launcher filename."""
-        assert get_launcher_filename("linux") == "qtmcp-launcher"
+        assert get_launcher_filename("linux") == "qtPilot-launcher"
 
     def test_launcher_filename_auto_detect(self) -> None:
         """Launcher filename auto-detects platform."""
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            assert get_launcher_filename() == "qtmcp-launcher.exe"
-        with mock.patch("qtmcp.download.sys.platform", "linux"):
-            assert get_launcher_filename() == "qtmcp-launcher"
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            assert get_launcher_filename() == "qtPilot-launcher.exe"
+        with mock.patch("qtpilot.download.sys.platform", "linux"):
+            assert get_launcher_filename() == "qtPilot-launcher"
 
 
 class TestArchiveFilename:
@@ -140,49 +140,49 @@ class TestArchiveFilename:
 
     def test_windows_zip_default_x64(self) -> None:
         """Windows archives default to x64 and include arch suffix."""
-        assert get_archive_filename("6.8", "windows") == "qtmcp-qt6.8-windows-x64.zip"
+        assert get_archive_filename("6.8", "windows") == "qtpilot-qt6.8-windows-x64.zip"
 
     def test_windows_zip_explicit_x64(self) -> None:
         """Windows archives with explicit x64."""
-        assert get_archive_filename("6.8", "windows", arch="x64") == "qtmcp-qt6.8-windows-x64.zip"
+        assert get_archive_filename("6.8", "windows", arch="x64") == "qtpilot-qt6.8-windows-x64.zip"
 
     def test_windows_zip_x86(self) -> None:
         """Windows x86 archives include -x86 suffix."""
-        assert get_archive_filename("6.8", "windows", arch="x86") == "qtmcp-qt6.8-windows-x86.zip"
+        assert get_archive_filename("6.8", "windows", arch="x86") == "qtpilot-qt6.8-windows-x86.zip"
 
     def test_linux_tar_gz_default_x64(self) -> None:
         """Linux x64 archives have no arch suffix (backward compat)."""
-        assert get_archive_filename("6.8", "linux") == "qtmcp-qt6.8-linux.tar.gz"
+        assert get_archive_filename("6.8", "linux") == "qtpilot-qt6.8-linux.tar.gz"
 
     def test_linux_tar_gz_explicit_x64(self) -> None:
         """Linux with explicit x64 has no arch suffix."""
-        assert get_archive_filename("6.8", "linux", arch="x64") == "qtmcp-qt6.8-linux.tar.gz"
+        assert get_archive_filename("6.8", "linux", arch="x64") == "qtpilot-qt6.8-linux.tar.gz"
 
     def test_linux_tar_gz_x86(self) -> None:
         """Linux x86 archives include -x86 suffix."""
-        assert get_archive_filename("6.8", "linux", arch="x86") == "qtmcp-qt6.8-linux-x86.tar.gz"
+        assert get_archive_filename("6.8", "linux", arch="x86") == "qtpilot-qt6.8-linux-x86.tar.gz"
 
     def test_patched_version(self) -> None:
         """Patched versions should be preserved in filename."""
-        assert get_archive_filename("5.15-patched", "linux") == "qtmcp-qt5.15-patched-linux.tar.gz"
+        assert get_archive_filename("5.15-patched", "linux") == "qtpilot-qt5.15-patched-linux.tar.gz"
 
     def test_patched_version_x86(self) -> None:
         """Patched version with x86 arch."""
-        assert get_archive_filename("5.15-patched", "linux", arch="x86") == "qtmcp-qt5.15-patched-linux-x86.tar.gz"
+        assert get_archive_filename("5.15-patched", "linux", arch="x86") == "qtpilot-qt5.15-patched-linux-x86.tar.gz"
 
     def test_version_normalization(self) -> None:
         """Full version strings should be normalized."""
-        assert get_archive_filename("6.8.0", "windows") == "qtmcp-qt6.8-windows-x64.zip"
+        assert get_archive_filename("6.8.0", "windows") == "qtpilot-qt6.8-windows-x64.zip"
 
     def test_auto_detect_platform(self) -> None:
         """Platform should be auto-detected when not specified."""
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            assert get_archive_filename("6.8") == "qtmcp-qt6.8-windows-x64.zip"
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            assert get_archive_filename("6.8") == "qtpilot-qt6.8-windows-x64.zip"
 
     def test_arch_none_defaults_to_x64(self) -> None:
         """arch=None should default to x64 behavior."""
-        assert get_archive_filename("6.8", "windows", arch=None) == "qtmcp-qt6.8-windows-x64.zip"
-        assert get_archive_filename("6.8", "linux", arch=None) == "qtmcp-qt6.8-linux.tar.gz"
+        assert get_archive_filename("6.8", "windows", arch=None) == "qtpilot-qt6.8-windows-x64.zip"
+        assert get_archive_filename("6.8", "linux", arch=None) == "qtpilot-qt6.8-linux.tar.gz"
 
 
 class TestArchiveUrlBuilding:
@@ -192,40 +192,40 @@ class TestArchiveUrlBuilding:
         """Build correct URL for Windows archive (default x64)."""
         url = build_archive_url("6.8", release_tag="v0.3.0", platform_name="windows")
         assert url == (
-            "https://github.com/ssss2art/QtMcp/releases/download/"
-            "v0.3.0/qtmcp-qt6.8-windows-x64.zip"
+            "https://github.com/ssss2art/qtPilot/releases/download/"
+            "v0.3.0/qtpilot-qt6.8-windows-x64.zip"
         )
 
     def test_build_archive_url_windows_x86(self) -> None:
         """Build correct URL for Windows x86 archive."""
         url = build_archive_url("6.8", release_tag="v0.3.0", platform_name="windows", arch="x86")
         assert url == (
-            "https://github.com/ssss2art/QtMcp/releases/download/"
-            "v0.3.0/qtmcp-qt6.8-windows-x86.zip"
+            "https://github.com/ssss2art/qtPilot/releases/download/"
+            "v0.3.0/qtpilot-qt6.8-windows-x86.zip"
         )
 
     def test_build_archive_url_linux(self) -> None:
         """Build correct URL for Linux archive (no arch suffix for x64)."""
         url = build_archive_url("6.8", release_tag="v0.3.0", platform_name="linux")
         assert url == (
-            "https://github.com/ssss2art/QtMcp/releases/download/"
-            "v0.3.0/qtmcp-qt6.8-linux.tar.gz"
+            "https://github.com/ssss2art/qtPilot/releases/download/"
+            "v0.3.0/qtpilot-qt6.8-linux.tar.gz"
         )
 
     def test_build_archive_url_linux_x86(self) -> None:
         """Build correct URL for Linux x86 archive."""
         url = build_archive_url("6.8", release_tag="v0.3.0", platform_name="linux", arch="x86")
         assert url == (
-            "https://github.com/ssss2art/QtMcp/releases/download/"
-            "v0.3.0/qtmcp-qt6.8-linux-x86.tar.gz"
+            "https://github.com/ssss2art/qtPilot/releases/download/"
+            "v0.3.0/qtpilot-qt6.8-linux-x86.tar.gz"
         )
 
     def test_build_archive_url_patched(self) -> None:
         """Build correct URL for patched Qt version."""
         url = build_archive_url("5.15-patched", release_tag="v0.3.0", platform_name="linux")
         assert url == (
-            "https://github.com/ssss2art/QtMcp/releases/download/"
-            "v0.3.0/qtmcp-qt5.15-patched-linux.tar.gz"
+            "https://github.com/ssss2art/qtPilot/releases/download/"
+            "v0.3.0/qtpilot-qt5.15-patched-linux.tar.gz"
         )
 
     def test_build_archive_url_invalid_version(self) -> None:
@@ -237,24 +237,24 @@ class TestArchiveUrlBuilding:
 
     def test_build_archive_url_latest_uses_package_version(self) -> None:
         """'latest' release tag should resolve from package version."""
-        with mock.patch("qtmcp.download._pkg_version", return_value="0.3.0"):
+        with mock.patch("qtpilot.download._pkg_version", return_value="0.3.0"):
             url = build_archive_url("6.8", release_tag="latest", platform_name="linux")
             assert "/v0.3.0/" in url
 
     def test_build_archive_url_latest_strips_dev_suffix(self) -> None:
         """'latest' should strip dev suffixes from package version."""
-        with mock.patch("qtmcp.download._pkg_version", return_value="0.3.0.dev5+gabcdef"):
+        with mock.patch("qtpilot.download._pkg_version", return_value="0.3.0.dev5+gabcdef"):
             url = build_archive_url("6.8", release_tag="latest", platform_name="linux")
             assert "/v0.3.0/" in url
 
     def test_build_checksums_url(self) -> None:
         """Build correct URL for SHA256SUMS file."""
         url = build_checksums_url("v1.2.3")
-        assert url == "https://github.com/ssss2art/QtMcp/releases/download/v1.2.3/SHA256SUMS"
+        assert url == "https://github.com/ssss2art/qtPilot/releases/download/v1.2.3/SHA256SUMS"
 
     def test_build_checksums_url_latest_uses_package_version(self) -> None:
         """'latest' should resolve from package version for checksums."""
-        with mock.patch("qtmcp.download._pkg_version", return_value="0.2.0"):
+        with mock.patch("qtpilot.download._pkg_version", return_value="0.2.0"):
             url = build_checksums_url("latest")
             assert "/v0.2.0/" in url
 
@@ -265,18 +265,18 @@ class TestChecksumParsing:
     def test_parse_standard_format(self) -> None:
         """Parse standard sha256sum output format."""
         content = """\
-abc123def456  qtmcp-qt6.8-linux.tar.gz
-789xyz012abc  qtmcp-qt6.8-windows-x64.zip
+abc123def456  qtpilot-qt6.8-linux.tar.gz
+789xyz012abc  qtpilot-qt6.8-windows-x64.zip
 """
         checksums = parse_checksums(content)
-        assert checksums["qtmcp-qt6.8-linux.tar.gz"] == "abc123def456"
-        assert checksums["qtmcp-qt6.8-windows-x64.zip"] == "789xyz012abc"
+        assert checksums["qtpilot-qt6.8-linux.tar.gz"] == "abc123def456"
+        assert checksums["qtpilot-qt6.8-windows-x64.zip"] == "789xyz012abc"
 
     def test_parse_binary_mode_format(self) -> None:
         """Parse sha256sum binary mode format (asterisk prefix)."""
-        content = "abc123def456 *qtmcp-qt6.8-linux.tar.gz\n"
+        content = "abc123def456 *qtpilot-qt6.8-linux.tar.gz\n"
         checksums = parse_checksums(content)
-        assert checksums["qtmcp-qt6.8-linux.tar.gz"] == "abc123def456"
+        assert checksums["qtpilot-qt6.8-linux.tar.gz"] == "abc123def456"
 
     def test_parse_empty_lines_ignored(self) -> None:
         """Empty lines should be ignored."""
@@ -322,42 +322,42 @@ class TestExtractArchive:
 
     def test_extract_zip(self, tmp_path: Path) -> None:
         """Extract a zip archive with probe + launcher."""
-        archive_path = tmp_path / "qtmcp-qt6.8-windows.zip"
+        archive_path = tmp_path / "qtpilot-qt6.8-windows.zip"
         output_dir = tmp_path / "output"
 
         with zipfile.ZipFile(archive_path, "w") as zf:
-            zf.writestr("qtmcp-probe.dll", b"probe binary")
-            zf.writestr("qtmcp-launcher.exe", b"launcher binary")
+            zf.writestr("qtPilot-probe.dll", b"probe binary")
+            zf.writestr("qtPilot-launcher.exe", b"launcher binary")
 
         extracted = extract_archive(archive_path, output_dir)
 
         assert len(extracted) == 2
-        assert (output_dir / "qtmcp-probe.dll").exists()
-        assert (output_dir / "qtmcp-launcher.exe").exists()
-        assert (output_dir / "qtmcp-probe.dll").read_bytes() == b"probe binary"
-        assert (output_dir / "qtmcp-launcher.exe").read_bytes() == b"launcher binary"
+        assert (output_dir / "qtPilot-probe.dll").exists()
+        assert (output_dir / "qtPilot-launcher.exe").exists()
+        assert (output_dir / "qtPilot-probe.dll").read_bytes() == b"probe binary"
+        assert (output_dir / "qtPilot-launcher.exe").read_bytes() == b"launcher binary"
 
     def test_extract_tar_gz(self, tmp_path: Path) -> None:
         """Extract a tar.gz archive with probe + launcher."""
-        archive_path = tmp_path / "qtmcp-qt6.8-linux.tar.gz"
+        archive_path = tmp_path / "qtpilot-qt6.8-linux.tar.gz"
         output_dir = tmp_path / "output"
 
         with tarfile.open(archive_path, "w:gz") as tf:
             probe_data = b"probe binary"
-            info = tarfile.TarInfo(name="qtmcp-probe.so")
+            info = tarfile.TarInfo(name="qtPilot-probe.so")
             info.size = len(probe_data)
             tf.addfile(info, io.BytesIO(probe_data))
 
             launcher_data = b"launcher binary"
-            info = tarfile.TarInfo(name="qtmcp-launcher")
+            info = tarfile.TarInfo(name="qtPilot-launcher")
             info.size = len(launcher_data)
             tf.addfile(info, io.BytesIO(launcher_data))
 
         extracted = extract_archive(archive_path, output_dir)
 
         assert len(extracted) == 2
-        assert (output_dir / "qtmcp-probe.so").exists()
-        assert (output_dir / "qtmcp-launcher").exists()
+        assert (output_dir / "qtPilot-probe.so").exists()
+        assert (output_dir / "qtPilot-launcher").exists()
 
     def test_extract_zip_rejects_path_traversal(self, tmp_path: Path) -> None:
         """Zip archives with path traversal should be rejected."""
@@ -424,8 +424,8 @@ class TestDownloadAndExtract:
         """Create an in-memory zip archive."""
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("qtmcp-probe.dll", probe_data)
-            zf.writestr("qtmcp-launcher.exe", launcher_data)
+            zf.writestr("qtPilot-probe.dll", probe_data)
+            zf.writestr("qtPilot-launcher.exe", launcher_data)
         return buf.getvalue()
 
     def test_download_success_without_checksum(self, tmp_path: Path) -> None:
@@ -435,8 +435,8 @@ class TestDownloadAndExtract:
         def mock_urlopen(url: str, timeout: int | None = None) -> io.BytesIO:
             return io.BytesIO(archive_data)
 
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            with mock.patch("qtmcp.download.urllib.request.urlopen", mock_urlopen):
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            with mock.patch("qtpilot.download.urllib.request.urlopen", mock_urlopen):
                 probe, launcher = download_and_extract(
                     "6.8",
                     output_dir=tmp_path,
@@ -446,8 +446,8 @@ class TestDownloadAndExtract:
 
         assert probe.exists()
         assert launcher.exists()
-        assert probe.name == "qtmcp-probe.dll"
-        assert launcher.name == "qtmcp-launcher.exe"
+        assert probe.name == "qtPilot-probe.dll"
+        assert launcher.name == "qtPilot-launcher.exe"
         assert probe.read_bytes() == b"probe"
         assert launcher.read_bytes() == b"launcher"
 
@@ -455,7 +455,7 @@ class TestDownloadAndExtract:
         """Download verifies checksum when enabled."""
         archive_data = self._make_zip(b"probe", b"launcher")
         expected_hash = hashlib.sha256(archive_data).hexdigest()
-        checksums_content = f"{expected_hash}  qtmcp-qt6.8-windows-x64.zip\n"
+        checksums_content = f"{expected_hash}  qtpilot-qt6.8-windows-x64.zip\n"
 
         call_count = {"count": 0}
 
@@ -465,8 +465,8 @@ class TestDownloadAndExtract:
                 return io.BytesIO(checksums_content.encode())
             return io.BytesIO(archive_data)
 
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            with mock.patch("qtmcp.download.urllib.request.urlopen", mock_urlopen):
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            with mock.patch("qtpilot.download.urllib.request.urlopen", mock_urlopen):
                 probe, launcher = download_and_extract(
                     "6.8",
                     output_dir=tmp_path,
@@ -482,15 +482,15 @@ class TestDownloadAndExtract:
         """Checksum mismatch should raise ChecksumError."""
         archive_data = self._make_zip(b"probe", b"launcher")
         wrong_hash = "0" * 64
-        checksums_content = f"{wrong_hash}  qtmcp-qt6.8-windows-x64.zip\n"
+        checksums_content = f"{wrong_hash}  qtpilot-qt6.8-windows-x64.zip\n"
 
         def mock_urlopen(url: str, timeout: int | None = None) -> io.BytesIO:
             if "SHA256SUMS" in url:
                 return io.BytesIO(checksums_content.encode())
             return io.BytesIO(archive_data)
 
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            with mock.patch("qtmcp.download.urllib.request.urlopen", mock_urlopen):
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            with mock.patch("qtpilot.download.urllib.request.urlopen", mock_urlopen):
                 with pytest.raises(ChecksumError) as exc_info:
                     download_and_extract(
                         "6.8",
@@ -501,7 +501,7 @@ class TestDownloadAndExtract:
 
         assert "verification failed" in str(exc_info.value)
         # Archive should be cleaned up
-        assert not (tmp_path / "qtmcp-qt6.8-windows-x64.zip").exists()
+        assert not (tmp_path / "qtpilot-qt6.8-windows-x64.zip").exists()
 
     def test_archive_cleaned_up_after_extraction(self, tmp_path: Path) -> None:
         """Archive file should be deleted after successful extraction."""
@@ -510,8 +510,8 @@ class TestDownloadAndExtract:
         def mock_urlopen(url: str, timeout: int | None = None) -> io.BytesIO:
             return io.BytesIO(archive_data)
 
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            with mock.patch("qtmcp.download.urllib.request.urlopen", mock_urlopen):
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            with mock.patch("qtpilot.download.urllib.request.urlopen", mock_urlopen):
                 download_and_extract(
                     "6.8",
                     output_dir=tmp_path,
@@ -520,10 +520,10 @@ class TestDownloadAndExtract:
                 )
 
         # Archive should be cleaned up
-        assert not (tmp_path / "qtmcp-qt6.8-windows-x64.zip").exists()
+        assert not (tmp_path / "qtpilot-qt6.8-windows-x64.zip").exists()
         # But extracted files should remain
-        assert (tmp_path / "qtmcp-probe.dll").exists()
-        assert (tmp_path / "qtmcp-launcher.exe").exists()
+        assert (tmp_path / "qtPilot-probe.dll").exists()
+        assert (tmp_path / "qtPilot-launcher.exe").exists()
 
 
 class TestErrorHandling:
@@ -534,8 +534,8 @@ class TestErrorHandling:
         def mock_urlopen(url: str, timeout: int | None = None) -> None:
             raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            with mock.patch("qtmcp.download.urllib.request.urlopen", mock_urlopen):
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            with mock.patch("qtpilot.download.urllib.request.urlopen", mock_urlopen):
                 with pytest.raises(DownloadError) as exc_info:
                     download_and_extract(
                         "6.8",
@@ -551,8 +551,8 @@ class TestErrorHandling:
         def mock_urlopen(url: str, timeout: int | None = None) -> None:
             raise urllib.error.URLError("Connection refused")
 
-        with mock.patch("qtmcp.download.sys.platform", "win32"):
-            with mock.patch("qtmcp.download.urllib.request.urlopen", mock_urlopen):
+        with mock.patch("qtpilot.download.sys.platform", "win32"):
+            with mock.patch("qtpilot.download.urllib.request.urlopen", mock_urlopen):
                 with pytest.raises(DownloadError) as exc_info:
                     download_and_extract(
                         "6.8",

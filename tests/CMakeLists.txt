@@ -1,4 +1,4 @@
-# QtMCP Tests using Qt Test framework
+# qtPilot Tests using Qt Test framework
 
 enable_testing()
 
@@ -43,7 +43,7 @@ if(WIN32)
 endif()
 
 # Helper function to reduce boilerplate for test definitions
-function(qtmcp_add_test)
+function(qtPilot_add_test)
     cmake_parse_arguments(ARG "" "NAME" "SOURCES;LIBS;ENV" ${ARGN})
 
     add_executable(${ARG_NAME} ${ARG_SOURCES})
@@ -51,10 +51,10 @@ function(qtmcp_add_test)
     # Core libraries: probe + Qt Core + Qt Test
     if(QT_VERSION_MAJOR EQUAL 6)
         target_link_libraries(${ARG_NAME} PRIVATE
-            qtmcp_probe Qt6::Core Qt6::Test ${ARG_LIBS})
+            qtPilot_probe Qt6::Core Qt6::Test ${ARG_LIBS})
     else()
         target_link_libraries(${ARG_NAME} PRIVATE
-            qtmcp_probe Qt5::Core Qt5::Test ${ARG_LIBS})
+            qtPilot_probe Qt5::Core Qt5::Test ${ARG_LIBS})
     endif()
 
     target_include_directories(${ARG_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src/probe)
@@ -79,64 +79,64 @@ endfunction()
 
 # --- Test definitions ---
 
-qtmcp_add_test(NAME test_jsonrpc SOURCES test_jsonrpc.cpp)
+qtPilot_add_test(NAME test_jsonrpc SOURCES test_jsonrpc.cpp)
 
-qtmcp_add_test(NAME test_object_registry SOURCES test_object_registry.cpp
-    ENV "QTMCP_ENABLED=0")
+qtPilot_add_test(NAME test_object_registry SOURCES test_object_registry.cpp
+    ENV "QTPILOT_ENABLED=0")
 
-qtmcp_add_test(NAME test_object_id SOURCES test_object_id.cpp
+qtPilot_add_test(NAME test_object_id SOURCES test_object_id.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_object_id_refresh SOURCES test_object_id_refresh.cpp
+qtPilot_add_test(NAME test_object_id_refresh SOURCES test_object_id_refresh.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_meta_inspector SOURCES test_meta_inspector.cpp
+qtPilot_add_test(NAME test_meta_inspector SOURCES test_meta_inspector.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_ui_interaction SOURCES test_ui_interaction.cpp
+qtPilot_add_test(NAME test_ui_interaction SOURCES test_ui_interaction.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp
+qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_jsonrpc_introspection SOURCES test_jsonrpc_introspection.cpp
+qtPilot_add_test(NAME test_jsonrpc_introspection SOURCES test_jsonrpc_introspection.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_native_mode_api SOURCES test_native_mode_api.cpp
+qtPilot_add_test(NAME test_native_mode_api SOURCES test_native_mode_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_key_name_mapper SOURCES test_key_name_mapper.cpp
+qtPilot_add_test(NAME test_key_name_mapper SOURCES test_key_name_mapper.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_computer_use_api SOURCES test_computer_use_api.cpp
+qtPilot_add_test(NAME test_computer_use_api SOURCES test_computer_use_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_chrome_mode_api SOURCES test_chrome_mode_api.cpp
+qtPilot_add_test(NAME test_chrome_mode_api SOURCES test_chrome_mode_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_model_navigator SOURCES test_model_navigator.cpp
+qtPilot_add_test(NAME test_model_navigator SOURCES test_model_navigator.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
-qtmcp_add_test(NAME test_event_capture SOURCES test_event_capture.cpp
+qtPilot_add_test(NAME test_event_capture SOURCES test_event_capture.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
 # E2E admin injection test — requires elevated terminal to run.
 # Skips automatically (QSKIP) when not running as admin.
 # Target with: ctest -L admin    Exclude with: ctest -LE admin
-qtmcp_add_test(NAME test_admin_injection
+qtPilot_add_test(NAME test_admin_injection
     SOURCES test_admin_injection.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 set_tests_properties(test_admin_injection PROPERTIES LABELS "admin")

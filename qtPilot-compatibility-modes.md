@@ -1,14 +1,14 @@
-# QtMCP Compatibility Modes
+# qtPilot Compatibility Modes
 
 ## Overview
 
-This document proposes adding **two compatibility modes** to QtMCP that mimic Anthropic's established tool APIs. This allows Claude to use QtMCP with **zero learning curve** because the tool schemas match what Claude already knows.
+This document proposes adding **two compatibility modes** to qtPilot that mimic Anthropic's established tool APIs. This allows Claude to use qtPilot with **zero learning curve** because the tool schemas match what Claude already knows.
 
 ## The Three Modes
 
 | Mode | API Style | Best For |
 |------|-----------|----------|
-| **Native QtMCP** | Qt-specific introspection | Test automation, deep inspection |
+| **Native qtPilot** | Qt-specific introspection | Test automation, deep inspection |
 | **Computer Use** | Screenshot + coordinates | Visual tasks, pixel-precise clicking |
 | **Chrome** | Accessibility tree + refs | Form filling, semantic interactions |
 
@@ -30,7 +30,7 @@ By using **identical tool names and schemas**, Claude already knows:
 
 ## Mode Comparison
 
-### Mode 1: Native QtMCP API (Default)
+### Mode 1: Native qtPilot API (Default)
 - Rich Qt-specific introspection
 - Hierarchical object IDs (`QMainWindow/centralWidget/QPushButton#submit`)
 - Signal subscriptions and push events
@@ -395,7 +395,7 @@ This matches how Chrome extension assigns `@e1`, `@e2` etc.
 ## Implementation in C++ Probe
 
 ```cpp
-// qtmcp_compat.h - Computer Use compatibility layer
+// qtpilot_compat.h - Computer Use compatibility layer
 
 struct ComputerAction {
     QString action;      // screenshot, left_click, type, etc.
@@ -405,7 +405,7 @@ struct ComputerAction {
     int amount;          // for scroll
 };
 
-class QtMCPCompat {
+class qtPilotCompat {
 public:
     // Computer tool actions
     QJsonObject screenshot();
@@ -728,11 +728,11 @@ Claude: The widget doesn't support ref-based clicking.
 Enable compatibility mode via environment variable:
 
 ```bash
-QTMCP_MODE=native           # Default - full Qt introspection
-QTMCP_MODE=computer_use     # Screenshot + coordinate mode
-QTMCP_MODE=chrome           # Accessibility tree + refs mode
-QTMCP_MODE=all              # Expose all tools from all modes
-QTMCP_PORT=9999
+QTPILOT_MODE=native           # Default - full Qt introspection
+QTPILOT_MODE=computer_use     # Screenshot + coordinate mode
+QTPILOT_MODE=chrome           # Accessibility tree + refs mode
+QTPILOT_MODE=all              # Expose all tools from all modes
+QTPILOT_PORT=9999
 ```
 
 Or via WebSocket command:
@@ -750,7 +750,7 @@ Or via WebSocket command:
 
 ## Comparison: All Three Modes
 
-| Feature | Native QtMCP | Computer Use | Chrome |
+| Feature | Native qtPilot | Computer Use | Chrome |
 |---------|-------------|--------------|--------|
 | Learning curve | New API | Zero | Zero |
 | Object ID | Hierarchical paths | Coordinates | Integer refs |
@@ -765,7 +765,7 @@ Or via WebSocket command:
 
 ## When to Use Each Mode
 
-### Use Native QtMCP when:
+### Use Native qtPilot when:
 - Writing automated tests
 - Need signal/slot monitoring
 - Need to invoke arbitrary methods
@@ -809,7 +809,7 @@ Or via WebSocket command:
 
 ## Conclusion
 
-By implementing both Computer Use and Chrome compatibility modes, QtMCP becomes immediately usable by Claude without any special training or prompting. 
+By implementing both Computer Use and Chrome compatibility modes, qtPilot becomes immediately usable by Claude without any special training or prompting. 
 
 - **Computer Use mode** lets Claude interact visually, taking screenshots and clicking by coordinates
 - **Chrome mode** lets Claude work semantically, reading the widget tree and clicking by reference

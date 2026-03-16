@@ -823,7 +823,7 @@
     font-size: 10.5px;
   }
 
-  /* QtMcp 4-node architecture */
+  /* qtPilot 4-node architecture */
   .arch-4 {
     display: grid;
     grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
@@ -1540,18 +1540,18 @@
 
 
   <!-- ═══════════════════════════════════════════ -->
-  <!-- QtMcp Section                              -->
+  <!-- qtPilot Section                              -->
   <!-- ═══════════════════════════════════════════ -->
   <hr class="divider">
 
   <div class="header" style="border-bottom:none; padding-bottom:0; margin-bottom:32px;">
-    <div class="label" style="color:var(--green)">QtMcp — Qt Application Bridge</div>
-    <h1 style="font-size:clamp(22px,3.2vw,34px)">How QtMcp Connects to Qt Apps</h1>
+    <div class="label" style="color:var(--green)">qtPilot — Qt Application Bridge</div>
+    <h1 style="font-size:clamp(22px,3.2vw,34px)">How qtPilot Connects to Qt Apps</h1>
     <p class="subtitle">Zero source-code modification. A probe DLL is injected into any Qt application, exposing its entire widget tree, properties, signals, and UI over MCP.</p>
   </div>
 
-  <!-- QtMcp Architecture: 4-node -->
-  <h2>QtMcp Architecture</h2>
+  <!-- qtPilot Architecture: 4-node -->
+  <h2>qtPilot Architecture</h2>
   <div class="arch-4">
 
     <!-- Claude / MCP Client -->
@@ -1579,7 +1579,7 @@
     <!-- MCP Server (Python) -->
     <div class="arch-node node-server">
       <div class="node-icon">⚙️</div>
-      <div class="node-title">QtMcp Server</div>
+      <div class="node-title">qtPilot Server</div>
       <div class="node-desc">Python FastMCP bridge. Registers tools that wrap probe JSON-RPC methods. Handles UDP discovery of probes on the network.</div>
       <div style="margin-top:auto; display:flex; gap:6px; flex-wrap:wrap;">
         <span class="badge badge-green">58 Tools</span>
@@ -1642,8 +1642,8 @@
     <div class="inject-card" style="border-color:var(--accent)">
       <h3><span class="badge badge-blue" style="font-size:10px">Windows</span> DLL Injection</h3>
       <ol class="step-list">
-        <li><code>qtmcp-launcher.exe</code> sets up DLL search path</li>
-        <li>Launches target app with <code>qtmcp.dll</code> in load path</li>
+        <li><code>qtPilot-launcher.exe</code> sets up DLL search path</li>
+        <li>Launches target app with <code>qtpilot.dll</code> in load path</li>
         <li><code>DllMain</code> auto-initializes the probe</li>
         <li>WebSocket server starts on port 9222</li>
         <li>Optional: <code>--inject-children</code> hooks <code>CreateProcessW</code> via Detours</li>
@@ -1652,7 +1652,7 @@
     <div class="inject-card" style="border-color:var(--green)">
       <h3><span class="badge badge-green" style="font-size:10px">Linux</span> LD_PRELOAD</h3>
       <ol class="step-list">
-        <li><code>LD_PRELOAD=libqtmcp.so ./myapp</code></li>
+        <li><code>LD_PRELOAD=libqtpilot.so ./myapp</code></li>
         <li>Shared library loaded before app starts</li>
         <li>Defers init until <code>QCoreApplication</code> exists</li>
         <li>WebSocket server starts on port 9222</li>
@@ -1710,7 +1710,7 @@
 
       <!-- Probe interior — cyan border -->
       <div class="probe-container">
-        <span class="probe-container-label">qtmcp.dll / libqtmcp.so — Probe</span>
+        <span class="probe-container-label">qtpilot.dll / libqtpilot.so — Probe</span>
 
         <!-- Layer 1: Core (collapsed by default) -->
         <div class="probe-layer" onclick="toggleLayer(this)">
@@ -1863,7 +1863,7 @@
   </div>
 
   <!-- Stats -->
-  <h2>QtMcp at a Glance</h2>
+  <h2>qtPilot at a Glance</h2>
   <div class="stats-row">
     <div class="stat-card">
       <div class="stat-value" style="color:var(--green)">58</div>
@@ -1893,7 +1893,7 @@
   </div>
 
   <!-- Tool Browser -->
-  <h2>QtMcp Tool Reference</h2>
+  <h2>qtPilot Tool Reference</h2>
 
   <div class="mode-tabs">
     <button class="mode-tab active" data-mode="discovery" onclick="switchMode('discovery')">Discovery</button>
@@ -1908,20 +1908,20 @@
       <div class="tool-group-title">Probe Management — Always Available</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtmcp_list_probes</div>
-          <div class="tool-desc">Discover QtMcp probes via UDP broadcast. Returns app name, PID, Qt version, WebSocket URL, and uptime.</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_list_probes</div>
+          <div class="tool-desc">Discover qtPilot probes via UDP broadcast. Returns app name, PID, Qt version, WebSocket URL, and uptime.</div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtmcp_connect_probe</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_connect_probe</div>
           <div class="tool-desc">Connect to a specific probe by WebSocket URL.</div>
           <div class="tool-params"><span class="param-tag required">ws_url</span></div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtmcp_disconnect_probe</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_disconnect_probe</div>
           <div class="tool-desc">Disconnect from the currently connected probe.</div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtmcp_probe_status</div>
+          <div class="tool-name" style="color:var(--accent)">qtPilot_probe_status</div>
           <div class="tool-desc">Get connection state, discovery status, and number of discovered probes.</div>
         </div>
       </div>
@@ -1931,7 +1931,7 @@
       <div class="tool-group-title">Resource</div>
       <div class="tool-grid">
         <div class="tool-card" style="border-color:var(--green)">
-          <div class="tool-name" style="color:var(--green)">qtmcp://status</div>
+          <div class="tool-name" style="color:var(--green)">qtpilot://status</div>
           <div class="tool-desc">JSON resource exposing current connection state: <code>connected</code>, <code>ws_url</code>, <code>mode</code>, <code>discovery_active</code>, <code>discovered_probes</code>.</div>
         </div>
       </div>
@@ -1941,16 +1941,16 @@
       <div class="tool-group-title">Recording — Native Mode</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtmcp_start_recording</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_start_recording</div>
           <div class="tool-desc">Start recording signals on specific objects. Captures lifecycle events and signal emissions.</div>
           <div class="tool-params"><span class="param-tag required">targets</span><span class="param-tag">include_lifecycle</span><span class="param-tag">capture_events</span></div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtmcp_stop_recording</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_stop_recording</div>
           <div class="tool-desc">Stop recording and return the full event log.</div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtmcp_recording_status</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_recording_status</div>
           <div class="tool-desc">Check if recording is active and get current event count.</div>
         </div>
       </div>
@@ -2333,10 +2333,10 @@
   <div class="protocol-strip" style="flex-direction:column; align-items:flex-start; gap:10px;">
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
       <span class="protocol-title" style="min-width:100px">Env Vars →</span>
-      <span class="badge badge-blue">QTMCP_PORT=9222</span>
-      <span class="badge badge-green">QTMCP_MODE=native|computer_use|chrome|all</span>
-      <span class="badge badge-amber">QTMCP_ENABLED=0|1</span>
-      <span class="badge badge-purple">QTMCP_BIND=127.0.0.1</span>
+      <span class="badge badge-blue">QTPILOT_PORT=9222</span>
+      <span class="badge badge-green">QTPILOT_MODE=native|computer_use|chrome|all</span>
+      <span class="badge badge-amber">QTPILOT_ENABLED=0|1</span>
+      <span class="badge badge-purple">QTPILOT_BIND=127.0.0.1</span>
     </div>
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
       <span class="protocol-title" style="min-width:100px">Ports →</span>
@@ -2352,7 +2352,7 @@
   </div>
   <div class="foot" style="border:none; padding-top:8px;">
     <span>🔬</span>
-    <span>QtMcp: <strong style="color:var(--text)">58 tools</strong> · <strong style="color:var(--text)">3 API modes</strong> · <strong style="color:var(--text)">1 resource</strong> · Zero source-code modification · Works with any Qt 5/6 application</span>
+    <span>qtPilot: <strong style="color:var(--text)">58 tools</strong> · <strong style="color:var(--text)">3 API modes</strong> · <strong style="color:var(--text)">1 resource</strong> · Zero source-code modification · Works with any Qt 5/6 application</span>
   </div>
 
 </div>

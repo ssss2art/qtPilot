@@ -1,16 +1,16 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QVariant>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Convert QVariant to JSON value.
 ///
@@ -29,7 +29,7 @@ namespace qtmcp {
 ///
 /// @param value The QVariant to convert.
 /// @return JSON representation of the value.
-QTMCP_EXPORT QJsonValue variantToJson(const QVariant& value);
+QTPILOT_EXPORT QJsonValue variantToJson(const QVariant& value);
 
 /// @brief Convert JSON value to QVariant.
 ///
@@ -40,13 +40,13 @@ QTMCP_EXPORT QJsonValue variantToJson(const QVariant& value);
 /// @param targetTypeId Optional target type ID for explicit conversion.
 ///                     Use QMetaType::UnknownType to infer from JSON type.
 /// @return QVariant containing the converted value.
-QTMCP_EXPORT QVariant jsonToVariant(const QJsonValue& value,
+QTPILOT_EXPORT QVariant jsonToVariant(const QJsonValue& value,
                                     int targetTypeId = QMetaType::UnknownType);
 
 /// @brief Get a human-readable type name for a QVariant.
 ///
 /// @param value The QVariant to get the type name for.
 /// @return The type name string (e.g., "QString", "QPoint", "int").
-QTMCP_EXPORT QString variantTypeName(const QVariant& value);
+QTPILOT_EXPORT QString variantTypeName(const QVariant& value);
 
-}  // namespace qtmcp
+}  // namespace qtPilot

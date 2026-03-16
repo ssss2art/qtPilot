@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "accessibility_tree_walker.h"
@@ -9,7 +9,7 @@
 #include <QJsonArray>
 #include <QMetaObject>
 
-namespace qtmcp {
+namespace qtPilot {
 
 WalkResult AccessibilityTreeWalker::walk(QWidget* rootWidget, const WalkOptions& opts) {
   WalkResult result;
@@ -189,4 +189,4 @@ QJsonObject AccessibilityTreeWalker::walkNode(QAccessibleInterface* iface, int d
   return node;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

@@ -1,6 +1,6 @@
-# Building QtMcp from Source
+# Building qtPilot from Source
 
-This guide covers building the QtMcp probe and launcher from source code.
+This guide covers building the qtPilot probe and launcher from source code.
 
 ## Prerequisites
 
@@ -30,8 +30,8 @@ This guide covers building the QtMcp probe and launcher from source code.
 ### Basic Build
 
 ```bash
-git clone https://github.com/ssss2art/QtMcp.git
-cd QtMcp
+git clone https://github.com/ssss2art/qtPilot.git
+cd qtPilot
 
 # Configure (specify Qt path if not in system PATH)
 cmake -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.0/gcc_64
@@ -46,8 +46,8 @@ ctest --test-dir build --output-on-failure
 ### Windows with Visual Studio
 
 ```powershell
-git clone https://github.com/ssss2art/QtMcp.git
-cd QtMcp
+git clone https://github.com/ssss2art/qtPilot.git
+cd qtPilot
 
 # Configure for Visual Studio 2022
 cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64"
@@ -125,18 +125,18 @@ Configure these options with `-D<OPTION>=<VALUE>`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `QTMCP_BUILD_TESTS` | `ON` | Build unit tests |
-| `QTMCP_BUILD_TEST_APP` | `ON` | Build the test Qt application |
-| `QTMCP_QT_DIR` | - | Explicit path to Qt installation (prepended to `CMAKE_PREFIX_PATH`) |
+| `QTPILOT_BUILD_TESTS` | `ON` | Build unit tests |
+| `QTPILOT_BUILD_TEST_APP` | `ON` | Build the test Qt application |
+| `QTPILOT_QT_DIR` | - | Explicit path to Qt installation (prepended to `CMAKE_PREFIX_PATH`) |
 
 ### Examples
 
 ```bash
 # Build without tests (faster)
-cmake -B build -DQTMCP_BUILD_TESTS=OFF -DQTMCP_BUILD_TEST_APP=OFF
+cmake -B build -DQTPILOT_BUILD_TESTS=OFF -DQTPILOT_BUILD_TEST_APP=OFF
 
 # Specify Qt installation directly
-cmake -B build -DQTMCP_QT_DIR=/opt/Qt/6.8.0/gcc_64
+cmake -B build -DQTPILOT_QT_DIR=/opt/Qt/6.8.0/gcc_64
 ```
 
 ## Build Artifacts
@@ -147,8 +147,8 @@ After building, find the artifacts in these locations:
 
 | Platform | Location |
 |----------|----------|
-| Windows | `build/lib/Release/qtmcp-probe-qt6.8.dll` |
-| Linux | `build/lib/libqtmcp-probe-qt6.8.so` |
+| Windows | `build/lib/Release/qtPilot-probe-qt6.8.dll` |
+| Linux | `build/lib/libqtPilot-probe-qt6.8.so` |
 
 The probe binary name includes the Qt major.minor version it was built against (e.g. `qt6.8`, `qt5.15`).
 
@@ -156,15 +156,15 @@ The probe binary name includes the Qt major.minor version it was built against (
 
 | Platform | Location |
 |----------|----------|
-| Windows | `build/bin/Release/qtmcp-launcher.exe` |
-| Linux | `build/bin/qtmcp-launcher` |
+| Windows | `build/bin/Release/qtPilot-launcher.exe` |
+| Linux | `build/bin/qtPilot-launcher` |
 
 ### Test App (if enabled)
 
 | Platform | Location |
 |----------|----------|
-| Windows | `build/bin/Release/qtmcp-test-app.exe` |
-| Linux | `build/bin/qtmcp-test-app` |
+| Windows | `build/bin/Release/qtPilot-test-app.exe` |
+| Linux | `build/bin/qtPilot-test-app` |
 
 ## Running Tests
 
@@ -206,20 +206,20 @@ cmake --install build
 cmake --install build --prefix /path/to/install
 
 # Install specific configuration (Windows)
-cmake --install build --config Release --prefix C:\QtMcp
+cmake --install build --config Release --prefix C:\qtPilot
 ```
 
 Installation layout:
 ```
 <prefix>/
 ├── bin/
-│   └── qtmcp-launcher(.exe)
+│   └── qtPilot-launcher(.exe)
 ├── lib/
-│   ├── qtmcp-probe-qt6.8.dll  (Windows)
-│   └── libqtmcp-probe-qt6.8.so (Linux)
-├── include/qtmcp/
+│   ├── qtPilot-probe-qt6.8.dll  (Windows)
+│   └── libqtPilot-probe-qt6.8.so (Linux)
+├── include/qtpilot/
 │   └── (header files)
-└── share/cmake/QtMCP/
+└── share/cmake/qtPilot/
     └── (CMake package files)
 ```
 
@@ -237,7 +237,7 @@ ls /path/to/Qt/5.15.2/gcc_64/include/QtCore/5.15.2/QtCore/private/
 
 ### Qt 6.x
 
-Qt 6.5+ is fully supported. Qt 6.x changed some internal APIs, but QtMcp handles this transparently via compatibility helpers in `src/compat/`.
+Qt 6.5+ is fully supported. Qt 6.x changed some internal APIs, but qtPilot handles this transparently via compatibility helpers in `src/compat/`.
 
 ### Building for Multiple Qt Versions
 
@@ -259,14 +259,14 @@ Use the dedicated Qt 5 presets to build against Qt 5.15.1 locally:
 
 **Windows:**
 ```powershell
-cmake --preset qt5-windows-release -DQTMCP_QT_DIR="C:\Qt\5.15.1\msvc2019_64"
+cmake --preset qt5-windows-release -DQTPILOT_QT_DIR="C:\Qt\5.15.1\msvc2019_64"
 cmake --build --preset qt5-windows-release
 ctest --preset qt5-windows-release
 ```
 
 **Linux:**
 ```bash
-cmake --preset qt5-release -DQTMCP_QT_DIR=/opt/Qt/5.15.1/gcc_64
+cmake --preset qt5-release -DQTPILOT_QT_DIR=/opt/Qt/5.15.1/gcc_64
 cmake --build --preset qt5-release
 ctest --preset qt5-release
 ```
@@ -292,14 +292,14 @@ Your Qt installation is missing private development headers. Solutions:
 Set the Qt path explicitly:
 
 ```bash
-cmake -B build -DQTMCP_QT_DIR=/path/to/Qt/6.8.0/gcc_64
+cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/6.8.0/gcc_64
 # or
 cmake -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.0/gcc_64
 ```
 
 ### Compiler Version Errors
 
-QtMcp requires C++17. Check your compiler version:
+qtPilot requires C++17. Check your compiler version:
 
 ```bash
 g++ --version   # Need 8+
@@ -313,7 +313,7 @@ On Windows, Visual Studio 2019 or later is required.
 ### Visual Studio Code
 
 1. Install CMake Tools extension
-2. Open the QtMcp folder
+2. Open the qtPilot folder
 3. Select a configure preset or set `CMAKE_PREFIX_PATH` in settings.json
 4. Build and debug from the CMake panel
 

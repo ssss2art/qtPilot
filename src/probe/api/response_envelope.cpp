@@ -1,11 +1,11 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "api/response_envelope.h"
 
 #include <QJsonDocument>
 
-namespace qtmcp {
+namespace qtPilot {
 
 QJsonObject ResponseEnvelope::wrap(const QJsonValue& result, const QString& objectId) {
   QJsonObject meta;
@@ -61,4 +61,4 @@ QString ResponseEnvelope::createValidationError(const QString& method, const QSt
                      QStringLiteral("Missing required parameter: %1").arg(missingParam), data);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

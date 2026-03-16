@@ -1,0 +1,4 @@
+{"dir": "mcp_in", "tool": "qt_methods_invoke", "args": {"objectId": "QApplication", "method": "quit"}, "ts": "2026-03-16T00:31:03.835Z"}
+{"dir": "req", "id": 22, "method": "qt.methods.invoke", "params": {"objectId": "QApplication", "method": "quit"}, "ts": "2026-03-16T00:31:03.835Z"}
+{"dir": "err", "id": 22, "method": "qt.methods.invoke", "dur_ms": 125.0, "error": "WebSocket closed", "ts": "2026-03-16T00:31:03.959Z"}
+{"dir": "mcp_out", "tool": "qt_methods_invoke", "dur_ms": 250.0, "ok": false, "error": "Error calling tool 'qt_methods_invoke': WebSocket closed", "ts": "2026-03-16T00:31:04.088Z"}

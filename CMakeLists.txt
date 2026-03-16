@@ -1,10 +1,10 @@
-# QtMCP - Qt Application Introspection and Automation Library
-# Copyright (c) 2024 QtMCP Contributors
+# qtPilot - Qt Application Introspection and Automation Library
+# Copyright (c) 2024 qtPilot Contributors
 # SPDX-License-Identifier: MIT
 
 cmake_minimum_required(VERSION 3.16)
 
-project(QtMCP
+project(qtPilot
     VERSION 0.3.1
     DESCRIPTION "Qt application introspection and automation library with MCP integration"
     LANGUAGES CXX
@@ -19,11 +19,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Options
-option(QTMCP_BUILD_TESTS "Build unit tests" ON)
-option(QTMCP_BUILD_TEST_APP "Build the test Qt application" ON)
+option(QTPILOT_BUILD_TESTS "Build unit tests" ON)
+option(QTPILOT_BUILD_TEST_APP "Build the test Qt application" ON)
 
 # Qt path hint - takes precedence over CMAKE_PREFIX_PATH
-set(QTMCP_QT_DIR "" CACHE PATH "Explicit path to Qt installation (takes precedence over CMAKE_PREFIX_PATH)")
+set(QTPILOT_QT_DIR "" CACHE PATH "Explicit path to Qt installation (takes precedence over CMAKE_PREFIX_PATH)")
 
 # Set default build type if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -42,9 +42,9 @@ set(QT_MIN_VERSION_5 "5.15.1")
 set(QT_MIN_VERSION_6 "6.5")
 
 # Apply Qt path hint if provided
-if(QTMCP_QT_DIR)
-    list(PREPEND CMAKE_PREFIX_PATH "${QTMCP_QT_DIR}")
-    message(STATUS "Using Qt hint: ${QTMCP_QT_DIR}")
+if(QTPILOT_QT_DIR)
+    list(PREPEND CMAKE_PREFIX_PATH "${QTPILOT_QT_DIR}")
+    message(STATUS "Using Qt hint: ${QTPILOT_QT_DIR}")
 endif()
 
 find_package(Qt6 ${QT_MIN_VERSION_6} QUIET COMPONENTS
@@ -95,10 +95,10 @@ if(Qt6_FOUND)
     # Optional: Qt Quick/QML support
     find_package(Qt6 COMPONENTS Qml Quick QUIET)
     if(Qt6Qml_FOUND AND Qt6Quick_FOUND)
-        set(QTMCP_HAS_QML ON)
+        set(QTPILOT_HAS_QML ON)
         message(STATUS "Found Qt6 Qml/Quick - QML introspection enabled")
     else()
-        set(QTMCP_HAS_QML OFF)
+        set(QTPILOT_HAS_QML OFF)
         message(STATUS "Qt6 Qml/Quick not found - QML introspection disabled")
     endif()
 else()
@@ -150,17 +150,17 @@ else()
     # Optional: Qt Quick/QML support
     find_package(Qt5 COMPONENTS Qml Quick QUIET)
     if(Qt5Qml_FOUND AND Qt5Quick_FOUND)
-        set(QTMCP_HAS_QML ON)
+        set(QTPILOT_HAS_QML ON)
         message(STATUS "Found Qt5 Qml/Quick - QML introspection enabled")
     else()
-        set(QTMCP_HAS_QML OFF)
+        set(QTPILOT_HAS_QML OFF)
         message(STATUS "Qt5 Qml/Quick not found - QML introspection disabled")
     endif()
 endif()
 
 # Verify Qt was found
 if(NOT Qt6_FOUND AND NOT Qt5_FOUND)
-    message(FATAL_ERROR "No Qt installation found. Set CMAKE_PREFIX_PATH or -DQTMCP_QT_DIR=<path>")
+    message(FATAL_ERROR "No Qt installation found. Set CMAKE_PREFIX_PATH or -DQTPILOT_QT_DIR=<path>")
 endif()
 
 # Enforce minimum patch versions
@@ -176,21 +176,21 @@ add_definitions(-DQT_DISABLE_DEPRECATED_BEFORE=0x050F00)
 
 # Extract Qt major.minor version tag for artifact naming
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" _qt_major_minor "${QT_VERSION}")
-set(QTMCP_QT_VERSION_TAG "qt${_qt_major_minor}" CACHE INTERNAL "Qt version tag for artifact naming")
-message(STATUS "Qt version tag: ${QTMCP_QT_VERSION_TAG}")
+set(QTPILOT_QT_VERSION_TAG "qt${_qt_major_minor}" CACHE INTERNAL "Qt version tag for artifact naming")
+message(STATUS "Qt version tag: ${QTPILOT_QT_VERSION_TAG}")
 
 # Detect architecture tag for diagnostic output
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-    set(QTMCP_ARCH_TAG "x86" CACHE INTERNAL "Architecture tag for diagnostic output")
+    set(QTPILOT_ARCH_TAG "x86" CACHE INTERNAL "Architecture tag for diagnostic output")
 elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(QTMCP_ARCH_TAG "x64" CACHE INTERNAL "Architecture tag for diagnostic output")
+    set(QTPILOT_ARCH_TAG "x64" CACHE INTERNAL "Architecture tag for diagnostic output")
 else()
-    set(QTMCP_ARCH_TAG "unknown" CACHE INTERNAL "Architecture tag for diagnostic output")
+    set(QTPILOT_ARCH_TAG "unknown" CACHE INTERNAL "Architecture tag for diagnostic output")
 endif()
-message(STATUS "Architecture:  ${QTMCP_ARCH_TAG}")
+message(STATUS "Architecture:  ${QTPILOT_ARCH_TAG}")
 
 # Flat install paths (no versioned subdirectories)
-set(QTMCP_INSTALL_LIBDIR "lib" CACHE INTERNAL "Library install directory")
+set(QTPILOT_INSTALL_LIBDIR "lib" CACHE INTERNAL "Library install directory")
 
 # Create Qt version-independent target aliases
 if(QT_VERSION_MAJOR EQUAL 6)
@@ -206,13 +206,13 @@ set(CMAKE_AUTORCC ON)
 
 # Platform-specific settings
 if(WIN32)
-    add_definitions(-DQTMCP_PLATFORM_WINDOWS)
+    add_definitions(-DQTPILOT_PLATFORM_WINDOWS)
     add_definitions(-DNOMINMAX)
     add_definitions(-DWIN32_LEAN_AND_MEAN)
 elseif(UNIX AND NOT APPLE)
-    add_definitions(-DQTMCP_PLATFORM_LINUX)
+    add_definitions(-DQTPILOT_PLATFORM_LINUX)
 elseif(APPLE)
-    add_definitions(-DQTMCP_PLATFORM_MACOS)
+    add_definitions(-DQTPILOT_PLATFORM_MACOS)
     message(WARNING "macOS support is not yet implemented")
 endif()
 
@@ -280,11 +280,11 @@ if(WIN32 OR (UNIX AND NOT APPLE))
     add_subdirectory(src/launcher)
 endif()
 
-if(QTMCP_BUILD_TEST_APP)
+if(QTPILOT_BUILD_TEST_APP)
     add_subdirectory(test_app)
 endif()
 
-if(QTMCP_BUILD_TESTS)
+if(QTPILOT_BUILD_TESTS)
     enable_testing()
     message(STATUS "Building unit tests with Qt Test framework")
     add_subdirectory(tests)
@@ -294,22 +294,22 @@ endif()
 include(GNUInstallDirs)
 
 # Probe library: flat lib/ directory
-install(TARGETS qtmcp_probe
-    LIBRARY DESTINATION ${QTMCP_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${QTMCP_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${QTMCP_INSTALL_LIBDIR}
+install(TARGETS qtPilot_probe
+    LIBRARY DESTINATION ${QTPILOT_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${QTPILOT_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${QTPILOT_INSTALL_LIBDIR}
 )
 
 # Launcher executable
-if(TARGET qtmcp_launcher)
-    install(TARGETS qtmcp_launcher
+if(TARGET qtPilot_launcher)
+    install(TARGETS qtPilot_launcher
         RUNTIME DESTINATION bin
     )
 endif()
 
 # Headers
 install(DIRECTORY src/probe/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtmcp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtpilot
     FILES_MATCHING PATTERN "*.h"
 )
 
@@ -317,33 +317,33 @@ install(DIRECTORY src/probe/
 include(CMakePackageConfigHelpers)
 
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtMCPConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/QtMCPConfig.cmake"
-    INSTALL_DESTINATION share/cmake/QtMCP
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/qtPilotConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/qtPilotConfig.cmake"
+    INSTALL_DESTINATION share/cmake/qtPilot
 )
 
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/QtMCPConfig.cmake"
-    DESTINATION share/cmake/QtMCP
+    "${CMAKE_CURRENT_BINARY_DIR}/qtPilotConfig.cmake"
+    DESTINATION share/cmake/qtPilot
 )
 
 # Install helper cmake module alongside the config
 install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/qtmcp_inject_probe.cmake"
-    DESTINATION share/cmake/QtMCP
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/qtPilot_inject_probe.cmake"
+    DESTINATION share/cmake/qtPilot
 )
 
 # Print configuration summary
 message(STATUS "")
-message(STATUS "QtMCP Configuration Summary:")
+message(STATUS "qtPilot Configuration Summary:")
 message(STATUS "  Version:        ${PROJECT_VERSION}")
 message(STATUS "  Build type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Qt version:     ${QT_VERSION} (Qt${QT_VERSION_MAJOR})")
-message(STATUS "  Qt version tag: ${QTMCP_QT_VERSION_TAG}")
-message(STATUS "  Architecture:   ${QTMCP_ARCH_TAG}")
+message(STATUS "  Qt version tag: ${QTPILOT_QT_VERSION_TAG}")
+message(STATUS "  Architecture:   ${QTPILOT_ARCH_TAG}")
 message(STATUS "  Install prefix: ${CMAKE_INSTALL_PREFIX}")
-message(STATUS "  Lib install:    ${QTMCP_INSTALL_LIBDIR}")
-message(STATUS "  Build tests:    ${QTMCP_BUILD_TESTS}")
-message(STATUS "  Build test app: ${QTMCP_BUILD_TEST_APP}")
-message(STATUS "  QML support:    ${QTMCP_HAS_QML}")
+message(STATUS "  Lib install:    ${QTPILOT_INSTALL_LIBDIR}")
+message(STATUS "  Build tests:    ${QTPILOT_BUILD_TESTS}")
+message(STATUS "  Build test app: ${QTPILOT_BUILD_TEST_APP}")
+message(STATUS "  QML support:    ${QTPILOT_HAS_QML}")
 message(STATUS "")

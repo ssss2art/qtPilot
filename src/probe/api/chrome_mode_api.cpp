@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "api/chrome_mode_api.h"
@@ -24,7 +24,7 @@
 #include <QPointer>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 // ============================================================================
 // Internal helpers (file-scope, not in header)
@@ -780,4 +780,4 @@ void ChromeModeApi::registerReadConsoleMessagesMethod() {
       });
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

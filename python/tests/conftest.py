@@ -1,4 +1,4 @@
-"""Shared test fixtures for QtMCP unit tests."""
+"""Shared test fixtures for qtPilot unit tests."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest_asyncio
 
 from fastmcp import FastMCP
 
-from qtmcp.connection import ProbeConnection
+from qtpilot.connection import ProbeConnection
 
 
 class MockWebSocket:
@@ -73,7 +73,7 @@ async def mock_probe(mock_ws):
     probe = ProbeConnection("ws://localhost:9222")
 
     mock_connect = AsyncMock(return_value=mock_ws)
-    with patch("qtmcp.connection.connect", mock_connect):
+    with patch("qtpilot.connection.connect", mock_connect):
         await probe.connect()
 
     yield probe, mock_ws

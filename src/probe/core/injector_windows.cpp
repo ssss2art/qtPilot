@@ -1,15 +1,15 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "core/injector.h"
 
-#ifdef QTMCP_PLATFORM_WINDOWS
+#ifdef QTPILOT_PLATFORM_WINDOWS
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QTimer>
 
-#ifdef QTMCP_HAS_SPDLOG
+#ifdef QTPILOT_HAS_SPDLOG
 #include <spdlog/spdlog.h>
 #define LOG_INFO(msg) spdlog::info(msg)
 #else
@@ -20,21 +20,21 @@
 
 #include <windows.h>
 
-namespace qtmcp {
+namespace qtPilot {
 
 void InitializeProbe() {
   // Check if probe is disabled
-  QByteArray enabled_env = qgetenv("QTMCP_ENABLED");
+  QByteArray enabled_env = qgetenv("QTPILOT_ENABLED");
   if (!enabled_env.isEmpty() && enabled_env == "0") {
-    LOG_INFO("QtMCP Probe disabled via QTMCP_ENABLED=0");
+    LOG_INFO("qtPilot Probe disabled via QTPILOT_ENABLED=0");
     return;
   }
 
-  LOG_INFO("QtMCP Probe library loaded (Windows)");
+  LOG_INFO("qtPilot Probe library loaded (Windows)");
 
   // Get port from environment or use default
   int port = 9999;
-  QByteArray port_env = qgetenv("QTMCP_PORT");
+  QByteArray port_env = qgetenv("QTPILOT_PORT");
   if (!port_env.isEmpty()) {
     bool ok = false;
     int env_port = port_env.toInt(&ok);
@@ -55,13 +55,13 @@ void InitializeProbe() {
 }
 
 void ShutdownProbe() {
-  LOG_INFO("QtMCP Probe library unloading (Windows)");
+  LOG_INFO("qtPilot Probe library unloading (Windows)");
   if (Probe::instance()->isRunning()) {
     Probe::instance()->shutdown();
   }
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 // DLL entry point
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
@@ -69,13 +69,13 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     case DLL_PROCESS_ATTACH:
       // Disable thread notifications for performance
       DisableThreadLibraryCalls(hinstDLL);
-      qtmcp::InitializeProbe();
+      qtPilot::InitializeProbe();
       break;
 
     case DLL_PROCESS_DETACH:
       // Only cleanup if process is not terminating
       if (lpvReserved == nullptr) {
-        qtmcp::ShutdownProbe();
+        qtPilot::ShutdownProbe();
       }
       break;
 
@@ -87,4 +87,4 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
   return TRUE;
 }
 
-#endif  // QTMCP_PLATFORM_WINDOWS
+#endif  // QTPILOT_PLATFORM_WINDOWS

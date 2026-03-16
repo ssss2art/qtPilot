@@ -1,8 +1,8 @@
-# CLAUDE.md - AI Assistant Guidelines for QtMcp
+# CLAUDE.md - AI Assistant Guidelines for qtPilot
 
 ## Project Overview
 
-**QtMcp** is a Qt-based MCP (Model Context Protocol) server that mimics the Claude Code Chrome API. This project provides a native Qt implementation for integrating with Claude's tooling ecosystem.
+**qtPilot** is a Qt-based MCP (Model Context Protocol) server that mimics the Claude Code Chrome API. This project provides a native Qt implementation for integrating with Claude's tooling ecosystem.
 
 - **License**: MIT
 - **Language**: C++ with Qt Framework
@@ -17,27 +17,27 @@
 
 ### Build Commands
 ```bash
-# CMake configure + build (set QTMCP_QT_DIR to your local Qt installation)
-cmake -B build -DQTMCP_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64
+# CMake configure + build (set QTPILOT_QT_DIR to your local Qt installation)
+cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64
 cmake --build build --config Release
 ```
 
 ### Running Tests (Windows)
 
-The Qt directory used during the build is stored in `build/CMakeCache.txt` as `QTMCP_QT_DIR`.
+The Qt directory used during the build is stored in `build/CMakeCache.txt` as `QTPILOT_QT_DIR`.
 Tests need the Qt `bin/` on PATH and `plugins/` as QT_PLUGIN_PATH, otherwise they fail
 with exit code `0xc0000135` (DLL not found).
 
 ```bash
 # From bash/git-bash — extract Qt dir from CMake cache, then run via cmd //c
 # (bash requires //c double-slash which it converts to /c for cmd.exe)
-QT_DIR=$(grep "QTMCP_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
+QT_DIR=$(grep "QTPILOT_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
 cmd //c "set PATH=${QT_DIR}\bin;%PATH% && set QT_PLUGIN_PATH=${QT_DIR}\plugins && ctest --test-dir build -C Release --output-on-failure"
 ```
 
 ```bat
 :: From native cmd.exe — extract Qt dir from cache and run
-for /f "tokens=2 delims==" %Q in ('findstr "QTMCP_QT_DIR:PATH=" build\CMakeCache.txt') do set QT_DIR=%Q
+for /f "tokens=2 delims==" %Q in ('findstr "QTPILOT_QT_DIR:PATH=" build\CMakeCache.txt') do set QT_DIR=%Q
 set PATH=%QT_DIR%\bin;%PATH%
 set QT_PLUGIN_PATH=%QT_DIR%\plugins
 ctest --test-dir build -C Release --output-on-failure
@@ -45,7 +45,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 ### Running Tests (Linux)
 ```bash
-QT_DIR=$(grep "QTMCP_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
+QT_DIR=$(grep "QTPILOT_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
 QT_PLUGIN_PATH="${QT_DIR}/plugins" LD_LIBRARY_PATH="${QT_DIR}/lib" ctest --test-dir build -C Release --output-on-failure
 ```
 
@@ -66,7 +66,7 @@ child processes that inherit the Windows environment, not the bash-local overrid
    - Functions/Methods: `camelCase` (e.g., `handleRequest`, `parseMessage`)
    - Member variables: `m_` prefix with camelCase (e.g., `m_serverPort`)
    - Constants: `UPPER_SNAKE_CASE` (e.g., `DEFAULT_PORT`)
-   - Namespaces: lowercase (e.g., `qtmcp`, `qtmcp::server`)
+   - Namespaces: camelCase (e.g., `qtPilot`, `qtPilot::server`)
 
 2. **Qt-Specific Conventions**
    - Use Qt's signal/slot mechanism for async communication
@@ -78,7 +78,7 @@ child processes that inherit the Windows environment, not the bash-local overrid
    - One class per header/source file pair
    - Header files use `.h` extension
    - Source files use `.cpp` extension
-   - Include guards: `#pragma once` (preferred) or `#ifndef QTMCP_CLASSNAME_H`
+   - Include guards: `#pragma once` (preferred) or `#ifndef QTPILOT_CLASSNAME_H`
 
 4. **Modern C++ Practices**
    - Use smart pointers (`std::unique_ptr`, `std::shared_ptr`) except for Qt-managed objects
@@ -190,22 +190,22 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 |------|------------------|
 | Build | `cmake --build build --config Release` |
 | Test (bash) | Extract `QT_DIR` from cache, then `cmd //c "set PATH=...&& ctest ..."` (see Build System section) |
-| Test (cmd.exe) | Set `PATH` and `QT_PLUGIN_PATH` from `QTMCP_QT_DIR` in cache, then `ctest --test-dir build -C Release` |
-| Launch | `build/bin/Release/qtmcp-launcher.exe [--qt-dir <path>] app.exe` |
+| Test (cmd.exe) | Set `PATH` and `QT_PLUGIN_PATH` from `QTPILOT_QT_DIR` in cache, then `ctest --test-dir build -C Release` |
+| Launch | `build/bin/Release/qtPilot-launcher.exe [--qt-dir <path>] app.exe` |
 | Source | `src/` directory |
 | Tests | `tests/` directory |
 
-## Using QtMCP Tools (MCP Integration)
+## Using qtPilot Tools (MCP Integration)
 
-When QtMCP is configured as an MCP server (see `.mcp.json`), you can interact with
-live Qt applications using the `mcp__qtmcp__*` tools. Follow these steps:
+When qtPilot is configured as an MCP server (see `.mcp.json`), you can interact with
+live Qt applications using the `mcp__qtpilot__*` tools. Follow these steps:
 
 ### 1. Launch the Test App
 
-Use `qtmcp-launcher.exe` to launch any Qt app with the probe auto-injected:
+Use `qtPilot-launcher.exe` to launch any Qt app with the probe auto-injected:
 
 ```bash
-build/bin/Release/qtmcp-launcher.exe build/bin/Release/qtmcp-test-app.exe
+build/bin/Release/qtPilot-launcher.exe build/bin/Release/qtPilot-test-app.exe
 ```
 
 Run this in the background (`run_in_background: true`) so the app stays alive.
@@ -215,8 +215,8 @@ manually set `PATH` or `QT_PLUGIN_PATH`.
 ### 2. Discover and Connect
 
 ```
-qtmcp_list_probes()        # find running probes
-qtmcp_connect_probe(ws_url="ws://...")  # connect using the URL from list
+qtpilot_list_probes()        # find running probes
+qtpilot_connect_probe(ws_url="ws://...")  # connect using the URL from list
 qt_ping()                  # verify connectivity
 ```
 
@@ -231,9 +231,9 @@ qt_ping()                  # verify connectivity
 
 ## Important Files
 
-- `/home/user/QtMcp/README.md` - Project description
-- `/home/user/QtMcp/LICENSE` - MIT License terms
-- `/home/user/QtMcp/.gitignore` - Build artifacts exclusion
+- `/home/user/qtPilot/README.md` - Project description
+- `/home/user/qtPilot/LICENSE` - MIT License terms
+- `/home/user/qtPilot/.gitignore` - Build artifacts exclusion
 
 ---
 

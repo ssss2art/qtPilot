@@ -1,8 +1,8 @@
-# QtMCP
+# qtPilot
 
 ## What This Is
 
-QtMCP is a lightweight, MIT-licensed injection library that enables AI assistants (Claude), test automation frameworks, and debugging tools to inspect and control Qt applications at runtime. It consists of a C++ probe (15,912 LOC) injected into Qt apps via LD_PRELOAD/DLL injection, a WebSocket transport layer with JSON-RPC 2.0, three API modes (Native, Computer Use, Chrome), and a Python MCP server (1,380 LOC) for Claude integration.
+qtPilot is a lightweight, MIT-licensed injection library that enables AI assistants (Claude), test automation frameworks, and debugging tools to inspect and control Qt applications at runtime. It consists of a C++ probe (15,912 LOC) injected into Qt apps via LD_PRELOAD/DLL injection, a WebSocket transport layer with JSON-RPC 2.0, three API modes (Native, Computer Use, Chrome), and a Python MCP server (1,380 LOC) for Claude integration.
 
 ## Core Value
 
@@ -21,7 +21,7 @@ Claude can control any Qt application with zero learning curve — the probe exp
 - Native API: hierarchical object IDs, full Qt introspection (33 qt.* methods) — v1.0
 - Computer Use API: screenshot, coordinates, mouse/keyboard actions (13 cu.* methods) — v1.0
 - Chrome API: accessibility tree, refs, form_input, semantic click (8 chr.* methods) — v1.0
-- Windows launcher (qtmcp-launch.exe) — v1.0
+- Windows launcher (qtpilot-launch.exe) — v1.0
 - Python MCP server with 53 tool definitions — v1.0
 - Python client library for automation scripts — v1.0
 - QML item introspection and Model/View navigation — v1.0
@@ -30,7 +30,7 @@ Claude can control any Qt application with zero learning curve — the probe exp
 - GitHub Releases with prebuilt probe binaries (16 assets) — v1.1
 - vcpkg port — source build (user builds against their Qt) — v1.1
 - vcpkg port — binary download (prebuilt from GitHub Releases) — v1.1
-- Python MCP server published to PyPI (`pip install qtmcp`) — v1.1
+- Python MCP server published to PyPI (`pip install qtpilot`) — v1.1
 
 ### Active
 
@@ -56,7 +56,7 @@ Claude can control any Qt application with zero learning curve — the probe exp
 Shipped v1.1 with distribution infrastructure complete.
 Tech stack: C++17, Qt 5.15-6.9, Qt WebSockets, JSON-RPC 2.0, Python 3.8+, FastMCP 2.14.
 CI matrix: 8 cells (Qt 5.15, 6.5, 6.8, 6.9 × Windows/Linux) + 2 patched Qt cells.
-Distribution: GitHub Releases (16 artifacts), vcpkg overlay ports, PyPI (`pip install qtmcp`).
+Distribution: GitHub Releases (16 artifacts), vcpkg overlay ports, PyPI (`pip install qtpilot`).
 Known tech debt: SHA512 placeholders in vcpkg ports (update after first release tag).
 
 ## Constraints
@@ -80,9 +80,9 @@ Known tech debt: SHA512 placeholders in vcpkg ports (update after first release 
 | InitOnce API instead of std::call_once | Avoids TLS issues in injected DLLs on Windows | Good |
 | Q_COREAPP_STARTUP_FUNCTION | Auto-init when Qt starts, no manual call needed | Good |
 | Ephemeral refs for Chrome Mode | Fresh refs per readPage, avoids stale refs | Good |
-| Qt Quick as optional dependency | QTMCP_HAS_QML compile guard, graceful degradation | Good |
+| Qt Quick as optional dependency | QTPILOT_HAS_QML compile guard, graceful degradation | Good |
 | Minimal DllMain pattern | Only DisableThreadLibraryCalls + flag; defer all Qt work | Good |
-| Versioned artifact naming | `qtmcp-probe-qt{M}.{m}.dll` encodes Qt version in filename | Good |
+| Versioned artifact naming | `qtPilot-probe-qt{M}.{m}.dll` encodes Qt version in filename | Good |
 | Manual IMPORTED target | Replaced CMake EXPORT with manual target for versioned paths | Good |
 | Qt minimum versions 5.15.1/6.5 | CMake FATAL_ERROR enforces; QT_DISABLE_DEPRECATED_BEFORE | Good |
 | OIDC Trusted Publishers | Secure keyless PyPI publishing without API tokens | Good |

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -16,7 +16,7 @@
 #include "core/object_registry.h"
 #include "core/object_resolver.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Integration tests for the Computer Use Mode API (cu.* methods).
 ///

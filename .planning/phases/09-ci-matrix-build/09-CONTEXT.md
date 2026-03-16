@@ -30,17 +30,17 @@ GitHub Actions workflow that builds the probe for 4 Qt versions (5.15, 6.2, 6.8,
 ### Artifact output
 - Upload per cell: probe binary + launcher executable + import library (.lib/.a)
 - Include PDB debug symbols on Windows
-- Artifact name encodes platform: `qtmcp-qt6.8-windows-msvc` / `qtmcp-qt6.8-linux-gcc`
+- Artifact name encodes platform: `qtpilot-qt6.8-windows-msvc` / `qtpilot-qt6.8-linux-gcc`
 - Retention: 7 days
 
 ### CMake invocation
-- Build with tests enabled (QTMCP_BUILD_TESTS=ON), run ctest — failures block the check
+- Build with tests enabled (QTPILOT_BUILD_TESTS=ON), run ctest — failures block the check
 - Run cmake --install and verify the install layout (versioned paths correct)
 - Optional deps installed via vcpkg (nlohmann_json, spdlog on both platforms)
 - Qt installed via jurplel/install-qt-action@v4
 
 ### Claude's Discretion
-- Whether to use QTMCP_QT_DIR or CMAKE_PREFIX_PATH for Qt path in CI (pick whichever is more robust)
+- Whether to use QTPILOT_QT_DIR or CMAKE_PREFIX_PATH for Qt path in CI (pick whichever is more robust)
 - vcpkg caching strategy
 - Exact cmake configure/build/test/install command flags
 - Workflow file structure (single file vs reusable workflows)

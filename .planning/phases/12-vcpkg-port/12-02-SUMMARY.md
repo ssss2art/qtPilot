@@ -5,17 +5,17 @@ subsystem: distribution
 tags: [vcpkg, binary-port, cmake, packaging]
 dependency-graph:
   requires: [12-01]
-  provides: [binary overlay port at ports/qtmcp-bin/]
+  provides: [binary overlay port at ports/qtpilot-bin/]
   affects: [users wanting prebuilt probe without compilation]
 tech-stack:
   added: []
   patterns: [vcpkg_download_distfile, IMPORTED target, per-artifact SHA512]
 key-files:
   created:
-    - ports/qtmcp-bin/vcpkg.json
-    - ports/qtmcp-bin/portfile.cmake
-    - ports/qtmcp-bin/QtMCPConfig.cmake
-    - ports/qtmcp-bin/usage
+    - ports/qtpilot-bin/vcpkg.json
+    - ports/qtpilot-bin/portfile.cmake
+    - ports/qtpilot-bin/qtPilotConfig.cmake
+    - ports/qtpilot-bin/usage
   modified: []
 decisions:
   - id: per-artifact-hash
@@ -38,11 +38,11 @@ metrics:
 
 ## What Was Built
 
-Created `ports/qtmcp-bin/` directory with four files enabling prebuilt probe installation via vcpkg:
+Created `ports/qtpilot-bin/` directory with four files enabling prebuilt probe installation via vcpkg:
 
-1. **vcpkg.json** - Port manifest declaring `qtmcp-bin` with Windows/Linux support
+1. **vcpkg.json** - Port manifest declaring `qtpilot-bin` with Windows/Linux support
 2. **portfile.cmake** - Downloads matching probe from GitHub Releases based on detected Qt
-3. **QtMCPConfig.cmake** - Creates QtMCP::Probe IMPORTED target identically to source port
+3. **qtPilotConfig.cmake** - Creates qtPilot::Probe IMPORTED target identically to source port
 4. **usage** - Post-install instructions showing find_package pattern
 
 ## Key Design Decisions
@@ -74,15 +74,15 @@ set(_available_versions "5.15;6.5;6.8;6.9")
 
 ### Install Layout Match
 Binary probe installed to identical path as source port:
-- Linux: `lib/qtmcp/qt{M}.{m}/libqtmcp-probe-qt{M}.{m}.so`
-- Windows: `lib/qtmcp/qt{M}.{m}/qtmcp-probe-qt{M}.{m}.dll`
+- Linux: `lib/qtpilot/qt{M}.{m}/libqtPilot-probe-qt{M}.{m}.so`
+- Windows: `lib/qtpilot/qt{M}.{m}/qtPilot-probe-qt{M}.{m}.dll`
 
 ## Commits
 
 | Hash | Description |
 |------|-------------|
 | a57f31c | feat(12-02): add vcpkg.json and portfile.cmake for binary port |
-| 8af241a | feat(12-02): add QtMCPConfig.cmake and usage for binary port |
+| 8af241a | feat(12-02): add qtPilotConfig.cmake and usage for binary port |
 
 ## Deviations from Plan
 
@@ -97,14 +97,14 @@ Port cannot be fully tested until:
 Manual verification performed:
 - vcpkg.json is valid JSON with correct name
 - portfile.cmake has Qt detection, single-artifact download, correct install layout
-- QtMCPConfig.cmake creates QtMCP::Probe IMPORTED target with versioned path lookup
+- qtPilotConfig.cmake creates qtPilot::Probe IMPORTED target with versioned path lookup
 - usage file documents find_package and mentions source port alternative
 
 ## Next Phase Readiness
 
-Phase 12 complete. Both source and binary overlay ports available at `ports/qtmcp/` and `ports/qtmcp-bin/`.
+Phase 12 complete. Both source and binary overlay ports available at `ports/qtpilot/` and `ports/qtpilot-bin/`.
 
 **Before first release:**
 - Calculate SHA512 hashes for all 8 release artifacts
-- Update placeholder values in `ports/qtmcp-bin/portfile.cmake`
-- Update `ports/qtmcp/portfile.cmake` SHA512 for source archive
+- Update placeholder values in `ports/qtpilot-bin/portfile.cmake`
+- Update `ports/qtpilot/portfile.cmake` SHA512 for source archive

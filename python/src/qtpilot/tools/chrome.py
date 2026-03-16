@@ -17,7 +17,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Read the accessible page structure with optional filtering.
         Example: chr_readPage(filter="buttons")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {}
         if filter is not None:
@@ -31,7 +31,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Click an element by its accessibility reference.
         Example: chr_click(ref="btn_submit")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("chr.click", {"ref": ref})
 
@@ -40,7 +40,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Set a form input value by accessibility reference.
         Example: chr_formInput(ref="input_name", value="Alice")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("chr.formInput", {"ref": ref, "value": value})
 
@@ -49,7 +49,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Get all visible text content from the page.
         Example: chr_getPageText()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("chr.getPageText")
 
@@ -58,7 +58,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Search for elements matching a text query.
         Example: chr_find(query="Submit")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("chr.find", {"query": query})
 
@@ -67,7 +67,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Navigate to or activate an element by reference.
         Example: chr_navigate(ref="tab_settings")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("chr.navigate", {"ref": ref})
 
@@ -76,7 +76,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Get context about all tabs/windows in the application.
         Example: chr_tabsContext()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("chr.tabsContext")
 
@@ -90,7 +90,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """Read console/debug messages with optional filtering.
         Example: chr_readConsoleMessages(limit=10, pattern="error")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {}
         if limit is not None:

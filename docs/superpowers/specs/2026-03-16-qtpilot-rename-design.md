@@ -1,4 +1,4 @@
-# Project Rename: qtmcp to qtPilot
+# Project Rename: qtpilot to qtPilot
 
 **Date:** 2026-03-16
 **Status:** Approved
@@ -30,9 +30,9 @@
 ## Breaking Changes
 
 This is a clean break. Old probes and new servers (or vice versa) are **not compatible**.
-- Discovery protocol string changes from `qtmcp-discovery` to `qtPilot-discovery`
-- JSON-RPC method names change from `qtmcp.*` to `qtPilot.*`
-- CMake `find_package(QtMCP)` becomes `find_package(qtPilot)`
+- Discovery protocol string changes from `qtPilot-discovery` to `qtPilot-discovery`
+- JSON-RPC method names change from `qtpilot.*` to `qtPilot.*`
+- CMake `find_package(qtPilot)` becomes `find_package(qtPilot)`
 - Probe and server versions must match after this rename
 
 ## Approach
@@ -43,13 +43,13 @@ Big-bang scripted rename: all replacements in a single pass, verified by build a
 
 | From | To |
 |------|----|
-| `python/src/qtmcp/` | `python/src/qtpilot/` |
-| `cmake/qtmcp_inject_probe.cmake` | `cmake/qtPilot_inject_probe.cmake` |
-| `cmake/QtMCPConfig.cmake.in` | `cmake/qtPilotConfig.cmake.in` |
-| `qtmcp-specification.md` | `qtPilot-specification.md` |
-| `qtmcp-compatibility-modes.md` | `qtPilot-compatibility-modes.md` |
-| `qt515-tools/qtmcp-launcher.exe` | `qt515-tools/qtPilot-launcher.exe` |
-| `qt515-tools/qtmcp-probe.dll` | `qt515-tools/qtPilot-probe.dll` |
+| `python/src/qtpilot/` | `python/src/qtpilot/` |
+| `cmake/qtPilot_inject_probe.cmake` | `cmake/qtPilot_inject_probe.cmake` |
+| `cmake/qtPilotConfig.cmake.in` | `cmake/qtPilotConfig.cmake.in` |
+| `qtPilot-specification.md` | `qtPilot-specification.md` |
+| `qtPilot-compatibility-modes.md` | `qtPilot-compatibility-modes.md` |
+| `qt515-tools/qtPilot-launcher.exe` | `qt515-tools/qtPilot-launcher.exe` |
+| `qt515-tools/qtPilot-probe.dll` | `qt515-tools/qtPilot-probe.dll` |
 
 ## Text Replacement Order
 
@@ -61,28 +61,28 @@ Replacements are applied case-sensitively, longest-match-first to prevent partia
 
 | # | From | To | Notes |
 |---|------|----|-------|
-| 1 | `qtmcp-specification` | `qtPilot-specification` | Filename references |
-| 2 | `qtmcp-compatibility` | `qtPilot-compatibility` | Filename references |
-| 3 | `qtmcp_inject_probe` | `qtPilot_inject_probe` | CMake module/function |
-| 4 | `qtmcp-test-app` | `qtPilot-test-app` | Binary name |
-| 5 | `qtmcp-launcher` | `qtPilot-launcher` | Binary name |
-| 6 | `qtmcp_test_app` | `qtPilot_test_app` | CMake target |
-| 7 | `qtmcp_launcher` | `qtPilot_launcher` | CMake target |
-| 8 | `qtmcp_add_test` | `qtPilot_add_test` | CMake test function |
-| 9 | `qtmcp-probe` | `qtPilot-probe` | Probe binary/DLL name (also catches `libqtmcp-probe`) |
-| 10 | `qtmcp_probe` | `qtPilot_probe` | CMake target |
-| 11 | `qtmcp_shared` | `qtPilot_shared` | CMake target |
-| 12 | `qtmcp-names` | `qtPilot-names` | Default name map file |
-| 13 | `qtmcp-log-` | `qtPilot-log-` | Log file prefix |
-| 14 | `qtmcp-discovery` | `qtPilot-discovery` | Wire protocol identifier |
-| 15 | `QTMCP_` | `QTPILOT_` | CMake vars, env vars, C++ macros |
-| 16 | `QtMCP` | `qtPilot` | CMake project name, display name, `QtMCP::Probe` target |
-| 17 | `QtMcp` | `qtPilot` | PascalCase variant in docs/URLs |
-| 18 | `qtmcp_log_` | `qtpilot_log_` | Middleware prefix check |
-| 19 | `qtmcp_` | `qtpilot_` | MCP tool names, CMake internal vars (lowercase) |
-| 20 | `qtmcp.` | `qtpilot.` | Python imports (`from qtpilot.server`), JSON-RPC methods |
-| 21 | `qtmcp` | `qtpilot` | Python package name, `_pkg_version()`, remaining lowercase refs |
-| 22 | `ssss2art/QtMcp` | `ssss2art/qtPilot` | GitHub repo URLs (already handled by #17 but explicit) |
+| 1 | `qtPilot-specification` | `qtPilot-specification` | Filename references |
+| 2 | `qtPilot-compatibility` | `qtPilot-compatibility` | Filename references |
+| 3 | `qtPilot_inject_probe` | `qtPilot_inject_probe` | CMake module/function |
+| 4 | `qtPilot-test-app` | `qtPilot-test-app` | Binary name |
+| 5 | `qtPilot-launcher` | `qtPilot-launcher` | Binary name |
+| 6 | `qtPilot_test_app` | `qtPilot_test_app` | CMake target |
+| 7 | `qtPilot_launcher` | `qtPilot_launcher` | CMake target |
+| 8 | `qtPilot_add_test` | `qtPilot_add_test` | CMake test function |
+| 9 | `qtPilot-probe` | `qtPilot-probe` | Probe binary/DLL name (also catches `libqtPilot-probe`) |
+| 10 | `qtPilot_probe` | `qtPilot_probe` | CMake target |
+| 11 | `qtPilot_shared` | `qtPilot_shared` | CMake target |
+| 12 | `qtPilot-names` | `qtPilot-names` | Default name map file |
+| 13 | `qtPilot-log-` | `qtPilot-log-` | Log file prefix |
+| 14 | `qtPilot-discovery` | `qtPilot-discovery` | Wire protocol identifier |
+| 15 | `QTPILOT_` | `QTPILOT_` | CMake vars, env vars, C++ macros |
+| 16 | `qtPilot` | `qtPilot` | CMake project name, display name, `qtPilot::Probe` target |
+| 17 | `qtPilot` | `qtPilot` | PascalCase variant in docs/URLs |
+| 18 | `qtpilot_log_` | `qtpilot_log_` | Middleware prefix check |
+| 19 | `qtpilot_` | `qtpilot_` | MCP tool names, CMake internal vars (lowercase) |
+| 20 | `qtpilot.` | `qtpilot.` | Python imports (`from qtpilot.server`), JSON-RPC methods |
+| 21 | `qtpilot` | `qtpilot` | Python package name, `_pkg_version()`, remaining lowercase refs |
+| 22 | `ssss2art/qtPilot` | `ssss2art/qtPilot` | GitHub repo URLs (already handled by #17 but explicit) |
 
 **Post-replacement fixups** (applied after the table above):
 
@@ -94,11 +94,11 @@ These correct cases where the table produces the wrong casing:
 | `qtpilot::` | `qtPilot::` | C++ qualified names |
 | `// namespace qtpilot` | `// namespace qtPilot` | Closing namespace comments |
 | `using namespace qtpilot` | `using namespace qtPilot` | Using declarations |
-| `[qtpilot]` (in log strings) | `[qtPilot]` | Log prefix display name |
+| `[qtPilot]` (in log strings) | `[qtPilot]` | Log prefix display name |
 | `"qtpilot"` (in .mcp.json `"name"` field) | `"qtPilot"` | MCP server display name |
-| `qtpilot-probe` (in binary output names) | `qtPilot-probe` | Binary naming |
-| `qtpilot-launcher` (in binary output names) | `qtPilot-launcher` | Binary naming |
-| `qtpilot-test-app` (in binary output names) | `qtPilot-test-app` | Binary naming |
+| `qtPilot-probe` (in binary output names) | `qtPilot-probe` | Binary naming |
+| `qtPilot-launcher` (in binary output names) | `qtPilot-launcher` | Binary naming |
+| `qtPilot-test-app` (in binary output names) | `qtPilot-test-app` | Binary naming |
 
 ## Execution Steps
 
@@ -117,7 +117,7 @@ These correct cases where the table produces the wrong casing:
 
 - All 15 C++ tests pass
 - `cmake --build` succeeds with no warnings about old names
-- `grep -ri "qtmcp" --include="*.cpp" --include="*.h" --include="*.py" --include="*.cmake" --include="*.toml" --include="*.json" --include="*.md" .` returns zero hits (excluding `.git/`, `build/`, `node_modules/`, `python/dist/`)
+- `grep -ri "qtpilot" --include="*.cpp" --include="*.h" --include="*.py" --include="*.cmake" --include="*.toml" --include="*.json" --include="*.md" .` returns zero hits (excluding `.git/`, `build/`, `node_modules/`, `python/dist/`)
 - Python `from qtpilot.server import create_mcp_server` works
 - `.mcp.json` references `qtPilot`
 - `CLAUDE.md` references correct binary names

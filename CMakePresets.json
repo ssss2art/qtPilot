@@ -27,8 +27,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "QTMCP_BUILD_TESTS": "ON",
-        "QTMCP_BUILD_TEST_APP": "ON"
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
       }
     },
     {
@@ -43,8 +43,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "QTMCP_BUILD_TESTS": "ON",
-        "QTMCP_BUILD_TEST_APP": "ON"
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
       }
     },
     {
@@ -64,8 +64,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "QTMCP_BUILD_TESTS": "ON",
-        "QTMCP_BUILD_TEST_APP": "ON"
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
       }
     },
     {
@@ -85,8 +85,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "QTMCP_BUILD_TESTS": "ON",
-        "QTMCP_BUILD_TEST_APP": "ON"
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
       }
     },
     {
@@ -106,8 +106,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "QTMCP_BUILD_TESTS": "ON",
-        "QTMCP_BUILD_TEST_APP": "ON"
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
       }
     },
     {
@@ -127,8 +127,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "QTMCP_BUILD_TESTS": "ON",
-        "QTMCP_BUILD_TEST_APP": "ON"
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
       }
     },
     {
@@ -137,7 +137,7 @@
       "description": "Release build targeting Qt 5.15.x",
       "inherits": "release",
       "cacheVariables": {
-        "QTMCP_QT_DIR": {
+        "QTPILOT_QT_DIR": {
           "type": "PATH",
           "value": ""
         }
@@ -149,7 +149,7 @@
       "description": "Windows release build targeting Qt 5.15.x",
       "inherits": "windows-release",
       "cacheVariables": {
-        "QTMCP_QT_DIR": {
+        "QTPILOT_QT_DIR": {
           "type": "PATH",
           "value": ""
         }

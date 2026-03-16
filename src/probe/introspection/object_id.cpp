@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "introspection/object_id.h"
@@ -11,7 +11,7 @@
 #include <QMetaProperty>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 namespace {
 
@@ -222,7 +222,7 @@ QString generateIdSegment(QObject* obj) {
     return QString();
   }
 
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
   // Priority 0 (QML only): QML id takes highest priority
   QmlItemInfo qmlInfo = inspectQmlItem(obj);
   if (qmlInfo.isQmlItem && !qmlInfo.qmlId.isEmpty()) {
@@ -243,7 +243,7 @@ QString generateIdSegment(QObject* obj) {
   }
 
   // Priority 3: ClassName (or short QML type name) with optional disambiguation suffix
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
   // For QML items without a QML id or objectName, use short type name
   // (e.g., "Rectangle" instead of "QQuickRectangle")
   QString typeName = qmlInfo.isQmlItem ? qmlInfo.shortTypeName
@@ -333,7 +333,7 @@ QJsonObject serializeObjectInfo(QObject* obj) {
     result[QLatin1String("text")] = text;
   }
 
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
   // QML-specific metadata
   QmlItemInfo qmlInfo = inspectQmlItem(obj);
   if (qmlInfo.isQmlItem) {
@@ -373,4 +373,4 @@ QJsonObject serializeObjectTree(QObject* root, int maxDepth) {
   return serializeTreeRecursive(root, maxDepth, 0);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

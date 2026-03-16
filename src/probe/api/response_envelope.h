@@ -1,16 +1,16 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "transport/jsonrpc_handler.h"  // For QTMCP_EXPORT
+#include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT
 
 #include <QDateTime>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Uniform response envelope wrapper for Native Mode API methods.
 ///
@@ -18,7 +18,7 @@ namespace qtmcp {
 /// { "result": ..., "meta": { "timestamp": epoch_ms, ... } }
 ///
 /// This ensures consistent response formatting across all API methods.
-class QTMCP_EXPORT ResponseEnvelope {
+class QTPILOT_EXPORT ResponseEnvelope {
  public:
   /// @brief Wrap a result value in the standard envelope.
   /// @param result The result value (any JSON type).
@@ -49,4 +49,4 @@ class QTMCP_EXPORT ResponseEnvelope {
                                        const QJsonObject& expectedSchema);
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

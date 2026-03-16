@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "core/object_resolver.h"
@@ -6,7 +6,7 @@
 #include "api/symbolic_name_map.h"
 #include "core/object_registry.h"
 
-namespace qtmcp {
+namespace qtPilot {
 
 // Static member initialization
 QHash<int, QPointer<QObject>> ObjectResolver::s_numericIds;
@@ -86,4 +86,4 @@ int ObjectResolver::numericIdFor(QObject* obj) {
   return s_objectToNumericId.value(obj, -1);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

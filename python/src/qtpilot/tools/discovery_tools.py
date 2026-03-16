@@ -9,16 +9,16 @@ def register_discovery_tools(mcp: FastMCP) -> None:
     """Register probe discovery and connection management tools."""
 
     @mcp.tool
-    async def qtmcp_list_probes(ctx: Context) -> dict:
-        """List all QtMCP probes discovered on the network via UDP broadcast.
+    async def qtpilot_list_probes(ctx: Context) -> dict:
+        """List all qtPilot probes discovered on the network via UDP broadcast.
 
         Returns a list of probes with their app name, PID, Qt version,
-        WebSocket URL, and connection status. Use qtmcp_connect_probe
+        WebSocket URL, and connection status. Use qtpilot_connect_probe
         to connect to one.
 
-        Example: qtmcp_list_probes()
+        Example: qtpilot_list_probes()
         """
-        from qtmcp.server import get_discovery, get_probe
+        from qtpilot.server import get_discovery, get_probe
 
         discovery = get_discovery()
         if discovery is None:
@@ -46,18 +46,18 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         return {"probes": probes, "count": len(probes)}
 
     @mcp.tool
-    async def qtmcp_connect_probe(ws_url: str, ctx: Context = None) -> dict:
-        """Connect to a QtMCP probe by its WebSocket URL.
+    async def qtpilot_connect_probe(ws_url: str, ctx: Context = None) -> dict:
+        """Connect to a qtPilot probe by its WebSocket URL.
 
         Disconnects any existing probe connection first.
-        Get available URLs from qtmcp_list_probes.
+        Get available URLs from qtpilot_list_probes.
 
         Args:
             ws_url: WebSocket URL (e.g. "ws://192.168.1.100:9222")
 
-        Example: qtmcp_connect_probe(ws_url="ws://localhost:9222")
+        Example: qtpilot_connect_probe(ws_url="ws://localhost:9222")
         """
-        from qtmcp.server import connect_to_probe
+        from qtpilot.server import connect_to_probe
 
         try:
             conn = await connect_to_probe(ws_url)
@@ -66,12 +66,12 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             return {"connected": False, "error": str(e)}
 
     @mcp.tool
-    async def qtmcp_disconnect_probe(ctx: Context) -> dict:
-        """Disconnect from the currently connected QtMCP probe.
+    async def qtpilot_disconnect_probe(ctx: Context) -> dict:
+        """Disconnect from the currently connected qtPilot probe.
 
-        Example: qtmcp_disconnect_probe()
+        Example: qtpilot_disconnect_probe()
         """
-        from qtmcp.server import disconnect_probe, get_probe
+        from qtpilot.server import disconnect_probe, get_probe
 
         probe = get_probe()
         if probe is None or not probe.is_connected:
@@ -82,15 +82,15 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         return {"disconnected": True, "ws_url": ws_url}
 
     @mcp.tool
-    async def qtmcp_probe_status(ctx: Context) -> dict:
+    async def qtPilot_probe_status(ctx: Context) -> dict:
         """Get the current probe connection and discovery status.
 
         Returns connection state, discovery state, and count of
         discovered probes.
 
-        Example: qtmcp_probe_status()
+        Example: qtPilot_probe_status()
         """
-        from qtmcp.server import get_discovery, get_mode, get_probe
+        from qtpilot.server import get_discovery, get_mode, get_probe
 
         probe = get_probe()
         discovery = get_discovery()
@@ -102,4 +102,43 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             "discovery_active": discovery is not None and discovery.is_running,
             "discovered_probes": len(discovery.probes) if discovery else 0,
         }
+        return result
+
+    @mcp.tool
+    async def qtpilot_get_mode(ctx: Context) -> dict:
+        """Get the current API mode and list of available modes.
+
+        Returns the active mode and all valid mode choices.
+
+        Example: qtpilot_get_mode()
+        """
+        from qtpilot.server import get_state
+
+        state = get_state()
+        return {
+            "mode": state.mode,
+            "available": ["native", "cu", "chrome", "all"],
+        }
+
+    @mcp.tool
+    async def qtpilot_set_mode(mode: str, ctx: Context) -> dict:
+        """Switch the active API mode, changing which tools are available.
+
+        Modes:
+        - "native": Qt object introspection (qt_* tools)
+        - "cu": Computer use / screenshot-based (cu_* tools)
+        - "chrome": Accessibility tree (chr_* tools)
+        - "all": All tools from all modes
+
+        Args:
+            mode: Target mode - "native", "cu", "chrome", or "all"
+
+        Example: qtpilot_set_mode(mode="native")
+        """
+        from qtpilot.server import get_state
+
+        state = get_state()
+        result = state.set_mode(mode)
+        if "error" not in result and result.get("changed", False):
+            await ctx.send_tool_list_changed()
         return result

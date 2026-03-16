@@ -61,7 +61,7 @@ completed: 2026-01-30
 - Linux constructor detects Qt availability and defers initialization via QTimer::singleShot
 - InitOnce API used for thread-safe one-time initialization (avoids TLS-based std::call_once)
 - No forbidden constructs (thread_local, __declspec(thread), std::call_once) in probe code
-- Build produces qtmcp-probe.dll with correct entry points
+- Build produces qtPilot-probe.dll with correct entry points
 
 ## Task Commits
 
@@ -83,7 +83,7 @@ Note: Task 1 was satisfied by existing implementation. The Probe singleton with 
 
 1. **Use Windows InitOnce API instead of std::call_once** - MSVC's std::call_once implementation uses TLS internally, which causes corruption when used in dynamically loaded DLLs
 2. **Minimal DllMain** - Only DisableThreadLibraryCalls and flag set; no Qt calls, no thread creation, no LoadLibrary
-3. **Environment variable for disable** - QTMCP_ENABLED=0 disables probe initialization on Linux
+3. **Environment variable for disable** - QTPILOT_ENABLED=0 disables probe initialization on Linux
 4. **Conditional cleanup on process termination** - Only call shutdown() when reserved==nullptr in DLL_PROCESS_DETACH (process terminating vs normal unload)
 
 ## Deviations from Plan

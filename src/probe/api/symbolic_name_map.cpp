@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "api/symbolic_name_map.h"
@@ -11,7 +11,7 @@
 #include <QJsonDocument>
 #include <QMutexLocker>
 
-namespace qtmcp {
+namespace qtPilot {
 
 Q_GLOBAL_STATIC(SymbolicNameMap, s_symbolicNameMap)
 
@@ -143,8 +143,8 @@ QJsonArray SymbolicNameMap::validateNames() const {
 }
 
 void SymbolicNameMap::autoLoad() {
-  // Check QTMCP_NAME_MAP env var first
-  QByteArray envPath = qgetenv("QTMCP_NAME_MAP");
+  // Check QTPILOT_NAME_MAP env var first
+  QByteArray envPath = qgetenv("QTPILOT_NAME_MAP");
   if (!envPath.isEmpty()) {
     QString path = QString::fromUtf8(envPath);
     if (QFileInfo::exists(path)) {
@@ -153,12 +153,12 @@ void SymbolicNameMap::autoLoad() {
     }
   }
 
-  // Fall back to qtmcp-names.json in CWD
-  QString defaultPath = QStringLiteral("qtmcp-names.json");
+  // Fall back to qtPilot-names.json in CWD
+  QString defaultPath = QStringLiteral("qtPilot-names.json");
   if (QFileInfo::exists(defaultPath)) {
     loadFromFile(defaultPath);
   }
   // No file found - start empty (no error)
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

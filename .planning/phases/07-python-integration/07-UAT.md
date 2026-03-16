@@ -13,7 +13,7 @@ updated: 2026-02-01T20:38:00Z
 ## Tests
 
 ### 1. CLI help output
-expected: Run `cd python && python -m qtmcp --help`. Output shows usage with all five arguments: --mode, --ws-url, --target, --port, --launcher-path. --mode shows choices: native, cu, chrome.
+expected: Run `cd python && python -m qtpilot --help`. Output shows usage with all five arguments: --mode, --ws-url, --target, --port, --launcher-path. --mode shows choices: native, cu, chrome.
 result: pass
 
 ### 2. Package imports cleanly

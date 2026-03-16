@@ -1,8 +1,8 @@
-# Spec: Make QtMcp Launcher Easier to Get Running
+# Spec: Make qtPilot Launcher Easier to Get Running
 
 ## Context
 
-Launching the QtMcp probe requires manually setting `QT_PLUGIN_PATH` and adding Qt's `bin/` to `PATH` before every launch. If you forget, `LoadLibraryW` silently returns NULL and the app runs without any probe — no error tells you what went wrong. This is the #1 friction point for both developers and end users.
+Launching the qtPilot probe requires manually setting `QT_PLUGIN_PATH` and adding Qt's `bin/` to `PATH` before every launch. If you forget, `LoadLibraryW` silently returns NULL and the app runs without any probe — no error tells you what went wrong. This is the #1 friction point for both developers and end users.
 
 ## Strategy: Three Layers
 
@@ -30,7 +30,7 @@ Launching the QtMcp probe requires manually setting `QT_PLUGIN_PATH` and adding 
   4. Scan **target app's directory** for `platforms/qwindows.dll` — handles windeployqt'd apps
   5. Scan launcher's own directory for co-located Qt DLLs and `platforms/`
 - Sets env vars via `qputenv()` / `SetEnvironmentVariableW()` before `CreateProcessW`
-- Logs what it did: `[qtmcp-launch] Auto-set QT_PLUGIN_PATH=...`
+- Logs what it did: `[qtpilot-launch] Auto-set QT_PLUGIN_PATH=...`
 
 **C) Pre-flight diagnostic check**
 - Before remote injection, call `LoadLibraryExW(probeDll, nullptr, 0)` locally (WITH dependency resolution, unlike the existing `DONT_RESOLVE_DLL_REFERENCES` call)
@@ -40,19 +40,19 @@ Launching the QtMcp probe requires manually setting `QT_PLUGIN_PATH` and adding 
   GetLastError: 126 (ERROR_MOD_NOT_FOUND)
 
   Fix: Specify your Qt installation:
-    qtmcp-launcher.exe --qt-dir C:\Qt\5.15.1\msvc2019_64 your-app.exe
+    qtPilot-launcher.exe --qt-dir C:\Qt\5.15.1\msvc2019_64 your-app.exe
   ```
 - This replaces the current cryptic `Warning: LoadLibraryW returned NULL`
 
-### Layer 2: Python `qtmcp` Tool — Smart Launcher Wrapper
+### Layer 2: Python `qtpilot` Tool — Smart Launcher Wrapper
 
 **Files:**
-- `python/src/qtmcp/cli.py` (modify — add `--qt-dir` option to `serve`)
-- `python/src/qtmcp/server.py` (modify — pass Qt env to subprocess)
-- `python/src/qtmcp/qt_env.py` (new — Qt path detection logic)
+- `python/src/qtpilot/cli.py` (modify — add `--qt-dir` option to `serve`)
+- `python/src/qtpilot/server.py` (modify — pass Qt env to subprocess)
+- `python/src/qtpilot/qt_env.py` (new — Qt path detection logic)
 
-**A) Add `--qt-dir` option to `qtmcp serve`**
-- `qtmcp serve --mode native --target app.exe --qt-dir C:\Qt\5.15.1\msvc2019_64`
+**A) Add `--qt-dir` option to `qtpilot serve`**
+- `qtpilot serve --mode native --target app.exe --qt-dir C:\Qt\5.15.1\msvc2019_64`
 - Passed through to the launcher subprocess via `--qt-dir`
 
 **B) Smart environment setup before subprocess launch**
@@ -77,7 +77,7 @@ Launching the QtMcp probe requires manually setting `QT_PLUGIN_PATH` and adding 
 - Add `qwindows.dll` so the test app and launcher work without external plugins
 - This alone would have fixed our session's problem
 
-**B) Generate `qtmcp-launcher.json` sidecar** (optional, low priority)
+**B) Generate `qtPilot-launcher.json` sidecar** (optional, low priority)
 - CMake `file(GENERATE ...)` writes Qt paths next to the launcher exe
 - Launcher reads it as a fallback in the resolution cascade
 - Useful for redistributing pre-built binaries
@@ -88,12 +88,12 @@ Launching the QtMcp probe requires manually setting `QT_PLUGIN_PATH` and adding 
 2. **C++ `ensureQtEnvironment()`** — auto-detect via QLibraryInfo + target dir scan
 3. **C++ `--qt-dir` option** — explicit override for when auto-detect isn't enough
 4. **C++ pre-flight diagnostic** — clear errors instead of silent failure
-5. **Python `--qt-dir` passthrough** — smart env setup in `qtmcp serve`
+5. **Python `--qt-dir` passthrough** — smart env setup in `qtpilot serve`
 
 ## Verification
 
-1. Build from source, run `qtmcp-launcher.exe --port 9222 --detach qtmcp-test-app.exe` with NO env vars set → probe should inject successfully via QLibraryInfo auto-detection
+1. Build from source, run `qtPilot-launcher.exe --port 9222 --detach qtPilot-test-app.exe` with NO env vars set → probe should inject successfully via QLibraryInfo auto-detection
 2. Run with `--qt-dir` pointing to the Qt installation → should work
 3. Run with wrong `--qt-dir` → should get clear pre-flight error, not silent failure
-4. Run `qtmcp serve --mode native --target qtmcp-test-app.exe` → Python tool handles env setup
+4. Run `qtpilot serve --mode native --target qtPilot-test-app.exe` → Python tool handles env setup
 5. Run existing tests: `ctest --test-dir build -C Release --output-on-failure`

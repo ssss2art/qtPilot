@@ -20,7 +20,7 @@ decisions:
     description: Each API (NativeModeApi, ComputerUseModeApi) wrapped in independent try/catch
     rationale: Failure of one must not prevent the other from registering during DLL injection
   - id: objectId-fallback
-    description: Legacy qtmcp.* methods accept both "id" and "objectId" parameter names
+    description: Legacy qtpilot.* methods accept both "id" and "objectId" parameter names
     rationale: Clients using qt.* convention naturally use "objectId"; accepting both prevents confusion
 metrics:
   duration: 3 min
@@ -41,7 +41,7 @@ metrics:
 - **Commit:** 68f9a9a
 
 ### Task 2: Backward-compat objectId param support
-- Updated all 11 legacy `qtmcp.*` methods that read an object ID parameter
+- Updated all 11 legacy `qtpilot.*` methods that read an object ID parameter
 - Each now tries `"id"` first, falls back to `"objectId"` if empty
 - Methods updated: getObjectInfo, listProperties, getProperty, setProperty, listMethods, invokeMethod, listSignals, click, sendKeys, screenshot, getGeometry
 - Existing clients using `"id"` are completely unaffected
@@ -71,4 +71,4 @@ None - plan executed exactly as written.
 | Hash | Type | Description |
 |------|------|-------------|
 | 68f9a9a | fix | Exception handling around API instantiation in probe |
-| 9e50143 | fix | objectId param fallback to legacy qtmcp.* methods |
+| 9e50143 | fix | objectId param fallback to legacy qtpilot.* methods |

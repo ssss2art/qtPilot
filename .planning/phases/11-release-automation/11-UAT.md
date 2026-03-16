@@ -25,7 +25,7 @@ expected: release.yml has two jobs that call `ci.yml` (8 standard binaries) and 
 result: pass
 
 ### 4. Release assets use platform-encoded naming
-expected: The release job extracts and renames probe binaries to `qtmcp-probe-{qt_tag}-{platform}.{ext}` format (e.g., `qtmcp-probe-qt6.8-linux-gcc.so`, `qtmcp-probe-qt5.15-patched-windows-msvc.dll`)
+expected: The release job extracts and renames probe binaries to `qtPilot-probe-{qt_tag}-{platform}.{ext}` format (e.g., `qtPilot-probe-qt6.8-linux-gcc.so`, `qtPilot-probe-qt5.15-patched-windows-msvc.dll`)
 result: pass
 
 ### 5. SHA256 checksums generated

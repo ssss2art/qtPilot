@@ -18,7 +18,7 @@ key-files:
 decisions:
   - id: "dual-path-qml-test"
     decision: "QML inspect test handles both compiled and non-compiled QML paths"
-    rationale: "QTMCP_HAS_QML may or may not be defined; test covers both branches"
+    rationale: "QTPILOT_HAS_QML may or may not be defined; test covers both branches"
 metrics:
   duration: "5 min"
   completed: "2026-02-01"

@@ -131,7 +131,7 @@ started: Unknown - tests were added in commit 192e904
   found: |
     ```cmake
     set_tests_properties(test_chrome_mode_api PROPERTIES
-        ENVIRONMENT "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal"
+        ENVIRONMENT "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal"
     )
     ```
   implication: Tests explicitly run with minimal platform - no display server

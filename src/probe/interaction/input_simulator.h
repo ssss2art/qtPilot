@@ -1,15 +1,15 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QPoint>
 #include <QString>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Mouse and keyboard input simulation using QTest functions.
 ///
@@ -30,7 +30,7 @@ namespace qtmcp {
 ///   // Send key combination
 ///   InputSimulator::sendKeySequence(widget, "Ctrl+S");
 /// @endcode
-class QTMCP_EXPORT InputSimulator {
+class QTPILOT_EXPORT InputSimulator {
  public:
   /// Mouse button types
   enum class MouseButton { Left, Right, Middle };
@@ -128,4 +128,4 @@ class QTMCP_EXPORT InputSimulator {
   static Qt::MouseButton toQtButton(MouseButton button);
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -16,7 +16,7 @@
 #include "core/object_resolver.h"
 #include "introspection/signal_monitor.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Integration tests for the complete Native Mode API (qt.* methods).
 ///
@@ -259,19 +259,19 @@ void TestNativeModeApi::testVersion()
     QJsonObject obj = result.toObject();
     QVERIFY(!obj["version"].toString().isEmpty());
     QCOMPARE(obj["protocol"].toString(), QString("jsonrpc-2.0"));
-    QCOMPARE(obj["name"].toString(), QString("QtMCP"));
+    QCOMPARE(obj["name"].toString(), QString("qtPilot"));
     QCOMPARE(obj["mode"].toString(), QString("native"));
 
     QJsonArray deprecated = obj["deprecated"].toArray();
     QVERIFY(deprecated.size() >= 1);
-    bool hasQtmcp = false;
+    bool hasQtpilot = false;
     for (const QJsonValue& v : deprecated) {
-        if (v.toString() == "qtmcp.*") {
-            hasQtmcp = true;
+        if (v.toString() == "qtpilot.*") {
+            hasQtpilot = true;
             break;
         }
     }
-    QVERIFY(hasQtmcp);
+    QVERIFY(hasQtpilot);
 }
 
 void TestNativeModeApi::testModes()

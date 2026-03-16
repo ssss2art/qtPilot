@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -7,41 +7,41 @@
 #include <QObject>
 
 // Export macro for Windows DLL
-#if defined(QTMCP_PROBE_LIBRARY)
+#if defined(QTPILOT_PROBE_LIBRARY)
 #if defined(_WIN32)
-#define QTMCP_EXPORT __declspec(dllexport)
+#define QTPILOT_EXPORT __declspec(dllexport)
 #else
-#define QTMCP_EXPORT __attribute__((visibility("default")))
+#define QTPILOT_EXPORT __attribute__((visibility("default")))
 #endif
 #else
 #if defined(_WIN32)
-#define QTMCP_EXPORT __declspec(dllimport)
+#define QTPILOT_EXPORT __declspec(dllimport)
 #else
-#define QTMCP_EXPORT
+#define QTPILOT_EXPORT
 #endif
 #endif
 
-namespace qtmcp {
+namespace qtPilot {
 
 // Forward declarations
 class WebSocketServer;
 class DiscoveryBroadcaster;
 
-/// @brief Main probe class that manages the QtMCP introspection system.
+/// @brief Main probe class that manages the qtPilot introspection system.
 ///
 /// The Probe is a singleton that initializes when the library is loaded into
 /// a Qt application. It starts a WebSocket server that accepts JSON-RPC
 /// connections for introspection and automation commands.
 ///
 /// Configuration is done via environment variables:
-/// - QTMCP_PORT: WebSocket server port (default: 9222)
-/// - QTMCP_MODE: API mode - "native", "computer_use", "chrome", or "all"
-/// - QTMCP_ENABLED: Set to "0" to disable the probe
+/// - QTPILOT_PORT: WebSocket server port (default: 9222)
+/// - QTPILOT_MODE: API mode - "native", "computer_use", "chrome", or "all"
+/// - QTPILOT_ENABLED: Set to "0" to disable the probe
 ///
 /// IMPORTANT: This class uses Q_GLOBAL_STATIC for thread-safe singleton
 /// storage. Do NOT use thread_local or std::call_once in this codebase -
 /// they cause issues with dynamically loaded DLLs on Windows.
-class QTMCP_EXPORT Probe : public QObject {
+class QTPILOT_EXPORT Probe : public QObject {
   Q_OBJECT
   Q_DISABLE_COPY_MOVE(Probe)
 
@@ -138,4 +138,4 @@ class QTMCP_EXPORT Probe : public QObject {
 /// Uses platform-specific one-time initialization (InitOnce on Windows).
 void ensureInitialized();
 
-}  // namespace qtmcp
+}  // namespace qtPilot

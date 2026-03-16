@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -13,7 +13,7 @@
 #include "core/object_registry.h"
 #include "introspection/signal_monitor.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Integration tests for JSON-RPC introspection API.
 ///
@@ -153,7 +153,7 @@ void TestJsonRpcIntrospection::testFindByObjectName()
     // Note: Object IDs are computed at hook time (during construction)
     // before objectName is set. So we verify the API works by checking
     // that the returned ID can be used to find the object again.
-    QString response = callMethod("qtmcp.findByObjectName",
+    QString response = callMethod("qtpilot.findByObjectName",
         QJsonObject{{"name", "testButton"}});
 
     QJsonValue result = getResult(response);
@@ -169,7 +169,7 @@ void TestJsonRpcIntrospection::testFindByObjectName()
 
 void TestJsonRpcIntrospection::testFindByClassName()
 {
-    QString response = callMethod("qtmcp.findByClassName",
+    QString response = callMethod("qtpilot.findByClassName",
         QJsonObject{{"className", "QPushButton"}});
 
     QJsonValue result = getResult(response);
@@ -194,7 +194,7 @@ void TestJsonRpcIntrospection::testGetObjectTree()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testWindow);
 
-    QString response = callMethod("qtmcp.getObjectTree",
+    QString response = callMethod("qtpilot.getObjectTree",
         QJsonObject{{"root", id}, {"maxDepth", 2}});
 
     QJsonValue result = getResult(response);
@@ -208,7 +208,7 @@ void TestJsonRpcIntrospection::testGetObjectInfo()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.getObjectInfo",
+    QString response = callMethod("qtpilot.getObjectInfo",
         QJsonObject{{"id", id}});
 
     QJsonValue result = getResult(response);
@@ -227,7 +227,7 @@ void TestJsonRpcIntrospection::testListProperties()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.listProperties",
+    QString response = callMethod("qtpilot.listProperties",
         QJsonObject{{"id", id}});
 
     QJsonValue result = getResult(response);
@@ -251,7 +251,7 @@ void TestJsonRpcIntrospection::testGetProperty()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.getProperty",
+    QString response = callMethod("qtpilot.getProperty",
         QJsonObject{{"id", id}, {"name", "text"}});
 
     QJsonValue result = getResult(response);
@@ -263,7 +263,7 @@ void TestJsonRpcIntrospection::testSetProperty()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.setProperty",
+    QString response = callMethod("qtpilot.setProperty",
         QJsonObject{{"id", id}, {"name", "text"}, {"value", "New Text"}});
 
     QJsonValue result = getResult(response);
@@ -282,7 +282,7 @@ void TestJsonRpcIntrospection::testListMethods()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.listMethods",
+    QString response = callMethod("qtpilot.listMethods",
         QJsonObject{{"id", id}});
 
     QJsonValue result = getResult(response);
@@ -309,7 +309,7 @@ void TestJsonRpcIntrospection::testInvokeMethod()
     // Set up signal spy
     QSignalSpy spy(m_testButton, &QPushButton::clicked);
 
-    QString response = callMethod("qtmcp.invokeMethod",
+    QString response = callMethod("qtpilot.invokeMethod",
         QJsonObject{{"id", id}, {"method", "click"}, {"args", QJsonArray()}});
 
     QApplication::processEvents();
@@ -325,7 +325,7 @@ void TestJsonRpcIntrospection::testListSignals()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.listSignals",
+    QString response = callMethod("qtpilot.listSignals",
         QJsonObject{{"id", id}});
 
     QJsonValue result = getResult(response);
@@ -353,7 +353,7 @@ void TestJsonRpcIntrospection::testSubscribeSignal()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.subscribeSignal",
+    QString response = callMethod("qtpilot.subscribeSignal",
         QJsonObject{{"objectId", id}, {"signal", "clicked"}});
 
     QJsonValue result = getResult(response);
@@ -372,14 +372,14 @@ void TestJsonRpcIntrospection::testUnsubscribeSignal()
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
     // First subscribe
-    QString subResponse = callMethod("qtmcp.subscribeSignal",
+    QString subResponse = callMethod("qtpilot.subscribeSignal",
         QJsonObject{{"objectId", id}, {"signal", "clicked"}});
     QString subId = getResult(subResponse).toObject()["subscriptionId"].toString();
 
     int countBefore = SignalMonitor::instance()->subscriptionCount();
 
     // Then unsubscribe
-    QString response = callMethod("qtmcp.unsubscribeSignal",
+    QString response = callMethod("qtpilot.unsubscribeSignal",
         QJsonObject{{"subscriptionId", subId}});
 
     QJsonValue result = getResult(response);
@@ -393,7 +393,7 @@ void TestJsonRpcIntrospection::testUnsubscribeSignal()
 void TestJsonRpcIntrospection::testLifecycleNotifications()
 {
     // Enable lifecycle notifications
-    QString response = callMethod("qtmcp.setLifecycleNotifications",
+    QString response = callMethod("qtpilot.setLifecycleNotifications",
         QJsonObject{{"enabled", true}});
 
     QJsonValue result = getResult(response);
@@ -402,7 +402,7 @@ void TestJsonRpcIntrospection::testLifecycleNotifications()
     QCOMPARE(SignalMonitor::instance()->lifecycleNotificationsEnabled(), true);
 
     // Disable them
-    response = callMethod("qtmcp.setLifecycleNotifications",
+    response = callMethod("qtpilot.setLifecycleNotifications",
         QJsonObject{{"enabled", false}});
 
     result = getResult(response);
@@ -419,7 +419,7 @@ void TestJsonRpcIntrospection::testClick()
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
     QSignalSpy spy(m_testButton, &QPushButton::clicked);
 
-    QString response = callMethod("qtmcp.click",
+    QString response = callMethod("qtpilot.click",
         QJsonObject{{"id", id}});
 
     QApplication::processEvents();
@@ -438,7 +438,7 @@ void TestJsonRpcIntrospection::testSendKeys()
     m_testLineEdit->setFocus();
     QApplication::processEvents();
 
-    QString response = callMethod("qtmcp.sendKeys",
+    QString response = callMethod("qtpilot.sendKeys",
         QJsonObject{{"id", id}, {"text", "Hello"}});
 
     QApplication::processEvents();
@@ -454,7 +454,7 @@ void TestJsonRpcIntrospection::testScreenshot()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.screenshot",
+    QString response = callMethod("qtpilot.screenshot",
         QJsonObject{{"id", id}});
 
     QJsonValue result = getResult(response);
@@ -472,7 +472,7 @@ void TestJsonRpcIntrospection::testGetGeometry()
 {
     QString id = ObjectRegistry::instance()->objectId(m_testButton);
 
-    QString response = callMethod("qtmcp.getGeometry",
+    QString response = callMethod("qtpilot.getGeometry",
         QJsonObject{{"id", id}});
 
     QJsonValue result = getResult(response);
@@ -493,7 +493,7 @@ void TestJsonRpcIntrospection::testHitTest()
     // Get button's global position
     QPoint globalPos = m_testButton->mapToGlobal(m_testButton->rect().center());
 
-    QString response = callMethod("qtmcp.hitTest",
+    QString response = callMethod("qtpilot.hitTest",
         QJsonObject{{"x", globalPos.x()}, {"y", globalPos.y()}});
 
     QJsonValue result = getResult(response);

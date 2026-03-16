@@ -1,7 +1,7 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
-// NOTE: This test requires QTMCP_ENABLED=0 environment variable to be set
+// NOTE: This test requires QTPILOT_ENABLED=0 environment variable to be set
 // to prevent full probe initialization. CTest sets this automatically.
 
 #include <QtTest>
@@ -11,7 +11,7 @@
 #include "introspection/object_id.h"
 #include "core/object_registry.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Unit tests for Object ID refresh when objectName changes post-construction.
 ///

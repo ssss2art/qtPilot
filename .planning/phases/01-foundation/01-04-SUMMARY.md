@@ -62,7 +62,7 @@ completed: 2026-01-30
 - WebSocket server with single-client semantics (reject additional connections)
 - Integration with Probe::initialize() for automatic server startup
 - Message routing from WebSocket to JsonRpcHandler
-- Startup message "QtMCP listening on ws://0.0.0.0:{port}" to stderr
+- Startup message "qtPilot listening on ws://0.0.0.0:{port}" to stderr
 
 ## Task Commits
 
@@ -72,7 +72,7 @@ Each task was committed atomically:
 2. **Task 2: Integrate WebSocketServer with Probe** - `ded69b5` (feat)
 
 ## Files Created/Modified
-- `src/probe/transport/websocket_server.h` - Single-client WebSocket server header with QTMCP_EXPORT
+- `src/probe/transport/websocket_server.h` - Single-client WebSocket server header with QTPILOT_EXPORT
 - `src/probe/transport/websocket_server.cpp` - Implementation with connection rejection logic
 - `src/probe/core/probe.h` - Added server() accessor method
 - `src/probe/core/probe.cpp` - WebSocket server creation, signal connections, shutdown
@@ -92,7 +92,7 @@ None - plan executed exactly as written.
 ## Next Phase Readiness
 - WebSocket transport layer complete
 - JSON-RPC messages routed to handler
-- Ready for Object Registry (01-05) to add qtmcp.* method implementations
+- Ready for Object Registry (01-05) to add qtpilot.* method implementations
 - Full integration testing requires Qt DLLs in PATH (noted in previous plans)
 
 ---

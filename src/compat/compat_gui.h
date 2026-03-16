@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -7,7 +7,7 @@
 #include <QMouseEvent>
 #include <QtGlobal>
 
-namespace qtmcp {
+namespace qtPilot {
 namespace compat {
 
 /// Returns the local position of a mouse event as QPoint.
@@ -47,4 +47,4 @@ inline void extractKeyCombination(const QKeySequence& seq, int index, Qt::Key& k
 }
 
 }  // namespace compat
-}  // namespace qtmcp
+}  // namespace qtPilot

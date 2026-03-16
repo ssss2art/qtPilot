@@ -1,15 +1,15 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "introspection/qml_inspector.h"
 
-#ifdef QTMCP_HAS_QML
+#ifdef QTPILOT_HAS_QML
 
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
 
-namespace qtmcp {
+namespace qtPilot {
 
 QString stripQmlPrefix(const QString& className) {
   if (className.startsWith(QLatin1String("QQuick"))) {
@@ -50,11 +50,11 @@ QmlItemInfo inspectQmlItem(QObject* obj) {
   return info;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
-#else  // !QTMCP_HAS_QML
+#else  // !QTPILOT_HAS_QML
 
 // Stub implementations are inline in the header.
 // This translation unit exists so the build system always has a .cpp to compile.
 
-#endif  // QTMCP_HAS_QML
+#endif  // QTPILOT_HAS_QML

@@ -1,8 +1,8 @@
-# Spec: Package QtMcp as a Claude Code Plugin
+# Spec: Package qtPilot as a Claude Code Plugin
 
 ## Context
 
-QtMcp already functions as an MCP server that Claude Code can use, but it requires manual configuration in `settings.json`. Packaging it as a Claude Code plugin adds auto-registration of the MCP server, user-facing commands, model-invoked skills, and distribution via a plugin marketplace.
+qtPilot already functions as an MCP server that Claude Code can use, but it requires manual configuration in `settings.json`. Packaging it as a Claude Code plugin adds auto-registration of the MCP server, user-facing commands, model-invoked skills, and distribution via a plugin marketplace.
 
 ## Plugin Directory Structure
 
@@ -22,7 +22,7 @@ plugin/
     └── qt-inspector.md
 ```
 
-This lives inside the QtMcp repo at `plugin/`.
+This lives inside the qtPilot repo at `plugin/`.
 
 ## 1. Plugin Manifest
 
@@ -30,13 +30,13 @@ This lives inside the QtMcp repo at `plugin/`.
 
 ```json
 {
-  "name": "qtmcp",
+  "name": "qtpilot",
   "version": "0.1.0",
   "description": "Control and inspect Qt applications via MCP — introspection, screenshots, input simulation, accessibility trees",
   "author": {
     "name": "Scott Johnson"
   },
-  "repository": "https://github.com/ssss2art/QtMcp",
+  "repository": "https://github.com/ssss2art/qtPilot",
   "license": "MIT",
   "keywords": ["qt", "mcp", "automation", "testing", "gui", "introspection"],
   "commands": "./commands/",
@@ -52,17 +52,17 @@ This lives inside the QtMcp repo at `plugin/`.
 
 ```json
 {
-  "qtmcp-native": {
+  "qtpilot-native": {
     "command": "uvx",
-    "args": ["qtmcp", "serve", "--mode", "native"]
+    "args": ["qtpilot", "serve", "--mode", "native"]
   },
-  "qtmcp-cu": {
+  "qtpilot-cu": {
     "command": "uvx",
-    "args": ["qtmcp", "serve", "--mode", "cu"]
+    "args": ["qtpilot", "serve", "--mode", "cu"]
   },
-  "qtmcp-chrome": {
+  "qtpilot-chrome": {
     "command": "uvx",
-    "args": ["qtmcp", "serve", "--mode", "chrome"]
+    "args": ["qtpilot", "serve", "--mode", "chrome"]
   }
 }
 ```
@@ -71,23 +71,23 @@ This lives inside the QtMcp repo at `plugin/`.
 - Use `uvx` so users don't need to pre-install the Python package
 - Register one server per mode — users enable only the modes they need
 - The server auto-starts when Claude Code loads the plugin
-- Probe connection happens lazily via `qtmcp_list_probes` / `qtmcp_connect_probe` tools
+- Probe connection happens lazily via `qtpilot_list_probes` / `qtpilot_connect_probe` tools
 
 ## 3. Commands
 
-### `/qtmcp:connect`
+### `/qtpilot:connect`
 
 **File:** `commands/connect.md`
 
 Purpose: Guide the user through connecting to a running Qt application.
 
 Behavior:
-1. Call `qtmcp_list_probes` to discover running probes
+1. Call `qtpilot_list_probes` to discover running probes
 2. If one probe found, auto-connect
 3. If multiple, show list and ask user to pick
-4. If none, suggest launching an app with `/qtmcp:launch`
+4. If none, suggest launching an app with `/qtpilot:launch`
 
-### `/qtmcp:launch`
+### `/qtpilot:launch`
 
 **File:** `commands/launch.md`
 
@@ -101,7 +101,7 @@ Behavior:
 3. Wait for connection confirmation
 4. Report connected status and available tools
 
-### `/qtmcp:download-probe`
+### `/qtpilot:download-probe`
 
 **File:** `commands/download-probe.md`
 
@@ -109,7 +109,7 @@ Purpose: Download the pre-built probe binary for a specific Qt version.
 
 Behavior:
 1. Ask which Qt version (5.15, 6.5, 6.8, 6.9)
-2. Call `qtmcp download-probe --qt-version <version>`
+2. Call `qtpilot download-probe --qt-version <version>`
 3. Report download location
 
 ## 4. Skills
@@ -143,14 +143,14 @@ A specialized subagent for deep Qt UI exploration:
 - Takes targeted screenshots
 - Reports findings in structured format
 
-Tools: MCP tools from qtmcp server + Read, Write (for saving reports)
+Tools: MCP tools from qtpilot server + Read, Write (for saving reports)
 
 ## 6. Installation
 
 **From GitHub marketplace:**
 ```
-/plugin marketplace add ssss2art/QtMcp
-/plugin install qtmcp@ssss2art/QtMcp
+/plugin marketplace add ssss2art/qtPilot
+/plugin install qtpilot@ssss2art/qtPilot
 ```
 
 **Local development:**
@@ -170,9 +170,9 @@ claude --plugin-dir ./plugin
 Register three MCP servers in `.mcp.json`, one per mode. Users can disable modes they don't need. No code changes required — the existing `--mode` flag already supports `native`, `cu`, and `chrome`.
 
 Tool inventory by server:
-- `qtmcp-native`: `qt_*` (33 tools) — object tree, properties, signals, methods, models, QML + `qtmcp_*` (7 tools) — discovery, connection, recording
-- `qtmcp-cu`: `cu_*` (13 tools) — screenshots, mouse, keyboard, scroll + `qtmcp_*` (4 tools) — discovery, connection
-- `qtmcp-chrome`: `chr_*` (8 tools) — accessibility tree, page text, find elements + `qtmcp_*` (4 tools) — discovery, connection
+- `qtpilot-native`: `qt_*` (33 tools) — object tree, properties, signals, methods, models, QML + `qtpilot_*` (7 tools) — discovery, connection, recording
+- `qtpilot-cu`: `cu_*` (13 tools) — screenshots, mouse, keyboard, scroll + `qtpilot_*` (4 tools) — discovery, connection
+- `qtpilot-chrome`: `chr_*` (8 tools) — accessibility tree, page text, find elements + `qtpilot_*` (4 tools) — discovery, connection
 
 ### Plugin lives at `plugin/` in the repo
 
@@ -180,7 +180,7 @@ The repo root is already occupied by C++ source, Python package, tests, and docs
 
 ```json
 {
-  "name": "qtmcp",
+  "name": "qtpilot",
   "source": "./plugin"
 }
 ```
@@ -189,13 +189,13 @@ The repo root is already occupied by C++ source, Python package, tests, and docs
 
 Do not bundle pre-built binaries in the plugin. Reasons:
 - Probe binaries are platform-specific (Windows DLL vs Linux SO) and Qt-version-specific (5.15, 6.5, 6.8, 6.9) — bundling all combinations bloats the plugin
-- The download manager (`python/src/qtmcp/download.py`) already handles this with checksum verification
-- The `/qtmcp:download-probe` command and `qtmcp download-probe` CLI provide the user-facing interface
+- The download manager (`python/src/qtpilot/download.py`) already handles this with checksum verification
+- The `/qtpilot:download-probe` command and `qtpilot download-probe` CLI provide the user-facing interface
 - Binaries are cached locally after first download
 
 ### Use `uvx` as the default command
 
-`uvx` provides zero-install experience — no `pip install` prerequisite. First-run cost (~5s to pull from PyPI) is acceptable since `uvx` caches the package afterward. Users who want faster cold starts can override to `pip install qtmcp` and change `.mcp.json` to use `"command": "qtmcp"` directly.
+`uvx` provides zero-install experience — no `pip install` prerequisite. First-run cost (~5s to pull from PyPI) is acceptable since `uvx` caches the package afterward. Users who want faster cold starts can override to `pip install qtpilot` and change `.mcp.json` to use `"command": "qtpilot"` directly.
 
 ## 8. Auto-Install of C++ Binaries
 
@@ -207,15 +207,15 @@ All binaries are cached in a persistent, platform-appropriate location:
 
 | Platform | Path |
 |---|---|
-| Windows | `%LOCALAPPDATA%\qtmcp\bin\` |
-| Linux | `~/.local/share/qtmcp/bin/` |
+| Windows | `%LOCALAPPDATA%\qtpilot\bin\` |
+| Linux | `~/.local/share/qtpilot/bin/` |
 
 Structure inside:
 ```
 bin/
-├── qtmcp-probe-qt6.8-windows-msvc.dll
-├── qtmcp-probe-qt5.15-windows-msvc.dll
-├── qtmcp-launch-windows-msvc.exe
+├── qtPilot-probe-qt6.8-windows-msvc.dll
+├── qtPilot-probe-qt5.15-windows-msvc.dll
+├── qtpilot-launch-windows-msvc.exe
 └── ...
 ```
 
@@ -225,14 +225,14 @@ Binaries are downloaded once and reused across sessions. The cache persists thro
 
 | Binary | When | How Qt version is determined |
 |---|---|---|
-| **Probe** (.dll/.so) | On first `qtmcp_connect_probe` call | Probe reports its Qt version during WebSocket handshake. If launching a target, the launcher detects Qt version from the target binary. |
-| **Launcher** (.exe/binary) | On first `/qtmcp:launch` or `--target` usage | Not Qt-version-specific — one binary per platform. |
+| **Probe** (.dll/.so) | On first `qtpilot_connect_probe` call | Probe reports its Qt version during WebSocket handshake. If launching a target, the launcher detects Qt version from the target binary. |
+| **Launcher** (.exe/binary) | On first `/qtpilot:launch` or `--target` usage | Not Qt-version-specific — one binary per platform. |
 
 ### Download flow
 
 ```
 User says "inspect my Qt app"
-  → Claude calls qtmcp_connect_probe(ws_url)
+  → Claude calls qtpilot_connect_probe(ws_url)
     → Server checks cache for probe binary
       → If missing: downloads from GitHub Releases to cache dir
       → If present: uses cached binary
@@ -243,7 +243,7 @@ User says "inspect my Qt app"
 For `--target` (launch mode):
 ```
 User says "launch myapp.exe and inspect it"
-  → Claude calls tool or /qtmcp:launch
+  → Claude calls tool or /qtpilot:launch
     → Server checks cache for launcher binary
       → If missing: downloads launcher from GitHub Releases
     → Server checks cache for probe matching target's Qt version
@@ -252,7 +252,7 @@ User says "launch myapp.exe and inspect it"
     → Connects to probe
 ```
 
-### Code changes required in `python/src/qtmcp/`
+### Code changes required in `python/src/qtpilot/`
 
 1. **`download.py`** — Add:
    - `get_cache_dir() -> Path` — returns platform-appropriate cache directory

@@ -90,16 +90,16 @@ None - plan executed exactly as written.
 **External service requires manual configuration.** Before first release:
 
 1. Go to https://pypi.org/manage/account/publishing/
-2. Add pending publisher for "qtmcp" package:
+2. Add pending publisher for "qtpilot" package:
    - GitHub repository owner: ssss2art
-   - Repository name: QtMcp
+   - Repository name: qtPilot
    - Workflow name: publish-pypi.yml
    - Environment name: pypi
 3. Create "pypi" environment in GitHub repository settings (optional but recommended)
 
 ## Next Phase Readiness
 - PyPI publishing is fully automated on release
-- First `pip install qtmcp` will work once Trusted Publisher is configured and v0.1.0 released
+- First `pip install qtpilot` will work once Trusted Publisher is configured and v0.1.0 released
 - Phase 13 (PyPI Publication) is now complete
 
 ---

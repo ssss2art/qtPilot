@@ -14,16 +14,16 @@ DLL/LD_PRELOAD injection into any Qt application and WebSocket transport layer f
 ## Implementation Decisions
 
 ### Launch experience
-- CLI with flags: `qtmcp-launch.exe --port 9222 target.exe [args]`
+- CLI with flags: `qtpilot-launch.exe --port 9222 target.exe [args]`
 - Verbose output by default: log injection steps, Qt detection, server startup
 - Attached by default (launcher waits for target to exit), `--detach` flag for background mode
-- Consistent CLI on both platforms: Linux uses same `qtmcp-launch` command (wraps LD_PRELOAD internally)
+- Consistent CLI on both platforms: Linux uses same `qtpilot-launch` command (wraps LD_PRELOAD internally)
 
 ### Connection behavior
 - Single client only: one WebSocket connection at a time
 - Reject new connections while one is active (first client keeps control)
 - Keep listening after client disconnects (probe stays active, ready for reconnection)
-- Announce on startup: print "QtMCP listening on ws://..." to stderr, `--quiet` flag to suppress
+- Announce on startup: print "qtPilot listening on ws://..." to stderr, `--quiet` flag to suppress
 
 ### Configuration approach
 - Default port: 9222 (same as Chrome DevTools Protocol)

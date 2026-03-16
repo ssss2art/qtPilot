@@ -2,11 +2,11 @@
 
 **Domain:** Qt application introspection and AI-driven automation
 **Researched:** 2026-01-29
-**Context:** QtMCP - injection library enabling AI assistants to control Qt applications at runtime via MCP protocol
+**Context:** qtPilot - injection library enabling AI assistants to control Qt applications at runtime via MCP protocol
 
 ## Executive Summary
 
-Qt introspection and automation tools span from debugging/development tools (GammaRay) to commercial test automation platforms (Squish, TestComplete, Ranorex) to lightweight testing frameworks (Qt Test). For QtMCP's AI automation use case, the feature set must bridge introspection capabilities with MCP-compatible interfaces across three API modes: Native, Computer Use, and Chrome (accessibility tree).
+Qt introspection and automation tools span from debugging/development tools (GammaRay) to commercial test automation platforms (Squish, TestComplete, Ranorex) to lightweight testing frameworks (Qt Test). For qtPilot's AI automation use case, the feature set must bridge introspection capabilities with MCP-compatible interfaces across three API modes: Native, Computer Use, and Chrome (accessibility tree).
 
 ---
 
@@ -45,7 +45,7 @@ Features users expect. Missing = product feels incomplete or unusable.
 
 ## Differentiators
 
-Features that set QtMCP apart. Not expected, but create competitive advantage.
+Features that set qtPilot apart. Not expected, but create competitive advantage.
 
 | Feature | Value Proposition | Complexity | Dependencies | Notes |
 |---------|-------------------|------------|--------------|-------|

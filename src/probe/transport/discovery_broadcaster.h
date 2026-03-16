@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -9,7 +9,7 @@
 class QTimer;
 class QUdpSocket;
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Broadcasts UDP discovery announcements so that MCP servers
 /// can find running probes without knowing ports in advance.
@@ -18,7 +18,7 @@ namespace qtmcp {
 /// and a goodbye datagram on shutdown.
 ///
 /// Configuration via environment variables:
-/// - QTMCP_DISCOVERY_PORT: UDP port to broadcast on (default: 9221)
+/// - QTPILOT_DISCOVERY_PORT: UDP port to broadcast on (default: 9221)
 class DiscoveryBroadcaster : public QObject {
   Q_OBJECT
 
@@ -45,4 +45,4 @@ class DiscoveryBroadcaster : public QObject {
   bool running_;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

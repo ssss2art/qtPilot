@@ -92,7 +92,7 @@ human_verification:
 
 **Link 3: Artifact extraction to Release filenames**
 - Mapping logic: 10 ARTIFACTS array entries (lines 38-49) map artifact directory names to release filenames
-- Naming pattern: qtmcp-probe-{qt_tag}-{platform}.{ext} correctly encodes platform to distinguish otherwise identical binaries
+- Naming pattern: qtPilot-probe-{qt_tag}-{platform}.{ext} correctly encodes platform to distinguish otherwise identical binaries
 - Error handling: Script exits with error if any probe is missing (line 63: exit 1)
 - Windows import libraries: Also copies .lib files for Windows artifacts (lines 67-73)
 
@@ -166,8 +166,8 @@ The following items cannot be verified programmatically and require actual workf
 **Test:** Download all 16 release assets and verify filenames match expected patterns.
 
 **Expected:**
-- 5 Linux probes: qtmcp-probe-qt5.15-linux-gcc.so, qtmcp-probe-qt6.2-linux-gcc.so, qtmcp-probe-qt6.8-linux-gcc.so, qtmcp-probe-qt6.9-linux-gcc.so, qtmcp-probe-qt5.15-patched-linux-gcc.so
-- 5 Windows DLLs: qtmcp-probe-qt5.15-windows-msvc.dll, qtmcp-probe-qt6.2-windows-msvc.dll, qtmcp-probe-qt6.8-windows-msvc.dll, qtmcp-probe-qt6.9-windows-msvc.dll, qtmcp-probe-qt5.15-patched-windows-msvc.dll
+- 5 Linux probes: qtPilot-probe-qt5.15-linux-gcc.so, qtPilot-probe-qt6.2-linux-gcc.so, qtPilot-probe-qt6.8-linux-gcc.so, qtPilot-probe-qt6.9-linux-gcc.so, qtPilot-probe-qt5.15-patched-linux-gcc.so
+- 5 Windows DLLs: qtPilot-probe-qt5.15-windows-msvc.dll, qtPilot-probe-qt6.2-windows-msvc.dll, qtPilot-probe-qt6.8-windows-msvc.dll, qtPilot-probe-qt6.9-windows-msvc.dll, qtPilot-probe-qt5.15-patched-windows-msvc.dll
 - 5 Windows import libraries: matching .lib files for each .dll
 - 1 checksum file: SHA256SUMS
 
@@ -191,7 +191,7 @@ The following items cannot be verified programmatically and require actual workf
 
 **Expected:**
 - actions/download-artifact@v4 successfully downloads all 10 artifact directories
-- Each artifact directory contains the expected lib/qtmcp structure
+- Each artifact directory contains the expected lib/qtpilot structure
 - No artifacts are missing or corrupted
 - Artifact names match the expected patterns from ci.yml and ci-patched-qt.yml
 

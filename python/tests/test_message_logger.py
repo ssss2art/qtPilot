@@ -8,7 +8,7 @@ import tempfile
 
 import pytest
 
-from qtmcp.message_logger import MessageLogger
+from qtpilot.message_logger import MessageLogger
 
 pytestmark = pytest.mark.asyncio
 
@@ -212,12 +212,12 @@ class TestMessageLoggerEntries:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test.jsonl")
             logger.start(path=path, level=3)
-            logger._on_notification("qtmcp.signalEmitted", {"objectId": "btn"})
+            logger._on_notification("qtpilot.signalEmitted", {"objectId": "btn"})
             logger.stop()
             with open(path) as f:
                 entry = json.loads(f.readline())
             assert entry["dir"] == "ntf"
-            assert entry["method"] == "qtmcp.signalEmitted"
+            assert entry["method"] == "qtpilot.signalEmitted"
 
 
 class TestMessageLoggerVerbosity:
@@ -230,7 +230,7 @@ class TestMessageLoggerVerbosity:
             logger.log_mcp_in("qt_ping", {})
             logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
             logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-            logger._on_notification("qtmcp.signalEmitted", {})
+            logger._on_notification("qtpilot.signalEmitted", {})
             logger.log_mcp_out("qt_ping", "ok", 10.0)
             logger.stop()
             with open(path) as f:
@@ -248,7 +248,7 @@ class TestMessageLoggerVerbosity:
             logger.log_mcp_in("qt_ping", {})
             logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
             logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-            logger._on_notification("qtmcp.signalEmitted", {})
+            logger._on_notification("qtpilot.signalEmitted", {})
             logger.log_mcp_out("qt_ping", "ok", 10.0)
             logger.stop()
             with open(path) as f:
@@ -268,7 +268,7 @@ class TestMessageLoggerVerbosity:
             logger.log_mcp_in("qt_ping", {})
             logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
             logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-            logger._on_notification("qtmcp.signalEmitted", {})
+            logger._on_notification("qtpilot.signalEmitted", {})
             logger.log_mcp_out("qt_ping", "ok", 10.0)
             logger.stop()
             with open(path) as f:
@@ -282,7 +282,7 @@ class TestMessageLoggerVerbosity:
         logger.log_mcp_out("qt_ping", "ok", 10.0)
         logger._on_call_send({"method": "qt.ping", "id": 1, "params": {}})
         logger._on_call_complete({"method": "qt.ping", "id": 1}, {}, 10.0)
-        logger._on_notification("qtmcp.signalEmitted", {})
+        logger._on_notification("qtpilot.signalEmitted", {})
         assert logger.tail()["count"] == 0
 
 

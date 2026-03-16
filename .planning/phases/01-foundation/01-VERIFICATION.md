@@ -22,10 +22,10 @@ re_verification: false
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User can launch any Qt application with probe injected via LD_PRELOAD on Linux | VERIFIED | Code exists at src/probe/core/probe_init_linux.cpp with __attribute__((constructor)) and Q_COREAPP_STARTUP_FUNCTION. Launcher at src/launcher/injector_linux.cpp sets LD_PRELOAD and QTMCP_PORT env vars. Not tested by human (Windows only) but implementation substantive (107 lines) and follows research patterns. |
-| 2 | User can launch any Qt application with probe injected via qtmcp-launch.exe on Windows | VERIFIED | Human verified: "DLL injection (probe loads) PASS". Code at src/launcher/injector_windows.cpp (400+ lines) uses CreateRemoteThread pattern. Binary exists at build/bin/Debug/qtmcp-launch.exe. Probe DLL at build/bin/Debug/qtmcp-probe.dll. Minimal DllMain at src/probe/core/probe_init_windows.cpp uses InitOnce API correctly. |
-| 3 | User can connect to probe WebSocket server and receive JSON-RPC responses | VERIFIED | Human verified: "WebSocket listening on port 9222 PASS", "JSON-RPC echo returns correct response PASS". Code at src/probe/transport/websocket_server.cpp (138 lines) with QWebSocketServer. JSON-RPC handler at src/probe/transport/jsonrpc_handler.cpp (219 lines) implements spec with qtmcp.echo method. |
-| 4 | User can configure port via CLI flags (--port) | VERIFIED | Human verified: "--port flag (custom port 9333) PASS". Code at src/launcher/main.cpp lines 65-70 defines --port option. Windows injector passes via SetEnvironmentVariableW at line 135. Linux injector passes via setenv at line 93. Probe reads from qgetenv("QTMCP_PORT") at src/probe/core/probe.cpp line 57. |
+| 1 | User can launch any Qt application with probe injected via LD_PRELOAD on Linux | VERIFIED | Code exists at src/probe/core/probe_init_linux.cpp with __attribute__((constructor)) and Q_COREAPP_STARTUP_FUNCTION. Launcher at src/launcher/injector_linux.cpp sets LD_PRELOAD and QTPILOT_PORT env vars. Not tested by human (Windows only) but implementation substantive (107 lines) and follows research patterns. |
+| 2 | User can launch any Qt application with probe injected via qtpilot-launch.exe on Windows | VERIFIED | Human verified: "DLL injection (probe loads) PASS". Code at src/launcher/injector_windows.cpp (400+ lines) uses CreateRemoteThread pattern. Binary exists at build/bin/Debug/qtpilot-launch.exe. Probe DLL at build/bin/Debug/qtPilot-probe.dll. Minimal DllMain at src/probe/core/probe_init_windows.cpp uses InitOnce API correctly. |
+| 3 | User can connect to probe WebSocket server and receive JSON-RPC responses | VERIFIED | Human verified: "WebSocket listening on port 9222 PASS", "JSON-RPC echo returns correct response PASS". Code at src/probe/transport/websocket_server.cpp (138 lines) with QWebSocketServer. JSON-RPC handler at src/probe/transport/jsonrpc_handler.cpp (219 lines) implements spec with qtpilot.echo method. |
+| 4 | User can configure port via CLI flags (--port) | VERIFIED | Human verified: "--port flag (custom port 9333) PASS". Code at src/launcher/main.cpp lines 65-70 defines --port option. Windows injector passes via SetEnvironmentVariableW at line 135. Linux injector passes via setenv at line 93. Probe reads from qgetenv("QTPILOT_PORT") at src/probe/core/probe.cpp line 57. |
 | 5 | Probe handles Windows DLL pitfalls correctly (CRT matching, no TLS, minimal DllMain) | VERIFIED | Human verified: "DLL injection (probe loads) PASS" with no crashes. Code review: DllMain at src/probe/core/probe_init_windows.cpp lines 81-108 only calls DisableThreadLibraryCalls and sets flag (no Qt calls, no LoadLibrary, no threads). Uses INIT_ONCE (Windows native, no TLS) instead of std::call_once. Deferred init via Q_COREAPP_STARTUP_FUNCTION line 66. CMake uses /MD runtime (shared CRT) via vcpkg defaults. |
 
 **Score:** 5/5 truths verified
@@ -46,7 +46,7 @@ All required artifacts exist and are substantive:
 - src/launcher/injector_windows.cpp: 400+ lines, CreateRemoteThread pattern
 - src/launcher/injector_linux.cpp: 100+ lines, fork/exec with LD_PRELOAD
 - test_app/main.cpp: 19 lines, QApplication with MainWindow
-- Binaries exist: qtmcp-launch.exe, qtmcp-probe.dll, qtmcp-test-app.exe
+- Binaries exist: qtpilot-launch.exe, qtPilot-probe.dll, qtPilot-test-app.exe
 
 ### Key Link Verification
 
@@ -61,7 +61,7 @@ All critical wiring verified:
 - Probe -> WebSocketServer: created in initialize() (probe.cpp line 98)
 - WebSocketServer -> JsonRpcHandler: HandleMessage() called (line 118)
 - JsonRpcHandler -> Builtin methods: RegisterBuiltinMethods() in constructor
-- CLI --port -> Probe config: QTMCP_PORT env var chain verified
+- CLI --port -> Probe config: QTPILOT_PORT env var chain verified
 - CLI --quiet -> Messages: if(!options.quiet) guards throughout
 
 ### Requirements Coverage

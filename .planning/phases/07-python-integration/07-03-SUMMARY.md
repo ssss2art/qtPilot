@@ -84,7 +84,7 @@ Created test suite with 12 tests:
 
 **1. [Rule 1 - Bug] AsyncMock required for websockets.connect patching**
 - **Found during:** Task 2
-- **Issue:** `patch("qtmcp.connection.connect", return_value=mock_ws)` fails because `connect` is async; `await` on a plain mock raises TypeError
+- **Issue:** `patch("qtpilot.connection.connect", return_value=mock_ws)` fails because `connect` is async; `await` on a plain mock raises TypeError
 - **Fix:** Used `AsyncMock(return_value=mock_ws)` to provide proper awaitable
 - **Files modified:** python/tests/conftest.py
 - **Commit:** 3f89bea
@@ -113,4 +113,4 @@ Phase 7 (Python Integration) is now complete. All 3 plans delivered:
 - 07-02: 53 tool definitions across 3 modes
 - 07-03: README documentation and test suite
 
-The entire QtMCP project (32 plans across 7 phases) is complete.
+The entire qtPilot project (32 plans across 7 phases) is complete.

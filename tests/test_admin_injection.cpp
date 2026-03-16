@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 // E2E test: verify that the launcher can elevate to admin, inject the probe
@@ -99,21 +99,21 @@ void TestAdminInjection::initTestCase() {
     QSKIP("Test requires administrator privileges — run from an elevated terminal");
 
   // Locate the launcher executable
-  m_launcherPath = findExecutable(QStringLiteral("qtmcp-launch"));
+  m_launcherPath = findExecutable(QStringLiteral("qtpilot-launch"));
   if (m_launcherPath.isEmpty()) {
-    // Try versioned names (e.g., qtmcp-launch-qt5.15)
+    // Try versioned names (e.g., qtpilot-launch-qt5.15)
     QDir exeDir(QCoreApplication::applicationDirPath());
     QStringList matches =
-        exeDir.entryList({QStringLiteral("qtmcp-launch*")}, QDir::Files, QDir::Name);
+        exeDir.entryList({QStringLiteral("qtpilot-launch*")}, QDir::Files, QDir::Name);
     if (!matches.isEmpty())
       m_launcherPath = exeDir.absoluteFilePath(matches.first());
   }
-  QVERIFY2(!m_launcherPath.isEmpty(), "Could not find qtmcp-launch executable in build output");
+  QVERIFY2(!m_launcherPath.isEmpty(), "Could not find qtpilot-launch executable in build output");
 
   // Locate the test_app executable
-  m_testAppPath = findExecutable(QStringLiteral("qtmcp-test-app"));
+  m_testAppPath = findExecutable(QStringLiteral("qtPilot-test-app"));
   if (m_testAppPath.isEmpty())
-    m_testAppPath = findExecutable(QStringLiteral("qtmcp_test_app"));
+    m_testAppPath = findExecutable(QStringLiteral("qtPilot_test_app"));
   QVERIFY2(!m_testAppPath.isEmpty(), "Could not find test app executable in build output");
 
   qDebug() << "Launcher:" << m_launcherPath;
@@ -159,7 +159,7 @@ void TestAdminInjection::testElevatedLaunchAndConnect() {
 
         QJsonObject msg = QJsonDocument::fromJson(data).object();
         if (msg.value(QStringLiteral("type")).toString() == QStringLiteral("announce") &&
-            msg.value(QStringLiteral("protocol")).toString() == QStringLiteral("qtmcp-discovery")) {
+            msg.value(QStringLiteral("protocol")).toString() == QStringLiteral("qtPilot-discovery")) {
           int wsPort = msg.value(QStringLiteral("wsPort")).toInt();
           m_targetPid = static_cast<qint64>(msg.value(QStringLiteral("pid")).toDouble());
           wsUrl = QStringLiteral("ws://127.0.0.1:%1").arg(wsPort);

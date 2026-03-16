@@ -1,13 +1,13 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "transport/jsonrpc_handler.h"  // For QTMCP_EXPORT, JsonRpcHandler
+#include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT, JsonRpcHandler
 
 #include <QObject>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Computer Use Mode API surface registering all cu.* namespaced JSON-RPC methods.
 ///
@@ -25,7 +25,7 @@ namespace qtmcp {
 /// All methods use coordinate-based targeting (no objectId needed).
 /// Coordinates are window-relative by default, or screen-absolute with screenAbsolute=true.
 /// All responses wrapped with ResponseEnvelope::wrap().
-class QTMCP_EXPORT ComputerUseModeApi : public QObject {
+class QTPILOT_EXPORT ComputerUseModeApi : public QObject {
   Q_OBJECT
 
  public:
@@ -45,4 +45,4 @@ class QTMCP_EXPORT ComputerUseModeApi : public QObject {
   JsonRpcHandler* m_handler;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

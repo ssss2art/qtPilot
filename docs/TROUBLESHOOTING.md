@@ -1,12 +1,12 @@
-# Troubleshooting QtMcp
+# Troubleshooting qtPilot
 
-This guide covers common issues and their solutions when using QtMcp.
+This guide covers common issues and their solutions when using qtPilot.
 
 ## Probe Not Loading
 
 ### Symptoms
-- Application starts but no `[QtMCP]` messages in stderr
-- `qtmcp serve` can't connect to the probe
+- Application starts but no `[qtPilot]` messages in stderr
+- `qtpilot serve` can't connect to the probe
 - No WebSocket server on expected port
 
 ### Solutions
@@ -27,33 +27,33 @@ Get-ChildItem "C:\path\to\app" | Where-Object { $_.Name -match "Qt.*\.dll" }
 **Download the correct probe:**
 ```bash
 # For Qt 6.8
-qtmcp download-probe --qt-version 6.8
+qtpilot download-probe --qt-version 6.8
 
 # For Qt 5.15
-qtmcp download-probe --qt-version 5.15-patched
+qtpilot download-probe --qt-version 5.15-patched
 ```
 
 #### Windows: DLL Not Found
 
-The `qtmcp.dll` must be discoverable by Windows DLL search order.
+The `qtpilot.dll` must be discoverable by Windows DLL search order.
 
 **Solutions:**
-1. Use `qtmcp serve --target` which handles paths automatically
+1. Use `qtpilot serve --target` which handles paths automatically
 2. Put the probe DLL in the same directory as the target app
 3. Add the probe directory to PATH
 
 **Verify the DLL can be found:**
 ```powershell
 # Check if dependencies are satisfied
-where.exe qtmcp_probe.dll
+where.exe qtPilot_probe.dll
 ```
 
 #### Linux: LD_PRELOAD Issues
 
 **Check the preload works:**
 ```bash
-LD_PRELOAD=/path/to/libqtmcp.so ldd /path/to/app
-# Should show libqtmcp.so in the list
+LD_PRELOAD=/path/to/libqtpilot.so ldd /path/to/app
+# Should show libqtpilot.so in the list
 ```
 
 **Common issues:**
@@ -63,7 +63,7 @@ LD_PRELOAD=/path/to/libqtmcp.so ldd /path/to/app
 
 **Debug with:**
 ```bash
-LD_DEBUG=libs LD_PRELOAD=/path/to/libqtmcp.so ./app 2>&1 | grep qtmcp
+LD_DEBUG=libs LD_PRELOAD=/path/to/libqtpilot.so ./app 2>&1 | grep qtpilot
 ```
 
 #### Probe Loads but Doesn't Initialize
@@ -72,18 +72,18 @@ The probe defers initialization until `QCoreApplication` exists. If the app cras
 
 ```bash
 # Enable verbose stderr output
-QTMCP_PORT=9222 ./your-app 2>&1 | grep QtMCP
+QTPILOT_PORT=9222 ./your-app 2>&1 | grep qtPilot
 ```
 
 Look for:
-- `[QtMCP] Probe singleton created` - DLL loaded successfully
-- `[QtMCP] Object hooks installed` - Full initialization completed
-- `[QtMCP] ERROR:` - Initialization failed
+- `[qtPilot] Probe singleton created` - DLL loaded successfully
+- `[qtPilot] Object hooks installed` - Full initialization completed
+- `[qtPilot] ERROR:` - Initialization failed
 
 ## Connection Issues
 
 ### Symptoms
-- `qtmcp serve` times out connecting
+- `qtpilot serve` times out connecting
 - "Connection refused" errors
 - Probe loads but no WebSocket connection
 
@@ -105,10 +105,10 @@ netstat -ano | findstr 9222
 **Change the port:**
 ```bash
 # Set via environment variable before launching app
-QTMCP_PORT=9999 ./your-app
+QTPILOT_PORT=9999 ./your-app
 
 # Connect to the new port
-qtmcp serve --ws-url ws://localhost:9999
+qtpilot serve --ws-url ws://localhost:9999
 ```
 
 #### Firewall Blocking WebSocket
@@ -126,13 +126,13 @@ On Linux, check iptables/nftables/firewalld rules.
 Ensure the URL matches:
 ```bash
 # Default URL
-qtmcp serve --ws-url ws://localhost:9222
+qtpilot serve --ws-url ws://localhost:9222
 
 # If using a different port
-qtmcp serve --ws-url ws://localhost:9999
+qtpilot serve --ws-url ws://localhost:9999
 
 # If connecting from a different machine
-qtmcp serve --ws-url ws://192.168.1.100:9222
+qtpilot serve --ws-url ws://192.168.1.100:9222
 ```
 
 #### Probe on Different Host
@@ -142,7 +142,7 @@ By default, the probe binds to `localhost` only. For remote connections, this is
 ## Claude Not Seeing Tools
 
 ### Symptoms
-- Claude says "I don't have access to QtMcp tools"
+- Claude says "I don't have access to qtPilot tools"
 - No tools appear in Claude's tool list
 - MCP server starts but Claude can't use it
 
@@ -154,8 +154,8 @@ By default, the probe binds to `localhost` only. For remote connections, this is
 ```json
 {
   "mcpServers": {
-    "qtmcp": {
-      "command": "qtmcp",
+    "qtpilot": {
+      "command": "qtpilot",
       "args": ["serve", "--mode", "native", "--target", "/path/to/app"]
     }
   }
@@ -165,7 +165,7 @@ By default, the probe binds to `localhost` only. For remote connections, this is
 **Common mistakes:**
 - Typo in "mcpServers" (note the capital S)
 - Wrong path to target application
-- Missing `qtmcp` in PATH
+- Missing `qtpilot` in PATH
 
 **Claude Code:** Verify with:
 ```bash
@@ -176,8 +176,8 @@ claude mcp list
 
 Before connecting Claude, confirm the probe works:
 
-1. Start the app with probe: `qtmcp serve --mode native --target /path/to/app`
-2. Check for `[QtMCP] Probe initialized` in output
+1. Start the app with probe: `qtpilot serve --mode native --target /path/to/app`
+2. Check for `[qtPilot] Probe initialized` in output
 3. In another terminal, test WebSocket: `wscat -c ws://localhost:9222`
 
 #### Mode Mismatch
@@ -237,7 +237,7 @@ https://aka.ms/vs/17/release/vc_redist.x64.exe
 
 #### Qt DLLs Not Found
 
-If using a standalone probe (not via `qtmcp serve --target`), Qt DLLs must be available.
+If using a standalone probe (not via `qtpilot serve --target`), Qt DLLs must be available.
 
 **Solutions:**
 1. Run `windeployqt` on the probe DLL
@@ -255,14 +255,14 @@ Open an Administrator PowerShell, set environment variables, and run directly:
 ```powershell
 $env:QT_PLUGIN_PATH = "C:\Qt\5.15.1\msvc2019_64\plugins"
 $env:PATH = "C:\path\to\build\bin\Release;C:\Qt\5.15.1\msvc2019_64\bin;" + $env:PATH
-.\qtmcp-launcher.exe --elevated --inject-children --port 0 .\your-app.exe
+.\qtPilot-launcher.exe --elevated --inject-children --port 0 .\your-app.exe
 ```
 
 This gives you full visibility into injection logs and errors.
 
 **Alternative: Use `--run-as-admin` for auto-elevation**
 ```cmd
-qtmcp-launch.exe --run-as-admin your-app.exe
+qtpilot-launch.exe --run-as-admin your-app.exe
 ```
 
 This triggers a UAC prompt automatically. If you cancel the UAC prompt, the launcher exits with code 1 and prints an error message. Note that the elevated process runs in a transient `cmd.exe` window — injection logs are not visible.
@@ -278,7 +278,7 @@ This is the most common issue when launching elevated. The probe DLL is injected
 
 **Symptoms:**
 - Launcher output shows `Warning: LoadLibraryW returned NULL (DLL load may have failed)`
-- `Warning: Could not find qtmcp-probe-qt5.15.dll in remote process modules`
+- `Warning: Could not find qtPilot-probe-qt5.15.dll in remote process modules`
 - Target app starts but no probe is active (no WebSocket listener, no UDP discovery)
 - Process exit code `0xC0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`) if the app crashes
 
@@ -289,24 +289,24 @@ The suspended process inherits `PATH` from its parent. Add both the probe direct
 ```powershell
 # PowerShell (admin terminal)
 $env:PATH = "E:\path\to\build\bin\Release;C:\Qt\5.15.1\msvc2019_64\bin;" + $env:PATH
-.\qtmcp-launcher.exe --elevated --port 0 .\your-app.exe
+.\qtPilot-launcher.exe --elevated --port 0 .\your-app.exe
 ```
 
 ```cmd
 :: cmd.exe (admin terminal)
 set PATH=E:\path\to\build\bin\Release;C:\Qt\5.15.1\msvc2019_64\bin;%PATH%
-qtmcp-launcher.exe --elevated --port 0 your-app.exe
+qtPilot-launcher.exe --elevated --port 0 your-app.exe
 ```
 
 **Why this happens:**
 When `LoadLibraryW` loads the probe DLL in the remote process, it resolves the probe's import table (Qt5Core.dll, Qt5Network.dll, etc.) using the standard Windows DLL search order. If the process was created suspended and hasn't initialized its own search paths yet, only `PATH` and the executable's directory are searched. If Qt DLLs aren't in either location, the load fails.
 
 **Environment variables and `--run-as-admin` elevation:**
-The launcher automatically forwards `PATH`, `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH`, and all `QTMCP_*` variables across the UAC boundary. Ensure these are set **before** running the launcher:
+The launcher automatically forwards `PATH`, `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH`, and all `QTPILOT_*` variables across the UAC boundary. Ensure these are set **before** running the launcher:
 ```cmd
 set QT_PLUGIN_PATH=C:\Qt\5.15.1\msvc2019_64\plugins
 set PATH=C:\Qt\5.15.1\msvc2019_64\bin;%PATH%
-qtmcp-launch.exe --run-as-admin your-app.exe
+qtpilot-launch.exe --run-as-admin your-app.exe
 ```
 
 ### Linux
@@ -324,12 +324,12 @@ Some applications clear `LD_PRELOAD` or use `setuid`. This can prevent probe loa
 If the probe can't find Qt libraries:
 ```bash
 export LD_LIBRARY_PATH=/path/to/Qt/6.8.0/gcc_64/lib:$LD_LIBRARY_PATH
-LD_PRELOAD=/path/to/libqtmcp.so ./your-app
+LD_PRELOAD=/path/to/libqtpilot.so ./your-app
 ```
 
 #### Wayland vs X11
 
-QtMcp should work with both, but some features (especially screenshots) may behave differently. Test with:
+qtPilot should work with both, but some features (especially screenshots) may behave differently. Test with:
 ```bash
 QT_QPA_PLATFORM=xcb ./your-app  # Force X11
 QT_QPA_PLATFORM=wayland ./your-app  # Force Wayland
@@ -357,7 +357,7 @@ netstat -ano | findstr 9222
 
 Kill the conflicting process or use a different port:
 ```bash
-QTMCP_PORT=9999 ./your-app
+QTPILOT_PORT=9999 ./your-app
 ```
 
 ### Crash on Startup
@@ -365,7 +365,7 @@ QTMCP_PORT=9999 ./your-app
 Enable debug output:
 ```bash
 # Linux
-QTMCP_PORT=9222 gdb -ex run -ex bt ./your-app
+QTPILOT_PORT=9222 gdb -ex run -ex bt ./your-app
 
 # Windows (with Visual Studio)
 devenv /debugexe your-app.exe
@@ -387,14 +387,14 @@ ls /path/to/Qt/5.15.1/gcc_64/include/QtCore/5.15.1/QtCore/private/qhooks_p.h
 
 If the version subdirectory doesn't match (e.g., headers are under `5.15.0` instead of `5.15.1`), the CMake fallback scanner should handle this automatically. If not, set the Qt path explicitly:
 ```bash
-cmake -B build -DQTMCP_QT_DIR=/path/to/Qt/5.15.1/gcc_64
+cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/5.15.1/gcc_64
 ```
 
 ## Getting Help
 
 If you're still stuck:
 
-1. **Check existing issues:** https://github.com/ssss2art/QtMcp/issues
+1. **Check existing issues:** https://github.com/ssss2art/qtPilot/issues
 2. **Open a new issue** with:
    - Operating system and version
    - Qt version (app and probe)
@@ -416,12 +416,12 @@ qmake --version
 /path/to/Qt/bin/qmake --version
 
 # Probe loading attempt
-QTMCP_PORT=9222 LD_PRELOAD=/path/to/probe ./app 2>&1 | head -50
+QTPILOT_PORT=9222 LD_PRELOAD=/path/to/probe ./app 2>&1 | head -50
 
 # ldd output (Linux)
-ldd /path/to/libqtmcp.so
+ldd /path/to/libqtpilot.so
 ldd /path/to/your-app
 
 # Dependencies (Windows)
-dumpbin /dependents qtmcp_probe.dll
+dumpbin /dependents qtPilot_probe.dll
 ```

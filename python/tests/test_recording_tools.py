@@ -6,7 +6,7 @@ import pytest
 
 from fastmcp import FastMCP
 
-from qtmcp.tools.recording_tools import register_recording_tools
+from qtpilot.tools.recording_tools import register_recording_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:
@@ -25,9 +25,9 @@ class TestRecordingTools:
         register_recording_tools(mock_mcp)
         names = _tool_names(mock_mcp)
         expected = {
-            "qtmcp_start_recording",
-            "qtmcp_stop_recording",
-            "qtmcp_recording_status",
+            "qtpilot_start_recording",
+            "qtpilot_stop_recording",
+            "qtpilot_recording_status",
         }
         missing = expected - names
         assert not missing, f"Missing recording tools: {missing}"

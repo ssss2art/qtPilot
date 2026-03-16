@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "key_name_mapper.h"
 
-namespace qtmcp {
+namespace qtPilot {
 
 const QHash<QString, Qt::Key>& KeyNameMapper::keyMap() {
   // Static local - initialized once, thread-safe in C++11+
@@ -166,4 +166,4 @@ KeyCombo KeyNameMapper::parseKeyCombo(const QString& combo) {
   return result;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

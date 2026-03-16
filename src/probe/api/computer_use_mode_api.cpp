@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "api/computer_use_mode_api.h"
@@ -20,7 +20,7 @@
 #include <QThread>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 // ============================================================================
 // Internal helpers (file-scope, not in header)
@@ -623,4 +623,4 @@ void ComputerUseModeApi::registerQueryMethods() {
       });
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

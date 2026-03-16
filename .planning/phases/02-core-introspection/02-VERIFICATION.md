@@ -18,11 +18,11 @@ score: 5/5 must-haves verified
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User can find objects by objectName or className via JSON-RPC | VERIFIED | qtmcp.findByObjectName and qtmcp.findByClassName registered in jsonrpc_handler.cpp:233,251 |
-| 2 | User can get full object tree with hierarchical IDs | VERIFIED | qtmcp.getObjectTree registered (line 269), generateObjectId() implements hierarchical format (object_id.cpp:241) |
-| 3 | User can read/write properties, list methods, invoke slots | VERIFIED | qtmcp.getProperty, qtmcp.setProperty, qtmcp.listMethods, qtmcp.invokeMethod registered (lines 314,329,349,363) |
-| 4 | User can subscribe to signals and receive push notifications | VERIFIED | qtmcp.subscribeSignal registered (line 397), SignalMonitor wired to WebSocket in probe.cpp:152-162 |
-| 5 | User can simulate clicks, send keystrokes, take screenshots, perform hit testing | VERIFIED | qtmcp.click, qtmcp.sendKeys, qtmcp.screenshot, qtmcp.hitTest registered (lines 429,459,486,536) |
+| 1 | User can find objects by objectName or className via JSON-RPC | VERIFIED | qtpilot.findByObjectName and qtpilot.findByClassName registered in jsonrpc_handler.cpp:233,251 |
+| 2 | User can get full object tree with hierarchical IDs | VERIFIED | qtpilot.getObjectTree registered (line 269), generateObjectId() implements hierarchical format (object_id.cpp:241) |
+| 3 | User can read/write properties, list methods, invoke slots | VERIFIED | qtpilot.getProperty, qtpilot.setProperty, qtpilot.listMethods, qtpilot.invokeMethod registered (lines 314,329,349,363) |
+| 4 | User can subscribe to signals and receive push notifications | VERIFIED | qtpilot.subscribeSignal registered (line 397), SignalMonitor wired to WebSocket in probe.cpp:152-162 |
+| 5 | User can simulate clicks, send keystrokes, take screenshots, perform hit testing | VERIFIED | qtpilot.click, qtpilot.sendKeys, qtpilot.screenshot, qtpilot.hitTest registered (lines 429,459,486,536) |
 
 **Score:** 5/5 truths verified
 
@@ -102,27 +102,27 @@ Phase 2 covers 20 requirements: OBJ-01 through OBJ-11, SIG-01 through SIG-05, UI
 
 | Requirement | Status | Supporting Evidence |
 |-------------|--------|---------------------|
-| OBJ-01: Find objects by objectName | SATISFIED | qtmcp.findByObjectName method + ObjectRegistry::findByObjectName() |
-| OBJ-02: Find objects by className | SATISFIED | qtmcp.findByClassName method + ObjectRegistry::findAllByClassName() |
-| OBJ-03: Get object tree hierarchy | SATISFIED | qtmcp.getObjectTree method + serializeObjectTree() |
-| OBJ-04: Get detailed object info | SATISFIED | qtmcp.getObjectInfo method + MetaInspector::objectInfo() |
-| OBJ-05: List properties | SATISFIED | qtmcp.listProperties method + MetaInspector::listProperties() |
-| OBJ-06: Get property value | SATISFIED | qtmcp.getProperty method + MetaInspector::getProperty() |
-| OBJ-07: Set property value | SATISFIED | qtmcp.setProperty method + MetaInspector::setProperty() |
-| OBJ-08: List invokable methods | SATISFIED | qtmcp.listMethods method + MetaInspector::listMethods() |
-| OBJ-09: Invoke methods | SATISFIED | qtmcp.invokeMethod method + MetaInspector::invokeMethod() |
-| OBJ-10: List signals | SATISFIED | qtmcp.listSignals method + MetaInspector::listSignals() |
+| OBJ-01: Find objects by objectName | SATISFIED | qtpilot.findByObjectName method + ObjectRegistry::findByObjectName() |
+| OBJ-02: Find objects by className | SATISFIED | qtpilot.findByClassName method + ObjectRegistry::findAllByClassName() |
+| OBJ-03: Get object tree hierarchy | SATISFIED | qtpilot.getObjectTree method + serializeObjectTree() |
+| OBJ-04: Get detailed object info | SATISFIED | qtpilot.getObjectInfo method + MetaInspector::objectInfo() |
+| OBJ-05: List properties | SATISFIED | qtpilot.listProperties method + MetaInspector::listProperties() |
+| OBJ-06: Get property value | SATISFIED | qtpilot.getProperty method + MetaInspector::getProperty() |
+| OBJ-07: Set property value | SATISFIED | qtpilot.setProperty method + MetaInspector::setProperty() |
+| OBJ-08: List invokable methods | SATISFIED | qtpilot.listMethods method + MetaInspector::listMethods() |
+| OBJ-09: Invoke methods | SATISFIED | qtpilot.invokeMethod method + MetaInspector::invokeMethod() |
+| OBJ-10: List signals | SATISFIED | qtpilot.listSignals method + MetaInspector::listSignals() |
 | OBJ-11: Hierarchical object IDs | SATISFIED | generateObjectId() implements parent/child/grandchild format |
-| SIG-01: Subscribe to signals | SATISFIED | qtmcp.subscribeSignal method + SignalMonitor::subscribe() |
-| SIG-02: Unsubscribe from signals | SATISFIED | qtmcp.unsubscribeSignal method + SignalMonitor::unsubscribe() |
+| SIG-01: Subscribe to signals | SATISFIED | qtpilot.subscribeSignal method + SignalMonitor::subscribe() |
+| SIG-02: Unsubscribe from signals | SATISFIED | qtpilot.unsubscribeSignal method + SignalMonitor::unsubscribe() |
 | SIG-03: Push signal emissions | SATISFIED | SignalMonitor::signalEmitted to Probe to WebSocket push |
 | SIG-04: Push object created events | SATISFIED | SignalMonitor::objectCreated to Probe to WebSocket push |
 | SIG-05: Push object destroyed events | SATISFIED | SignalMonitor::objectDestroyed to Probe to WebSocket push |
-| UI-01: Simulate mouse click | SATISFIED | qtmcp.click method + InputSimulator::mouseClick() |
-| UI-02: Simulate keyboard input | SATISFIED | qtmcp.sendKeys method + InputSimulator::sendKeys() |
-| UI-03: Take screenshot | SATISFIED | qtmcp.screenshot method + Screenshot::captureWidget() |
-| UI-04: Get widget geometry | SATISFIED | qtmcp.getGeometry method + HitTest::widgetGeometry() |
-| UI-05: Coordinate-to-element hit testing | SATISFIED | qtmcp.hitTest method + HitTest::widgetAt() |
+| UI-01: Simulate mouse click | SATISFIED | qtpilot.click method + InputSimulator::mouseClick() |
+| UI-02: Simulate keyboard input | SATISFIED | qtpilot.sendKeys method + InputSimulator::sendKeys() |
+| UI-03: Take screenshot | SATISFIED | qtpilot.screenshot method + Screenshot::captureWidget() |
+| UI-04: Get widget geometry | SATISFIED | qtpilot.getGeometry method + HitTest::widgetGeometry() |
+| UI-05: Coordinate-to-element hit testing | SATISFIED | qtpilot.hitTest method + HitTest::widgetAt() |
 
 **Coverage:** 20/20 requirements satisfied (100%)
 
@@ -170,19 +170,19 @@ While all automated checks pass, the following should be verified by running the
 
 #### 3. Screenshot Capture
 
-**Test:** Send qtmcp.screenshot request for a visible widget
+**Test:** Send qtpilot.screenshot request for a visible widget
 **Expected:** Receive base64 PNG image that accurately represents the widget
 **Why human:** Visual validation required
 
 #### 4. Input Simulation
 
-**Test:** Use qtmcp.click to click a button, then verify button clicked handler executed
+**Test:** Use qtpilot.click to click a button, then verify button clicked handler executed
 **Expected:** Button responds as if user clicked it
 **Why human:** Requires observing UI state changes
 
 #### 5. Hit Testing Accuracy
 
-**Test:** Send qtmcp.hitTest with coordinates over a known widget
+**Test:** Send qtpilot.hitTest with coordinates over a known widget
 **Expected:** Returns correct widget hierarchical ID
 **Why human:** Coordinate accuracy needs visual confirmation
 

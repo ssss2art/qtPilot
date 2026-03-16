@@ -1,7 +1,7 @@
 [project]
-name = "qtmcp"
+name = "qtpilot"
 dynamic = ["version"]
-description = "MCP server for controlling Qt applications via QtMCP probe"
+description = "MCP server for controlling Qt applications via qtPilot probe"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
@@ -31,14 +31,14 @@ dependencies = [
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
 
 [project.urls]
-Homepage = "https://github.com/ssss2art/QtMcp"
-Documentation = "https://github.com/ssss2art/QtMcp#readme"
-Repository = "https://github.com/ssss2art/QtMcp"
-Issues = "https://github.com/ssss2art/QtMcp/issues"
-Changelog = "https://github.com/ssss2art/QtMcp/releases"
+Homepage = "https://github.com/ssss2art/qtPilot"
+Documentation = "https://github.com/ssss2art/qtPilot#readme"
+Repository = "https://github.com/ssss2art/qtPilot"
+Issues = "https://github.com/ssss2art/qtPilot/issues"
+Changelog = "https://github.com/ssss2art/qtPilot/releases"
 
 [project.scripts]
-qtmcp = "qtmcp.cli:main"
+qtpilot = "qtpilot.cli:main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -49,4 +49,4 @@ source = "vcs"
 raw-options.root = ".."
 
 [tool.hatch.build.hooks.vcs]
-version-file = "src/qtmcp/_version.py"
+version-file = "src/qtpilot/_version.py"

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -21,7 +21,7 @@
 #include "api/error_codes.h"
 #include "accessibility/console_message_capture.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Integration tests for the Chrome Mode API (chr.* methods).
 ///

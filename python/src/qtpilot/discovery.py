@@ -1,4 +1,4 @@
-"""UDP discovery listener for finding QtMCP probes on the network."""
+"""UDP discovery listener for finding qtPilot probes on the network."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ STALE_TIMEOUT = 15.0
 
 @dataclass
 class DiscoveredProbe:
-    """A QtMCP probe discovered via UDP broadcast."""
+    """A qtPilot probe discovered via UDP broadcast."""
 
     app_name: str
     pid: int
@@ -46,7 +46,7 @@ class DiscoveredProbe:
 
 
 class DiscoveryProtocol(asyncio.DatagramProtocol):
-    """asyncio datagram protocol that parses QtMCP discovery messages."""
+    """asyncio datagram protocol that parses qtPilot discovery messages."""
 
     def __init__(self, listener: DiscoveryListener) -> None:
         self._listener = listener
@@ -57,7 +57,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return
 
-        if msg.get("protocol") != "qtmcp-discovery":
+        if msg.get("protocol") != "qtPilot-discovery":
             return
 
         msg_type = msg.get("type")
@@ -76,7 +76,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
 
 class DiscoveryListener:
-    """Listens for QtMCP probe UDP broadcast announcements."""
+    """Listens for qtPilot probe UDP broadcast announcements."""
 
     def __init__(self, port: int = DEFAULT_DISCOVERY_PORT) -> None:
         self._port = port
@@ -103,7 +103,7 @@ class DiscoveryListener:
 
         loop = asyncio.get_running_loop()
 
-        # Create socket manually with SO_REUSEADDR so multiple qtmcp
+        # Create socket manually with SO_REUSEADDR so multiple qtpilot
         # server instances can listen for probe broadcasts concurrently.
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

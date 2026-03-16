@@ -6,13 +6,13 @@
 
 ## Summary
 
-Phase 3 transforms the existing 21 Phase 2 JSON-RPC methods (currently under the flat `qtmcp.*` namespace) into a polished, agent-friendly Native Mode API. The existing introspection, mutation, interaction, and signal monitoring infrastructure is fully functional -- this phase is about API surface design, not new Qt introspection logic.
+Phase 3 transforms the existing 21 Phase 2 JSON-RPC methods (currently under the flat `qtpilot.*` namespace) into a polished, agent-friendly Native Mode API. The existing introspection, mutation, interaction, and signal monitoring infrastructure is fully functional -- this phase is about API surface design, not new Qt introspection logic.
 
 The core work involves: (1) reorganizing methods into dotted namespaces like `qt.objects.*`, `qt.properties.*`, etc., (2) implementing three object referencing styles (hierarchical path, numeric shorthand, symbolic names), (3) wrapping all responses in a uniform `{result, meta}` envelope, (4) adding convenience methods (`qt.objects.inspect`, `qt.objects.query`), and (5) standardizing error handling with detailed error codes and self-correcting hints.
 
 The existing `JsonRpcHandler` already supports registering methods by arbitrary string names, so the namespace transition is mechanical -- register new dotted methods that delegate to the same underlying logic. The `ObjectRegistry` already computes hierarchical IDs; the new work is adding numeric shorthand lookup and symbolic name resolution as additional ID resolution layers.
 
-**Primary recommendation:** Create an `ObjectResolver` class that accepts any of the three ID styles and resolves to `QObject*`. Build a `ResponseEnvelope` helper that wraps results uniformly. Register new `qt.*` namespaced methods in a dedicated `NativeModeApi` class. Keep old `qtmcp.*` methods for backward compatibility during transition.
+**Primary recommendation:** Create an `ObjectResolver` class that accepts any of the three ID styles and resolves to `QObject*`. Build a `ResponseEnvelope` helper that wraps results uniformly. Register new `qt.*` namespaced methods in a dedicated `NativeModeApi` class. Keep old `qtpilot.*` methods for backward compatibility during transition.
 
 ## Standard Stack
 
@@ -87,7 +87,7 @@ src/
 **Example:**
 ```cpp
 // object_resolver.h
-namespace qtmcp {
+namespace qtpilot {
 
 class ObjectResolver {
 public:
@@ -123,7 +123,7 @@ private:
     static IdStyle detectStyle(const QString& id);
 };
 
-}  // namespace qtmcp
+}  // namespace qtpilot
 ```
 
 **Resolution logic:**
@@ -158,7 +158,7 @@ QObject* ObjectResolver::resolve(const QString& id) {
 **Example:**
 ```cpp
 // response_envelope.h
-namespace qtmcp {
+namespace qtpilot {
 
 class ResponseEnvelope {
 public:
@@ -174,7 +174,7 @@ public:
                        const QJsonObject& extraMeta);
 };
 
-}  // namespace qtmcp
+}  // namespace qtpilot
 ```
 
 **Implementation:**
@@ -203,7 +203,7 @@ QString ResponseEnvelope::wrap(const QJsonValue& result, const QString& objectId
 **Example:**
 ```cpp
 // native_mode_api.h
-namespace qtmcp {
+namespace qtpilot {
 
 class NativeModeApi : public QObject {
     Q_OBJECT
@@ -222,7 +222,7 @@ private:
     JsonRpcHandler* m_handler;
 };
 
-}  // namespace qtmcp
+}  // namespace qtpilot
 ```
 
 ### Pattern 4: Application Error Codes
@@ -234,7 +234,7 @@ private:
 **Example:**
 ```cpp
 // error_codes.h
-namespace qtmcp {
+namespace qtpilot {
 namespace ErrorCode {
 
 // Object errors (-32001 to -32009)
@@ -267,7 +267,7 @@ constexpr int kNameAlreadyExists = -32051;
 constexpr int kNameMapLoadError = -32052;
 
 }  // namespace ErrorCode
-}  // namespace qtmcp
+}  // namespace qtpilot
 ```
 
 ### Pattern 5: Symbolic Name Map (Squish-Inspired)
@@ -288,7 +288,7 @@ constexpr int kNameMapLoadError = -32052;
 **Example:**
 ```cpp
 // symbolic_name_map.h
-namespace qtmcp {
+namespace qtpilot {
 
 class SymbolicNameMap : public QObject {
     Q_OBJECT
@@ -320,7 +320,7 @@ private:
     mutable QMutex m_mutex;
 };
 
-}  // namespace qtmcp
+}  // namespace qtpilot
 ```
 
 ### Pattern 6: Structured Error Responses with Schema Hints
@@ -351,7 +351,7 @@ private:
 
 ### Anti-Patterns to Avoid
 
-- **Breaking old method names immediately:** Keep `qtmcp.*` methods registered alongside new `qt.*` methods during transition. Removing them breaks existing tests.
+- **Breaking old method names immediately:** Keep `qtpilot.*` methods registered alongside new `qt.*` methods during transition. Removing them breaks existing tests.
 - **Coupling ObjectResolver to JsonRpcHandler:** Resolver should be a standalone utility, not embedded in handler code.
 - **Making the envelope optional:** All `qt.*` methods must use the envelope. Inconsistency defeats the purpose.
 - **Storing numeric IDs permanently:** Numeric shorthand IDs should be session-scoped (cleared on client disconnect). They are for convenience, not persistence.
@@ -567,34 +567,34 @@ bool SymbolicNameMap::loadFromFile(const QString& filePath) {
 // The complete mapping from Phase 2 methods to Phase 3 namespaces:
 
 // === Object Discovery (NAT-01) ===
-// qtmcp.findByObjectName  -> qt.objects.find
-// qtmcp.findByClassName   -> qt.objects.findByClass
-// qtmcp.getObjectTree     -> qt.objects.tree
-// qtmcp.getObjectInfo     -> qt.objects.info
+// qtpilot.findByObjectName  -> qt.objects.find
+// qtpilot.findByClassName   -> qt.objects.findByClass
+// qtpilot.getObjectTree     -> qt.objects.tree
+// qtpilot.getObjectInfo     -> qt.objects.info
 // NEW                     -> qt.objects.inspect    (combined props+methods+signals)
 // NEW                     -> qt.objects.query      (rich filtering)
 
 // === Properties (NAT-02) ===
-// qtmcp.listProperties    -> qt.properties.list
-// qtmcp.getProperty       -> qt.properties.get
-// qtmcp.setProperty       -> qt.properties.set
+// qtpilot.listProperties    -> qt.properties.list
+// qtpilot.getProperty       -> qt.properties.get
+// qtpilot.setProperty       -> qt.properties.set
 
 // === Methods (NAT-03) ===
-// qtmcp.listMethods       -> qt.methods.list
-// qtmcp.invokeMethod      -> qt.methods.invoke
+// qtpilot.listMethods       -> qt.methods.list
+// qtpilot.invokeMethod      -> qt.methods.invoke
 
 // === Signals (NAT-05) ===
-// qtmcp.listSignals       -> qt.signals.list
-// qtmcp.subscribeSignal   -> qt.signals.subscribe
-// qtmcp.unsubscribeSignal -> qt.signals.unsubscribe
-// qtmcp.setLifecycleNotifications -> qt.signals.setLifecycle
+// qtpilot.listSignals       -> qt.signals.list
+// qtpilot.subscribeSignal   -> qt.signals.subscribe
+// qtpilot.unsubscribeSignal -> qt.signals.unsubscribe
+// qtpilot.setLifecycleNotifications -> qt.signals.setLifecycle
 
 // === UI Interaction (NAT-04) ===
-// qtmcp.click             -> qt.ui.click
-// qtmcp.sendKeys          -> qt.ui.sendKeys
-// qtmcp.screenshot        -> qt.ui.screenshot
-// qtmcp.getGeometry       -> qt.ui.geometry
-// qtmcp.hitTest           -> qt.ui.hitTest
+// qtpilot.click             -> qt.ui.click
+// qtpilot.sendKeys          -> qt.ui.sendKeys
+// qtpilot.screenshot        -> qt.ui.screenshot
+// qtpilot.getGeometry       -> qt.ui.geometry
+// qtpilot.hitTest           -> qt.ui.hitTest
 
 // === Name Map (NEW) ===
 // NEW -> qt.names.register
@@ -614,7 +614,7 @@ bool SymbolicNameMap::loadFromFile(const QString& filePath) {
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| Flat `qtmcp.*` namespace | Dotted `qt.domain.method` | Phase 3 | Better discoverability |
+| Flat `qtpilot.*` namespace | Dotted `qt.domain.method` | Phase 3 | Better discoverability |
 | Raw JSON result | Envelope `{result, meta}` | Phase 3 | Uniform agent parsing |
 | Hierarchical path only | Three ID styles (path/numeric/symbolic) | Phase 3 | Agent flexibility |
 | Generic std::exception errors | Typed error codes with data/hints | Phase 3 | Agent self-correction |
@@ -627,8 +627,8 @@ bool SymbolicNameMap::loadFromFile(const QString& filePath) {
 
 ## Open Questions
 
-1. **Backward compatibility period for `qtmcp.*` methods**
-   - What we know: New `qt.*` methods will coexist alongside old `qtmcp.*` methods
+1. **Backward compatibility period for `qtpilot.*` methods**
+   - What we know: New `qt.*` methods will coexist alongside old `qtpilot.*` methods
    - What's unclear: When to remove old methods (Phase 4? never?)
    - Recommendation: Keep both registered indefinitely for now; mark old ones deprecated in `qt.version` response
 
@@ -639,8 +639,8 @@ bool SymbolicNameMap::loadFromFile(const QString& filePath) {
 
 3. **Symbolic name file auto-loading path**
    - What we know: CONTEXT.md says loaded from file at startup
-   - What's unclear: What env var or convention names the file? `QTMCP_NAME_MAP`? Alongside the app executable?
-   - Recommendation: Check `QTMCP_NAME_MAP` env var first, then look for `qtmcp-names.json` in the app's working directory. Both configurable.
+   - What's unclear: What env var or convention names the file? `QTPILOT_NAME_MAP`? Alongside the app executable?
+   - Recommendation: Check `QTPILOT_NAME_MAP` env var first, then look for `qtPilot-names.json` in the app's working directory. Both configurable.
 
 4. **qt.objects.query filter complexity**
    - What we know: Should support `{className: "QPushButton", properties: {enabled: true}}`

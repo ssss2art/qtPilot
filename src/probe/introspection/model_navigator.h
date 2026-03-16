@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -9,7 +9,7 @@
 #include <QList>
 #include <QString>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Utility class for QAbstractItemModel discovery, data retrieval,
 /// and view-to-model resolution.
@@ -91,4 +91,4 @@ class ModelNavigator {
   ModelNavigator() = delete;  // Purely static, no instantiation
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

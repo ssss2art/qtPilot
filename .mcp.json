@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "qtmcp": {
-      "command": "qtmcp",
-      "args": ["serve", "--mode", "native", "--ws-url", "ws://localhost:9222"]
+    "qtPilot": {
+      "command": "qtpilot",
+      "args": ["serve"]
     }
   }
 }

@@ -1,13 +1,13 @@
-# qtmcp
+# qtpilot
 
-MCP server for controlling Qt applications via the QtMCP probe.
+MCP server for controlling Qt applications via the qtPilot probe.
 
-QtMCP enables Claude and other MCP-compatible AI assistants to interact with Qt desktop applications through a native probe that exposes the Qt object tree, properties, signals, and visual state.
+qtPilot enables Claude and other MCP-compatible AI assistants to interact with Qt desktop applications through a native probe that exposes the Qt object tree, properties, signals, and visual state.
 
 ## Installation
 
 ```bash
-pip install qtmcp
+pip install qtpilot
 ```
 
 ## Quick Start
@@ -16,20 +16,20 @@ pip install qtmcp
 
 ```bash
 # Download probe + launcher matching your app's Qt version
-qtmcp download-tools --qt-version 6.8
+qtpilot download-tools --qt-version 6.8
 
 # Other available versions: 5.15, 6.5, 6.8, 6.9
-qtmcp download-tools --qt-version 5.15
+qtpilot download-tools --qt-version 5.15
 
 # Extract to a specific directory
-qtmcp download-tools --qt-version 6.8 --output ./tools
+qtpilot download-tools --qt-version 6.8 --output ./tools
 ```
 
 2. **Launch your Qt application** with the probe:
 
 ```bash
 # Auto-launch target app with probe injection
-qtmcp serve --mode native --target /path/to/your-qt-app.exe
+qtpilot serve --mode native --target /path/to/your-qt-app.exe
 ```
 
 3. **Connect Claude** to the MCP server via your client configuration.
@@ -45,13 +45,13 @@ qtmcp serve --mode native --target /path/to/your-qt-app.exe
 
 ```bash
 # Native mode - full Qt object tree access
-qtmcp serve --mode native --ws-url ws://localhost:9222
+qtpilot serve --mode native --ws-url ws://localhost:9222
 
 # Chrome mode - DevTools-compatible protocol
-qtmcp serve --mode chrome --target /path/to/app.exe
+qtpilot serve --mode chrome --target /path/to/app.exe
 
 # Computer Use mode - screenshot-based interaction
-qtmcp serve --mode cu --ws-url ws://localhost:9222
+qtpilot serve --mode cu --ws-url ws://localhost:9222
 ```
 
 ## Claude Desktop Configuration
@@ -61,8 +61,8 @@ Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "qtmcp": {
-      "command": "qtmcp",
+    "qtpilot": {
+      "command": "qtpilot",
       "args": ["serve", "--mode", "native", "--target", "/path/to/your/qt-app"]
     }
   }
@@ -72,21 +72,21 @@ Add to your `claude_desktop_config.json`:
 ## Claude Code Configuration
 
 ```bash
-claude mcp add --transport stdio qtmcp -- qtmcp serve --mode native --ws-url ws://localhost:9222
+claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
 
 ## Requirements
 
 - Python 3.11 or later
-- Qt application with QtMCP probe loaded
+- Qt application with qtPilot probe loaded
 - Windows or Linux (macOS support planned)
 
 ## Links
 
-- [Full Documentation](https://github.com/ssss2art/QtMcp#readme)
-- [Releases & Probe Downloads](https://github.com/ssss2art/QtMcp/releases)
-- [Issue Tracker](https://github.com/ssss2art/QtMcp/issues)
+- [Full Documentation](https://github.com/ssss2art/qtPilot#readme)
+- [Releases & Probe Downloads](https://github.com/ssss2art/qtPilot/releases)
+- [Issue Tracker](https://github.com/ssss2art/qtPilot/issues)
 
 ## License
 
-MIT License - see [LICENSE](https://github.com/ssss2art/QtMcp/blob/main/LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/ssss2art/qtPilot/blob/main/LICENSE) for details.

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "qt_env_setup.h"
@@ -186,7 +186,7 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
 
 }  // namespace
 
-namespace qtmcp {
+namespace qtPilot {
 
 QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& targetExe,
                                         bool quiet) {
@@ -217,7 +217,7 @@ QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& tar
     result.applied = false;
     if (!quiet) {
       fprintf(stderr,
-              "[qtmcp-launch] Qt environment already configured via existing QT_PLUGIN_PATH\n");
+              "[qtpilot-launch] Qt environment already configured via existing QT_PLUGIN_PATH\n");
     }
     return result;
   }
@@ -234,9 +234,9 @@ QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& tar
   }
 
   // --- Step 3b: Build-time Qt prefix (compiled into the launcher by CMake) ---
-#ifdef QTMCP_BUILD_QT_PREFIX
+#ifdef QTPILOT_BUILD_QT_PREFIX
   if (result.qtDir.isEmpty()) {
-    QString resolved = resolveQtPrefix(QStringLiteral(QTMCP_BUILD_QT_PREFIX));
+    QString resolved = resolveQtPrefix(QStringLiteral(QTPILOT_BUILD_QT_PREFIX));
     if (!resolved.isEmpty()) {
       result.qtDir = resolved;
       result.binPath = QDir(resolved).filePath(QStringLiteral("bin"));
@@ -276,31 +276,31 @@ QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& tar
     result.applied = true;
 
     if (!quiet) {
-      fprintf(stderr, "[qtmcp-launch] Qt detected via %s\n", qPrintable(result.source));
-      fprintf(stderr, "[qtmcp-launch]   Qt dir:      %s\n",
+      fprintf(stderr, "[qtpilot-launch] Qt detected via %s\n", qPrintable(result.source));
+      fprintf(stderr, "[qtpilot-launch]   Qt dir:      %s\n",
               qPrintable(QDir::toNativeSeparators(result.qtDir)));
-      fprintf(stderr, "[qtmcp-launch]   PATH entry:  %s\n",
+      fprintf(stderr, "[qtpilot-launch]   PATH entry:  %s\n",
               qPrintable(QDir::toNativeSeparators(result.binPath)));
-      fprintf(stderr, "[qtmcp-launch]   Plugin path: %s\n",
+      fprintf(stderr, "[qtpilot-launch]   Plugin path: %s\n",
               qPrintable(QDir::toNativeSeparators(result.pluginsPath)));
     }
   } else {
     if (!quiet) {
       fprintf(stderr,
-              "[qtmcp-launch] WARNING: Could not auto-detect Qt installation.\n"
-              "[qtmcp-launch]   Probe injection may fail if Qt DLLs are not on PATH.\n"
-              "[qtmcp-launch]   Use --qt-dir to specify your Qt installation path.\n");
+              "[qtpilot-launch] WARNING: Could not auto-detect Qt installation.\n"
+              "[qtpilot-launch]   Probe injection may fail if Qt DLLs are not on PATH.\n"
+              "[qtpilot-launch]   Use --qt-dir to specify your Qt installation path.\n");
     }
     result.warnings.append(QStringLiteral("Could not auto-detect Qt installation"));
   }
 
   for (const QString& warning : result.warnings) {
     if (!quiet) {
-      fprintf(stderr, "[qtmcp-launch] WARNING: %s\n", qPrintable(warning));
+      fprintf(stderr, "[qtpilot-launch] WARNING: %s\n", qPrintable(warning));
     }
   }
 
   return result;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

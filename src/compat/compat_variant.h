@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <QVariant>
 #include <QtGlobal>
 
-namespace qtmcp {
+namespace qtPilot {
 namespace compat {
 
 /// Returns the type ID of a QVariant.
@@ -49,4 +49,4 @@ inline QVariant emptyVariantOfType(int typeId) {
 }
 
 }  // namespace compat
-}  // namespace qtmcp
+}  // namespace qtPilot

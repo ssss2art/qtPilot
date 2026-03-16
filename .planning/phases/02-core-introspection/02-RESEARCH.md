@@ -6,7 +6,7 @@
 
 ## Summary
 
-Phase 2 implements the core introspection capabilities of the QtMCP probe. This involves three interconnected subsystems: (1) an Object Registry that tracks all QObjects via Qt's private hook mechanism, (2) a Meta Inspector that uses QMetaObject to expose properties, methods, and signals, and (3) a UI Interaction layer that leverages QTest functions for input simulation and QWidget::grab() for screenshots.
+Phase 2 implements the core introspection capabilities of the qtPilot probe. This involves three interconnected subsystems: (1) an Object Registry that tracks all QObjects via Qt's private hook mechanism, (2) a Meta Inspector that uses QMetaObject to expose properties, methods, and signals, and (3) a UI Interaction layer that leverages QTest functions for input simulation and QWidget::grab() for screenshots.
 
 The Qt Meta-Object system provides comprehensive introspection via `QMetaObject`, `QMetaProperty`, and `QMetaMethod` classes. These are public, stable APIs that allow enumeration and access to properties, methods (including signals and slots), and dynamic method invocation. Object lifecycle tracking uses Qt's private `qtHookData` hooks (AddQObject/RemoveQObject), which are the same mechanism used by KDAB's GammaRay.
 
@@ -54,7 +54,7 @@ Signal monitoring can be implemented either via the private `qt_register_signal_
 **CMake:**
 ```cmake
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
-target_link_libraries(qtmcp-probe PRIVATE
+target_link_libraries(qtPilot-probe PRIVATE
     Qt6::Core
     Qt6::CorePrivate  # For qhooks_p.h
     Qt6::Gui
@@ -106,7 +106,7 @@ src/
 #include <QMutex>
 #include <private/qhooks_p.h>
 
-namespace qtmcp {
+namespace qtpilot {
 
 class ObjectRegistry : public QObject {
     Q_OBJECT
@@ -127,8 +127,8 @@ signals:
     void objectRemoved(QObject* obj);
 
 private:
-    friend void qtmcpAddObjectHook(QObject*);
-    friend void qtmcpRemoveObjectHook(QObject*);
+    friend void qtpilotAddObjectHook(QObject*);
+    friend void qtpilotRemoveObjectHook(QObject*);
 
     void registerObject(QObject* obj);
     void unregisterObject(QObject* obj);
@@ -142,7 +142,7 @@ private:
 void installObjectHooks();
 void uninstallObjectHooks();
 
-}  // namespace qtmcp
+}  // namespace qtpilot
 ```
 
 ```cpp
@@ -155,22 +155,22 @@ namespace {
     QHooks::RemoveQObjectCallback g_previousRemoveCallback = nullptr;
 }
 
-extern "C" Q_DECL_EXPORT void qtmcpAddObjectHook(QObject* obj) {
-    qtmcp::ObjectRegistry::instance()->registerObject(obj);
+extern "C" Q_DECL_EXPORT void qtpilotAddObjectHook(QObject* obj) {
+    qtpilot::ObjectRegistry::instance()->registerObject(obj);
 
     // Chain to previous callback (e.g., GammaRay)
     if (g_previousAddCallback)
         g_previousAddCallback(obj);
 }
 
-extern "C" Q_DECL_EXPORT void qtmcpRemoveObjectHook(QObject* obj) {
-    qtmcp::ObjectRegistry::instance()->unregisterObject(obj);
+extern "C" Q_DECL_EXPORT void qtpilotRemoveObjectHook(QObject* obj) {
+    qtpilot::ObjectRegistry::instance()->unregisterObject(obj);
 
     if (g_previousRemoveCallback)
         g_previousRemoveCallback(obj);
 }
 
-void qtmcp::installObjectHooks() {
+void qtpilot::installObjectHooks() {
     // Verify hook version compatibility
     Q_ASSERT(qtHookData[QHooks::HookDataVersion] >= 1);
 
@@ -181,11 +181,11 @@ void qtmcp::installObjectHooks() {
         qtHookData[QHooks::RemoveQObject]);
 
     // Install our callbacks
-    qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(&qtmcpAddObjectHook);
-    qtHookData[QHooks::RemoveQObject] = reinterpret_cast<quintptr>(&qtmcpRemoveObjectHook);
+    qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(&qtpilotAddObjectHook);
+    qtHookData[QHooks::RemoveQObject] = reinterpret_cast<quintptr>(&qtpilotRemoveObjectHook);
 }
 
-void qtmcp::ObjectRegistry::registerObject(QObject* obj) {
+void qtpilot::ObjectRegistry::registerObject(QObject* obj) {
     QMutexLocker lock(&m_mutex);
 
     QString id = generateId(obj);

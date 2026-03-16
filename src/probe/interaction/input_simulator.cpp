@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "input_simulator.h"
@@ -13,7 +13,7 @@
 #include <QTest>
 #include <QWheelEvent>
 
-namespace qtmcp {
+namespace qtPilot {
 
 void InputSimulator::mouseClick(QWidget* widget, MouseButton button, const QPoint& pos,
                                 Qt::KeyboardModifiers modifiers) {
@@ -81,7 +81,7 @@ void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
   // Extract key and modifiers from first key combination
   Qt::Key extractedKey;
   Qt::KeyboardModifiers mods;
-  qtmcp::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);
+  qtPilot::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);
 
   QTest::keyClick(widget, extractedKey, mods);
 }
@@ -221,4 +221,4 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
   QApplication::processEvents();
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

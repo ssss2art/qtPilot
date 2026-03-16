@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 // Shared Windows injection utilities used by both the launcher and the probe's
@@ -16,7 +16,7 @@
 #endif
 #include <Windows.h>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief RAII wrapper for Windows HANDLE to ensure cleanup.
 class HandleGuard {
@@ -64,7 +64,7 @@ HMODULE findRemoteModule(HANDLE process, const wchar_t* moduleName);
 ///
 /// Performs the full sequence: VirtualAllocEx -> WriteProcessMemory ->
 /// CreateRemoteThread(LoadLibraryW) -> wait -> findRemoteModule ->
-/// calculate qtmcpProbeInit offset -> CreateRemoteThread(init) -> wait -> cleanup.
+/// calculate qtpilotProbeInit offset -> CreateRemoteThread(init) -> wait -> cleanup.
 ///
 /// @param hProcess Handle to the target process (must have full access rights).
 /// @param processId The target's PID (used only for diagnostics).
@@ -73,6 +73,6 @@ HMODULE findRemoteModule(HANDLE process, const wchar_t* moduleName);
 /// @return true on success, false on failure.
 bool injectProbeDll(HANDLE hProcess, DWORD processId, const wchar_t* dllPath, bool quiet = true);
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 #endif  // _WIN32

@@ -1,15 +1,15 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QByteArray>
 #include <QRect>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Screenshot capture utility (UI-03).
 ///
@@ -28,7 +28,7 @@ namespace qtmcp {
 ///   // Capture a region
 ///   QByteArray png = Screenshot::captureRegion(widget, QRect(0, 0, 100, 100));
 /// @endcode
-class QTMCP_EXPORT Screenshot {
+class QTPILOT_EXPORT Screenshot {
  public:
   /// @brief Capture a widget and its children.
   /// @param widget Widget to capture
@@ -73,4 +73,4 @@ class QTMCP_EXPORT Screenshot {
   static QByteArray captureWindowLogical(QWidget* window);
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

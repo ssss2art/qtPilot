@@ -35,7 +35,7 @@ key-files:
 key-decisions:
   - "QStringView::mid() instead of deprecated midRef() for Qt6 compatibility"
   - "Q_GLOBAL_STATIC singleton for SymbolicNameMap (same pattern as ObjectRegistry)"
-  - "Auto-load name map from QTMCP_NAME_MAP env var or qtmcp-names.json in CWD"
+  - "Auto-load name map from QTPILOT_NAME_MAP env var or qtPilot-names.json in CWD"
 
 patterns-established:
   - "ResponseEnvelope::wrap() pattern: all qt.* methods return {result, meta{timestamp}}"
@@ -85,7 +85,7 @@ Each task was committed atomically:
 ## Decisions Made
 - Used QStringView::mid() instead of deprecated QString::midRef() for Qt6 compatibility
 - Q_GLOBAL_STATIC singleton for SymbolicNameMap (consistent with ObjectRegistry, SignalMonitor)
-- Auto-load name map from QTMCP_NAME_MAP env var, falling back to qtmcp-names.json in CWD
+- Auto-load name map from QTPILOT_NAME_MAP env var, falling back to qtPilot-names.json in CWD
 
 ## Deviations from Plan
 

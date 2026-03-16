@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 // Shared Windows injection implementation.
@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace qtmcp {
+namespace qtPilot {
 
 void printWindowsError(const char* prefix, DWORD errorCode) {
   wchar_t* msgBuf = nullptr;
@@ -160,7 +160,7 @@ bool injectProbeDll(HANDLE hProcess, DWORD processId, const wchar_t* dllPath, bo
   // Free the remote memory (no longer needed)
   VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
 
-  // --- Phase 2: Call exported qtmcpProbeInit in the remote process ---
+  // --- Phase 2: Call exported qtpilotProbeInit in the remote process ---
 
   // Extract just the DLL filename from the full path
   const wchar_t* lastSlash = wcsrchr(dllPath, L'\\');
@@ -195,11 +195,11 @@ bool injectProbeDll(HANDLE hProcess, DWORD processId, const wchar_t* dllPath, bo
 
   // Get local address of the exported init function
   auto localFunc =
-      reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(localProbe, "qtmcpProbeInit"));
+      reinterpret_cast<LPTHREAD_START_ROUTINE>(GetProcAddress(localProbe, "qtpilotProbeInit"));
 
   if (!localFunc) {
     if (!quiet) {
-      fprintf(stderr, "[injector] Warning: qtmcpProbeInit not found in probe DLL exports\n");
+      fprintf(stderr, "[injector] Warning: qtpilotProbeInit not found in probe DLL exports\n");
     }
     FreeLibrary(localProbe);
     return true;
@@ -212,11 +212,11 @@ bool injectProbeDll(HANDLE hProcess, DWORD processId, const wchar_t* dllPath, bo
       reinterpret_cast<const char*>(remoteProbeBase) + offset);
 
   if (!quiet) {
-    fprintf(stderr, "[injector] Calling qtmcpProbeInit at remote address %p\n",
+    fprintf(stderr, "[injector] Calling qtpilotProbeInit at remote address %p\n",
             reinterpret_cast<void*>(remoteFunc));
   }
 
-  // Call qtmcpProbeInit via CreateRemoteThread
+  // Call qtpilotProbeInit via CreateRemoteThread
   HandleGuard initThread(CreateRemoteThread(hProcess, nullptr, 0, remoteFunc, nullptr, 0, nullptr));
 
   if (!initThread.valid()) {
@@ -230,16 +230,16 @@ bool injectProbeDll(HANDLE hProcess, DWORD processId, const wchar_t* dllPath, bo
   DWORD initWait = WaitForSingleObject(initThread.get(), 10000);
   if (initWait != WAIT_OBJECT_0) {
     if (!quiet) {
-      fprintf(stderr, "[injector] Warning: qtmcpProbeInit thread did not complete in time\n");
+      fprintf(stderr, "[injector] Warning: qtpilotProbeInit thread did not complete in time\n");
     }
   } else if (!quiet) {
-    fprintf(stderr, "[injector] qtmcpProbeInit completed successfully\n");
+    fprintf(stderr, "[injector] qtpilotProbeInit completed successfully\n");
   }
 
   FreeLibrary(localProbe);
   return true;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 #endif  // _WIN32

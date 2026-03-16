@@ -1,8 +1,8 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 // Hooks CreateProcessW via Microsoft Detours so that every child process
-// automatically gets the QtMCP probe DLL injected.
+// automatically gets the qtPilot probe DLL injected.
 //
 // How it works:
 // 1. Hooked_CreateProcessW forces CREATE_SUSPENDED in dwCreationFlags.
@@ -10,8 +10,8 @@
 // 3. On success, calls injectProbeDll() from the shared library.
 // 4. If the caller did NOT request CREATE_SUSPENDED, resumes the main thread.
 //
-// Environment inheritance handles recursion: children inherit QTMCP_PORT=0
-// and QTMCP_INJECT_CHILDREN=1, so the probe in the child also hooks
+// Environment inheritance handles recursion: children inherit QTPILOT_PORT=0
+// and QTPILOT_INJECT_CHILDREN=1, so the probe in the child also hooks
 // CreateProcessW for grandchildren.
 
 #ifdef _WIN32
@@ -31,7 +31,7 @@
 #include <detours.h>
 
 // Declared in probe_init_windows.cpp — returns the absolute path to this DLL.
-extern "C" __declspec(dllimport) const wchar_t* qtmcpGetProbeDllPath();
+extern "C" __declspec(dllimport) const wchar_t* qtpilotGetProbeDllPath();
 
 namespace {
 
@@ -61,9 +61,9 @@ BOOL WINAPI Hooked_CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLin
   }
 
   // Inject the probe DLL into the child
-  const wchar_t* dllPath = qtmcpGetProbeDllPath();
+  const wchar_t* dllPath = qtpilotGetProbeDllPath();
   if (dllPath && dllPath[0] != L'\0') {
-    qtmcp::injectProbeDll(lpProcessInformation->hProcess, lpProcessInformation->dwProcessId,
+    qtPilot::injectProbeDll(lpProcessInformation->hProcess, lpProcessInformation->dwProcessId,
                           dllPath, /*quiet=*/true);
   }
 
@@ -77,7 +77,7 @@ BOOL WINAPI Hooked_CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLin
 
 }  // namespace
 
-namespace qtmcp {
+namespace qtPilot {
 
 void installChildProcessHook() {
   if (g_hookInstalled) {
@@ -91,9 +91,9 @@ void installChildProcessHook() {
 
   if (error == NO_ERROR) {
     g_hookInstalled = true;
-    fprintf(stderr, "[QtMCP] Child process injection hook installed\n");
+    fprintf(stderr, "[qtPilot] Child process injection hook installed\n");
   } else {
-    fprintf(stderr, "[QtMCP] Failed to install child process hook (Detours error %ld)\n", error);
+    fprintf(stderr, "[qtPilot] Failed to install child process hook (Detours error %ld)\n", error);
   }
 }
 
@@ -109,12 +109,12 @@ void uninstallChildProcessHook() {
 
   if (error == NO_ERROR) {
     g_hookInstalled = false;
-    fprintf(stderr, "[QtMCP] Child process injection hook removed\n");
+    fprintf(stderr, "[qtPilot] Child process injection hook removed\n");
   } else {
-    fprintf(stderr, "[QtMCP] Failed to remove child process hook (Detours error %ld)\n", error);
+    fprintf(stderr, "[qtPilot] Failed to remove child process hook (Detours error %ld)\n", error);
   }
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 #endif  // _WIN32

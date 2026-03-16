@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 // Linux implementation of probe injection using LD_PRELOAD.
@@ -22,14 +22,14 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 
-namespace qtmcp {
+namespace qtPilot {
 
 qint64 launchWithProbe(const LaunchOptions& options) {
   // 1. Set up environment for the child process
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
 
-  // Set QTMCP_PORT for the probe
-  env.insert(QStringLiteral("QTMCP_PORT"), QString::number(options.port));
+  // Set QTPILOT_PORT for the probe
+  env.insert(QStringLiteral("QTPILOT_PORT"), QString::number(options.port));
 
   // Get absolute path to probe library
   QString absProbe = QFileInfo(options.probePath).absoluteFilePath();
@@ -46,8 +46,8 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   if (!options.quiet) {
     fprintf(stderr, "[injector] LD_PRELOAD: %s\n",
             qPrintable(env.value(QStringLiteral("LD_PRELOAD"))));
-    fprintf(stderr, "[injector] QTMCP_PORT: %s\n",
-            qPrintable(env.value(QStringLiteral("QTMCP_PORT"))));
+    fprintf(stderr, "[injector] QTPILOT_PORT: %s\n",
+            qPrintable(env.value(QStringLiteral("QTPILOT_PORT"))));
   }
 
   // 2. Use QProcess for launching
@@ -87,11 +87,11 @@ qint64 launchWithProbe(const LaunchOptions& options) {
     // Child process
 
     // Set environment variables
-    setenv("QTMCP_PORT", qPrintable(QString::number(options.port)), 1);
+    setenv("QTPILOT_PORT", qPrintable(QString::number(options.port)), 1);
 
     // Enable child process injection if requested
     if (options.injectChildren) {
-      setenv("QTMCP_INJECT_CHILDREN", "1", 1);
+      setenv("QTPILOT_INJECT_CHILDREN", "1", 1);
     }
 
     // Set LD_PRELOAD
@@ -160,6 +160,6 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   return static_cast<qint64>(pid);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 #endif  // !Q_OS_WIN

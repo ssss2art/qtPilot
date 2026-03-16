@@ -1,10 +1,10 @@
-# QtMcp
+# qtPilot
 
 Qt MCP server enabling AI assistants to introspect and control Qt applications.
 
-## What is QtMcp?
+## What is qtPilot?
 
-QtMcp lets Claude and other AI assistants interact with any Qt desktop application. It works by injecting a lightweight probe into the target application that exposes its UI through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
+qtPilot lets Claude and other AI assistants interact with any Qt desktop application. It works by injecting a lightweight probe into the target application that exposes its UI through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
 
 **No source code modifications required** - works with any Qt application.
 
@@ -15,7 +15,7 @@ QtMcp lets Claude and other AI assistants interact with any Qt desktop applicati
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │  Qt Application                                                   │  │
 │  │  ┌─────────────────────────────────────────────────────────────┐  │  │
-│  │  │  QtMCP Probe (libqtmcp.so / qtmcp.dll)                      │  │  │
+│  │  │  qtPilot Probe (libqtpilot.so / qtpilot.dll)                      │  │  │
 │  │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │  │  │
 │  │  │  │ Object       │  │ Introspector │  │ WebSocket Server │   │  │  │
 │  │  │  │ Tracker      │  │              │  │                  │   │  │  │
@@ -26,7 +26,7 @@ QtMcp lets Claude and other AI assistants interact with any Qt desktop applicati
 │  ┌──────────────────────────────────────────────────▼────────────────┐  │
 │  │  Qt MCP Server (Python)                                           │  │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐   │  │
-│  │  │ QtMCP Client    │  │ MCP Tools       │  │ stdio Transport │   │  │
+│  │  │ qtPilot Client    │  │ MCP Tools       │  │ stdio Transport │   │  │
 │  │  │ (WebSocket)     │  │                 │  │                 │   │  │
 │  │  └─────────────────┘  └─────────────────┘  └─────────────────┘   │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
@@ -43,13 +43,13 @@ QtMcp lets Claude and other AI assistants interact with any Qt desktop applicati
 ### Option 1: pip install (Recommended)
 
 ```bash
-pip install qtmcp
+pip install qtpilot
 
 # Download probe + launcher for your Qt version
-qtmcp download-tools --qt-version 6.8
+qtpilot download-tools --qt-version 6.8
 
 # Launch your app with the probe and start the MCP server
-qtmcp serve --mode native --target /path/to/your-qt-app
+qtpilot serve --mode native --target /path/to/your-qt-app
 ```
 
 See [python/README.md](python/README.md) for complete CLI documentation.
@@ -57,8 +57,8 @@ See [python/README.md](python/README.md) for complete CLI documentation.
 ### Option 2: Build from Source
 
 ```bash
-git clone https://github.com/ssss2art/QtMcp.git
-cd QtMcp
+git clone https://github.com/ssss2art/qtPilot.git
+cd qtPilot
 cmake -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.0/gcc_64
 cmake --build build
 ```
@@ -87,8 +87,8 @@ Add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "qtmcp": {
-      "command": "qtmcp",
+    "qtpilot": {
+      "command": "qtpilot",
       "args": ["serve", "--mode", "native", "--target", "/path/to/your/qt-app"]
     }
   }
@@ -98,7 +98,7 @@ Add to `claude_desktop_config.json`:
 ### Claude Code
 
 ```bash
-claude mcp add --transport stdio qtmcp -- qtmcp serve --mode native --ws-url ws://localhost:9222
+claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
 
 ## Documentation
@@ -106,11 +106,11 @@ claude mcp add --transport stdio qtmcp -- qtmcp serve --mode native --ws-url ws:
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/GETTING-STARTED.md) | Installation and first steps |
-| [Building from Source](docs/BUILDING.md) | Compile QtMcp yourself |
-| [API Reference](qtmcp-specification.md) | Complete tool and protocol documentation |
-| [API Modes](qtmcp-compatibility-modes.md) | Detailed mode comparisons |
+| [Building from Source](docs/BUILDING.md) | Compile qtPilot yourself |
+| [API Reference](qtPilot-specification.md) | Complete tool and protocol documentation |
+| [API Modes](qtPilot-compatibility-modes.md) | Detailed mode comparisons |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
-| [Python CLI](python/README.md) | qtmcp command documentation |
+| [Python CLI](python/README.md) | qtpilot command documentation |
 
 ## Platform Support
 
@@ -132,6 +132,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Links
 
-- [GitHub Repository](https://github.com/ssss2art/QtMcp)
-- [Releases & Probe Downloads](https://github.com/ssss2art/QtMcp/releases)
-- [Issue Tracker](https://github.com/ssss2art/QtMcp/issues)
+- [GitHub Repository](https://github.com/ssss2art/qtPilot)
+- [Releases & Probe Downloads](https://github.com/ssss2art/qtPilot/releases)
+- [Issue Tracker](https://github.com/ssss2art/qtPilot/issues)

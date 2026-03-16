@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -12,7 +12,7 @@
 #include "introspection/event_capture.h"
 #include "core/object_registry.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Unit tests for EventCapture window lifecycle events
 /// (Show, Hide, Close, Resize).

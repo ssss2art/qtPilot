@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -9,10 +9,10 @@ namespace Ui {
 class MainWindow;
 }
 
-/// @brief Main window for the QtMCP test application.
+/// @brief Main window for the qtPilot test application.
 ///
 /// This window provides a comprehensive set of Qt widgets for testing
-/// the QtMCP introspection and automation capabilities.
+/// the qtPilot introspection and automation capabilities.
 class MainWindow : public QMainWindow {
   Q_OBJECT
 

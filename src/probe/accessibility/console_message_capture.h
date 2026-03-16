@@ -1,16 +1,16 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QList>
 #include <QMutex>
 #include <QString>
 #include <QtGlobal>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Captured console message with metadata.
 struct ConsoleMessage {
@@ -34,7 +34,7 @@ struct ConsoleMessage {
 ///   ConsoleMessageCapture::instance()->install();
 ///   // ... later ...
 ///   auto msgs = ConsoleMessageCapture::instance()->messages("error", true, 50);
-class QTMCP_EXPORT ConsoleMessageCapture {
+class QTPILOT_EXPORT ConsoleMessageCapture {
  public:
   /// @brief Maximum number of messages retained in the ring buffer.
   static constexpr int MAX_MESSAGES = 1000;
@@ -74,4 +74,4 @@ class QTMCP_EXPORT ConsoleMessageCapture {
   mutable QMutex m_mutex;                        ///< Thread-safety guard
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

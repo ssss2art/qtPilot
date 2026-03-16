@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -9,7 +9,7 @@
 #include "core/object_registry.h"
 #include "introspection/signal_monitor.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Unit tests for SignalMonitor class.
 ///

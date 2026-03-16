@@ -31,14 +31,14 @@ re_verification: false
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| python/pyproject.toml | Package metadata, dependencies, CLI entry point | VERIFIED | 17 lines. Contains all required fields. qtmcp CLI entry point present. |
-| python/src/qtmcp/connection.py | ProbeConnection class with connect/disconnect/call/is_connected | VERIFIED | 162 lines. Full implementation with async methods, response correlation, ProbeError exception. |
-| python/src/qtmcp/server.py | create_server factory function | VERIFIED | 125 lines. Lifespan pattern, auto-launch subprocess, mode-based tool registration. |
-| python/src/qtmcp/cli.py | main() entry point with argparse | VERIFIED | 63 lines. All required args present. Calls create_server() and server.run(). |
-| python/src/qtmcp/status.py | register_status_resource function | VERIFIED | 34 lines. Registers qtmcp://status resource exposing connection state. |
-| python/src/qtmcp/tools/native.py | register_native_tools with 32 tools | VERIFIED | 400 lines. 32 qt_* async tools. All call get_probe().call() with correct qt.* methods. |
-| python/src/qtmcp/tools/cu.py | register_cu_tools with 13 tools | VERIFIED | 210 lines. 13 cu_* async tools. All call get_probe().call() with correct cu.* methods. |
-| python/src/qtmcp/tools/chrome.py | register_chrome_tools with 8 tools | VERIFIED | 102 lines. 8 chr_* async tools. All call get_probe().call() with correct chr.* methods. |
+| python/pyproject.toml | Package metadata, dependencies, CLI entry point | VERIFIED | 17 lines. Contains all required fields. qtpilot CLI entry point present. |
+| python/src/qtpilot/connection.py | ProbeConnection class with connect/disconnect/call/is_connected | VERIFIED | 162 lines. Full implementation with async methods, response correlation, ProbeError exception. |
+| python/src/qtpilot/server.py | create_server factory function | VERIFIED | 125 lines. Lifespan pattern, auto-launch subprocess, mode-based tool registration. |
+| python/src/qtpilot/cli.py | main() entry point with argparse | VERIFIED | 63 lines. All required args present. Calls create_server() and server.run(). |
+| python/src/qtpilot/status.py | register_status_resource function | VERIFIED | 34 lines. Registers qtpilot://status resource exposing connection state. |
+| python/src/qtpilot/tools/native.py | register_native_tools with 32 tools | VERIFIED | 400 lines. 32 qt_* async tools. All call get_probe().call() with correct qt.* methods. |
+| python/src/qtpilot/tools/cu.py | register_cu_tools with 13 tools | VERIFIED | 210 lines. 13 cu_* async tools. All call get_probe().call() with correct cu.* methods. |
+| python/src/qtpilot/tools/chrome.py | register_chrome_tools with 8 tools | VERIFIED | 102 lines. 8 chr_* async tools. All call get_probe().call() with correct chr.* methods. |
 | python/README.md | Installation, config snippets, mode descriptions | VERIFIED | 225 lines. Complete config for all 3 modes x 2 platforms. Windows cmd /c pattern. |
 | python/tests/conftest.py | Mock WebSocket fixtures | VERIFIED | MockWebSocket class, mock_probe fixture, mock_mcp fixture present. |
 | python/tests/test_connection.py | ProbeConnection unit tests | VERIFIED | 6 tests: JSON-RPC format, ID increment, result return, error handling, connection state. All pass. |
@@ -48,9 +48,9 @@ re_verification: false
 
 | From | To | Via | Status | Details |
 |------|----|----|--------|---------|
-| cli.py | server.py | cli calls create_server() with parsed args | WIRED | Line 53: from qtmcp.server import create_server, line 55-61: call with all args |
+| cli.py | server.py | cli calls create_server() with parsed args | WIRED | Line 53: from qtpilot.server import create_server, line 55-61: call with all args |
 | server.py | connection.py | lifespan creates ProbeConnection and yields it | WIRED | Line 86: conn = ProbeConnection(actual_ws_url), line 87: await conn.connect() |
-| __main__.py | cli.py | python -m qtmcp delegates to cli.main() | WIRED | Line 3: from qtmcp.cli import main, line 5: main() |
+| __main__.py | cli.py | python -m qtpilot delegates to cli.main() | WIRED | Line 3: from qtpilot.cli import main, line 5: main() |
 | native.py | connection.py | each tool calls probe.call() | WIRED | 32 occurrences of await get_probe().call("qt.*") |
 | cu.py | connection.py | each tool calls probe.call() | WIRED | 13 occurrences of await get_probe().call("cu.*") |
 | chrome.py | connection.py | each tool calls probe.call() | WIRED | 8 occurrences of await get_probe().call("chr.*") |
@@ -101,7 +101,7 @@ Total probe.call() occurrences: 53 (all tools call probe)
 
 **CLI Verification:**
 ```
-python -m qtmcp --help shows all required arguments:
+python -m qtpilot --help shows all required arguments:
   --mode {native,cu,chrome}
   --ws-url WS_URL
   --target TARGET
@@ -111,14 +111,14 @@ python -m qtmcp --help shows all required arguments:
 
 **Server Creation Verification:**
 ```
-Native server: QtMCP Native with 32 tools
-CU server: QtMCP Cu with 13 tools
-Chrome server: QtMCP Chrome with 8 tools
+Native server: qtPilot Native with 32 tools
+CU server: qtPilot Cu with 13 tools
+Chrome server: qtPilot Chrome with 8 tools
 ```
 
 **No Stdout Pollution:**
 ```
-grep -r "print(" python/src/qtmcp/ returns no matches
+grep -r "print(" python/src/qtpilot/ returns no matches
 All logging via logging module to stderr
 ```
 
@@ -134,7 +134,7 @@ All logging via logging module to stderr
    - FastMCP server factory with lifespan pattern
    - ProbeConnection async WebSocket JSON-RPC client
    - CLI entry point with mode selection
-   - Status resource at qtmcp://status
+   - Status resource at qtpilot://status
 
 2. **All Three API Modes:** Complete
    - Native mode: 32 tools (qt_*) for full Qt introspection

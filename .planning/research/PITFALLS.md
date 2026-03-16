@@ -1,7 +1,7 @@
 # Domain Pitfalls
 
 **Domain:** Distribution & packaging for Qt injection library
-**Project:** QtMCP
+**Project:** qtPilot
 **Researched:** 2026-02-01
 **Confidence:** HIGH (verified against multiple authoritative sources)
 **Scope:** Pitfalls specific to ADDING distribution (vcpkg, PyPI, GitHub Releases, CI) to an existing C++/Qt injection library
@@ -16,22 +16,22 @@ Mistakes that cause broken releases, unusable packages, or require architectural
 
 ### Pitfall 1: vcpkg Port Builds Its Own Qt Instead of Using the Target's Qt
 
-**What goes wrong:** When creating a vcpkg port for QtMCP, vcpkg resolves the `qtbase` dependency from its own registry and builds/downloads a vcpkg-managed Qt. Consumers who have Qt installed via the official installer or a custom build end up with TWO Qt installations -- the vcpkg one linked into QtMCP and their own. The probe DLL then links against the wrong Qt, causing immediate ABI mismatch crashes when injected into the target app.
+**What goes wrong:** When creating a vcpkg port for qtPilot, vcpkg resolves the `qtbase` dependency from its own registry and builds/downloads a vcpkg-managed Qt. Consumers who have Qt installed via the official installer or a custom build end up with TWO Qt installations -- the vcpkg one linked into qtPilot and their own. The probe DLL then links against the wrong Qt, causing immediate ABI mismatch crashes when injected into the target app.
 
-**Why it happens:** vcpkg's design intentionally prefers its own packages. Declaring `qtbase` as a dependency in `vcpkg.json` triggers vcpkg to provide Qt, even if the consumer already has Qt installed. This is doubly problematic for QtMCP because the probe MUST match the target app's exact Qt version -- there is no "one Qt fits all."
+**Why it happens:** vcpkg's design intentionally prefers its own packages. Declaring `qtbase` as a dependency in `vcpkg.json` triggers vcpkg to provide Qt, even if the consumer already has Qt installed. This is doubly problematic for qtPilot because the probe MUST match the target app's exact Qt version -- there is no "one Qt fits all."
 
 **Warning signs:**
 - vcpkg build takes 30+ minutes (it is building Qt from source)
 - `ldd` or Dependency Walker shows the probe linking to Qt DLLs in the vcpkg installed tree, not the target app's Qt
 - Probe crashes immediately on injection with symbol resolution failures
-- Consumer's `find_package(Qt6)` finds a different Qt than the one QtMCP was built against
+- Consumer's `find_package(Qt6)` finds a different Qt than the one qtPilot was built against
 
 **Prevention:**
 1. **Do NOT declare qtbase as a vcpkg dependency.** Instead, treat Qt as an external/system dependency. Use `find_package(Qt6 REQUIRED)` in CMakeLists.txt and document that Qt must be pre-installed
 2. **Use an overlay port approach** where the portfile expects Qt via `CMAKE_PREFIX_PATH` rather than vcpkg dependency resolution
 3. **Consider a "header-only" vcpkg port** that ships CMake config and headers, with the actual probe DLL built separately per Qt version
 4. **Document clearly:** "This port requires Qt to be installed externally. Set `CMAKE_PREFIX_PATH` to your Qt installation."
-5. **Alternative:** Provide multiple vcpkg ports or features per Qt major version (e.g., `qtmcp[qt5]`, `qtmcp[qt6]`)
+5. **Alternative:** Provide multiple vcpkg ports or features per Qt major version (e.g., `qtpilot[qt5]`, `qtpilot[qt6]`)
 
 **Confidence:** HIGH -- verified via [vcpkg discussions on external Qt](https://github.com/microsoft/vcpkg/discussions/46814) and [vcpkg issue #27574](https://github.com/microsoft/vcpkg/issues/27574)
 
@@ -41,9 +41,9 @@ Mistakes that cause broken releases, unusable packages, or require architectural
 
 ### Pitfall 2: Probe DLL ABI Matrix Explosion
 
-**What goes wrong:** QtMCP must ship probe DLLs that exactly match the target app's Qt version + compiler + build config. With 5 Qt versions (5.15, 5.15.1-patched, 6.2, 6.8, 6.9) x 2 platforms (Windows MSVC, Linux GCC) x 2 configs (Debug/Release on Windows), that is 15-20 distinct binaries. Teams underestimate this matrix and ship incomplete sets, or worse, ship a single "universal" binary that crashes on version mismatch.
+**What goes wrong:** qtPilot must ship probe DLLs that exactly match the target app's Qt version + compiler + build config. With 5 Qt versions (5.15, 5.15.1-patched, 6.2, 6.8, 6.9) x 2 platforms (Windows MSVC, Linux GCC) x 2 configs (Debug/Release on Windows), that is 15-20 distinct binaries. Teams underestimate this matrix and ship incomplete sets, or worse, ship a single "universal" binary that crashes on version mismatch.
 
-**Why it happens:** Unlike normal libraries where "close enough" ABI compatibility works, injection probes must match the host process exactly. Qt does NOT guarantee ABI stability across minor versions for private headers, and QtMCP uses `CorePrivate`. Even patch-level differences in Qt can break private API users. The custom-patched Qt 5.15.1 adds another dimension.
+**Why it happens:** Unlike normal libraries where "close enough" ABI compatibility works, injection probes must match the host process exactly. Qt does NOT guarantee ABI stability across minor versions for private headers, and qtPilot uses `CorePrivate`. Even patch-level differences in Qt can break private API users. The custom-patched Qt 5.15.1 adds another dimension.
 
 **Warning signs:**
 - CI matrix has fewer jobs than Qt version x platform combinations
@@ -53,7 +53,7 @@ Mistakes that cause broken releases, unusable packages, or require architectural
 
 **Prevention:**
 1. **Explicitly enumerate the full build matrix** in CI configuration. Every Qt version x platform x config combination must be a separate CI job
-2. **Encode the full ABI identity in artifact names:** `qtmcp-probe-qt6.8.0-msvc2022-x64-release.dll`
+2. **Encode the full ABI identity in artifact names:** `qtPilot-probe-qt6.8.0-msvc2022-x64-release.dll`
 3. **Add runtime ABI verification:** The probe should check `qVersion()` at load time and refuse to initialize if there is a mismatch, printing a clear error instead of crashing
 4. **Automate completeness checks:** A CI step should verify that all expected artifacts were produced before creating a release
 5. **For the custom-patched Qt 5.15.1:** Document the exact patch and provide build scripts so users can reproduce it
@@ -141,25 +141,25 @@ Mistakes that cause delays, user confusion, or require rework.
 
 ### Pitfall 5: PyPI Package Ships Without Pre-built Probe Binaries
 
-**What goes wrong:** The Python `qtmcp` package is published as a pure-Python wheel (correctly, since it has no C extensions), but users `pip install qtmcp` and expect the probe DLL/SO to be included. It is not. Users get runtime errors when trying to connect to a Qt application because the probe binary is not on their system.
+**What goes wrong:** The Python `qtpilot` package is published as a pure-Python wheel (correctly, since it has no C extensions), but users `pip install qtpilot` and expect the probe DLL/SO to be included. It is not. Users get runtime errors when trying to connect to a Qt application because the probe binary is not on their system.
 
 **Why it happens:** The Python package is a pure-Python MCP server that communicates with the injected probe via WebSocket. The probe DLL is a separate C++ artifact. There is a fundamental packaging mismatch: the Python package depends on a platform-specific C++ binary that cannot be distributed through PyPI's wheel system (wrong ABI model -- the probe must match the TARGET app's Qt, not the Python environment's platform).
 
 **Warning signs:**
-- Users file issues: "qtmcp installed but cannot find probe"
+- Users file issues: "qtpilot installed but cannot find probe"
 - Documentation says "install from PyPI" without mentioning the probe
-- `qtmcp connect` fails with "probe not found" or similar
+- `qtpilot connect` fails with "probe not found" or similar
 
 **Prevention:**
 1. **Make the PyPI package clearly document that probe binaries are separate.** Add a prominent note in the package description and `--help` output
-2. **Add a `qtmcp doctor` or `qtmcp check` command** that verifies probe availability and reports what is missing
-3. **Support a `QTMCP_PROBE_PATH` environment variable** so users can point to their probe build
+2. **Add a `qtpilot doctor` or `qtpilot check` command** that verifies probe availability and reports what is missing
+3. **Support a `QTPILOT_PROBE_PATH` environment variable** so users can point to their probe build
 4. **Consider bundling pre-built probes as optional pip extras** using platform-specific wheels:
-   - `pip install qtmcp[qt68-win64]` downloads a platform wheel containing the Qt 6.8 Windows probe
+   - `pip install qtpilot[qt68-win64]` downloads a platform wheel containing the Qt 6.8 Windows probe
    - This requires separate PyPI packages per Qt version (complex but user-friendly)
 5. **Alternative: Ship probes via GitHub Releases** and have the Python CLI download the right one:
    ```
-   qtmcp install-probe --qt-version 6.8 --platform windows
+   qtpilot install-probe --qt-version 6.8 --platform windows
    ```
 6. **At minimum:** Include clear installation instructions linking to GitHub Releases for probe binaries
 
@@ -185,7 +185,7 @@ Mistakes that cause delays, user confusion, or require rework.
 1. **Single source of truth:** Use `CMakeLists.txt` `project(VERSION X.Y.Z)` as the canonical version. Derive all others from it
 2. **Automate version extraction in CI:**
    ```bash
-   VERSION=$(grep 'project(QtMCP' CMakeLists.txt | grep -oP 'VERSION \K[0-9.]+')
+   VERSION=$(grep 'project(qtPilot' CMakeLists.txt | grep -oP 'VERSION \K[0-9.]+')
    ```
 3. **Use Git tags as release triggers:** Tag creation triggers CI which reads version from CMakeLists.txt and validates it matches the tag
 4. **Fail CI if versions disagree:** Add a check step that compares versions across all files
@@ -200,28 +200,28 @@ Mistakes that cause delays, user confusion, or require rework.
 
 ### Pitfall 7: CMake Install/Export Targets Miss Qt Version Dependency
 
-**What goes wrong:** The `QtMCPConfig.cmake` generated by `install(EXPORT ...)` does not encode which Qt version it was built against. A consumer does `find_package(QtMCP)` and links successfully at CMake time, but the resulting binary crashes because it linked against Qt 6.9 while the QtMCP probe was built against Qt 6.8.
+**What goes wrong:** The `qtPilotConfig.cmake` generated by `install(EXPORT ...)` does not encode which Qt version it was built against. A consumer does `find_package(qtPilot)` and links successfully at CMake time, but the resulting binary crashes because it linked against Qt 6.9 while the qtPilot probe was built against Qt 6.8.
 
-**Why it happens:** The current CMakeLists.txt uses `SameMajorVersion` compatibility, which would allow a Qt6.8-built QtMCP to be found by a Qt6.9 project. For normal libraries this is fine, but for an injection probe it is wrong -- the probe MUST match exactly.
+**Why it happens:** The current CMakeLists.txt uses `SameMajorVersion` compatibility, which would allow a Qt6.8-built qtPilot to be found by a Qt6.9 project. For normal libraries this is fine, but for an injection probe it is wrong -- the probe MUST match exactly.
 
 **Warning signs:**
 - Consumer builds succeed but probe crashes on injection
-- `find_package(QtMCP)` succeeds even when Qt versions differ
+- `find_package(qtPilot)` succeeds even when Qt versions differ
 - No error at configure time, crash at runtime
 
 **Prevention:**
-1. **Encode the Qt version in the CMake package name or config:** e.g., `QtMCP-Qt6.8` instead of just `QtMCP`
-2. **Add a version check in `QtMCPConfig.cmake.in`:**
+1. **Encode the Qt version in the CMake package name or config:** e.g., `qtPilot-Qt6.8` instead of just `qtPilot`
+2. **Add a version check in `qtPilotConfig.cmake.in`:**
    ```cmake
-   # In QtMCPConfig.cmake.in
-   set(QTMCP_QT_VERSION "@QT_VERSION@")
+   # In qtPilotConfig.cmake.in
+   set(QTPILOT_QT_VERSION "@QT_VERSION@")
    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
-   if(NOT "${Qt${QT_VERSION_MAJOR}_VERSION}" VERSION_EQUAL "${QTMCP_QT_VERSION}")
-     message(FATAL_ERROR "QtMCP was built against Qt ${QTMCP_QT_VERSION} but found Qt ${Qt${QT_VERSION_MAJOR}_VERSION}. ABI mismatch.")
+   if(NOT "${Qt${QT_VERSION_MAJOR}_VERSION}" VERSION_EQUAL "${QTPILOT_QT_VERSION}")
+     message(FATAL_ERROR "qtPilot was built against Qt ${QTPILOT_QT_VERSION} but found Qt ${Qt${QT_VERSION_MAJOR}_VERSION}. ABI mismatch.")
    endif()
    ```
 3. **Use `ExactVersion` instead of `SameMajorVersion`** for the package compatibility check, or better yet, encode Qt version in the package version scheme (e.g., `0.1.0+qt6.8.0`)
-4. **Install to Qt-version-specific paths:** `lib/cmake/QtMCP-Qt6.8/` so different Qt builds coexist
+4. **Install to Qt-version-specific paths:** `lib/cmake/qtPilot-Qt6.8/` so different Qt builds coexist
 
 **Confidence:** HIGH -- verified against the existing `CMakeLists.txt` lines 249-253 which use `SameMajorVersion`
 
@@ -274,7 +274,7 @@ Mistakes that cause delays, user confusion, or require rework.
 
 **What goes wrong:** The auto-generated changelog lists all commits/PRs since the last release, but does not indicate which changes affect which Qt versions. A user on Qt 5.15 cannot tell if a release fixes their issue or only affects Qt 6.x. Worse, the release notes do not clarify which probe binaries in the release assets correspond to which Qt versions.
 
-**Why it happens:** GitHub's auto-generated release notes are commit-based, not artifact-based. They have no concept of "this binary is for Qt 6.8 on Windows." When release assets are named `qtmcp-probe-qt6.8.0-msvc2022-x64-release.dll`, the connection between changelog entries and artifacts is lost.
+**Why it happens:** GitHub's auto-generated release notes are commit-based, not artifact-based. They have no concept of "this binary is for Qt 6.8 on Windows." When release assets are named `qtPilot-probe-qt6.8.0-msvc2022-x64-release.dll`, the connection between changelog entries and artifacts is lost.
 
 **Warning signs:**
 - Users download the wrong probe binary for their Qt version
@@ -287,8 +287,8 @@ Mistakes that cause delays, user confusion, or require rework.
    ## Probe Binaries
    | File | Qt Version | Platform | Config |
    |------|-----------|----------|--------|
-   | qtmcp-probe-qt5.15-... | Qt 5.15.x | Linux GCC | Release |
-   | qtmcp-probe-qt6.8-... | Qt 6.8.x | Windows MSVC 2022 | Release |
+   | qtPilot-probe-qt5.15-... | Qt 5.15.x | Linux GCC | Release |
+   | qtPilot-probe-qt6.8-... | Qt 6.8.x | Windows MSVC 2022 | Release |
    ```
 2. **Use GitHub's `.github/release.yml`** to categorize PRs by label (e.g., `qt5`, `qt6`, `ci`, `python`)
 3. **Automate the asset table** in CI: after all matrix builds complete, generate a markdown table of all artifacts and inject it into release notes
@@ -335,14 +335,14 @@ Mistakes that cause annoyance but are quickly fixable.
 
 ### Pitfall 11: PyPI Package Name Collision
 
-**What goes wrong:** The name `qtmcp` may already be taken on PyPI, or a similar name exists causing user confusion.
+**What goes wrong:** The name `qtpilot` may already be taken on PyPI, or a similar name exists causing user confusion.
 
 **Prevention:**
-1. **Check PyPI name availability early:** `pip install qtmcp` -- if it installs something, the name is taken
+1. **Check PyPI name availability early:** `pip install qtpilot` -- if it installs something, the name is taken
 2. **Register the name by publishing a placeholder** (version 0.0.1) early
-3. **Consider `qt-mcp` or `qtmcp-server`** as alternatives if `qtmcp` is taken
+3. **Consider `qt-mcp` or `qtpilot-server`** as alternatives if `qtpilot` is taken
 
-**Confidence:** LOW -- not verified whether `qtmcp` is available on PyPI
+**Confidence:** LOW -- not verified whether `qtpilot` is available on PyPI
 
 **Phase impact:** Python packaging phase. Trivial to fix but embarrassing if discovered late.
 
@@ -360,9 +360,9 @@ Mistakes that cause annoyance but are quickly fixable.
 - Works when consumer has same Qt major version, fails otherwise
 
 **Prevention:**
-1. **This is actually correct behavior for QtMCP** -- the probe MUST match the Qt version. The export SHOULD fail if Qt versions differ
-2. **Make the error message clear:** Add a check in `QtMCPConfig.cmake.in` that prints "QtMCP requires Qt6. You have Qt5. Please install the Qt5 build of QtMCP."
-3. **Ship separate CMake packages per Qt major version** (e.g., `find_package(QtMCP-Qt6)`)
+1. **This is actually correct behavior for qtPilot** -- the probe MUST match the Qt version. The export SHOULD fail if Qt versions differ
+2. **Make the error message clear:** Add a check in `qtPilotConfig.cmake.in` that prints "qtPilot requires Qt6. You have Qt5. Please install the Qt5 build of qtPilot."
+3. **Ship separate CMake packages per Qt major version** (e.g., `find_package(qtPilot-Qt6)`)
 
 **Confidence:** HIGH -- verified against [Qt 5 and Qt 6 compatibility docs](https://doc.qt.io/qt-6/cmake-qt5-and-qt6-compatibility.html)
 
@@ -405,7 +405,7 @@ Mistakes that cause annoyance but are quickly fixable.
 
 ### Pitfall 15: Python Package Declares Wrong Dependency Bounds
 
-**What goes wrong:** `pyproject.toml` declares `fastmcp>=2.0,<3` but a new fastmcp 2.x release introduces a breaking change in a minor version. Users who `pip install qtmcp` get a broken installation.
+**What goes wrong:** `pyproject.toml` declares `fastmcp>=2.0,<3` but a new fastmcp 2.x release introduces a breaking change in a minor version. Users who `pip install qtpilot` get a broken installation.
 
 **Why it happens:** Semantic versioning is aspirational, not guaranteed, for third-party packages. `fastmcp` is relatively new (the current bound `>=2.0,<3` is broad). The `websockets>=14.0` bound is similarly open-ended.
 

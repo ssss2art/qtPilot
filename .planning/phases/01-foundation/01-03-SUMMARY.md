@@ -11,14 +11,14 @@ requires:
 provides:
   - JSON-RPC 2.0 message handler with Qt-native JSON parsing
   - Qt Test framework test suite for JsonRpcHandler
-  - Built-in methods: ping, getVersion, getModes, echo, qtmcp.echo
+  - Built-in methods: ping, getVersion, getModes, echo, qtpilot.echo
   - Notification signal for JSON-RPC notifications
 affects: [01-04, 01-05, websocket-integration]
 
 # Tech tracking
 tech-stack:
   added: [QTest framework]
-  patterns: [JSON-RPC 2.0 error codes, QTMCP_EXPORT DLL macro]
+  patterns: [JSON-RPC 2.0 error codes, QTPILOT_EXPORT DLL macro]
 
 key-files:
   created:
@@ -33,10 +33,10 @@ key-files:
 
 key-decisions:
   - "Use Qt Test (QTest) instead of GTest to eliminate external dependencies"
-  - "Add QTMCP_EXPORT macro for proper DLL symbol export on Windows"
+  - "Add QTPILOT_EXPORT macro for proper DLL symbol export on Windows"
 
 patterns-established:
-  - "QTMCP_EXPORT: Use dllexport/dllimport macro for QObject classes in DLL"
+  - "QTPILOT_EXPORT: Use dllexport/dllimport macro for QObject classes in DLL"
   - "JSON-RPC 2.0 error codes: -32700 parse, -32600 invalid, -32601 method not found"
   - "NotificationReceived signal: Emit when JSON-RPC notification (no id) arrives"
 
@@ -59,7 +59,7 @@ completed: 2026-01-30
 
 ## Accomplishments
 - Added NotificationReceived signal for incoming JSON-RPC notifications
-- Added qtmcp.echo method for integration testing (per RESEARCH.md spec)
+- Added qtpilot.echo method for integration testing (per RESEARCH.md spec)
 - Rewrote test suite using Qt Test framework (no GTest dependency)
 - All 13 JSON-RPC test cases pass
 
@@ -72,8 +72,8 @@ Each task was committed atomically:
 3. **Task 2: Update CMakeLists and add Qt Test** - `4c2f9d1` (test)
 
 ## Files Created/Modified
-- `src/probe/transport/jsonrpc_handler.h` - Added NotificationReceived signal, QTMCP_EXPORT macro
-- `src/probe/transport/jsonrpc_handler.cpp` - Added qtmcp.echo method, emit notification signal
+- `src/probe/transport/jsonrpc_handler.h` - Added NotificationReceived signal, QTPILOT_EXPORT macro
+- `src/probe/transport/jsonrpc_handler.cpp` - Added qtpilot.echo method, emit notification signal
 - `src/probe/core/probe.h` - Made constructor/destructor public for Q_GLOBAL_STATIC
 - `src/probe/core/injector_windows.cpp` - Fixed method name casing (Instance->instance, etc.)
 - `tests/CMakeLists.txt` - Rewritten for Qt Test, Qt5/Qt6 support
@@ -82,7 +82,7 @@ Each task was committed atomically:
 
 ## Decisions Made
 - Used Qt Test (QTest) instead of GTest to eliminate external dependency
-- Added QTMCP_EXPORT macro to JsonRpcHandler for proper Windows DLL symbol export
+- Added QTPILOT_EXPORT macro to JsonRpcHandler for proper Windows DLL symbol export
 - Made Probe constructor/destructor public for Q_GLOBAL_STATIC compatibility (Qt6 requirement)
 
 ## Deviations from Plan
@@ -112,7 +112,7 @@ Each task was committed atomically:
 
 ## Issues Encountered
 - Qt Test executable couldn't find DLLs in PATH during ctest run (test_jsonrpc.exe runs fine manually with Qt in PATH)
-- QTMCP_EXPORT was missing from JsonRpcHandler causing linker errors for MOC-generated symbols
+- QTPILOT_EXPORT was missing from JsonRpcHandler causing linker errors for MOC-generated symbols
 
 ## User Setup Required
 

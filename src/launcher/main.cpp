@@ -1,8 +1,8 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
-// QtMCP Launcher
-// Launches a Qt application with the QtMCP probe library injected.
+// qtPilot Launcher
+// Launches a Qt application with the qtPilot probe library injected.
 // Works on both Windows (DLL injection) and Linux (LD_PRELOAD).
 
 #include "injector.h"
@@ -30,12 +30,12 @@ QString findProbePath(const QString& qtVersion) {
   QDir exeDir(QCoreApplication::applicationDirPath());
 
 #ifdef Q_OS_WIN
-  const QStringList globPatterns = {QStringLiteral("qtmcp-probe*.dll")};
+  const QStringList globPatterns = {QStringLiteral("qtPilot-probe*.dll")};
 #else
-  // Match both CMake build output (libqtmcp-probe*.so) and
-  // archive-extracted probes (qtmcp-probe*.so)
-  const QStringList globPatterns = {QStringLiteral("libqtmcp-probe*.so"),
-                                    QStringLiteral("qtmcp-probe*.so")};
+  // Match both CMake build output (libqtPilot-probe*.so) and
+  // archive-extracted probes (qtPilot-probe*.so)
+  const QStringList globPatterns = {QStringLiteral("libqtPilot-probe*.so"),
+                                    QStringLiteral("qtPilot-probe*.so")};
 #endif
 
   QStringList searchDirs = {
@@ -88,13 +88,13 @@ QString findProbePath(const QString& qtVersion) {
 
 int main(int argc, char* argv[]) {
   QCoreApplication app(argc, argv);
-  app.setApplicationName(QStringLiteral("qtmcp-launch"));
+  app.setApplicationName(QStringLiteral("qtpilot-launch"));
   app.setApplicationVersion(QStringLiteral("0.1.0"));
 
   // Set up command line parser
   QCommandLineParser parser;
   parser.setApplicationDescription(
-      QStringLiteral("Launch Qt applications with QtMCP probe injected"));
+      QStringLiteral("Launch Qt applications with qtPilot probe injected"));
   parser.addHelpOption();
   parser.addVersionOption();
 
@@ -160,9 +160,9 @@ int main(int argc, char* argv[]) {
   // Handle --run-as-admin: self-elevate if not already elevated
 #ifdef Q_OS_WIN
   if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
-    if (!qtmcp::isProcessElevated()) {
+    if (!qtPilot::isProcessElevated()) {
       // Re-launch self as admin, forwarding all arguments
-      return qtmcp::relaunchElevated(QCoreApplication::applicationFilePath(),
+      return qtPilot::relaunchElevated(QCoreApplication::applicationFilePath(),
                                      QCoreApplication::arguments().mid(1));
     }
     // Already elevated — fall through to normal launch
@@ -183,7 +183,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Build LaunchOptions
-  qtmcp::LaunchOptions options;
+  qtPilot::LaunchOptions options;
   options.targetExecutable = positionalArgs.takeFirst();
   options.targetArgs = positionalArgs;  // Remaining args go to target
   options.detach = parser.isSet(detachOption);
@@ -247,31 +247,31 @@ int main(int argc, char* argv[]) {
   } else {
     options.probePath = findProbePath(parser.value(qtVersionOption));
     if (options.probePath.isEmpty()) {
-      fprintf(stderr, "Error: Could not find QtMCP probe library\n");
+      fprintf(stderr, "Error: Could not find qtPilot probe library\n");
       fprintf(stderr, "Use --probe option to specify the path\n");
       return 1;
     }
   }
 
   // Auto-detect and configure Qt environment for probe injection
-  qtmcp::QtEnvironmentResult envResult =
-      qtmcp::ensureQtEnvironment(options.qtDir, options.targetExecutable, options.quiet);
+  qtPilot::QtEnvironmentResult envResult =
+      qtPilot::ensureQtEnvironment(options.qtDir, options.targetExecutable, options.quiet);
 
   // Print startup message unless quiet
   if (!options.quiet) {
-    fprintf(stderr, "[qtmcp-launch] Target: %s\n", qPrintable(options.targetExecutable));
-    fprintf(stderr, "[qtmcp-launch] Probe: %s\n", qPrintable(options.probePath));
-    fprintf(stderr, "[qtmcp-launch] Port: %u, Detach: %s, Inject children: %s, Admin: %s\n",
+    fprintf(stderr, "[qtpilot-launch] Target: %s\n", qPrintable(options.targetExecutable));
+    fprintf(stderr, "[qtpilot-launch] Probe: %s\n", qPrintable(options.probePath));
+    fprintf(stderr, "[qtpilot-launch] Port: %u, Detach: %s, Inject children: %s, Admin: %s\n",
             static_cast<unsigned>(options.port), options.detach ? "yes" : "no",
             options.injectChildren ? "yes" : "no", options.runAsAdmin ? "yes" : "no");
     if (envResult.applied) {
-      fprintf(stderr, "[qtmcp-launch] Qt env: %s (via %s)\n",
+      fprintf(stderr, "[qtpilot-launch] Qt env: %s (via %s)\n",
               qPrintable(QDir::toNativeSeparators(envResult.qtDir)), qPrintable(envResult.source));
     }
   }
 
   // Launch with probe injection
-  qint64 pid = qtmcp::launchWithProbe(options);
+  qint64 pid = qtPilot::launchWithProbe(options);
   if (pid < 0) {
     fprintf(stderr, "Error: Failed to launch target with probe\n");
     return 1;
@@ -279,7 +279,7 @@ int main(int argc, char* argv[]) {
 
   // Success
   if (!options.quiet) {
-    fprintf(stderr, "[qtmcp-launch] Started process with PID %lld\n", static_cast<long long>(pid));
+    fprintf(stderr, "[qtpilot-launch] Started process with PID %lld\n", static_cast<long long>(pid));
   }
 
   return 0;

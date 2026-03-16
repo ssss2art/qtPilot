@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <stdexcept>
 
@@ -13,7 +13,7 @@
 #include <QObject>
 #include <QStringList>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Utility class for QMetaObject introspection with JSON output.
 ///
@@ -24,7 +24,7 @@ namespace qtmcp {
 ///   - listSignals(): List all signals (OBJ-10)
 ///
 /// All methods return JSON-friendly output suitable for MCP protocol.
-class QTMCP_EXPORT MetaInspector {
+class QTPILOT_EXPORT MetaInspector {
  public:
   /// @brief Get detailed object info (OBJ-04).
   ///
@@ -136,4 +136,4 @@ class QTMCP_EXPORT MetaInspector {
   static QJsonArray extractParameterNames(const QMetaMethod& method);
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

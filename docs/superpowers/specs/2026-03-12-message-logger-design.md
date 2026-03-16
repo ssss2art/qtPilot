@@ -1,12 +1,12 @@
-# Design: QtMCP Message Logger
+# Design: qtPilot Message Logger
 
 ## Context
 
-When debugging or auditing QtMCP interactions, there's no way to see the full conversation between Claude and the probe. The existing `EventRecorder` captures probe-side signals/events, but not the request/response traffic. A structured message log showing MCP tool calls, JSON-RPC wire traffic, and probe notifications — written to a file and buffered in memory — enables post-session analysis, live debugging via tail, and performance auditing.
+When debugging or auditing qtPilot interactions, there's no way to see the full conversation between Claude and the probe. The existing `EventRecorder` captures probe-side signals/events, but not the request/response traffic. A structured message log showing MCP tool calls, JSON-RPC wire traffic, and probe notifications — written to a file and buffered in memory — enables post-session analysis, live debugging via tail, and performance auditing.
 
 ## Design Summary
 
-Three layers of capture at three verbosity levels, wired through FastMCP middleware (MCP layer) and ProbeConnection observers/handlers (JSON-RPC and notification layers). Logs are written as JSON Lines to a file and kept in a configurable in-memory ring buffer accessible via `qtmcp_log_tail`.
+Three layers of capture at three verbosity levels, wired through FastMCP middleware (MCP layer) and ProbeConnection observers/handlers (JSON-RPC and notification layers). Logs are written as JSON Lines to a file and kept in a configurable in-memory ring buffer accessible via `qtpilot_log_tail`.
 
 Builds on top of the `ServerState` class from the dynamic mode switching work.
 
@@ -14,7 +14,7 @@ Builds on top of the `ServerState` class from the dynamic mode switching work.
 
 ## 1. ProbeConnection Multi-Handler Evolution
 
-**File:** `python/src/qtmcp/connection.py`
+**File:** `python/src/qtpilot/connection.py`
 
 Replace `_notification_handler` (single callable) with two lists:
 
@@ -51,7 +51,7 @@ async def call(self, method, params=None):
 
 ### EventRecorder migration (required prerequisite)
 
-**File:** `python/src/qtmcp/event_recorder.py`
+**File:** `python/src/qtpilot/event_recorder.py`
 
 Two-line change:
 - `start()`: `probe.add_notification_handler(self._handle_notification)`
@@ -65,7 +65,7 @@ The `on_notification()` shim remains for external backward compat but should emi
 
 ## 2. MessageLogger Class
 
-**New file:** `python/src/qtmcp/message_logger.py`
+**New file:** `python/src/qtpilot/message_logger.py`
 
 ### State
 
@@ -97,7 +97,7 @@ The `on_notification()` shim remains for external backward compat but should emi
 
 - `_write_entry(entry)` — adds ISO timestamp, writes JSON + newline to file, flushes, appends to ring buffer, increments counter
 - `_truncate(value, max_len=4096)` — truncates large payloads, replaces base64 image data with `"<image:NNNb>"`
-- Skips logging its own tools (`qtmcp_log_*`) to avoid recursion
+- Skips logging its own tools (`qtpilot_log_*`) to avoid recursion
 
 ### Key behaviors
 
@@ -115,7 +115,7 @@ The `on_notification()` shim remains for external backward compat but should emi
 
 ## 3. FastMCP Logging Middleware
 
-**New file:** `python/src/qtmcp/logging_middleware.py`
+**New file:** `python/src/qtpilot/logging_middleware.py`
 
 ```python
 from fastmcp.server.middleware import Middleware
@@ -131,9 +131,9 @@ class LoggingMiddleware(Middleware):
 
 ### Behavior
 
-- Grabs the `MessageLogger` via `from qtmcp.server import get_message_logger`
+- Grabs the `MessageLogger` via `from qtpilot.server import get_message_logger`
 - Extracts tool name via `context.message.name` and arguments via `context.message.arguments`
-- Skips `qtmcp_log_*` tools to avoid recursion
+- Skips `qtpilot_log_*` tools to avoid recursion
 - Calls `logger.log_mcp_in(tool_name, args)` before forwarding
 - Times the call with `time.monotonic()`
 - Calls `logger.log_mcp_out(tool_name, summary, duration_ms)` after — or with `is_error=True` on exception
@@ -143,26 +143,26 @@ class LoggingMiddleware(Middleware):
 
 ## 4. Logging Tools
 
-**New file:** `python/src/qtmcp/tools/logging_tools.py`
+**New file:** `python/src/qtpilot/tools/logging_tools.py`
 
 Follows the `recording_tools.py` pattern. Four tools, always registered (mode-agnostic):
 
 | Tool | Args | Returns |
 |------|------|---------|
-| `qtmcp_log_start` | `path?`, `level?`, `buffer_size?` | `{"logging": true, "path": "...", "level": 2, "buffer_size": 200}` |
-| `qtmcp_log_stop` | — | `{"logging": false, "path": "...", "entries": 142, "duration": 45.3}` |
-| `qtmcp_log_status` | — | Current state: active, path, level, entry count, duration, buffer size |
-| `qtmcp_log_tail` | `count?` (default 50) | `{"entries": [...], "count": N, "total_logged": M}` |
+| `qtpilot_log_start` | `path?`, `level?`, `buffer_size?` | `{"logging": true, "path": "...", "level": 2, "buffer_size": 200}` |
+| `qtpilot_log_stop` | — | `{"logging": false, "path": "...", "entries": 142, "duration": 45.3}` |
+| `qtpilot_log_status` | — | Current state: active, path, level, entry count, duration, buffer size |
+| `qtpilot_log_tail` | `count?` (default 50) | `{"entries": [...], "count": N, "total_logged": M}` |
 
-Default path: `qtmcp-log-YYYYMMDD-HHMMSS.jsonl` in the current working directory.
+Default path: `qtPilot-log-YYYYMMDD-HHMMSS.jsonl` in the current working directory.
 
-`qtmcp_log_tail` works after `stop()` — buffer persists until next `start()`.
+`qtpilot_log_tail` works after `stop()` — buffer persists until next `start()`.
 
 ---
 
 ## 5. Server Wiring
 
-**File:** `python/src/qtmcp/server.py`
+**File:** `python/src/qtpilot/server.py`
 
 ### ServerState changes
 
@@ -199,7 +199,7 @@ JSON Lines — each line is a self-contained JSON object:
 {"ts":"2026-03-06T14:23:02.100Z","dir":"req","id":8,"method":"qt.properties.get","params":{"objectId":"gone"}}
 {"ts":"2026-03-06T14:23:02.150Z","dir":"err","id":8,"method":"qt.properties.get","dur_ms":50.0,"error":"Object not found: gone"}
 {"ts":"2026-03-06T14:23:02.151Z","dir":"mcp_out","tool":"qt_properties_get","dur_ms":52.3,"ok":false,"error":"Object not found: gone"}
-{"ts":"2026-03-06T14:23:06.500Z","dir":"ntf","method":"qtmcp.signalEmitted","params":{"objectId":"btn","signal":"clicked"}}
+{"ts":"2026-03-06T14:23:06.500Z","dir":"ntf","method":"qtpilot.signalEmitted","params":{"objectId":"btn","signal":"clicked"}}
 ```
 
 ### Error entry semantics
@@ -242,13 +242,13 @@ JSON Lines — each line is a self-contained JSON object:
 ### `python/tests/test_logging_middleware.py`
 
 - Middleware calls `log_mcp_in`/`log_mcp_out` for normal tool calls
-- Skips `qtmcp_log_*` tools (no recursion)
+- Skips `qtpilot_log_*` tools (no recursion)
 - Records `is_error=True` on exceptions
 - Timing is captured (duration_ms > 0)
 
 ### `python/tests/test_logging_tools.py`
 
-- Four tools registered (`qtmcp_log_start`, `qtmcp_log_stop`, `qtmcp_log_status`, `qtmcp_log_tail`)
+- Four tools registered (`qtpilot_log_start`, `qtpilot_log_stop`, `qtpilot_log_status`, `qtpilot_log_tail`)
 - Follows `test_recording_tools.py` pattern with `_tool_names()` helper and `mock_mcp` fixture
 
 ### `python/tests/test_connection_multi_handler.py`
@@ -267,12 +267,12 @@ JSON Lines — each line is a self-contained JSON object:
 
 | File | Change |
 |------|--------|
-| `python/src/qtmcp/connection.py` | Multi-handler notifications, call observers |
-| `python/src/qtmcp/event_recorder.py` | 2-line migration to `add/remove_notification_handler` |
-| `python/src/qtmcp/server.py` | Add `message_logger` to `ServerState`, middleware, tool registration, attach/detach on connect/disconnect |
-| `python/src/qtmcp/message_logger.py` | **NEW** — core `MessageLogger` class |
-| `python/src/qtmcp/logging_middleware.py` | **NEW** — FastMCP middleware for MCP-level interception |
-| `python/src/qtmcp/tools/logging_tools.py` | **NEW** — `qtmcp_log_start/stop/status/tail` tools |
+| `python/src/qtpilot/connection.py` | Multi-handler notifications, call observers |
+| `python/src/qtpilot/event_recorder.py` | 2-line migration to `add/remove_notification_handler` |
+| `python/src/qtpilot/server.py` | Add `message_logger` to `ServerState`, middleware, tool registration, attach/detach on connect/disconnect |
+| `python/src/qtpilot/message_logger.py` | **NEW** — core `MessageLogger` class |
+| `python/src/qtpilot/logging_middleware.py` | **NEW** — FastMCP middleware for MCP-level interception |
+| `python/src/qtpilot/tools/logging_tools.py` | **NEW** — `qtpilot_log_start/stop/status/tail` tools |
 | `python/tests/test_message_logger.py` | **NEW** — unit tests for logger |
 | `python/tests/test_logging_middleware.py` | **NEW** — middleware tests |
 | `python/tests/test_logging_tools.py` | **NEW** — tool registration tests |
@@ -283,11 +283,11 @@ JSON Lines — each line is a self-contained JSON object:
 1. **Unit tests:** `pytest python/tests/test_message_logger.py python/tests/test_logging_middleware.py python/tests/test_logging_tools.py python/tests/test_connection_multi_handler.py -v`
 2. **Existing tests pass:** `pytest python/tests/ -v` — especially `test_event_recorder.py`
 3. **Integration test with live app:**
-   - Launch: `build/bin/Release/qtmcp-launcher.exe build/bin/Release/qtmcp-test-app.exe`
-   - Connect: `qtmcp_connect_probe(ws_url="ws://localhost:9222")`
-   - Start: `qtmcp_log_start(level=3)`
+   - Launch: `build/bin/Release/qtPilot-launcher.exe build/bin/Release/qtPilot-test-app.exe`
+   - Connect: `qtpilot_connect_probe(ws_url="ws://localhost:9222")`
+   - Start: `qtpilot_log_start(level=3)`
    - Interact: `qt_ping()`, `qt_objects_tree(maxDepth=2)`, `qt_ui_click(objectId="...")`
-   - Tail: `qtmcp_log_tail(count=10)` — verify recent entries in memory
-   - Stop: `qtmcp_log_stop()` — check entry count and path
-   - Tail after stop: `qtmcp_log_tail()` — verify buffer persists
+   - Tail: `qtpilot_log_tail(count=10)` — verify recent entries in memory
+   - Stop: `qtpilot_log_stop()` — check entry count and path
+   - Tail after stop: `qtpilot_log_tail()` — verify buffer persists
    - Read log file — verify JSON Lines format with correct `dir` values at each level

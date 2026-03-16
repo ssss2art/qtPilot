@@ -1,4 +1,4 @@
-# QtMCP Probe Library
+# qtPilot Probe Library
 
 set(PROBE_SOURCES
     core/probe.cpp
@@ -72,30 +72,30 @@ elseif(UNIX AND NOT APPLE)
 endif()
 
 # Create shared library
-add_library(qtmcp_probe SHARED
+add_library(qtPilot_probe SHARED
     ${PROBE_SOURCES}
     ${PROBE_HEADERS}
 )
 
 # Set library properties
-set_target_properties(qtmcp_probe PROPERTIES
+set_target_properties(qtPilot_probe PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
-    OUTPUT_NAME "qtmcp-probe-${QTMCP_QT_VERSION_TAG}"
+    OUTPUT_NAME "qtPilot-probe-${QTPILOT_QT_VERSION_TAG}"
     EXPORT_NAME Probe
     DEBUG_POSTFIX "d"
 )
 
 # Define export macro for Windows DLL
-target_compile_definitions(qtmcp_probe PRIVATE
-    QTMCP_PROBE_LIBRARY
+target_compile_definitions(qtPilot_probe PRIVATE
+    QTPILOT_PROBE_LIBRARY
 )
 
 # Include directories
-target_include_directories(qtmcp_probe
+target_include_directories(qtPilot_probe
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-        $<INSTALL_INTERFACE:include/qtmcp>
+        $<INSTALL_INTERFACE:include/qtpilot>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/../
@@ -103,7 +103,7 @@ target_include_directories(qtmcp_probe
 
 # Link Qt libraries
 if(QT_VERSION_MAJOR EQUAL 6)
-    target_link_libraries(qtmcp_probe
+    target_link_libraries(qtPilot_probe
         PUBLIC
             Qt6::Core
             Qt6::Network
@@ -113,12 +113,12 @@ if(QT_VERSION_MAJOR EQUAL 6)
         PRIVATE
             Qt6::CorePrivate
     )
-    if(QTMCP_HAS_QML)
-        target_link_libraries(qtmcp_probe PUBLIC Qt6::Qml Qt6::Quick)
-        target_compile_definitions(qtmcp_probe PUBLIC QTMCP_HAS_QML)
+    if(QTPILOT_HAS_QML)
+        target_link_libraries(qtPilot_probe PUBLIC Qt6::Qml Qt6::Quick)
+        target_compile_definitions(qtPilot_probe PUBLIC QTPILOT_HAS_QML)
     endif()
 else()
-    target_link_libraries(qtmcp_probe
+    target_link_libraries(qtPilot_probe
         PUBLIC
             Qt5::Core
             Qt5::Network
@@ -128,25 +128,25 @@ else()
         PRIVATE
             Qt5::CorePrivate
     )
-    if(QTMCP_HAS_QML)
-        target_link_libraries(qtmcp_probe PUBLIC Qt5::Qml Qt5::Quick)
-        target_compile_definitions(qtmcp_probe PUBLIC QTMCP_HAS_QML)
+    if(QTPILOT_HAS_QML)
+        target_link_libraries(qtPilot_probe PUBLIC Qt5::Qml Qt5::Quick)
+        target_compile_definitions(qtPilot_probe PUBLIC QTPILOT_HAS_QML)
     endif()
 endif()
 
 # Windows: link shared injection utilities and Detours for child-process hooking
 if(WIN32)
-    target_link_libraries(qtmcp_probe PRIVATE qtmcp_shared detours)
+    target_link_libraries(qtPilot_probe PRIVATE qtPilot_shared detours)
 endif()
 
 # Platform-specific configurations
 if(UNIX AND NOT APPLE)
     find_package(X11)
     if(X11_FOUND AND X11_XTest_FOUND)
-        target_link_libraries(qtmcp_probe PRIVATE ${X11_LIBRARIES} ${X11_XTest_LIB})
-        target_compile_definitions(qtmcp_probe PRIVATE QTMCP_HAS_XTEST)
+        target_link_libraries(qtPilot_probe PRIVATE ${X11_LIBRARIES} ${X11_XTest_LIB})
+        target_compile_definitions(qtPilot_probe PRIVATE QTPILOT_HAS_XTEST)
     endif()
 endif()
 
 # Alias for use in parent project
-add_library(QtMCP::Probe ALIAS qtmcp_probe)
+add_library(qtPilot::Probe ALIAS qtPilot_probe)

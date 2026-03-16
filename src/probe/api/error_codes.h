@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-namespace qtmcp {
+namespace qtPilot {
 namespace ErrorCode {
 
 // Object errors (-32001 to -32009)
@@ -62,4 +62,4 @@ constexpr int kModelRoleNotFound = -32092;
 constexpr int kNotAModel = -32093;
 
 }  // namespace ErrorCode
-}  // namespace qtmcp
+}  // namespace qtPilot

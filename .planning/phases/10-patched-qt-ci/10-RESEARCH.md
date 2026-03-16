@@ -6,7 +6,7 @@
 
 ## Summary
 
-This phase requires building Qt 5.15.1 from source in GitHub Actions CI, applying custom patches to the extracted tarball, caching the built Qt aggressively, and then building the QtMCP probe against it. The research covers: exact download URLs, minimal configure flags for the probe's dependencies, patch application on non-git source trees, GitHub Actions caching for 1-3 GB artifacts, composite action design, and critical platform differences between Linux and Windows builds.
+This phase requires building Qt 5.15.1 from source in GitHub Actions CI, applying custom patches to the extracted tarball, caching the built Qt aggressively, and then building the qtPilot probe against it. The research covers: exact download URLs, minimal configure flags for the probe's dependencies, patch application on non-git source trees, GitHub Actions caching for 1-3 GB artifacts, composite action design, and critical platform differences between Linux and Windows builds.
 
 The probe links against Qt::Core, Qt::Network, Qt::WebSockets, Qt::Widgets, Qt::Test, and Qt::CorePrivate (for qhooks_p.h). A minimal Qt 5.15.1 build targeting only these modules (plus qtdeclarative for optional QML) can skip ~25 of the ~35 top-level modules, reducing build time from ~2 hours to an estimated 20-40 minutes on GitHub Actions runners.
 

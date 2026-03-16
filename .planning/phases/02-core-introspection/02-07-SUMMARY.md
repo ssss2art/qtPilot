@@ -87,7 +87,7 @@ Each task was committed atomically:
 
 ## Decisions Made
 - Combined Tasks 1 and 2 into a single commit since all method registrations and notification wiring are logically coupled
-- Push notifications use standard JSON-RPC notification format: `{"jsonrpc":"2.0","method":"qtmcp.signalEmitted","params":{...}}`
+- Push notifications use standard JSON-RPC notification format: `{"jsonrpc":"2.0","method":"qtpilot.signalEmitted","params":{...}}`
 
 ## Deviations from Plan
 

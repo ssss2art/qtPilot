@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "hit_test.h"
@@ -9,7 +9,7 @@
 
 #include <QApplication>
 
-namespace qtmcp {
+namespace qtPilot {
 
 QJsonObject HitTest::widgetGeometry(QWidget* widget) {
   if (!widget) {
@@ -59,4 +59,4 @@ QString HitTest::widgetIdAt(const QPoint& globalPos) {
   return ObjectRegistry::instance()->objectId(widget);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

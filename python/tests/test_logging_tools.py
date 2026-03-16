@@ -6,7 +6,7 @@ import pytest
 
 from fastmcp import FastMCP
 
-from qtmcp.tools.logging_tools import register_logging_tools
+from qtpilot.tools.logging_tools import register_logging_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:
@@ -25,10 +25,10 @@ class TestLoggingTools:
         register_logging_tools(mock_mcp)
         names = _tool_names(mock_mcp)
         expected = {
-            "qtmcp_log_start",
-            "qtmcp_log_stop",
-            "qtmcp_log_status",
-            "qtmcp_log_tail",
+            "qtpilot_log_start",
+            "qtpilot_log_stop",
+            "qtpilot_log_status",
+            "qtpilot_log_tail",
         }
         missing = expected - names
         assert not missing, f"Missing logging tools: {missing}"

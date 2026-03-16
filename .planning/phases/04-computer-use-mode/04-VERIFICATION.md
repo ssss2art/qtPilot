@@ -8,7 +8,7 @@ re_verification:
   previous_score: 5/5
   gaps_closed:
     - NativeModeApi instantiation failure in DLL context is caught and logged
-    - Legacy qtmcp.* methods accept both id and objectId parameter names
+    - Legacy qtpilot.* methods accept both id and objectId parameter names
     - cu.cursorPosition returns virtual simulated position instead of physical OS cursor
   gaps_remaining: []
   regressions: []
@@ -26,7 +26,7 @@ re_verification:
 Previous verification (2026-02-01T02:47:15Z) passed with 5/5 truths verified. However, User Acceptance Testing (UAT) discovered 3 gaps in real-world usage:
 
 1. **Gap 1 (Major):** NativeModeApi silently failed during DLL injection, making all qt.* methods unavailable
-2. **Gap 2 (Major):** Legacy qtmcp.* methods only accepted id param, not objectId, causing confusion
+2. **Gap 2 (Major):** Legacy qtpilot.* methods only accepted id param, not objectId, causing confusion
 3. **Gap 3 (Minor):** cu.cursorPosition read physical OS cursor instead of simulated position from CU actions
 
 Gap closure plans 04-04 and 04-05 addressed all three issues. This re-verification confirms the gaps are closed.
@@ -48,7 +48,7 @@ Gap closure plans 04-04 and 04-05 addressed all three issues. This re-verificati
 
 ### Gap 2: Legacy Parameter Backward Compatibility (04-04)
 
-**Previous Issue:** Legacy qtmcp.getObjectInfo and qtmcp.getGeometry only read id parameter, but clients using modern qt.* convention naturally pass objectId. This caused Object not found errors.
+**Previous Issue:** Legacy qtpilot.getObjectInfo and qtpilot.getGeometry only read id parameter, but clients using modern qt.* convention naturally pass objectId. This caused Object not found errors.
 
 **Fix Verification:**
 - jsonrpc_handler.cpp: 11 instances of objectId fallback pattern
@@ -57,7 +57,7 @@ Gap closure plans 04-04 and 04-05 addressed all three issues. This re-verificati
 - Build succeeds, all tests pass
 
 **Methods Updated (11 total):**  
-qtmcp.getObjectInfo, qtmcp.listProperties, qtmcp.getProperty, qtmcp.setProperty, qtmcp.listMethods, qtmcp.invokeMethod, qtmcp.listSignals, qtmcp.click, qtmcp.sendKeys, qtmcp.screenshot, qtmcp.getGeometry
+qtpilot.getObjectInfo, qtpilot.listProperties, qtpilot.getProperty, qtpilot.setProperty, qtpilot.listMethods, qtpilot.invokeMethod, qtpilot.listSignals, qtpilot.click, qtpilot.sendKeys, qtpilot.screenshot, qtpilot.getGeometry
 
 **Status:** CLOSED
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 // Windows implementation of probe injection using CreateRemoteThread.
@@ -63,24 +63,24 @@ std::wstring buildCommandLine(const QString& executable, const QStringList& args
 
 }  // namespace
 
-namespace qtmcp {
+namespace qtPilot {
 
 qint64 launchWithProbe(const LaunchOptions& options) {
   // 1. Set up environment for the target process
-  // Pass port to probe via QTMCP_PORT environment variable
+  // Pass port to probe via QTPILOT_PORT environment variable
 
-  // Get current environment and add QTMCP_PORT
+  // Get current environment and add QTPILOT_PORT
   QString portStr = QString::number(options.port);
-  if (!SetEnvironmentVariableW(L"QTMCP_PORT", portStr.toStdWString().c_str())) {
+  if (!SetEnvironmentVariableW(L"QTPILOT_PORT", portStr.toStdWString().c_str())) {
     if (!options.quiet) {
-      printWindowsError("Failed to set QTMCP_PORT", GetLastError());
+      printWindowsError("Failed to set QTPILOT_PORT", GetLastError());
     }
     // Continue anyway - probe has default port
   }
 
   // Enable child process injection if requested
   if (options.injectChildren) {
-    SetEnvironmentVariableW(L"QTMCP_INJECT_CHILDREN", L"1");
+    SetEnvironmentVariableW(L"QTPILOT_INJECT_CHILDREN", L"1");
   }
 
   // 2. Build command line
@@ -120,8 +120,8 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   }
 
   // RAII guards for handles
-  qtmcp::HandleGuard processHandle(pi.hProcess);
-  qtmcp::HandleGuard threadHandle(pi.hThread);
+  qtPilot::HandleGuard processHandle(pi.hProcess);
+  qtPilot::HandleGuard threadHandle(pi.hThread);
   qint64 processId = static_cast<qint64>(pi.dwProcessId);
 
   if (!options.quiet) {
@@ -134,7 +134,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   std::wstring dllPath = options.probePath.toStdWString();
   {
     // Suppress probe initialization in the launcher process
-    SetEnvironmentVariableW(L"QTMCP_ENABLED", L"0");
+    SetEnvironmentVariableW(L"QTPILOT_ENABLED", L"0");
 
     HMODULE localCheck = LoadLibraryExW(dllPath.c_str(), nullptr, 0);
     DWORD loadError = localCheck ? 0 : GetLastError();
@@ -143,8 +143,8 @@ qint64 launchWithProbe(const LaunchOptions& options) {
       FreeLibrary(localCheck);
     }
 
-    // Clear QTMCP_ENABLED so the target process doesn't inherit "0"
-    SetEnvironmentVariableW(L"QTMCP_ENABLED", nullptr);
+    // Clear QTPILOT_ENABLED so the target process doesn't inherit "0"
+    SetEnvironmentVariableW(L"QTPILOT_ENABLED", nullptr);
 
     if (!localCheck) {
       if (!options.quiet) {
@@ -157,7 +157,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
           fprintf(stderr, "[injector] This usually means Qt runtime DLLs are not on PATH.\n");
           fprintf(stderr, "[injector] Fix: specify your Qt installation:\n");
           fprintf(stderr,
-                  "[injector]   qtmcp-launcher.exe --qt-dir C:\\Qt\\6.8.0\\msvc2022_64 "
+                  "[injector]   qtPilot-launcher.exe --qt-dir C:\\Qt\\6.8.0\\msvc2022_64 "
                   "your-app.exe\n\n");
         } else if (loadError == ERROR_BAD_EXE_FORMAT) {
           fprintf(stderr,
@@ -170,8 +170,8 @@ qint64 launchWithProbe(const LaunchOptions& options) {
     }
   }
 
-  // 5. Inject probe DLL (LoadLibraryW + qtmcpProbeInit via shared utility)
-  if (!qtmcp::injectProbeDll(processHandle.get(), pi.dwProcessId, dllPath.c_str(), options.quiet)) {
+  // 5. Inject probe DLL (LoadLibraryW + qtpilotProbeInit via shared utility)
+  if (!qtPilot::injectProbeDll(processHandle.get(), pi.dwProcessId, dllPath.c_str(), options.quiet)) {
     TerminateProcess(processHandle.get(), 1);
     return -1;
   }
@@ -208,6 +208,6 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   return processId;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 #endif  // Q_OS_WIN

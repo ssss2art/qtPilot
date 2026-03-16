@@ -1,13 +1,13 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "transport/jsonrpc_handler.h"  // For QTMCP_EXPORT, JsonRpcHandler
+#include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT, JsonRpcHandler
 
 #include <QObject>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Chrome Mode API surface registering all chr.* namespaced JSON-RPC methods.
 ///
@@ -26,7 +26,7 @@ namespace qtmcp {
 ///
 /// All methods use ephemeral ref identifiers (rebuilt on each readPage call).
 /// All responses wrapped with ResponseEnvelope::wrap().
-class QTMCP_EXPORT ChromeModeApi : public QObject {
+class QTPILOT_EXPORT ChromeModeApi : public QObject {
   Q_OBJECT
 
  public:
@@ -51,4 +51,4 @@ class QTMCP_EXPORT ChromeModeApi : public QObject {
   JsonRpcHandler* m_handler;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

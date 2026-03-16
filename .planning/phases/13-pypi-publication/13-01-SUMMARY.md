@@ -21,13 +21,13 @@ tech-stack:
 
 key-files:
   created:
-    - python/src/qtmcp/download.py
+    - python/src/qtpilot/download.py
     - python/tests/test_download.py
   modified:
-    - python/src/qtmcp/cli.py
+    - python/src/qtpilot/cli.py
 
 key-decisions:
-  - "CLI requires subcommand (qtmcp serve, qtmcp download-probe) - cleaner separation"
+  - "CLI requires subcommand (qtpilot serve, qtpilot download-probe) - cleaner separation"
   - "Uses only stdlib (urllib, hashlib, pathlib) - no new dependencies"
   - "Platform auto-detection via sys.platform - linux-gcc and windows-msvc"
   - "Checksum verification on by default with --no-verify opt-out"
@@ -68,12 +68,12 @@ Each task was committed atomically:
 3. **Task 3: Add unit tests for download module** - `0aca9f6` (test)
 
 ## Files Created/Modified
-- `python/src/qtmcp/download.py` - Probe download logic with platform detection, URL building, checksum verification
-- `python/src/qtmcp/cli.py` - Refactored to subcommand architecture with serve and download-probe commands
+- `python/src/qtpilot/download.py` - Probe download logic with platform detection, URL building, checksum verification
+- `python/src/qtpilot/cli.py` - Refactored to subcommand architecture with serve and download-probe commands
 - `python/tests/test_download.py` - 27 unit tests covering all download module functionality
 
 ## Decisions Made
-- **CLI architecture:** Required subcommands (qtmcp serve, qtmcp download-probe) instead of flat args - cleaner separation, better extensibility
+- **CLI architecture:** Required subcommands (qtpilot serve, qtpilot download-probe) instead of flat args - cleaner separation, better extensibility
 - **No new dependencies:** Used only stdlib (urllib.request, hashlib, pathlib) to keep package lightweight
 - **Checksum default:** SHA256 verification enabled by default with --no-verify opt-out for security
 - **Version normalization:** Support both 6.8 and 6.8.0 formats, preserve -patched suffix

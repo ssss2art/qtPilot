@@ -30,7 +30,7 @@ key-decisions:
   - "Phase 1 requirements INJ-01 through INJ-05 verified complete"
 
 patterns-established:
-  - "Integration testing workflow: qtmcp-launch -> target -> websocat -> JSON-RPC"
+  - "Integration testing workflow: qtpilot-launch -> target -> websocat -> JSON-RPC"
   - "Test app as reference implementation for future phases"
 
 # Metrics

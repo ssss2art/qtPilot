@@ -9,8 +9,8 @@ requires: []
 provides:
   - CMake build system with Qt5/Qt6 dual support
   - vcpkg manifest for dependency management
-  - Probe shared library target (qtmcp_probe)
-  - Launcher executable target (qtmcp_launcher)
+  - Probe shared library target (qtPilot_probe)
+  - Launcher executable target (qtPilot_launcher)
 affects: [01-02, 01-03, 01-04, 01-05, 01-06]
 
 # Tech tracking
@@ -39,7 +39,7 @@ key-decisions:
 
 patterns-established:
   - "Qt version abstraction: if(QT_VERSION_MAJOR EQUAL 6) pattern for CMake"
-  - "Conditional compilation: QTMCP_HAS_SPDLOG/QTMCP_HAS_NLOHMANN_JSON defines"
+  - "Conditional compilation: QTPILOT_HAS_SPDLOG/QTPILOT_HAS_NLOHMANN_JSON defines"
   - "Logging abstraction: LOG_INFO/LOG_WARN/LOG_ERROR macros with spdlog/QDebug backends"
 
 # Metrics
@@ -79,7 +79,7 @@ Each task was committed atomically:
 - `CMakePresets.json` - Already existed, unchanged (good presets for Windows/Linux)
 - `vcpkg.json` - Updated baseline, added qtbase/qtwebsockets deps, made extras optional
 - `src/probe/CMakeLists.txt` - Qt version-independent linking, optional deps support
-- `src/launcher/CMakeLists.txt` - Qt version-independent linking, output name qtmcp-launch
+- `src/launcher/CMakeLists.txt` - Qt version-independent linking, output name qtpilot-launch
 - `test_app/CMakeLists.txt` - Qt version-independent linking
 - `src/probe/core/probe.cpp` - Conditional spdlog/QDebug logging
 - `src/probe/core/injector_windows.cpp` - Use qgetenv instead of deprecated getenv
@@ -100,7 +100,7 @@ Each task was committed atomically:
 **1. [Rule 3 - Blocking] Source files had unconditional spdlog/nlohmann_json includes**
 - **Found during:** Task 2 (Build verification)
 - **Issue:** Existing source files required spdlog and nlohmann_json unconditionally
-- **Fix:** Added conditional compilation with QTMCP_HAS_SPDLOG/QTMCP_HAS_NLOHMANN_JSON macros
+- **Fix:** Added conditional compilation with QTPILOT_HAS_SPDLOG/QTPILOT_HAS_NLOHMANN_JSON macros
 - **Files modified:** probe.cpp, injector_windows.cpp, websocket_server.cpp, jsonrpc_handler.cpp
 - **Verification:** Build succeeds without external dependencies
 - **Committed in:** 2f13642 (Task 2 commit)

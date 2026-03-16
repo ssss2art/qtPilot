@@ -47,7 +47,7 @@ class MessageLogger:
 
         if path is None:
             ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-            path = os.path.join(os.getcwd(), f"qtmcp-log-{ts}.jsonl")
+            path = os.path.join(os.getcwd(), f"qtPilot-log-{ts}.jsonl")
 
         self._path = path
         self._level = level

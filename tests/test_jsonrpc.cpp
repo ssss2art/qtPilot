@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QCoreApplication>
@@ -28,7 +28,7 @@ class TestJsonRpc : public QObject {
     // Don't delete app_ - it persists across test runs
   }
 
-  void init() { handler_ = new qtmcp::JsonRpcHandler(this); }
+  void init() { handler_ = new qtPilot::JsonRpcHandler(this); }
 
   void cleanup() {
     delete handler_;
@@ -38,7 +38,7 @@ class TestJsonRpc : public QObject {
   // Test: Valid request returns result
   void test_validRequest() {
     QString request =
-        R"({"jsonrpc":"2.0","method":"qtmcp.echo","params":{"hello":"world"},"id":1})";
+        R"({"jsonrpc":"2.0","method":"qtpilot.echo","params":{"hello":"world"},"id":1})";
     QString response = handler_->HandleMessage(request);
 
     QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
@@ -95,7 +95,7 @@ class TestJsonRpc : public QObject {
 
   // Test: Notification emits signal
   void test_notificationSignal() {
-    QSignalSpy spy(handler_, &qtmcp::JsonRpcHandler::NotificationReceived);
+    QSignalSpy spy(handler_, &qtPilot::JsonRpcHandler::NotificationReceived);
     QString request = R"({"jsonrpc":"2.0","method":"test.notify","params":{"key":"value"}})";
     QString response = handler_->HandleMessage(request);
 
@@ -131,7 +131,7 @@ class TestJsonRpc : public QObject {
     QVERIFY(obj["result"].toObject().contains("version"));
     QVERIFY(obj["result"].toObject().contains("protocol"));
     QVERIFY(obj["result"].toObject().contains("name"));
-    QCOMPARE(obj["result"].toObject()["name"].toString(), QString("QtMCP"));
+    QCOMPARE(obj["result"].toObject()["name"].toString(), QString("qtPilot"));
   }
 
   // Test: echo returns params
@@ -190,10 +190,10 @@ class TestJsonRpc : public QObject {
              QString("response"));
   }
 
-  // Test: qtmcp.echo method works (per RESEARCH.md spec)
-  void test_qtmcpEchoMethod() {
+  // Test: qtpilot.echo method works (per RESEARCH.md spec)
+  void test_qtpilotEchoMethod() {
     QString request =
-        R"({"jsonrpc":"2.0","method":"qtmcp.echo","params":{"test":"data"},"id":7})";
+        R"({"jsonrpc":"2.0","method":"qtpilot.echo","params":{"test":"data"},"id":7})";
     QString response = handler_->HandleMessage(request);
 
     QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
@@ -205,7 +205,7 @@ class TestJsonRpc : public QObject {
   }
 
  private:
-  qtmcp::JsonRpcHandler* handler_ = nullptr;
+  qtPilot::JsonRpcHandler* handler_ = nullptr;
   static QCoreApplication* app_;
 };
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "introspection/event_capture.h"
@@ -17,7 +17,7 @@
 #include <QResizeEvent>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 Q_GLOBAL_STATIC(EventCapture, s_eventCaptureInstance)
 
@@ -40,12 +40,12 @@ EventCapture::EventCapture() : QObject(nullptr) {
   m_capturedTypes.insert(QEvent::Close);
   m_capturedTypes.insert(QEvent::Resize);
 
-  qDebug() << "[QtMCP] EventCapture created";
+  qDebug() << "[qtPilot] EventCapture created";
 }
 
 EventCapture::~EventCapture() {
   stopCapture();
-  qDebug() << "[QtMCP] EventCapture destroyed";
+  qDebug() << "[qtPilot] EventCapture destroyed";
 }
 
 void EventCapture::startCapture() {
@@ -55,13 +55,13 @@ void EventCapture::startCapture() {
   }
 
   if (!QCoreApplication::instance()) {
-    qWarning() << "[QtMCP] EventCapture: Cannot start -- no QCoreApplication";
+    qWarning() << "[qtPilot] EventCapture: Cannot start -- no QCoreApplication";
     return;
   }
 
   QCoreApplication::instance()->installEventFilter(this);
   m_capturing = true;
-  qDebug() << "[QtMCP] EventCapture started";
+  qDebug() << "[qtPilot] EventCapture started";
 }
 
 void EventCapture::stopCapture() {
@@ -75,7 +75,7 @@ void EventCapture::stopCapture() {
   }
 
   m_capturing = false;
-  qDebug() << "[QtMCP] EventCapture stopped";
+  qDebug() << "[qtPilot] EventCapture stopped";
 }
 
 bool EventCapture::isCapturing() const {
@@ -270,4 +270,4 @@ QJsonObject EventCapture::buildWindowNotification(QObject* widget, QEvent* event
   return notification;
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

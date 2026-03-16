@@ -37,45 +37,45 @@ The current file has the exact same ~50-line block copy-pasted 13 times (one per
 - `set_tests_properties` with environment
 - Windows Qt Test DLL copy post-build command
 
-**Fix**: Create a `qtmcp_add_test(NAME sources... [LIBS extra_libs...])` function, then define all 13 tests as one-liners.
+**Fix**: Create a `qtPilot_add_test(NAME sources... [LIBS extra_libs...])` function, then define all 13 tests as one-liners.
 
 ### 3. `CMakeLists.txt` (root) — Minor cleanup
 
 - Remove the `nlohmann_json` and `spdlog` find_package blocks (optional deps that added complexity — the codebase uses QJsonDocument and QDebug already)
 - Remove clang-tidy option and detection (linting was a CI concern)
-- Remove the windeployqt discovery + `qtmcp_deploy_qt()` function (move to a simpler inline approach or keep but simplify)
+- Remove the windeployqt discovery + `qtpilot_deploy_qt()` function (move to a simpler inline approach or keep but simplify)
 - Remove versioned install directories (simplify to plain `lib/` and `bin/`)
 - Simplify CMake package config generation (keep install of simplified cmake/ helpers, remove version file)
 - Keep: Qt5/Qt6 dual detection, compiler warnings, automoc/autouic, subdirectory structure
 
-### 4. `cmake/` directory — SIMPLIFY (keep for `find_package(QtMCP)` support)
+### 4. `cmake/` directory — SIMPLIFY (keep for `find_package(qtPilot)` support)
 
 Both files are kept so that other projects can integrate via:
 ```cmake
-find_package(QtMCP REQUIRED)
-qtmcp_inject_probe(myapp)
+find_package(qtPilot REQUIRED)
+qtPilot_inject_probe(myapp)
 ```
 
-**`cmake/QtMCPConfig.cmake.in`** — Simplify from 188 lines to ~50 lines:
-- Remove versioned subdirectory resolution (`lib/qtmcp/qt6.9/` → just `lib/`)
+**`cmake/qtPilotConfig.cmake.in`** — Simplify from 188 lines to ~50 lines:
+- Remove versioned subdirectory resolution (`lib/qtpilot/qt6.9/` → just `lib/`)
 - Remove debug variant binary detection (no `d` postfix hunting)
 - Remove fallback Qt auto-detection (require consumer to find Qt first)
-- Keep: imported target `QtMCP::Probe`, include dir setup, Qt dependency linking
+- Keep: imported target `qtPilot::Probe`, include dir setup, Qt dependency linking
 
-**`cmake/qtmcp_inject_probe.cmake`** — Keep as-is (~57 lines)
+**`cmake/qtPilot_inject_probe.cmake`** — Keep as-is (~57 lines)
 - Already clean and focused
-- Provides the `qtmcp_inject_probe(TARGET)` convenience function
+- Provides the `qtPilot_inject_probe(TARGET)` convenience function
 - Handles Windows DLL copy and Linux LD_PRELOAD script generation
 
 ### 5. `src/probe/CMakeLists.txt` — Minor cleanup
 
 - Remove optional nlohmann_json and spdlog linking blocks
-- Simplify output naming (drop versioned tag from filename — just `qtmcp-probe`)
+- Simplify output naming (drop versioned tag from filename — just `qtPilot-probe`)
 - Remove windeployqt call
 
 ### 6. `src/launcher/CMakeLists.txt` — Minor cleanup
 
-- Simplify output naming (just `qtmcp-launcher`)
+- Simplify output naming (just `qtPilot-launcher`)
 - Remove windeployqt call
 
 ### 7. `test_app/CMakeLists.txt` — Minor cleanup
@@ -101,16 +101,16 @@ qtmcp_inject_probe(myapp)
 
 1. Delete files: `vcpkg.json`, `ports/`, `.github/`, `.ci/`, `package.json`, `node_modules/`
 2. Rewrite `CMakePresets.json` (2 platform-agnostic presets + Windows variants)
-3. Rewrite `tests/CMakeLists.txt` with `qtmcp_add_test()` function
+3. Rewrite `tests/CMakeLists.txt` with `qtPilot_add_test()` function
 4. Simplify `CMakeLists.txt` (root) — remove vcpkg refs, optional deps, clang-tidy, package config, versioned install
-5. Simplify `cmake/QtMCPConfig.cmake.in` — remove versioned paths, debug variants, fallback Qt detection
+5. Simplify `cmake/qtPilotConfig.cmake.in` — remove versioned paths, debug variants, fallback Qt detection
 6. Simplify `src/probe/CMakeLists.txt` — remove optional dep linking, simplify naming
 7. Simplify `src/launcher/CMakeLists.txt` — simplify naming
 8. Simplify `test_app/CMakeLists.txt` — remove windeployqt
 
 ## Verification
 
-1. Configure: `cmake --preset debug -DQTMCP_QT_DIR=<path-to-qt>`
+1. Configure: `cmake --preset debug -DQTPILOT_QT_DIR=<path-to-qt>`
 2. Build: `cmake --build --preset debug`
 3. Test: `ctest --preset debug`
 4. Verify all 13 tests still register and pass

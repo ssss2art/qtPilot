@@ -6,7 +6,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-from qtmcp.connection import ProbeConnection
+from qtpilot.connection import ProbeConnection
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +245,7 @@ class EventRecorder:
 
         timestamp = time.monotonic() - self._start_time
 
-        if method == "qtmcp.signalEmitted":
+        if method == "qtpilot.signalEmitted":
             self._events.append(RecordedEvent(
                 timestamp=timestamp,
                 event_type="signal",
@@ -254,7 +254,7 @@ class EventRecorder:
                 detail=params.get("signal", ""),
                 arguments=params.get("arguments", params.get("args", [])),
             ))
-        elif method == "qtmcp.objectCreated" and self._include_lifecycle:
+        elif method == "qtpilot.objectCreated" and self._include_lifecycle:
             self._events.append(RecordedEvent(
                 timestamp=timestamp,
                 event_type="object_created",
@@ -262,13 +262,13 @@ class EventRecorder:
                 object_name=params.get("objectName") or None,
                 detail=params.get("className", ""),
             ))
-        elif method == "qtmcp.objectDestroyed" and self._include_lifecycle:
+        elif method == "qtpilot.objectDestroyed" and self._include_lifecycle:
             obj_id = params.get("objectId", "")
             # Don't record destroyed events — they have empty IDs (object
             # is already partially destructed) and generate massive noise.
             # Clean up any subscriptions for the destroyed object
             # (probe will have already unsubscribed, but we remove from our list)
-        elif method == "qtmcp.eventCaptured":
+        elif method == "qtpilot.eventCaptured":
             # Build detail dict with event-specific fields
             detail: dict = {}
             event_type = params.get("type", "")

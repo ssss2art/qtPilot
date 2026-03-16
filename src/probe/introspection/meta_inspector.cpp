@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "meta_inspector.h"
@@ -12,7 +12,7 @@
 #include <QMetaProperty>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 QJsonObject MetaInspector::objectInfo(QObject* obj) {
   if (!obj) {
@@ -232,7 +232,7 @@ bool MetaInspector::setProperty(QObject* obj, const QString& name, const QJsonVa
   QVariant var = jsonToVariant(value, prop.userType());
 
   // Attempt type conversion if needed
-  if (var.userType() != prop.userType() && !qtmcp::compat::variantConvert(var, prop.userType())) {
+  if (var.userType() != prop.userType() && !qtPilot::compat::variantConvert(var, prop.userType())) {
     throw std::runtime_error("Cannot convert value to type: " +
                              QString::fromLatin1(prop.typeName()).toStdString());
   }
@@ -296,7 +296,7 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
   QVariant returnValue;
   QGenericReturnArgument returnArg;
   if (foundMethod.returnType() != QMetaType::Void) {
-    returnValue = qtmcp::compat::emptyVariantOfType(foundMethod.returnType());
+    returnValue = qtPilot::compat::emptyVariantOfType(foundMethod.returnType());
     returnArg = QGenericReturnArgument(foundMethod.typeName(), returnValue.data());
   }
 
@@ -316,4 +316,4 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
   return variantToJson(returnValue);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

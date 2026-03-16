@@ -6,7 +6,7 @@
 
 ## Summary
 
-Phase 7 delivers a Python MCP server package (`qtmcp`) that bridges Claude (via MCP protocol over stdio) to the QtMCP probe (via WebSocket/JSON-RPC). The server operates in one of three modes (`--mode native|cu|chrome`), each exposing only its own set of tools. The architecture is: Claude <-> stdio <-> FastMCP server <-> WebSocket <-> Qt probe.
+Phase 7 delivers a Python MCP server package (`qtpilot`) that bridges Claude (via MCP protocol over stdio) to the qtPilot probe (via WebSocket/JSON-RPC). The server operates in one of three modes (`--mode native|cu|chrome`), each exposing only its own set of tools. The architecture is: Claude <-> stdio <-> FastMCP server <-> WebSocket <-> Qt probe.
 
 The standard stack is FastMCP 2.x (decorator-based MCP framework, production-stable) + `websockets` 16.x (asyncio WebSocket client). FastMCP handles all MCP protocol details (tool registration, schema generation, stdio transport), while `websockets` provides the async connection to the probe. The lifespan pattern in FastMCP cleanly maps to WebSocket connection lifecycle management.
 
@@ -47,9 +47,9 @@ uv pip install 'fastmcp<3' websockets
 python/
 ├── pyproject.toml         # Package metadata, CLI entry point
 ├── src/
-│   └── qtmcp/
+│   └── qtpilot/
 │       ├── __init__.py    # Package version
-│       ├── __main__.py    # python -m qtmcp entry point
+│       ├── __main__.py    # python -m qtpilot entry point
 │       ├── cli.py         # argparse: --mode, --ws-url, --target, --port
 │       ├── connection.py  # WebSocket client + JSON-RPC request/response
 │       ├── server.py      # FastMCP server factory (creates server per mode)
@@ -76,7 +76,7 @@ python/
 # Source: https://gofastmcp.com/servers/lifespan
 from fastmcp import FastMCP, Context
 from fastmcp.server.lifespan import lifespan
-from qtmcp.connection import ProbeConnection
+from qtpilot.connection import ProbeConnection
 
 @lifespan
 async def probe_lifespan(server):
@@ -87,7 +87,7 @@ async def probe_lifespan(server):
     finally:
         await conn.disconnect()
 
-mcp = FastMCP("QtMCP Native", lifespan=probe_lifespan)
+mcp = FastMCP("qtPilot Native", lifespan=probe_lifespan)
 
 @mcp.tool
 async def qt_objects_find(name: str, root: str | None = None, ctx: Context) -> dict:
@@ -170,7 +170,7 @@ def create_server(mode: str, ws_url: str) -> FastMCP:
         finally:
             await conn.disconnect()
 
-    mcp = FastMCP(f"QtMCP {mode.title()}", lifespan=probe_lifespan)
+    mcp = FastMCP(f"qtPilot {mode.title()}", lifespan=probe_lifespan)
 
     if mode == "native":
         register_native_tools(mcp)
@@ -188,7 +188,7 @@ def create_server(mode: str, ws_url: str) -> FastMCP:
 **When to use:** For Claude/agents to check if the probe is connected.
 **Example:**
 ```python
-@mcp.resource("qtmcp://status")
+@mcp.resource("qtpilot://status")
 async def get_status(ctx: Context) -> str:
     probe = ctx.lifespan_context["probe"]
     return json.dumps({
@@ -251,7 +251,7 @@ async def get_status(ctx: Context) -> str:
 **Warning signs:** "Connection closed" or "spawn ENOENT" errors in Claude Desktop.
 
 ### Pitfall 6: Auto-launch subprocess management
-**What goes wrong:** The MCP server launches qtmcp-launch.exe but doesn't clean up the child process on shutdown.
+**What goes wrong:** The MCP server launches qtpilot-launch.exe but doesn't clean up the child process on shutdown.
 **Why it happens:** Subprocess lifecycle not tied to server lifespan.
 **How to avoid:** Use the lifespan pattern to start the subprocess and terminate it in the `finally` block. Use `asyncio.create_subprocess_exec()` for non-blocking management.
 **Warning signs:** Orphaned Qt app processes after closing Claude.
@@ -265,7 +265,7 @@ import argparse
 import json
 from fastmcp import FastMCP, Context
 from fastmcp.server.lifespan import lifespan
-from qtmcp.connection import ProbeConnection
+from qtpilot.connection import ProbeConnection
 
 @lifespan
 async def probe_lifespan(server):
@@ -276,7 +276,7 @@ async def probe_lifespan(server):
     finally:
         await conn.disconnect()
 
-mcp = FastMCP("QtMCP Native", lifespan=probe_lifespan)
+mcp = FastMCP("qtPilot Native", lifespan=probe_lifespan)
 
 @mcp.tool
 async def qt_objects_find(
@@ -313,10 +313,10 @@ if __name__ == "__main__":
 ```json
 {
   "mcpServers": {
-    "qtmcp-native": {
+    "qtpilot-native": {
       "command": "cmd",
       "args": ["/c", "uv", "run", "--with", "fastmcp<3", "--with", "websockets",
-               "python", "-m", "qtmcp", "--mode", "native",
+               "python", "-m", "qtpilot", "--mode", "native",
                "--ws-url", "ws://localhost:9222"],
       "env": {}
     }
@@ -328,10 +328,10 @@ if __name__ == "__main__":
 ```json
 {
   "mcpServers": {
-    "qtmcp-native": {
+    "qtpilot-native": {
       "command": "uv",
       "args": ["run", "--with", "fastmcp<3", "--with", "websockets",
-               "python", "-m", "qtmcp", "--mode", "native",
+               "python", "-m", "qtpilot", "--mode", "native",
                "--ws-url", "ws://localhost:9222"],
       "env": {}
     }
@@ -341,20 +341,20 @@ if __name__ == "__main__":
 
 ### Claude Code config
 ```bash
-claude mcp add --transport stdio qtmcp-native -- uv run --with "fastmcp<3" --with websockets python -m qtmcp --mode native --ws-url ws://localhost:9222
+claude mcp add --transport stdio qtpilot-native -- uv run --with "fastmcp<3" --with websockets python -m qtpilot --mode native --ws-url ws://localhost:9222
 ```
 
 ### Auto-launch config (target app)
 ```json
 {
   "mcpServers": {
-    "qtmcp-native": {
+    "qtpilot-native": {
       "command": "uv",
       "args": ["run", "--with", "fastmcp<3", "--with", "websockets",
-               "python", "-m", "qtmcp", "--mode", "native",
+               "python", "-m", "qtpilot", "--mode", "native",
                "--target", "C:/path/to/myapp.exe"],
       "env": {
-        "QTMCP_PORT": "9222"
+        "QTPILOT_PORT": "9222"
       }
     }
   }
@@ -364,9 +364,9 @@ claude mcp add --transport stdio qtmcp-native -- uv run --with "fastmcp<3" --wit
 ### pyproject.toml
 ```toml
 [project]
-name = "qtmcp"
+name = "qtpilot"
 version = "0.1.0"
-description = "MCP server for controlling Qt applications via QtMCP probe"
+description = "MCP server for controlling Qt applications via qtPilot probe"
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=2.0,<3",
@@ -374,7 +374,7 @@ dependencies = [
 ]
 
 [project.scripts]
-qtmcp = "qtmcp.cli:main"
+qtpilot = "qtpilot.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -468,9 +468,9 @@ Mapped from qt.* JSON-RPC methods. Tool names use underscores (Python convention
 ## Open Questions
 
 1. **Auto-launch subprocess on Windows**
-   - What we know: MCP server needs to run `qtmcp-launch.exe target.exe` as a subprocess when `--target` is provided.
-   - What's unclear: Exact path resolution for qtmcp-launch.exe -- should it be on PATH, or in a known location relative to the Python package?
-   - Recommendation: Accept `--launcher-path` CLI arg with `QTMCP_LAUNCHER` env var fallback. Default to looking for `qtmcp-launch` on PATH.
+   - What we know: MCP server needs to run `qtpilot-launch.exe target.exe` as a subprocess when `--target` is provided.
+   - What's unclear: Exact path resolution for qtpilot-launch.exe -- should it be on PATH, or in a known location relative to the Python package?
+   - Recommendation: Accept `--launcher-path` CLI arg with `QTPILOT_LAUNCHER` env var fallback. Default to looking for `qtpilot-launch` on PATH.
 
 2. **Push notifications (signal emissions)**
    - What we know: The probe sends JSON-RPC notifications for subscribed signals. These arrive on the WebSocket without a request ID.

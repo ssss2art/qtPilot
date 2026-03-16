@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -8,7 +8,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Check whether the current process is running with elevated (admin) privileges.
 /// @return true if the process token has TokenElevation set.
@@ -25,6 +25,6 @@ bool isProcessElevated();
 /// @return Exit code from the elevated process, or 1 on failure.
 int relaunchElevated(const QString& executable, const QStringList& args);
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 #endif  // _WIN32

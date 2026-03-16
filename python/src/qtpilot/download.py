@@ -1,4 +1,4 @@
-"""Download QtMCP tool archives from GitHub Releases.
+"""Download qtPilot tool archives from GitHub Releases.
 
 This module provides utilities to download the correct probe + launcher
 archive for your Qt version and platform.
@@ -15,14 +15,14 @@ import zipfile
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-# GitHub repository for QtMCP releases
-GITHUB_REPO = "ssss2art/QtMcp"
+# GitHub repository for qtPilot releases
+GITHUB_REPO = "ssss2art/qtPilot"
 RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/download"
 
 
 def _default_release_tag() -> str:
     """Derive the default release tag from the installed package version."""
-    v = _pkg_version("qtmcp")
+    v = _pkg_version("qtpilot")
     # Strip dev/post/local suffixes for a clean release tag
     base = v.split(".dev")[0].split("+")[0].split(".post")[0]
     return f"v{base}"
@@ -90,25 +90,25 @@ def get_probe_filename(platform_name: str | None = None) -> str:
     """Get the simplified probe filename for the current platform.
 
     Returns:
-        Filename like "qtmcp-probe.dll" or "qtmcp-probe.so"
+        Filename like "qtPilot-probe.dll" or "qtPilot-probe.so"
     """
     if platform_name is None:
         platform_name = detect_platform()
     ext = "dll" if platform_name == "windows" else "so"
-    return f"qtmcp-probe.{ext}"
+    return f"qtPilot-probe.{ext}"
 
 
 def get_launcher_filename(platform_name: str | None = None) -> str:
     """Get the simplified launcher filename for the current platform.
 
     Returns:
-        Filename like "qtmcp-launcher.exe" or "qtmcp-launcher"
+        Filename like "qtPilot-launcher.exe" or "qtPilot-launcher"
     """
     if platform_name is None:
         platform_name = detect_platform()
     if platform_name == "windows":
-        return "qtmcp-launcher.exe"
-    return "qtmcp-launcher"
+        return "qtPilot-launcher.exe"
+    return "qtPilot-launcher"
 
 
 def normalize_version(qt_version: str) -> str:
@@ -150,8 +150,8 @@ def get_archive_filename(
         arch: Target architecture ("x64" or "x86"). Defaults to "x64".
 
     Returns:
-        Archive filename like "qtmcp-qt6.8-windows-x64.zip" or
-        "qtmcp-qt5.15-linux.tar.gz"
+        Archive filename like "qtpilot-qt6.8-windows-x64.zip" or
+        "qtpilot-qt5.15-linux.tar.gz"
 
     Windows archives always include the arch suffix (-x64 or -x86).
     Linux x64 archives have no arch suffix (backward compatibility).
@@ -166,12 +166,12 @@ def get_archive_filename(
 
     # Windows: always include arch suffix
     if platform_name == "windows":
-        return f"qtmcp-qt{version}-{platform_name}-{arch}.{ext}"
+        return f"qtpilot-qt{version}-{platform_name}-{arch}.{ext}"
 
     # Linux: only include arch suffix for x86 (backward compat for x64)
     if arch == "x86":
-        return f"qtmcp-qt{version}-{platform_name}-x86.{ext}"
-    return f"qtmcp-qt{version}-{platform_name}.{ext}"
+        return f"qtpilot-qt{version}-{platform_name}-x86.{ext}"
+    return f"qtpilot-qt{version}-{platform_name}.{ext}"
 
 
 def build_archive_url(
@@ -373,7 +373,7 @@ def download_and_extract(
     platform_name: str | None = None,
     arch: str | None = None,
 ) -> tuple[Path, Path]:
-    """Download and extract the QtMCP tools archive for a Qt version.
+    """Download and extract the qtPilot tools archive for a Qt version.
 
     Downloads the archive (zip on Windows, tar.gz on Linux) containing
     the probe and launcher, verifies the checksum, and extracts them.

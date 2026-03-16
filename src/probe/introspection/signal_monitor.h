@@ -1,9 +1,9 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QHash>
 #include <QJsonArray>
@@ -12,7 +12,7 @@
 #include <QObject>
 #include <QPointer>
 
-namespace qtmcp {
+namespace qtPilot {
 
 // Forward declaration
 class SignalRelay;
@@ -38,7 +38,7 @@ class SignalRelay;
 /// connect(SignalMonitor::instance(), &SignalMonitor::signalEmitted,
 ///         [](const QJsonObject& n) { qDebug() << n; });
 /// @endcode
-class QTMCP_EXPORT SignalMonitor : public QObject {
+class QTPILOT_EXPORT SignalMonitor : public QObject {
   Q_OBJECT
 
  public:
@@ -165,4 +165,4 @@ class QTMCP_EXPORT SignalMonitor : public QObject {
   mutable QMutex m_mutex;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

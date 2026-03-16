@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 // Windows-only elevation support for the launcher.
@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <shellapi.h>
 
-namespace qtmcp {
+namespace qtPilot {
 
 bool isProcessElevated() {
   BOOL elevated = FALSE;
@@ -53,7 +53,7 @@ int relaunchElevated(const QString& executable, const QStringList& args) {
   }
 
   // ShellExecuteEx with "runas" creates a new process with a clean environment.
-  // We must propagate critical environment variables (PATH, QT_PLUGIN_PATH, QTMCP_*)
+  // We must propagate critical environment variables (PATH, QT_PLUGIN_PATH, QTPILOT_*)
   // by wrapping the launch in cmd.exe /c "set VAR=val && ... && launcher.exe args".
   QString cmdLine;
 
@@ -61,8 +61,8 @@ int relaunchElevated(const QString& executable, const QStringList& args) {
   QStringList envSetCmds;
   const char* envVarsToForward[] = {
       "PATH",          "QT_PLUGIN_PATH",      "QT_QPA_PLATFORM_PLUGIN_PATH",
-      "QTMCP_PORT",    "QTMCP_MODE",          "QTMCP_INJECT_CHILDREN",
-      "QTMCP_ENABLED", "QTMCP_DISCOVERY_PORT"};
+      "QTPILOT_PORT",    "QTPILOT_MODE",          "QTPILOT_INJECT_CHILDREN",
+      "QTPILOT_ENABLED", "QTPILOT_DISCOVERY_PORT"};
   for (const char* varName : envVarsToForward) {
     QString val = QString::fromLocal8Bit(qgetenv(varName));
     if (!val.isEmpty()) {
@@ -119,6 +119,6 @@ int relaunchElevated(const QString& executable, const QStringList& args) {
   return static_cast<int>(exitCode);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 #endif  // _WIN32

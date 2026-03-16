@@ -1,8 +1,8 @@
-# QtMCP Specification v1.0
+# qtPilot Specification v1.0
 
 ## Executive Summary
 
-**QtMCP** is a lightweight, MIT-licensed injection library for Qt application introspection and automation. It enables AI assistants (like Claude), test automation frameworks, and debugging tools to inspect and control Qt applications at runtime.
+**qtPilot** is a lightweight, MIT-licensed injection library for Qt application introspection and automation. It enables AI assistants (like Claude), test automation frameworks, and debugging tools to inspect and control Qt applications at runtime.
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Name** | QtMCP |
+| **Name** | qtPilot |
 | **License** | MIT |
 | **Repository** | TBD |
 | **Version** | 1.0.0 (MVP) |
@@ -64,7 +64,7 @@
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │  Qt Application                                                   │  │
 │  │  ┌─────────────────────────────────────────────────────────────┐  │  │
-│  │  │  QtMCP Probe (libqtmcp.so / qtmcp.dll)                      │  │  │
+│  │  │  qtPilot Probe (libqtpilot.so / qtpilot.dll)                      │  │  │
 │  │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │  │  │
 │  │  │  │ Object       │  │ Introspector │  │ WebSocket Server │   │  │  │
 │  │  │  │ Tracker      │  │              │  │ (port via env)   │   │  │  │
@@ -75,7 +75,7 @@
 │  ┌──────────────────────────────────────────────────▼────────────────┐  │
 │  │  Qt MCP Server (Python)                                           │  │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐   │  │
-│  │  │ QtMCP Client    │  │ MCP Tools       │  │ HTTP/stdio      │   │  │
+│  │  │ qtPilot Client    │  │ MCP Tools       │  │ HTTP/stdio      │   │  │
 │  │  │ (WebSocket)     │  │                 │  │ Transport       │   │  │
 │  │  └─────────────────┘  └─────────────────┘  └─────────────────┘   │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
@@ -93,17 +93,17 @@
 
 #### Linux
 ```bash
-LD_PRELOAD=/path/to/libqtmcp.so ./myapp
+LD_PRELOAD=/path/to/libqtpilot.so ./myapp
 ```
 
 #### Windows
 ```cmd
-qtmcp-launch.exe myapp.exe --app-args foo bar
+qtpilot-launch.exe myapp.exe --app-args foo bar
 ```
 
-The `qtmcp-launch.exe` wrapper:
+The `qtpilot-launch.exe` wrapper:
 1. Sets up environment variables
-2. Ensures `qtmcp.dll` is in the DLL search path
+2. Ensures `qtpilot.dll` is in the DLL search path
 3. Launches the target application
 4. The DLL auto-initializes via `DllMain`
 
@@ -111,7 +111,7 @@ The `qtmcp-launch.exe` wrapper:
 
 ## API Modes
 
-QtMCP supports **three API modes** to provide maximum flexibility:
+qtPilot supports **three API modes** to provide maximum flexibility:
 
 | Mode | API Style | Best For |
 |------|-----------|----------|
@@ -123,17 +123,17 @@ QtMCP supports **three API modes** to provide maximum flexibility:
 
 Set via environment variable:
 ```bash
-QTMCP_MODE=native           # Default - full Qt introspection
-QTMCP_MODE=computer_use     # Anthropic Computer Use compatible
-QTMCP_MODE=chrome           # Claude in Chrome compatible  
-QTMCP_MODE=all              # All tools from all modes
+QTPILOT_MODE=native           # Default - full Qt introspection
+QTPILOT_MODE=computer_use     # Anthropic Computer Use compatible
+QTPILOT_MODE=chrome           # Claude in Chrome compatible  
+QTPILOT_MODE=all              # All tools from all modes
 ```
 
 ### Why Multiple Modes?
 
 Claude already knows the Computer Use and Chrome extension APIs from extensive training. By providing compatible tool schemas, Claude can control Qt applications with **zero learning curve**.
 
-See `qtmcp-compatibility-modes.md` for complete details on Computer Use and Chrome mode tool definitions.
+See `qtPilot-compatibility-modes.md` for complete details on Computer Use and Chrome mode tool definitions.
 
 ---
 
@@ -227,11 +227,11 @@ QApplication/QQuickWindow/QQuickItem#root/QQuickRectangle#header
 
 | Variable | Purpose | Default | Example |
 |----------|---------|---------|---------|
-| `QTMCP_PORT` | WebSocket server port | `9999` | `9999` |
-| `QTMCP_BIND` | Bind address | `127.0.0.1` | `0.0.0.0` |
-| `QTMCP_ENABLED` | Enable/disable probe | `1` | `0` to disable |
-| `QTMCP_LOG_LEVEL` | Logging verbosity | `info` | `debug`, `info`, `warn`, `error` |
-| `QTMCP_MODE` | API mode | `native` | `native`, `computer_use`, `chrome`, `all` |
+| `QTPILOT_PORT` | WebSocket server port | `9999` | `9999` |
+| `QTPILOT_BIND` | Bind address | `127.0.0.1` | `0.0.0.0` |
+| `QTPILOT_ENABLED` | Enable/disable probe | `1` | `0` to disable |
+| `QTPILOT_LOG_LEVEL` | Logging verbosity | `info` | `debug`, `info`, `warn`, `error` |
+| `QTPILOT_MODE` | API mode | `native` | `native`, `computer_use`, `chrome`, `all` |
 
 ---
 
@@ -567,8 +567,8 @@ The server pushes these events to subscribed clients:
 ### Configurable Binding
 
 - Default: `127.0.0.1` (localhost only)
-- Configurable via `QTMCP_BIND` environment variable
-- For remote access: set `QTMCP_BIND=0.0.0.0`
+- Configurable via `QTPILOT_BIND` environment variable
+- For remote access: set `QTPILOT_BIND=0.0.0.0`
 
 ### No Authentication in MVP
 
@@ -585,7 +585,7 @@ The server pushes these events to subscribed clients:
 ## File Structure
 
 ```
-qtmcp/
+qtpilot/
 ├── CMakeLists.txt
 ├── README.md
 ├── LICENSE                    # MIT
@@ -594,8 +594,8 @@ qtmcp/
 ├── probe/                     # C++ probe library
 │   ├── CMakeLists.txt
 │   ├── src/
-│   │   ├── qtmcp.cpp          # Entry point, initialization
-│   │   ├── qtmcp.h
+│   │   ├── qtpilot.cpp          # Entry point, initialization
+│   │   ├── qtpilot.h
 │   │   ├── object_tracker.cpp # QObject lifecycle tracking
 │   │   ├── object_tracker.h
 │   │   ├── introspector.cpp   # QMetaObject introspection
@@ -608,17 +608,17 @@ qtmcp/
 │   │       ├── linux.cpp
 │   │       └── windows.cpp
 │   └── include/
-│       └── qtmcp/
-│           └── qtmcp.h        # Public API (optional direct linking)
+│       └── qtpilot/
+│           └── qtpilot.h        # Public API (optional direct linking)
 │
 ├── launcher/                  # Windows launcher executable
 │   ├── CMakeLists.txt
 │   └── src/
-│       └── main.cpp           # qtmcp-launch.exe
+│       └── main.cpp           # qtpilot-launch.exe
 │
 ├── python/                    # Python client library
 │   ├── pyproject.toml
-│   └── qtmcp/
+│   └── qtpilot/
 │       ├── __init__.py
 │       ├── client.py          # WebSocket client
 │       └── mcp_tools.py       # MCP tool definitions

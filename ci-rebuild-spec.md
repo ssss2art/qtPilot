@@ -1,4 +1,4 @@
-# Spec: Rebuild CI System for QtMcp
+# Spec: Rebuild CI System for qtPilot
 
 ## Context
 
@@ -47,19 +47,19 @@ CI uses `release` / `windows-release` directly — no separate CI-only presets.
 ### 2.2 Simplify root `CMakeLists.txt` (~365 -> ~200 lines)
 
 **Remove:**
-- `QTMCP_ENABLE_CLANG_TIDY` option + clang-tidy block (lines 24, 272-280)
-- `QTMCP_DEPLOY_QT` option + windeployqt discovery + `qtmcp_deploy_qt()` function (lines 172-210)
+- `QTPILOT_ENABLE_CLANG_TIDY` option + clang-tidy block (lines 24, 272-280)
+- `QTPILOT_DEPLOY_QT` option + windeployqt discovery + `qtpilot_deploy_qt()` function (lines 172-210)
 - `find_package(nlohmann_json)` block (lines 214-221)
 - `find_package(spdlog)` block (lines 223-230)
 - `write_basic_package_version_file` call (lines 327-331)
-- Versioned install paths: change `QTMCP_INSTALL_LIBDIR` from `lib/qtmcp/${QTMCP_QT_VERSION_TAG}` to `lib` (line 153)
+- Versioned install paths: change `QTPILOT_INSTALL_LIBDIR` from `lib/qtpilot/${QTPILOT_QT_VERSION_TAG}` to `lib` (line 153)
 - References to clang-tidy, nlohmann_json, spdlog in config summary
 
-**Keep:** Qt5/Qt6 dual detection, `QTMCP_QT_VERSION_TAG`, compiler warnings, automoc, platform definitions, subdirectories, package config generation (simplified), `QTMCP_QT_DIR` hint
+**Keep:** Qt5/Qt6 dual detection, `QTPILOT_QT_VERSION_TAG`, compiler warnings, automoc, platform definitions, subdirectories, package config generation (simplified), `QTPILOT_QT_DIR` hint
 
 ### 2.3 Rewrite `tests/CMakeLists.txt` (~654 -> ~60 lines)
 
-Create a `qtmcp_add_test(NAME src [LIBS ...] [ENV ...])` helper function that handles:
+Create a `qtPilot_add_test(NAME src [LIBS ...] [ENV ...])` helper function that handles:
 - Qt5/Qt6 conditional linking
 - `target_include_directories` to probe source
 - `add_test` with working directory
@@ -68,11 +68,11 @@ Create a `qtmcp_add_test(NAME src [LIBS ...] [ENV ...])` helper function that ha
 
 Then define all 13 tests as one-liners:
 ```cmake
-qtmcp_add_test(NAME test_jsonrpc SOURCES test_jsonrpc.cpp)
-qtmcp_add_test(NAME test_object_registry SOURCES test_object_registry.cpp ENV "QTMCP_ENABLED=0")
-qtmcp_add_test(NAME test_object_id SOURCES test_object_id.cpp
+qtPilot_add_test(NAME test_jsonrpc SOURCES test_jsonrpc.cpp)
+qtPilot_add_test(NAME test_object_registry SOURCES test_object_registry.cpp ENV "QTPILOT_ENABLED=0")
+qtPilot_add_test(NAME test_object_id SOURCES test_object_id.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 # ... 10 more with same Gui+Widgets+ENV pattern
 ```
 
@@ -82,24 +82,24 @@ Keep the qminimal.dll deployment block at the top (lines 1-23).
 
 - Remove nlohmann_json conditional linking (lines 141-144)
 - Remove spdlog conditional linking (lines 146-149)
-- Remove `qtmcp_deploy_qt(qtmcp_probe)` call (line 165)
-- **Keep** `OUTPUT_NAME "qtmcp-probe-${QTMCP_QT_VERSION_TAG}"` (needed for multi-Qt-version releases)
+- Remove `qtpilot_deploy_qt(qtPilot_probe)` call (line 165)
+- **Keep** `OUTPUT_NAME "qtPilot-probe-${QTPILOT_QT_VERSION_TAG}"` (needed for multi-Qt-version releases)
 
 ### 2.5 Simplify `src/launcher/CMakeLists.txt`
 
-- Remove `qtmcp_deploy_qt(qtmcp_launcher)` call (line 52)
-- Change output name from `qtmcp-launch-${QTMCP_QT_VERSION_TAG}` to just `qtmcp-launcher` (launcher is not Qt-version-specific per plugin spec)
+- Remove `qtpilot_deploy_qt(qtPilot_launcher)` call (line 52)
+- Change output name from `qtpilot-launch-${QTPILOT_QT_VERSION_TAG}` to just `qtPilot-launcher` (launcher is not Qt-version-specific per plugin spec)
 
 ### 2.6 Simplify `test_app/CMakeLists.txt`
 
-- Remove `qtmcp_deploy_qt(qtmcp_test_app)` call (line 51)
+- Remove `qtpilot_deploy_qt(qtPilot_test_app)` call (line 51)
 
-### 2.7 Simplify `cmake/QtMCPConfig.cmake.in` (~188 -> ~80 lines)
+### 2.7 Simplify `cmake/qtPilotConfig.cmake.in` (~188 -> ~80 lines)
 
 - Remove fallback Qt auto-detection block (lines 26-43)
 - Remove debug variant binary detection (lines 112-132 Windows, 146-156 Linux)
-- Change library path from `lib/qtmcp/${version_tag}` to `lib/`
-- Keep: imported target `QtMCP::Probe`, include dirs, Qt dependency linking
+- Change library path from `lib/qtpilot/${version_tag}` to `lib/`
+- Keep: imported target `qtPilot::Probe`, include dirs, Qt dependency linking
 
 ### 2.8 Add `[project.optional-dependencies]` to `python/pyproject.toml`
 
@@ -154,8 +154,8 @@ dev = ["pytest>=7.0"]
 
 **Job 2: `release`**
 - Download all 8 artifacts
-- Extract/rename probe binaries: `qtmcp-probe-{qt_tag}-{platform}.{dll/so}`
-- Extract launcher binaries from qt6.8 cells (one per platform): `qtmcp-launcher-{platform}.{exe/""}`
+- Extract/rename probe binaries: `qtPilot-probe-{qt_tag}-{platform}.{dll/so}`
+- Extract launcher binaries from qt6.8 cells (one per platform): `qtPilot-launcher-{platform}.{exe/""}`
 - Extract .lib import libraries for Windows probes
 - Generate SHA256SUMS
 - Create GitHub Release via `softprops/action-gh-release@v2`
@@ -169,7 +169,7 @@ No changes needed — it correctly references `python/` directory.
 ## Phase 4: Verification
 
 1. **Local build:** `cmake --preset windows-release -DCMAKE_PREFIX_PATH=<qt-path>` then build, test, install
-2. **Check install layout:** `lib/` has probe DLL, `bin/` has launcher, `include/qtmcp/` has headers
+2. **Check install layout:** `lib/` has probe DLL, `bin/` has launcher, `include/qtpilot/` has headers
 3. **Push to feature branch** and verify all 8 CI matrix cells pass
 4. **Test release** with a `v0.1.0-rc1` tag to verify artifact collection and GitHub Release creation
 
@@ -185,7 +185,7 @@ No changes needed — it correctly references `python/` directory.
 | `src/probe/CMakeLists.txt` | Remove optional dep linking + deploy call |
 | `src/launcher/CMakeLists.txt` | Remove deploy call, simplify output name |
 | `test_app/CMakeLists.txt` | Remove deploy call |
-| `cmake/QtMCPConfig.cmake.in` | Simplify (flat lib path, no debug variants) |
+| `cmake/qtPilotConfig.cmake.in` | Simplify (flat lib path, no debug variants) |
 | `python/pyproject.toml` | Add dev dependencies |
 | `.github/workflows/ci.yml` | New file |
 | `.github/workflows/release.yml` | New file |
@@ -206,4 +206,4 @@ No changes needed — it correctly references `python/` directory.
 | Python test path | src/mcp_server (broken) | python/ (correct) |
 | tests/CMakeLists.txt | 654 lines | ~60 lines |
 | Root CMakeLists.txt | 365 lines | ~200 lines |
-| Install paths | lib/qtmcp/qt6.8/ (versioned) | lib/ (flat) |
+| Install paths | lib/qtpilot/qt6.8/ (versioned) | lib/ (flat) |

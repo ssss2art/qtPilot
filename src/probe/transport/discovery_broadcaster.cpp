@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "transport/discovery_broadcaster.h"
@@ -10,7 +10,7 @@
 #include <QTimer>
 #include <QUdpSocket>
 
-namespace qtmcp {
+namespace qtPilot {
 
 static constexpr quint16 kDefaultDiscoveryPort = 9221;
 static constexpr int kBroadcastIntervalMs = 5000;
@@ -24,7 +24,7 @@ DiscoveryBroadcaster::DiscoveryBroadcaster(quint16 wsPort, const QString& mode, 
       mode_(mode),
       running_(false) {
   // Read discovery port from environment
-  QByteArray portEnv = qgetenv("QTMCP_DISCOVERY_PORT");
+  QByteArray portEnv = qgetenv("QTPILOT_DISCOVERY_PORT");
   if (!portEnv.isEmpty()) {
     bool ok = false;
     int envPort = portEnv.toInt(&ok);
@@ -56,7 +56,7 @@ bool DiscoveryBroadcaster::start() {
   sendAnnounce();
   timer_->start();
 
-  fprintf(stderr, "[QtMCP] Discovery broadcaster started on UDP port %u\n",
+  fprintf(stderr, "[qtPilot] Discovery broadcaster started on UDP port %u\n",
           static_cast<unsigned>(discoveryPort_));
   return true;
 }
@@ -84,7 +84,7 @@ void DiscoveryBroadcaster::stop() {
   delete socket_;
   socket_ = nullptr;
 
-  fprintf(stderr, "[QtMCP] Discovery broadcaster stopped\n");
+  fprintf(stderr, "[qtPilot] Discovery broadcaster stopped\n");
 }
 
 bool DiscoveryBroadcaster::isRunning() const {
@@ -110,7 +110,7 @@ void DiscoveryBroadcaster::sendGoodbye() {
 QByteArray DiscoveryBroadcaster::buildAnnouncePayload() const {
   QJsonObject obj;
   obj["type"] = QStringLiteral("announce");
-  obj["protocol"] = QStringLiteral("qtmcp-discovery");
+  obj["protocol"] = QStringLiteral("qtPilot-discovery");
   obj["version"] = 1;
   obj["appName"] = QCoreApplication::applicationName();
   obj["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
@@ -125,7 +125,7 @@ QByteArray DiscoveryBroadcaster::buildAnnouncePayload() const {
 QByteArray DiscoveryBroadcaster::buildGoodbyePayload() const {
   QJsonObject obj;
   obj["type"] = QStringLiteral("goodbye");
-  obj["protocol"] = QStringLiteral("qtmcp-discovery");
+  obj["protocol"] = QStringLiteral("qtPilot-discovery");
   obj["version"] = 1;
   obj["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
   obj["wsPort"] = static_cast<int>(wsPort_);
@@ -133,4 +133,4 @@ QByteArray DiscoveryBroadcaster::buildGoodbyePayload() const {
   return QJsonDocument(obj).toJson(QJsonDocument::Compact);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

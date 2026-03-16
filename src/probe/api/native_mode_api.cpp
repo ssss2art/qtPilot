@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "api/native_mode_api.h"
@@ -27,7 +27,7 @@
 #include <QJsonObject>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 // ============================================================================
 // Internal helpers (file-scope, not in header)
@@ -123,12 +123,12 @@ void NativeModeApi::registerSystemMethods() {
   // qt.version - version info with deprecation notice
   m_handler->RegisterMethod(QStringLiteral("qt.version"), [](const QString& /*params*/) -> QString {
     QJsonArray deprecated;
-    deprecated.append(QStringLiteral("qtmcp.*"));
+    deprecated.append(QStringLiteral("qtpilot.*"));
 
     QJsonObject result;
     result[QStringLiteral("version")] = QStringLiteral("0.1.0");
     result[QStringLiteral("protocol")] = QStringLiteral("jsonrpc-2.0");
-    result[QStringLiteral("name")] = QStringLiteral("QtMCP");
+    result[QStringLiteral("name")] = QStringLiteral("qtPilot");
     result[QStringLiteral("mode")] = QStringLiteral("native");
     result[QStringLiteral("deprecated")] = deprecated;
 
@@ -778,7 +778,7 @@ void NativeModeApi::registerQmlMethods() {
     QObject* obj = resolveObjectParam(p, QStringLiteral("qt.qml.inspect"));
     QString objectId = p[QStringLiteral("objectId")].toString();
 
-#ifndef QTMCP_HAS_QML
+#ifndef QTPILOT_HAS_QML
     throw JsonRpcException(
         ErrorCode::kQmlNotAvailable,
         QStringLiteral("QML support not compiled (Qt Quick not found)"),
@@ -877,4 +877,4 @@ void NativeModeApi::registerModelMethods() {
   });
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

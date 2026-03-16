@@ -60,7 +60,7 @@ started: After phase 11.1 was supposed to fix this
   found: |
     File includes compat/compat_core.h and compat/compat_variant.h (lines 6-7).
     Line 29: uses `value.userType()` (Qt5-safe) instead of `value.typeId()` (Qt6-only).
-    Line 207: uses `qtmcp::compat::metaTypeIdFromName()` instead of `QMetaType::fromName()`.
+    Line 207: uses `qtpilot::compat::metaTypeIdFromName()` instead of `QMetaType::fromName()`.
     Lines 401-402: uses `compat::variantCanConvert()` and `compat::variantConvert()` instead of raw Qt6 APIs.
   implication: The compat fixes ARE implemented correctly in local working tree
 

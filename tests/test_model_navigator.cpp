@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -13,7 +13,7 @@
 #include "core/object_registry.h"
 #include "core/object_resolver.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Integration tests for qt.models.* and qt.qml.inspect API methods.
 ///
@@ -445,8 +445,8 @@ void TestModelNavigator::testModelsDataNotAModel()
 
 void TestModelNavigator::testQmlInspectNonQmlObject()
 {
-    // Without QTMCP_HAS_QML, this will throw kQmlNotAvailable.
-    // With QTMCP_HAS_QML, it returns isQmlItem=false for a QWidget.
+    // Without QTPILOT_HAS_QML, this will throw kQmlNotAvailable.
+    // With QTPILOT_HAS_QML, it returns isQmlItem=false for a QWidget.
     // Either way, the test verifies the method handles non-QML objects.
     QString buttonId = ObjectRegistry::instance()->objectId(m_plainButton);
 

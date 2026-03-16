@@ -64,7 +64,7 @@ skipped: 0
 
 - truth: "qt.* methods (NativeModeApi) should be registered alongside cu.* methods"
   status: failed
-  reason: "All qt.* methods return -32601 Method not found. Only legacy qtmcp.* and cu.* methods are registered. NativeModeApi is not being wired into the probe at runtime despite being compiled."
+  reason: "All qt.* methods return -32601 Method not found. Only legacy qtpilot.* and cu.* methods are registered. NativeModeApi is not being wired into the probe at runtime despite being compiled."
   severity: major
   test: discovered during UAT setup
   root_cause: "NativeModeApi constructor likely throws an exception during DLL injection that is silently swallowed. Tests pass in controlled QTest environment but fail in live injection. ComputerUseModeApi works because its lambdas only call simple InputSimulator/Screenshot functions, while NativeModeApi lambdas call complex introspection functions (serializeObjectTree, ObjectRegistry lookups) that may fail in the injected context."
@@ -78,15 +78,15 @@ skipped: 0
     - "Investigate which specific introspection call fails during DLL injection"
   debug_session: ""
 
-- truth: "qtmcp.* object IDs returned by findByClassName should be resolvable by getObjectInfo and getGeometry"
+- truth: "qtpilot.* object IDs returned by findByClassName should be resolvable by getObjectInfo and getGeometry"
   status: failed
-  reason: "qtmcp.findByClassName returns IDs like QObject~20, but qtmcp.getObjectInfo and qtmcp.getGeometry return 'Object not found' for those same IDs."
+  reason: "qtpilot.findByClassName returns IDs like QObject~20, but qtpilot.getObjectInfo and qtpilot.getGeometry return 'Object not found' for those same IDs."
   severity: major
   test: discovered during UAT setup
-  root_cause: "Parameter name mismatch. Legacy qtmcp.getObjectInfo and qtmcp.getGeometry read param 'id' (jsonrpc_handler.cpp lines 318, 553), but the UAT test client was passing 'objectId' (the modern qt.* convention). The error message 'Object not found: ' with empty string confirms the id parameter was empty. The legacy API is internally consistent — all methods expect 'id', not 'objectId'."
+  root_cause: "Parameter name mismatch. Legacy qtpilot.getObjectInfo and qtpilot.getGeometry read param 'id' (jsonrpc_handler.cpp lines 318, 553), but the UAT test client was passing 'objectId' (the modern qt.* convention). The error message 'Object not found: ' with empty string confirms the id parameter was empty. The legacy API is internally consistent — all methods expect 'id', not 'objectId'."
   artifacts:
     - path: "src/probe/transport/jsonrpc_handler.cpp"
-      issue: "Line 318: qtmcp.getObjectInfo reads doc.object()['id']; Line 553: qtmcp.getGeometry reads doc.object()['id']"
+      issue: "Line 318: qtpilot.getObjectInfo reads doc.object()['id']; Line 553: qtpilot.getGeometry reads doc.object()['id']"
   missing:
     - "Not a code bug — test client was using wrong parameter name. Legacy API correctly expects 'id'. Could add backward compat to accept both 'id' and 'objectId' for friendlier API."
   debug_session: ""

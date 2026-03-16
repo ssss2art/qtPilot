@@ -68,7 +68,7 @@ completed: 2026-01-31
 - Every method uses ObjectResolver for ID resolution, ResponseEnvelope for wrapping, ErrorCode for structured errors
 - JsonRpcException enables structured JSON-RPC error responses with code, message, and optional data field
 - NativeModeApi auto-instantiated in Probe::initialize(), name map auto-loaded from env/file
-- Old qtmcp.* methods preserved for backward compatibility
+- Old qtpilot.* methods preserved for backward compatibility
 - All 7 existing tests pass
 
 ## Task Commits
@@ -117,7 +117,7 @@ None - no external service configuration required.
 ## Next Phase Readiness
 - All 29 qt.* methods registered and wired into Probe initialization
 - Ready for Phase 3 Plan 03 (Testing) to validate all method registrations
-- Old qtmcp.* backward compatibility preserved for gradual migration
+- Old qtpilot.* backward compatibility preserved for gradual migration
 
 ---
 *Phase: 03-native-mode*

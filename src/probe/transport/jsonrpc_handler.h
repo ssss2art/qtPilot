@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -13,27 +13,27 @@
 #include <QString>
 
 // Export macro for Windows DLL
-#if defined(QTMCP_PROBE_LIBRARY)
+#if defined(QTPILOT_PROBE_LIBRARY)
 #if defined(_WIN32)
-#define QTMCP_EXPORT __declspec(dllexport)
+#define QTPILOT_EXPORT __declspec(dllexport)
 #else
-#define QTMCP_EXPORT __attribute__((visibility("default")))
+#define QTPILOT_EXPORT __attribute__((visibility("default")))
 #endif
 #else
 #if defined(_WIN32)
-#define QTMCP_EXPORT __declspec(dllimport)
+#define QTPILOT_EXPORT __declspec(dllimport)
 #else
-#define QTMCP_EXPORT
+#define QTPILOT_EXPORT
 #endif
 #endif
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief JSON-RPC 2.0 message handler.
 ///
 /// This class parses incoming JSON-RPC requests, dispatches them to
 /// registered method handlers, and formats the responses.
-class QTMCP_EXPORT JsonRpcHandler : public QObject {
+class QTPILOT_EXPORT JsonRpcHandler : public QObject {
   Q_OBJECT
 
  public:
@@ -132,4 +132,4 @@ class JsonRpcException : public std::runtime_error {
   QJsonObject m_data;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

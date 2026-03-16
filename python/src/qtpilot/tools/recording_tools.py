@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from fastmcp import Context, FastMCP
 
-from qtmcp.event_recorder import TargetSpec
+from qtpilot.event_recorder import TargetSpec
 
 
 def register_recording_tools(mcp: FastMCP) -> None:
     """Register signal recording tools on the MCP server."""
 
     @mcp.tool
-    async def qtmcp_start_recording(
+    async def qtpilot_start_recording(
         targets: list[dict],
         include_lifecycle: bool = True,
         capture_events: bool = True,
@@ -21,7 +21,7 @@ def register_recording_tools(mcp: FastMCP) -> None:
 
         Subscribes to signals and begins buffering events with timestamps.
         The user can then interact with the Qt application. Call
-        qtmcp_stop_recording to retrieve the event log.
+        qtpilot_stop_recording to retrieve the event log.
 
         Args:
             targets: List of objects to watch. Each target is a dict with:
@@ -33,9 +33,9 @@ def register_recording_tools(mcp: FastMCP) -> None:
                 focus events (default true). When enabled, the probe installs a
                 global event filter so no per-widget subscription is needed.
 
-        Example: qtmcp_start_recording(targets=[{"object_id": "MainWindow", "recursive": true}])
+        Example: qtpilot_start_recording(targets=[{"object_id": "MainWindow", "recursive": true}])
         """
-        from qtmcp.server import get_recorder, require_probe
+        from qtpilot.server import get_recorder, require_probe
 
         probe = require_probe()
         recorder = get_recorder()
@@ -54,15 +54,15 @@ def register_recording_tools(mcp: FastMCP) -> None:
         )
 
     @mcp.tool
-    async def qtmcp_stop_recording(ctx: Context) -> dict:
+    async def qtpilot_stop_recording(ctx: Context) -> dict:
         """Stop recording and return the captured event log.
 
         Returns a list of timestamped events captured since recording started.
         Each event has a "t" field (seconds since start) and type-specific fields.
 
-        Example: qtmcp_stop_recording()
+        Example: qtpilot_stop_recording()
         """
-        from qtmcp.server import get_recorder, require_probe
+        from qtpilot.server import get_recorder, require_probe
 
         probe = require_probe()
         recorder = get_recorder()
@@ -70,13 +70,13 @@ def register_recording_tools(mcp: FastMCP) -> None:
         return await recorder.stop(probe)
 
     @mcp.tool
-    async def qtmcp_recording_status(ctx: Context) -> dict:
+    async def qtpilot_recording_status(ctx: Context) -> dict:
         """Get the current signal recording status.
 
         Returns whether recording is active, event count, and duration.
 
-        Example: qtmcp_recording_status()
+        Example: qtpilot_recording_status()
         """
-        from qtmcp.server import get_recorder
+        from qtpilot.server import get_recorder
 
         return get_recorder().status()

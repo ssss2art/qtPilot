@@ -15,7 +15,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Ping the probe to check connectivity.
         Example: qt_ping()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.ping")
 
@@ -24,7 +24,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Return Qt and probe version information.
         Example: qt_version()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.version")
 
@@ -33,7 +33,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """List available API modes on the probe.
         Example: qt_modes()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.modes")
 
@@ -45,7 +45,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         To search by visible text (e.g. button label), use qt_objects_query instead.
         Example: qt_objects_find(name="submitButton")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {"name": name}
         if root is not None:
@@ -59,7 +59,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         (e.g. find a specific button by its label), use qt_objects_query instead.
         Example: qt_objects_findByClass(className="QPushButton")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {"className": className}
         if root is not None:
@@ -71,7 +71,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Get the object tree, optionally from a root with limited depth.
         Example: qt_objects_tree(maxDepth=3)
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {}
         if root is not None:
@@ -85,7 +85,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Get basic info (class, parent, children) for an object.
         Example: qt_objects_info(objectId="MainWindow")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.objects.info", {"objectId": objectId})
 
@@ -94,7 +94,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Deep-inspect an object: properties, methods, signals.
         Example: qt_objects_inspect(objectId="MainWindow")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.objects.inspect", {"objectId": objectId})
 
@@ -113,7 +113,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         - Find any widget by text: qt_objects_query(properties={"text": "Search"})
         Example: qt_objects_query(className="QLabel", properties={"text": "Hello"})
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {}
         if className is not None:
@@ -131,7 +131,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """List all properties of an object.
         Example: qt_properties_list(objectId="MainWindow")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.properties.list", {"objectId": objectId})
 
@@ -140,7 +140,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Get a single property value.
         Example: qt_properties_get(objectId="MainWindow", name="windowTitle")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.properties.get", {"objectId": objectId, "name": name})
 
@@ -151,7 +151,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Set a property value on an object.
         Example: qt_properties_set(objectId="lineEdit", name="text", value="hello")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call(
             "qt.properties.set", {"objectId": objectId, "name": name, "value": value}
@@ -164,7 +164,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """List all invocable methods of an object.
         Example: qt_methods_list(objectId="MainWindow")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.methods.list", {"objectId": objectId})
 
@@ -175,7 +175,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Invoke a method on an object with optional arguments.
         Example: qt_methods_invoke(objectId="MainWindow", method="close")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {"objectId": objectId, "method": method}
         if args is not None:
@@ -189,7 +189,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """List all signals of an object.
         Example: qt_signals_list(objectId="MainWindow")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.signals.list", {"objectId": objectId})
 
@@ -198,7 +198,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Subscribe to a signal on an object.
         Example: qt_signals_subscribe(objectId="button", signal="clicked")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call(
             "qt.signals.subscribe", {"objectId": objectId, "signal": signal}
@@ -209,7 +209,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Unsubscribe from a signal by subscription ID.
         Example: qt_signals_unsubscribe(subscriptionId="sub_1")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call(
             "qt.signals.unsubscribe", {"subscriptionId": subscriptionId}
@@ -220,7 +220,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Enable or disable lifecycle signal notifications.
         Example: qt_signals_setLifecycle(enabled=True)
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.signals.setLifecycle", {"enabled": enabled})
 
@@ -236,7 +236,7 @@ def register_native_tools(mcp: FastMCP) -> None:
 
         Example: qt_events_startCapture()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.events.startCapture")
 
@@ -248,7 +248,7 @@ def register_native_tools(mcp: FastMCP) -> None:
 
         Example: qt_events_stopCapture()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.events.stopCapture")
 
@@ -264,7 +264,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Click on a widget, optionally specifying button and position.
         Example: qt_ui_click(objectId="submitButton")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {"objectId": objectId}
         if button is not None:
@@ -283,7 +283,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Send key input to a widget (text or key sequence).
         Example: qt_ui_sendKeys(objectId="lineEdit", text="hello")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {"objectId": objectId}
         if text is not None:
@@ -302,7 +302,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Capture a screenshot of a widget as base64 PNG.
         Example: qt_ui_screenshot(objectId="MainWindow")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {"objectId": objectId}
         if fullWindow is not None:
@@ -316,7 +316,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Get the geometry (position, size) of a widget.
         Example: qt_ui_geometry(objectId="MainWindow")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.ui.geometry", {"objectId": objectId})
 
@@ -325,7 +325,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Find the widget at the given screen coordinates.
         Example: qt_ui_hitTest(x=100, y=200)
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.ui.hitTest", {"x": x, "y": y})
 
@@ -336,7 +336,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Register a friendly name for an object path.
         Example: qt_names_register(name="submit", path="MainWindow.centralWidget.submitBtn")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.names.register", {"name": name, "path": path})
 
@@ -345,7 +345,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Remove a registered name.
         Example: qt_names_unregister(name="submit")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.names.unregister", {"name": name})
 
@@ -354,7 +354,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """List all registered friendly names.
         Example: qt_names_list()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.names.list")
 
@@ -363,7 +363,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Validate that all registered names still resolve.
         Example: qt_names_validate()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.names.validate")
 
@@ -372,7 +372,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Load name registrations from a file.
         Example: qt_names_load(filePath="names.json")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.names.load", {"filePath": filePath})
 
@@ -383,7 +383,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Inspect QML-specific properties and bindings of an object.
         Example: qt_qml_inspect(objectId="qmlRoot")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.qml.inspect", {"objectId": objectId})
 
@@ -394,7 +394,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """List all QAbstractItemModel instances in the application.
         Example: qt_models_list()
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.models.list")
 
@@ -403,7 +403,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Get metadata about a model (row/column counts, role names).
         Example: qt_models_info(objectId="tableModel")
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         return await require_probe().call("qt.models.info", {"objectId": objectId})
 
@@ -420,7 +420,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """Read data from a model with optional row/column/role filtering and pagination.
         Example: qt_models_data(objectId="tableModel", row=0, column=1)
         """
-        from qtmcp.server import require_probe
+        from qtpilot.server import require_probe
 
         params: dict = {"objectId": objectId}
         if row is not None:

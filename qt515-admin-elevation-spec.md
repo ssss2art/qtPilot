@@ -2,7 +2,7 @@
 
 ## Context
 
-QtMcp needs two capabilities:
+qtPilot needs two capabilities:
 
 1. **Qt 5.15.1 local build/test** — Developers need to easily build and test against Qt 5.15.1 locally. The compat layer and CMake infrastructure already support Qt 5.15.1+, but there are no developer-facing presets or documented workflows for targeting it specifically.
 
@@ -15,7 +15,7 @@ QtMcp needs two capabilities:
 ### 1.1 Problem
 
 - CI tests Qt 5.15.2, not 5.15.1 exactly
-- No CMake preset exists for Qt 5 builds — developers must manually pass `-DQTMCP_QT_DIR=...`
+- No CMake preset exists for Qt 5 builds — developers must manually pass `-DQTPILOT_QT_DIR=...`
 - Qt 5.15.1 has subtle API differences from 5.15.2 (e.g., `QStringView::toInt()` unavailable, already fixed in c73ba39)
 - Private header detection may need fallback scanning for 5.15.1's directory layout
 
@@ -24,14 +24,14 @@ QtMcp needs two capabilities:
 - `src/compat/` handles Qt 5/6 API differences (QMetaType, mouse events, QVariant)
 - `CMakeLists.txt` enforces `Qt >= 5.15.1` minimum (lines 167-169)
 - Private header fallback scanning handles mismatched version directories (lines 118-148)
-- Binary names include Qt version tag: `qtmcp-probe-qt5.15.dll`
+- Binary names include Qt version tag: `qtPilot-probe-qt5.15.dll`
 - `--qt-version` flag on launcher filters probe by version
 
 ### 1.3 Changes Required
 
 #### CMakePresets.json — Add Qt 5 presets
 
-Add two new presets that mirror the existing ones but include a `QTMCP_QT_DIR` cache variable hint:
+Add two new presets that mirror the existing ones but include a `QTPILOT_QT_DIR` cache variable hint:
 
 ```json
 {
@@ -40,7 +40,7 @@ Add two new presets that mirror the existing ones but include a `QTMCP_QT_DIR` c
   "description": "Windows Release build targeting Qt 5.15.x",
   "inherits": "windows-release",
   "cacheVariables": {
-    "QTMCP_QT_DIR": {
+    "QTPILOT_QT_DIR": {
       "type": "PATH",
       "value": ""
     }
@@ -52,7 +52,7 @@ Add two new presets that mirror the existing ones but include a `QTMCP_QT_DIR` c
   "description": "Release build targeting Qt 5.15.x",
   "inherits": "release",
   "cacheVariables": {
-    "QTMCP_QT_DIR": {
+    "QTPILOT_QT_DIR": {
       "type": "PATH",
       "value": ""
     }
@@ -63,7 +63,7 @@ Add two new presets that mirror the existing ones but include a `QTMCP_QT_DIR` c
 Developer usage:
 ```bash
 # Point at your Qt 5.15.1 installation
-cmake --preset qt5-windows-release -DQTMCP_QT_DIR=C:/Qt/5.15.1/msvc2019_64
+cmake --preset qt5-windows-release -DQTPILOT_QT_DIR=C:/Qt/5.15.1/msvc2019_64
 cmake --build --preset qt5-windows-release
 ctest --preset qt5-windows-release
 ```
@@ -74,7 +74,7 @@ When building against Qt 5.15.1, verify:
 
 - [ ] CMake configures successfully and finds Qt 5.15.1
 - [ ] Private headers are detected (fallback scanning if needed)
-- [ ] Probe DLL compiles and links: `qtmcp-probe-qt5.15.dll`
+- [ ] Probe DLL compiles and links: `qtPilot-probe-qt5.15.dll`
 - [ ] Launcher compiles and links
 - [ ] All 13 unit tests pass
 - [ ] test_app launches and probe connects via WebSocket
@@ -95,7 +95,7 @@ The current launcher has no elevation support — `CreateProcessW` cannot create
 **Approach:** When `--run-as-admin` is passed, the launcher re-launches itself as admin using `ShellExecuteEx` + `runas`. The elevated instance then runs the normal injection flow.
 
 ```
-User runs:  qtmcp-launch --run-as-admin --port 9222 test_app.exe
+User runs:  qtpilot-launch --run-as-admin --port 9222 test_app.exe
 
   [non-elevated launcher]
        |
@@ -104,7 +104,7 @@ User runs:  qtmcp-launch --run-as-admin --port 9222 test_app.exe
        |
        no
        v
-  ShellExecuteEx(runas, "qtmcp-launch",
+  ShellExecuteEx(runas, "qtpilot-launch",
       "--elevated --port 9222 test_app.exe")
        |
        v
@@ -154,7 +154,7 @@ New file: `src/launcher/elevation_windows.cpp`
 #include <Windows.h>
 #include <shellapi.h>
 
-namespace qtmcp {
+namespace qtpilot {
 
 bool isProcessElevated() {
     BOOL elevated = FALSE;
@@ -203,7 +203,7 @@ int relaunchElevated(const QString& executable, const QStringList& args) {
     return static_cast<int>(exitCode);
 }
 
-}  // namespace qtmcp
+}  // namespace qtpilot
 ```
 
 #### main.cpp — Elevation entry point
@@ -213,11 +213,11 @@ Before building `LaunchOptions`, add:
 ```cpp
 #ifdef Q_OS_WIN
 if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
-    if (qtmcp::isProcessElevated()) {
+    if (qtpilot::isProcessElevated()) {
         // Already elevated, proceed normally
     } else {
         // Re-launch self as admin
-        return qtmcp::relaunchElevated(
+        return qtpilot::relaunchElevated(
             QCoreApplication::applicationFilePath(),
             QCoreApplication::arguments().mid(1));  // skip argv[0]
     }
@@ -232,7 +232,7 @@ if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
 - `PATH` -- required for Qt DLL resolution
 - `QT_PLUGIN_PATH` -- required for Qt platform plugins (e.g., `qwindows.dll`)
 - `QT_QPA_PLATFORM_PLUGIN_PATH` -- alternative plugin path variable
-- `QTMCP_PORT`, `QTMCP_MODE`, `QTMCP_INJECT_CHILDREN`, `QTMCP_ENABLED`, `QTMCP_DISCOVERY_PORT` -- probe configuration
+- `QTPILOT_PORT`, `QTPILOT_MODE`, `QTPILOT_INJECT_CHILDREN`, `QTPILOT_ENABLED`, `QTPILOT_DISCOVERY_PORT` -- probe configuration
 
 ### 2.5 Error Handling
 
@@ -248,7 +248,7 @@ if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
 
 On Linux, `--run-as-admin` prints a warning and is ignored. Users should use `sudo` or `pkexec` externally:
 ```bash
-sudo qtmcp-launch --port 9222 target_app
+sudo qtpilot-launch --port 9222 target_app
 ```
 
 ---
@@ -273,7 +273,7 @@ private slots:
     void initTestCase() {
         // Skip entire test if not running elevated
 #ifdef Q_OS_WIN
-        if (!qtmcp::isProcessElevated())
+        if (!qtpilot::isProcessElevated())
             QSKIP("Test requires administrator privileges - run from elevated terminal");
 #else
         if (geteuid() != 0)
@@ -297,7 +297,7 @@ private slots:
         //    Wait up to 10 seconds for probe to announce
         QUdpSocket udp;
         udp.bind(QHostAddress::Any, 0);
-        // ... listen for QTMCP discovery broadcast ...
+        // ... listen for QTPILOT discovery broadcast ...
 
         // 3. Connect to probe's WebSocket
         QWebSocket ws;
@@ -325,11 +325,11 @@ private slots:
 
 ```cmake
 # tests/CMakeLists.txt — add at end
-qtmcp_add_test(NAME test_admin_injection
+qtPilot_add_test(NAME test_admin_injection
     SOURCES test_admin_injection.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
          Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
-    ENV "QTMCP_ENABLED=0")
+    ENV "QTPILOT_ENABLED=0")
 
 # Label so it can be targeted/excluded:  ctest -L admin  or  ctest -LE admin
 set_tests_properties(test_admin_injection PROPERTIES LABELS "admin")
@@ -379,7 +379,7 @@ ctest --test-dir build -C Release -LE admin --output-on-failure
 - Add a section on launching elevated/admin apps:
   ```bash
   # Launch a target app that requires administrator privileges
-  qtmcp-launch --run-as-admin --port 9222 MyAdminApp.exe
+  qtpilot-launch --run-as-admin --port 9222 MyAdminApp.exe
   ```
 - Document the UAC prompt behavior and what happens when cancelled
 - Add note that on Linux, use `sudo` instead of `--run-as-admin`
@@ -388,7 +388,7 @@ ctest --test-dir build -C Release -LE admin --output-on-failure
 
 - Add Qt 5.15.1 local build instructions using the new presets:
   ```bash
-  cmake --preset qt5-windows-release -DQTMCP_QT_DIR=C:/Qt/5.15.1/msvc2019_64
+  cmake --preset qt5-windows-release -DQTPILOT_QT_DIR=C:/Qt/5.15.1/msvc2019_64
   cmake --build --preset qt5-windows-release
   ctest --preset qt5-windows-release
   ```

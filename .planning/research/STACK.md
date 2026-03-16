@@ -1,6 +1,6 @@
 # Technology Stack: Distribution, CI/CD & Packaging
 
-**Project:** QtMCP - Distribution Milestone
+**Project:** qtPilot - Distribution Milestone
 **Researched:** 2026-02-01
 **Overall Confidence:** HIGH (verified against current GitHub Action repos, official docs, PyPI)
 
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This document covers the stack additions needed to distribute QtMCP as a multi-Qt-version library with CI/CD, vcpkg packaging, PyPI publishing, and GitHub Releases automation. The existing build system (CMake 3.16+, vcpkg manifest, CMakePresets.json) provides a solid foundation but needs several upgrades and additions.
+This document covers the stack additions needed to distribute qtPilot as a multi-Qt-version library with CI/CD, vcpkg packaging, PyPI publishing, and GitHub Releases automation. The existing build system (CMake 3.16+, vcpkg manifest, CMakePresets.json) provides a solid foundation but needs several upgrades and additions.
 
 Key constraints driving decisions:
 1. **Qt ABI incompatibility across minors** -- probe DLL/SO must be compiled per Qt version (5.15, 6.2, 6.8, 6.9)
@@ -112,7 +112,7 @@ strategy:
 1. **GitHub Packages NuGet feed** (recommended by Microsoft) -- uses `GITHUB_TOKEN`, stores built packages in GitHub Packages
 2. **lukka/run-vcpkg@v11** built-in caching -- caches the vcpkg executable and build trees via GitHub Actions cache
 
-**Recommendation: Use lukka/run-vcpkg@v11 with its built-in caching.** Since QtMCP has minimal vcpkg deps (nlohmann-json, spdlog are optional), the caching complexity of NuGet feeds is not worth it. The built-in action cache is sufficient.
+**Recommendation: Use lukka/run-vcpkg@v11 with its built-in caching.** Since qtPilot has minimal vcpkg deps (nlohmann-json, spdlog are optional), the caching complexity of NuGet feeds is not worth it. The built-in action cache is sufficient.
 
 **Update the vcpkg commit ID.** The current CI uses `vcpkgGitCommitId: '2024.01.12'` which is over 2 years old. Use a recent baseline from the vcpkg repository.
 
@@ -143,11 +143,11 @@ env:
 
 ### Port Structure
 
-A vcpkg overlay port for QtMCP should live in a `ports/` directory in the repo (or a separate registry repo).
+A vcpkg overlay port for qtPilot should live in a `ports/` directory in the repo (or a separate registry repo).
 
 ```
 ports/
-  qtmcp/
+  qtpilot/
     portfile.cmake
     vcpkg.json
     usage              # Shown to user after install
@@ -157,11 +157,11 @@ ports/
 
 ```json
 {
-  "name": "qtmcp",
+  "name": "qtpilot",
   "version": "0.1.0",
   "port-version": 0,
   "description": "Qt application introspection and automation library with MCP integration",
-  "homepage": "https://github.com/ssss2art/QtMcp",
+  "homepage": "https://github.com/ssss2art/qtPilot",
   "license": "MIT",
   "dependencies": [
     "vcpkg-cmake",
@@ -183,7 +183,7 @@ ports/
 ```cmake
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO ssss2art/QtMcp
+    REPO ssss2art/qtPilot
     REF "v${VERSION}"
     SHA512 <hash>
     HEAD_REF main
@@ -192,12 +192,12 @@ vcpkg_from_github(
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
-        -DQTMCP_BUILD_TESTS=OFF
-        -DQTMCP_BUILD_TEST_APP=OFF
+        -DQTPILOT_BUILD_TESTS=OFF
+        -DQTPILOT_BUILD_TEST_APP=OFF
 )
 
 vcpkg_cmake_install()
-vcpkg_cmake_config_fixup(PACKAGE_NAME QtMCP CONFIG_PATH lib/cmake/QtMCP)
+vcpkg_cmake_config_fixup(PACKAGE_NAME qtPilot CONFIG_PATH lib/cmake/qtPilot)
 vcpkg_copy_pdbs()
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
@@ -214,14 +214,14 @@ set(QT_MAJOR_VERSION "" CACHE STRING "Qt major version to use (5 or 6)")
 
 if(VCPKG_TARGET_IS_WINDOWS)
     vcpkg_download_distfile(ARCHIVE
-        URLS "https://github.com/ssss2art/QtMcp/releases/download/v${VERSION}/qtmcp-${VERSION}-windows-qt${QT_MAJOR_VERSION}.zip"
-        FILENAME "qtmcp-${VERSION}-windows-qt${QT_MAJOR_VERSION}.zip"
+        URLS "https://github.com/ssss2art/qtPilot/releases/download/v${VERSION}/qtpilot-${VERSION}-windows-qt${QT_MAJOR_VERSION}.zip"
+        FILENAME "qtpilot-${VERSION}-windows-qt${QT_MAJOR_VERSION}.zip"
         SHA512 <hash>
     )
 elseif(VCPKG_TARGET_IS_LINUX)
     vcpkg_download_distfile(ARCHIVE
-        URLS "https://github.com/ssss2art/QtMcp/releases/download/v${VERSION}/qtmcp-${VERSION}-linux-qt${QT_MAJOR_VERSION}.tar.gz"
-        FILENAME "qtmcp-${VERSION}-linux-qt${QT_MAJOR_VERSION}.tar.gz"
+        URLS "https://github.com/ssss2art/qtPilot/releases/download/v${VERSION}/qtpilot-${VERSION}-linux-qt${QT_MAJOR_VERSION}.tar.gz"
+        FILENAME "qtpilot-${VERSION}-linux-qt${QT_MAJOR_VERSION}.tar.gz"
         SHA512 <hash>
     )
 endif()
@@ -271,7 +271,7 @@ PyPI Trusted Publishers with OIDC is the modern standard. No `PYPI_TOKEN` secret
 
 **Setup steps:**
 1. On PyPI, go to project settings > Publishing > Add GitHub Actions as trusted publisher
-2. Configure: owner=`ssss2art`, repo=`QtMcp`, workflow=`release.yml`, environment=`pypi`
+2. Configure: owner=`ssss2art`, repo=`qtPilot`, workflow=`release.yml`, environment=`pypi`
 3. In workflow, set `permissions: id-token: write`
 
 ### pyproject.toml Additions
@@ -280,13 +280,13 @@ The existing `python/pyproject.toml` needs metadata additions for PyPI:
 
 ```toml
 [project]
-name = "qtmcp"
+name = "qtpilot"
 version = "0.1.0"
-description = "MCP server for controlling Qt applications via QtMCP probe"
+description = "MCP server for controlling Qt applications via qtPilot probe"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    {name = "QtMCP Contributors"}
+    {name = "qtPilot Contributors"}
 ]
 readme = "README.md"
 classifiers = [
@@ -306,22 +306,22 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ssss2art/QtMcp"
-Repository = "https://github.com/ssss2art/QtMcp"
-Issues = "https://github.com/ssss2art/QtMcp/issues"
+Homepage = "https://github.com/ssss2art/qtPilot"
+Repository = "https://github.com/ssss2art/qtPilot"
+Issues = "https://github.com/ssss2art/qtPilot/issues"
 
 [project.scripts]
-qtmcp = "qtmcp.cli:main"
+qtpilot = "qtpilot.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/qtmcp/**"]
+include = ["src/qtpilot/**"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/qtmcp"]
+packages = ["src/qtpilot"]
 ```
 
 ### Publish Workflow Snippet
@@ -334,7 +334,7 @@ publish-pypi:
   if: github.ref_type == 'tag'
   environment:
     name: pypi
-    url: https://pypi.org/p/qtmcp
+    url: https://pypi.org/p/qtpilot
   permissions:
     id-token: write  # Required for trusted publishing
   steps:
@@ -373,14 +373,14 @@ publish-pypi:
 Each CI matrix job uploads artifacts with a consistent naming scheme:
 
 ```
-qtmcp-{version}-{platform}-qt{qt_version}.{ext}
+qtpilot-{version}-{platform}-qt{qt_version}.{ext}
 ```
 
 Examples:
-- `qtmcp-0.1.0-windows-qt5.15.zip`
-- `qtmcp-0.1.0-windows-qt6.8.zip`
-- `qtmcp-0.1.0-linux-qt5.15.tar.gz`
-- `qtmcp-0.1.0-linux-qt6.8.tar.gz`
+- `qtpilot-0.1.0-windows-qt5.15.zip`
+- `qtpilot-0.1.0-windows-qt6.8.zip`
+- `qtpilot-0.1.0-linux-qt5.15.tar.gz`
+- `qtpilot-0.1.0-linux-qt6.8.tar.gz`
 
 ### Release Workflow Pattern
 
@@ -420,7 +420,7 @@ Each matrix build job uploads its artifacts separately:
 
 - uses: actions/upload-artifact@v4
   with:
-    name: qtmcp-${{ matrix.artifact-suffix }}
+    name: qtpilot-${{ matrix.artifact-suffix }}
     path: dist/
     retention-days: 5
 ```
@@ -435,14 +435,14 @@ The release job uses `actions/download-artifact@v4` with `merge-multiple: true` 
 
 The existing CMakeLists.txt has several issues for distribution:
 
-1. **QtMCPConfig.cmake.in hardcodes Qt5:** Line `find_dependency(Qt5 5.15 ...)` will fail for Qt6 consumers
+1. **qtPilotConfig.cmake.in hardcodes Qt5:** Line `find_dependency(Qt5 5.15 ...)` will fail for Qt6 consumers
 2. **cmake_minimum_required says 3.16 but presets say 3.16 too:** Should be 3.16 minimum (fine for Qt5/6)
 3. **No versionless target support:** Project uses explicit `Qt5::` / `Qt6::` branches everywhere
-4. **No Qt version in output filenames:** `qtmcp-probe.dll` is identical regardless of Qt version built against
+4. **No Qt version in output filenames:** `qtPilot-probe.dll` is identical regardless of Qt version built against
 
 ### Qt5/Qt6 Compatibility Patterns
 
-**Official Qt recommendation (from doc.qt.io):** Use `QT_VERSION_MAJOR` variable approach for supporting Qt < 5.15 versionless targets. Since QtMCP already does this, the pattern is correct. However, it should be streamlined.
+**Official Qt recommendation (from doc.qt.io):** Use `QT_VERSION_MAJOR` variable approach for supporting Qt < 5.15 versionless targets. Since qtPilot already does this, the pattern is correct. However, it should be streamlined.
 
 **Current approach (acceptable):**
 ```cmake
@@ -464,11 +464,11 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core CorePrivate Network 
 - It already works
 - `CorePrivate` handling differs between Qt5 and Qt6
 - Versionless targets have a pitfall: "Projects must not export targets that expose the versionless targets" (official Qt docs)
-- Since QtMCP exports CMake targets (`QtMCPTargets.cmake`), it MUST use versioned targets in exports
+- Since qtPilot exports CMake targets (`qtPilotTargets.cmake`), it MUST use versioned targets in exports
 
 ### Required CMake Fixes
 
-#### Fix 1: QtMCPConfig.cmake.in must be Qt-version-aware
+#### Fix 1: qtPilotConfig.cmake.in must be Qt-version-aware
 
 The current config hardcodes Qt5. It must detect which Qt version the consumer has:
 
@@ -477,26 +477,26 @@ The current config hardcodes Qt5. It must detect which Qt version the consumer h
 
 include(CMakeFindDependencyMacro)
 
-# Find the same Qt version that QtMCP was built against
-set(_QTMCP_QT_MAJOR_VERSION @QT_VERSION_MAJOR@)
+# Find the same Qt version that qtPilot was built against
+set(_QTPILOT_QT_MAJOR_VERSION @QT_VERSION_MAJOR@)
 
-if(_QTMCP_QT_MAJOR_VERSION EQUAL 6)
+if(_QTPILOT_QT_MAJOR_VERSION EQUAL 6)
     find_dependency(Qt6 @QT_MIN_VERSION_6@ COMPONENTS Core Widgets WebSockets)
 else()
     find_dependency(Qt5 @QT_MIN_VERSION_5@ COMPONENTS Core Widgets WebSockets)
 endif()
 
-# Optional dependencies (only if QtMCP was built with them)
-if(@QTMCP_HAS_NLOHMANN_JSON@)
+# Optional dependencies (only if qtPilot was built with them)
+if(@QTPILOT_HAS_NLOHMANN_JSON@)
     find_dependency(nlohmann_json)
 endif()
-if(@QTMCP_HAS_SPDLOG@)
+if(@QTPILOT_HAS_SPDLOG@)
     find_dependency(spdlog)
 endif()
 
-include("${CMAKE_CURRENT_LIST_DIR}/QtMCPTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/qtPilotTargets.cmake")
 
-check_required_components(QtMCP)
+check_required_components(qtPilot)
 ```
 
 #### Fix 2: Qt version in output filename
@@ -505,18 +505,18 @@ For distributing binaries built against different Qt versions, the output filena
 
 ```cmake
 # Encode Qt version in library name for binary distribution
-option(QTMCP_VERSIONED_OUTPUT "Include Qt version in output filename" OFF)
+option(QTPILOT_VERSIONED_OUTPUT "Include Qt version in output filename" OFF)
 
-if(QTMCP_VERSIONED_OUTPUT)
-    set_target_properties(qtmcp_probe PROPERTIES
-        OUTPUT_NAME "qtmcp-probe-qt${QT_VERSION_MAJOR}.${QT_VERSION_MINOR}"
+if(QTPILOT_VERSIONED_OUTPUT)
+    set_target_properties(qtPilot_probe PROPERTIES
+        OUTPUT_NAME "qtPilot-probe-qt${QT_VERSION_MAJOR}.${QT_VERSION_MINOR}"
     )
 endif()
 ```
 
-This produces: `qtmcp-probe-qt5.15.dll`, `qtmcp-probe-qt6.8.dll`, etc.
+This produces: `qtPilot-probe-qt5.15.dll`, `qtPilot-probe-qt6.8.dll`, etc.
 
-For CI builds: `-DQTMCP_VERSIONED_OUTPUT=ON`
+For CI builds: `-DQTPILOT_VERSIONED_OUTPUT=ON`
 For local dev: leave OFF (default) for simplicity.
 
 #### Fix 3: Install component separation
@@ -524,15 +524,15 @@ For local dev: leave OFF (default) for simplicity.
 Allow installing just the probe, just headers, or just CMake config:
 
 ```cmake
-install(TARGETS qtmcp_probe
-    EXPORT QtMCPTargets
+install(TARGETS qtPilot_probe
+    EXPORT qtPilotTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
 )
 
 install(DIRECTORY src/probe/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtmcp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtpilot
     COMPONENT Development
     FILES_MATCHING PATTERN "*.h"
 )

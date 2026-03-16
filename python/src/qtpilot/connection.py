@@ -1,4 +1,4 @@
-"""WebSocket + JSON-RPC client for communicating with the QtMCP probe."""
+"""WebSocket + JSON-RPC client for communicating with the qtPilot probe."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProbeError(Exception):
-    """Error returned by the QtMCP probe via JSON-RPC."""
+    """Error returned by the qtPilot probe via JSON-RPC."""
 
     def __init__(self, message: str, code: int = -1, data: object = None):
         super().__init__(message)
@@ -34,7 +34,7 @@ class ProbeError(Exception):
 
 
 class ProbeConnection:
-    """Manages a WebSocket connection to the QtMCP probe.
+    """Manages a WebSocket connection to the qtPilot probe.
 
     Sends JSON-RPC 2.0 requests and correlates responses by ID.
     """

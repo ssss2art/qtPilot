@@ -11,12 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 def register_status_resource(mcp: FastMCP) -> None:
-    """Register the qtmcp://status resource on the server."""
+    """Register the qtpilot://status resource on the server."""
 
-    @mcp.resource("qtmcp://status")
+    @mcp.resource("qtpilot://status")
     def probe_status() -> str:
         """Current probe connection status."""
-        from qtmcp.server import get_discovery, get_mode, get_probe
+        from qtpilot.server import get_discovery, get_mode, get_probe
 
         probe = get_probe()
         discovery = get_discovery()

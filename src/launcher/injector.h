@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Options for launching a target application with the probe.
 struct LaunchOptions {
@@ -21,7 +21,7 @@ struct LaunchOptions {
   bool runAsAdmin = false;      ///< If true, elevate to admin before launching (Windows only)
 };
 
-/// @brief Launch a target application with the QtMCP probe injected.
+/// @brief Launch a target application with the qtPilot probe injected.
 ///
 /// On Windows, this uses CreateRemoteThread to inject the probe DLL into
 /// the target process after creating it suspended.
@@ -32,4 +32,4 @@ struct LaunchOptions {
 /// @return Process ID on success, -1 on failure.
 qint64 launchWithProbe(const LaunchOptions& options);
 
-}  // namespace qtmcp
+}  // namespace qtPilot

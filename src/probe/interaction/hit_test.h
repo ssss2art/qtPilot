@@ -1,15 +1,15 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QJsonObject>
 #include <QPoint>
 #include <QWidget>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Widget geometry and hit testing utilities (UI-04, UI-05).
 ///
@@ -30,7 +30,7 @@ namespace qtmcp {
 ///   // Find deepest child at local position
 ///   QWidget* child = HitTest::childAt(parent, QPoint(50, 50));
 /// @endcode
-class QTMCP_EXPORT HitTest {
+class QTPILOT_EXPORT HitTest {
  public:
   /// @brief Get widget geometry in local and global coordinates (UI-04).
   /// @param widget Widget to query
@@ -63,4 +63,4 @@ class QTMCP_EXPORT HitTest {
   static QString widgetIdAt(const QPoint& globalPos);
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

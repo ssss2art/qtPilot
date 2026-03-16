@@ -1,8 +1,8 @@
-# QtMCP MVP Implementation Plan
+# qtPilot MVP Implementation Plan
 
 ## Executive Summary
 
-This document outlines the implementation plan for QtMCP MVP - a Qt application introspection and automation library with MCP (Model Context Protocol) integration for Claude AI.
+This document outlines the implementation plan for qtPilot MVP - a Qt application introspection and automation library with MCP (Model Context Protocol) integration for Claude AI.
 
 ### Scope Summary
 | Item | Decision |
@@ -22,7 +22,7 @@ This document outlines the implementation plan for QtMCP MVP - a Qt application 
 ## Project Structure
 
 ```
-QtMcp/
+qtPilot/
 ├── CMakeLists.txt                 # Root CMake configuration
 ├── CMakePresets.json              # CMake presets for Windows/Linux
 ├── vcpkg.json                     # vcpkg manifest
@@ -32,7 +32,7 @@ QtMcp/
 │       ├── release.yml            # Release builds
 │       └── codeql.yml             # Security scanning
 ├── cmake/
-│   ├── QtMcpConfig.cmake.in       # Package config template
+│   ├── qtPilotConfig.cmake.in       # Package config template
 │   ├── CompilerWarnings.cmake     # Compiler warning flags
 │   └── GoogleStyle.cmake          # Clang-format integration
 ├── src/
@@ -58,7 +58,7 @@ QtMcp/
 │   │   │   └── widget_tree.cpp
 │   │   ├── modes/
 │   │   │   ├── mode_interface.h    # Abstract mode interface
-│   │   │   ├── native_mode.h       # Native QtMCP API
+│   │   │   ├── native_mode.h       # Native qtPilot API
 │   │   │   ├── native_mode.cpp
 │   │   │   ├── computer_use_mode.h # Computer Use compatibility
 │   │   │   ├── computer_use_mode.cpp
@@ -82,7 +82,7 @@ QtMcp/
 │   │   └── process_injector.cpp
 │   └── mcp_server/                 # Python MCP server
 │       ├── pyproject.toml
-│       ├── qtmcp/
+│       ├── qtpilot/
 │       │   ├── __init__.py
 │       │   ├── server.py           # MCP server implementation
 │       │   ├── client.py           # WebSocket client to probe
@@ -132,7 +132,7 @@ QtMcp/
    ```json
    // vcpkg.json
    {
-     "name": "qtmcp",
+     "name": "qtpilot",
      "version": "0.1.0",
      "dependencies": [
        "nlohmann-json",
@@ -167,7 +167,7 @@ QtMcp/
 1. **Create probe library entry point**
    ```cpp
    // probe.h
-   namespace qtmcp {
+   namespace qtpilot {
 
    class Probe : public QObject {
      Q_OBJECT
@@ -181,13 +181,13 @@ QtMcp/
      std::unique_ptr<WebSocketServer> server_;
    };
 
-   }  // namespace qtmcp
+   }  // namespace qtpilot
    ```
 
 2. **Implement library initialization**
    - Linux: `__attribute__((constructor))` for auto-init
    - Windows: `DllMain` with `DLL_PROCESS_ATTACH`
-   - Environment variable config: `QTMCP_PORT`, `QTMCP_MODE`
+   - Environment variable config: `QTPILOT_PORT`, `QTPILOT_MODE`
 
 3. **Setup WebSocket server**
    - Use `QWebSocketServer` from Qt WebSockets module
@@ -615,7 +615,7 @@ QJsonObject Screenshot(const QString& object_id = "");
    ```
    src/mcp_server/
    ├── pyproject.toml
-   ├── qtmcp/
+   ├── qtpilot/
    │   ├── __init__.py
    │   ├── server.py
    │   ├── client.py
@@ -625,7 +625,7 @@ QJsonObject Screenshot(const QString& object_id = "");
 2. **Dependencies (pyproject.toml)**
    ```toml
    [project]
-   name = "qtmcp"
+   name = "qtpilot"
    version = "0.1.0"
    dependencies = [
      "mcp>=1.0.0",
@@ -639,7 +639,7 @@ QJsonObject Screenshot(const QString& object_id = "");
 #### Tasks:
 1. **Implement probe client**
    ```python
-   class QtMcpClient:
+   class qtPilotClient:
        def __init__(self, host: str = "localhost", port: int = 9999):
            self.uri = f"ws://{host}:{port}"
            self.ws = None
@@ -669,12 +669,12 @@ QJsonObject Screenshot(const QString& object_id = "");
    from mcp.server import Server
    from mcp.types import Tool, TextContent, ImageContent
 
-   server = Server("qtmcp")
-   client = QtMcpClient()
+   server = Server("qtpilot")
+   client = qtPilotClient()
 
    @server.list_tools()
    async def list_tools() -> list[Tool]:
-       mode = os.getenv("QTMCP_MODE", "all")
+       mode = os.getenv("QTPILOT_MODE", "all")
        tools = []
 
        if mode in ("native", "all"):
@@ -709,13 +709,13 @@ QJsonObject Screenshot(const QString& object_id = "");
    ```json
    {
      "mcpServers": {
-       "qtmcp": {
+       "qtpilot": {
          "command": "python",
-         "args": ["-m", "qtmcp.server"],
+         "args": ["-m", "qtpilot.server"],
          "env": {
-           "QTMCP_HOST": "localhost",
-           "QTMCP_PORT": "9999",
-           "QTMCP_MODE": "all"
+           "QTPILOT_HOST": "localhost",
+           "QTPILOT_PORT": "9999",
+           "QTPILOT_MODE": "all"
          }
        }
      }
@@ -970,9 +970,9 @@ jobs:
 - [ ] Claude Desktop integration guide
 
 ### Artifacts
-- [ ] Linux: `libqtmcp.so` probe library
-- [ ] Windows: `qtmcp.dll` + `qtmcp-launcher.exe`
-- [ ] Python: `qtmcp` package on PyPI (or installable)
+- [ ] Linux: `libqtpilot.so` probe library
+- [ ] Windows: `qtpilot.dll` + `qtPilot-launcher.exe`
+- [ ] Python: `qtpilot` package on PyPI (or installable)
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename the entire project from qtmcp/QtMCP to qtPilot across all layers (C++, Python, CMake, docs, GitHub).
+**Goal:** Rename the entire project from qtpilot/qtPilot to qtPilot across all layers (C++, Python, CMake, docs, GitHub).
 
 **Architecture:** Big-bang scripted rename — file/directory renames via `git mv`, then `sed` replacements in longest-match-first order with post-fixups for casing, followed by clean rebuild and full test verification.
 
@@ -17,46 +17,46 @@
 These are `git mv` operations that must happen before text replacement so that sed operates on the correct paths.
 
 **Files:**
-- Rename: `python/src/qtmcp/` -> `python/src/qtpilot/`
-- Rename: `cmake/qtmcp_inject_probe.cmake` -> `cmake/qtPilot_inject_probe.cmake`
-- Rename: `cmake/QtMCPConfig.cmake.in` -> `cmake/qtPilotConfig.cmake.in`
-- Rename: `qtmcp-specification.md` -> `qtPilot-specification.md`
-- Rename: `qtmcp-compatibility-modes.md` -> `qtPilot-compatibility-modes.md`
-- Rename: `qt515-tools/qtmcp-launcher.exe` -> `qt515-tools/qtPilot-launcher.exe`
-- Rename: `qt515-tools/qtmcp-probe.dll` -> `qt515-tools/qtPilot-probe.dll`
+- Rename: `python/src/qtpilot/` -> `python/src/qtpilot/`
+- Rename: `cmake/qtPilot_inject_probe.cmake` -> `cmake/qtPilot_inject_probe.cmake`
+- Rename: `cmake/qtPilotConfig.cmake.in` -> `cmake/qtPilotConfig.cmake.in`
+- Rename: `qtPilot-specification.md` -> `qtPilot-specification.md`
+- Rename: `qtPilot-compatibility-modes.md` -> `qtPilot-compatibility-modes.md`
+- Rename: `qt515-tools/qtPilot-launcher.exe` -> `qt515-tools/qtPilot-launcher.exe`
+- Rename: `qt515-tools/qtPilot-probe.dll` -> `qt515-tools/qtPilot-probe.dll`
 
 - [ ] **Step 1: Rename Python package directory**
 
 ```bash
-git mv python/src/qtmcp python/src/qtpilot
+git mv python/src/qtpilot python/src/qtpilot
 ```
 
 - [ ] **Step 2: Rename cmake files**
 
 ```bash
-git mv cmake/qtmcp_inject_probe.cmake cmake/qtPilot_inject_probe.cmake
-git mv cmake/QtMCPConfig.cmake.in cmake/qtPilotConfig.cmake.in
+git mv cmake/qtPilot_inject_probe.cmake cmake/qtPilot_inject_probe.cmake
+git mv cmake/qtPilotConfig.cmake.in cmake/qtPilotConfig.cmake.in
 ```
 
 - [ ] **Step 3: Rename root-level spec files**
 
 ```bash
-git mv qtmcp-specification.md qtPilot-specification.md
-git mv qtmcp-compatibility-modes.md qtPilot-compatibility-modes.md
+git mv qtPilot-specification.md qtPilot-specification.md
+git mv qtPilot-compatibility-modes.md qtPilot-compatibility-modes.md
 ```
 
 - [ ] **Step 4: Rename prebuilt binaries in qt515-tools**
 
 ```bash
-git mv qt515-tools/qtmcp-launcher.exe qt515-tools/qtPilot-launcher.exe
-git mv qt515-tools/qtmcp-probe.dll qt515-tools/qtPilot-probe.dll
+git mv qt515-tools/qtPilot-launcher.exe qt515-tools/qtPilot-launcher.exe
+git mv qt515-tools/qtPilot-probe.dll qt515-tools/qtPilot-probe.dll
 ```
 
 - [ ] **Step 5: Verify renames**
 
 ```bash
-# Should find zero files with qtmcp in their name (excluding build dirs and .git)
-find . -path ./.git -prune -o -path ./build -prune -o -path ./build_qt_dir_test -prune -o -path ./build_verify -prune -o -path ./node_modules -prune -o -path './python/dist' -prune -o -name '*qtmcp*' -not -name '*.jsonl' -print
+# Should find zero files with qtpilot in their name (excluding build dirs and .git)
+find . -path ./.git -prune -o -path ./build -prune -o -path ./build_qt_dir_test -prune -o -path ./build_verify -prune -o -path ./node_modules -prune -o -path './python/dist' -prune -o -name '*qtpilot*' -not -name '*.jsonl' -print
 ```
 
 Expected: No output (the `.jsonl` log files are runtime artifacts, excluded).
@@ -104,54 +104,54 @@ echo "Processing $(echo "$FILES" | wc -l) files..."
 echo "Phase 1: Ordered replacements..."
 
 # Rule 1-2: Filename references
-sed -i 's/qtmcp-specification/qtPilot-specification/g' $FILES
-sed -i 's/qtmcp-compatibility/qtPilot-compatibility/g' $FILES
+sed -i 's/qtPilot-specification/qtPilot-specification/g' $FILES
+sed -i 's/qtPilot-compatibility/qtPilot-compatibility/g' $FILES
 
 # Rule 3: CMake module/function
-sed -i 's/qtmcp_inject_probe/qtPilot_inject_probe/g' $FILES
+sed -i 's/qtPilot_inject_probe/qtPilot_inject_probe/g' $FILES
 
 # Rule 4-5: Binary names (hyphenated)
-sed -i 's/qtmcp-test-app/qtPilot-test-app/g' $FILES
-sed -i 's/qtmcp-launcher/qtPilot-launcher/g' $FILES
+sed -i 's/qtPilot-test-app/qtPilot-test-app/g' $FILES
+sed -i 's/qtPilot-launcher/qtPilot-launcher/g' $FILES
 
 # Rule 6-8: CMake targets (underscored)
-sed -i 's/qtmcp_test_app/qtPilot_test_app/g' $FILES
-sed -i 's/qtmcp_launcher/qtPilot_launcher/g' $FILES
-sed -i 's/qtmcp_add_test/qtPilot_add_test/g' $FILES
+sed -i 's/qtPilot_test_app/qtPilot_test_app/g' $FILES
+sed -i 's/qtPilot_launcher/qtPilot_launcher/g' $FILES
+sed -i 's/qtPilot_add_test/qtPilot_add_test/g' $FILES
 
 # Rule 9-11: Probe and shared targets
-sed -i 's/qtmcp-probe/qtPilot-probe/g' $FILES
-sed -i 's/qtmcp_probe/qtPilot_probe/g' $FILES
-sed -i 's/qtmcp_shared/qtPilot_shared/g' $FILES
+sed -i 's/qtPilot-probe/qtPilot-probe/g' $FILES
+sed -i 's/qtPilot_probe/qtPilot_probe/g' $FILES
+sed -i 's/qtPilot_shared/qtPilot_shared/g' $FILES
 
 # Rule 12-13: Name map and log file prefix
-sed -i 's/qtmcp-names/qtPilot-names/g' $FILES
-sed -i 's/qtmcp-log-/qtPilot-log-/g' $FILES
+sed -i 's/qtPilot-names/qtPilot-names/g' $FILES
+sed -i 's/qtPilot-log-/qtPilot-log-/g' $FILES
 
 # Rule 14: Discovery protocol
-sed -i 's/qtmcp-discovery/qtPilot-discovery/g' $FILES
+sed -i 's/qtPilot-discovery/qtPilot-discovery/g' $FILES
 
 # Rule 15: UPPERCASE macros/env vars
-sed -i 's/QTMCP_/QTPILOT_/g' $FILES
+sed -i 's/QTPILOT_/QTPILOT_/g' $FILES
 
 # Rule 16-17: PascalCase display names
-sed -i 's/QtMCP/qtPilot/g' $FILES
-sed -i 's/QtMcp/qtPilot/g' $FILES
+sed -i 's/qtPilot/qtPilot/g' $FILES
+sed -i 's/qtPilot/qtPilot/g' $FILES
 
 # Rule 18: Middleware log prefix check
-sed -i 's/qtmcp_log_/qtpilot_log_/g' $FILES
+sed -i 's/qtpilot_log_/qtpilot_log_/g' $FILES
 
 # Rule 19: MCP tool names and CMake internal vars (underscore suffix)
-sed -i 's/qtmcp_/qtpilot_/g' $FILES
+sed -i 's/qtpilot_/qtpilot_/g' $FILES
 
 # Rule 20: Python imports and JSON-RPC methods (dot suffix)
-sed -i 's/qtmcp\./qtpilot./g' $FILES
+sed -i 's/qtpilot\./qtpilot./g' $FILES
 
 # Rule 21: Catch-all remaining lowercase
-sed -i 's/qtmcp/qtpilot/g' $FILES
+sed -i 's/qtpilot/qtpilot/g' $FILES
 
 # Rule 22: GitHub repo URLs (should already be handled by 17, but be explicit)
-sed -i 's|ssss2art/qtpilot|ssss2art/qtPilot|g' $FILES
+sed -i 's|ssss2art/qtPilot|ssss2art/qtPilot|g' $FILES
 
 echo "Phase 1 complete."
 
@@ -171,15 +171,15 @@ fi
 sed -i 's/\[qtpilot\]/[qtPilot]/g' $FILES
 
 # Binary output names in CMake and C++ source
-sed -i 's/qtpilot-probe/qtPilot-probe/g' $FILES
-sed -i 's/qtpilot-launcher/qtPilot-launcher/g' $FILES
-sed -i 's/qtpilot-test-app/qtPilot-test-app/g' $FILES
+sed -i 's/qtPilot-probe/qtPilot-probe/g' $FILES
+sed -i 's/qtPilot-launcher/qtPilot-launcher/g' $FILES
+sed -i 's/qtPilot-test-app/qtPilot-test-app/g' $FILES
 
 # .mcp.json server name
 sed -i 's/"qtpilot"/"qtPilot"/g' .mcp.json
 
 echo "Phase 2 complete."
-echo "Done! Run grep to verify no qtmcp references remain."
+echo "Done! Run grep to verify no qtpilot references remain."
 SCRIPT
 chmod +x rename.sh
 ```
@@ -198,14 +198,14 @@ Expected: Processes ~300+ files with no errors.
 rm rename.sh
 ```
 
-- [ ] **Step 4: Verify no qtmcp references remain**
+- [ ] **Step 4: Verify no qtpilot references remain**
 
 ```bash
-grep -ri "qtmcp" --include="*.cpp" --include="*.h" --include="*.py" --include="*.cmake" --include="*.toml" --include="*.json" --include="*.md" --include="*.in" --include="*.yml" --include="*.txt" --include="*.html" . \
-  | grep -v '\.git/' | grep -v '/build/' | grep -v 'build_qt_dir_test/' | grep -v 'build_verify/' | grep -v 'node_modules/' | grep -v 'python/dist/' | grep -v 'package-lock' | grep -v '\.jsonl' || echo "CLEAN - no qtmcp references found"
+grep -ri "qtpilot" --include="*.cpp" --include="*.h" --include="*.py" --include="*.cmake" --include="*.toml" --include="*.json" --include="*.md" --include="*.in" --include="*.yml" --include="*.txt" --include="*.html" . \
+  | grep -v '\.git/' | grep -v '/build/' | grep -v 'build_qt_dir_test/' | grep -v 'build_verify/' | grep -v 'node_modules/' | grep -v 'python/dist/' | grep -v 'package-lock' | grep -v '\.jsonl' || echo "CLEAN - no qtpilot references found"
 ```
 
-Expected: `CLEAN - no qtmcp references found`
+Expected: `CLEAN - no qtpilot references found`
 
 If any hits remain, fix them manually with targeted `sed` commands before proceeding.
 
@@ -224,13 +224,13 @@ rm -rf build
 - [ ] **Step 2: CMake configure**
 
 ```bash
-QT_DIR=$(cat build_qt_dir_test/CMakeCache.txt 2>/dev/null | grep "QTPILOT_QT_DIR\|QTMCP_QT_DIR" | head -1 | cut -d= -f2 || echo "")
+QT_DIR=$(cat build_qt_dir_test/CMakeCache.txt 2>/dev/null | grep "QTPILOT_QT_DIR\|QTPILOT_QT_DIR" | head -1 | cut -d= -f2 || echo "")
 # If QT_DIR is empty, check the old cache before it was deleted
 # You may need to set this manually to your Qt installation path
 cmake -B build -DQTPILOT_QT_DIR="$QT_DIR"
 ```
 
-Note: The CMake variable is now `QTPILOT_QT_DIR` (was `QTMCP_QT_DIR`). If configure fails because the Qt dir can't be found, set it explicitly: `cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64`
+Note: The CMake variable is now `QTPILOT_QT_DIR` (was `QTPILOT_QT_DIR`). If configure fails because the Qt dir can't be found, set it explicitly: `cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64`
 
 - [ ] **Step 3: Build**
 
@@ -303,7 +303,7 @@ Expected: Server name is `"qtPilot"`, command is `"qtpilot"`.
 
 ```bash
 grep -c "qtPilot" CLAUDE.md
-grep -c "qtmcp" CLAUDE.md
+grep -c "qtpilot" CLAUDE.md
 ```
 
 Expected: First grep returns many hits, second returns 0.
@@ -311,7 +311,7 @@ Expected: First grep returns many hits, second returns 0.
 - [ ] **Step 3: Verify CI workflow files**
 
 ```bash
-grep -c "qtmcp" .github/workflows/*.yml || echo "CLEAN"
+grep -c "qtpilot" .github/workflows/*.yml || echo "CLEAN"
 ```
 
 Expected: `CLEAN`
@@ -346,7 +346,7 @@ Verify the file count looks reasonable (~250+ files changed).
 
 ```bash
 git commit -m "$(cat <<'EOF'
-rename: qtmcp -> qtPilot across entire project
+rename: qtpilot -> qtPilot across entire project
 
 Breaking change: wire protocol identifiers, JSON-RPC method names,
 discovery protocol, CMake package name, and Python package name all
@@ -389,19 +389,19 @@ Expected: Both fetch and push URLs point to `ssss2art/qtPilot.git`.
 gh release create v2.0 --title "v2.0 - qtPilot" --notes "$(cat <<'EOF'
 ## Breaking: Project Renamed to qtPilot
 
-This release renames the entire project from QtMCP to qtPilot. This is a **breaking change** — old probes and new servers are not compatible.
+This release renames the entire project from qtPilot to qtPilot. This is a **breaking change** — old probes and new servers are not compatible.
 
 ### What Changed
-- C++ namespace: `qtmcp` -> `qtPilot`
-- Python package: `qtmcp` -> `qtpilot`
-- Binaries: `qtmcp-launcher` -> `qtPilot-launcher`, etc.
-- MCP tools: `qtmcp_*` -> `qtpilot_*`
-- Environment variables: `QTMCP_*` -> `QTPILOT_*`
-- Wire protocol: `qtmcp-discovery` -> `qtPilot-discovery`
-- CMake: `find_package(QtMCP)` -> `find_package(qtPilot)`
+- C++ namespace: `qtpilot` -> `qtPilot`
+- Python package: `qtpilot` -> `qtpilot`
+- Binaries: `qtPilot-launcher` -> `qtPilot-launcher`, etc.
+- MCP tools: `qtpilot_*` -> `qtpilot_*`
+- Environment variables: `QTPILOT_*` -> `QTPILOT_*`
+- Wire protocol: `qtPilot-discovery` -> `qtPilot-discovery`
+- CMake: `find_package(qtPilot)` -> `find_package(qtPilot)`
 
 ### Migration
-Replace all `qtmcp`/`QTMCP` references with the corresponding `qtpilot`/`qtPilot`/`QTPILOT` variant. See the naming convention table in the README for the exact mapping.
+Replace all `qtpilot`/`QTPILOT` references with the corresponding `qtpilot`/`qtPilot`/`QTPILOT` variant. See the naming convention table in the README for the exact mapping.
 EOF
 )"
 ```

@@ -6,9 +6,9 @@ import pytest
 
 from fastmcp import FastMCP
 
-from qtmcp.tools.native import register_native_tools
-from qtmcp.tools.cu import register_cu_tools
-from qtmcp.tools.chrome import register_chrome_tools
+from qtpilot.tools.native import register_native_tools
+from qtpilot.tools.cu import register_cu_tools
+from qtpilot.tools.chrome import register_chrome_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:

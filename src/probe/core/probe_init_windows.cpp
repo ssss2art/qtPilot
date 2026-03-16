@@ -1,7 +1,7 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
-// Windows DLL entry point for QtMCP probe.
+// Windows DLL entry point for qtPilot probe.
 //
 // CRITICAL: DllMain runs under the Windows loader lock. NEVER call Qt functions,
 // create threads, load libraries, or do any "real" work in DllMain.
@@ -9,7 +9,7 @@
 //
 // Initialization paths:
 // 1. Build-time linking / LD_PRELOAD: Q_COREAPP_STARTUP_FUNCTION fires automatically
-// 2. Runtime injection: launcher calls exported qtmcpProbeInit() via CreateRemoteThread
+// 2. Runtime injection: launcher calls exported qtpilotProbeInit() via CreateRemoteThread
 //
 // See: https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
 
@@ -39,7 +39,7 @@ wchar_t g_probeDllPath[MAX_PATH] = {};
 // SAFE to call Qt functions here.
 BOOL CALLBACK InitOnceCallback(PINIT_ONCE /*initOnce*/, PVOID /*param*/, PVOID* /*context*/) {
   // Now safe to use Qt
-  qtmcp::Probe::instance()->initialize();
+  qtPilot::Probe::instance()->initialize();
   return TRUE;
 }
 
@@ -48,11 +48,11 @@ BOOL CALLBACK InitOnceCallback(PINIT_ONCE /*initOnce*/, PVOID /*param*/, PVOID* 
 /// @brief Get the absolute path to the probe DLL.
 /// Filled during DLL_PROCESS_ATTACH; used by child_injector to know which
 /// DLL to inject into child processes.
-extern "C" __declspec(dllexport) const wchar_t* qtmcpGetProbeDllPath() {
+extern "C" __declspec(dllexport) const wchar_t* qtpilotGetProbeDllPath() {
   return g_probeDllPath;
 }
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Ensure the probe is initialized.
 ///
@@ -66,47 +66,47 @@ void ensureInitialized() {
   InitOnceExecuteOnce(&g_initOnce, InitOnceCallback, nullptr, nullptr);
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot
 
 // Automatic initialization hook using Q_COREAPP_STARTUP_FUNCTION.
 // This fires automatically when QCoreApplication starts for the build-time
-// linking case. For runtime injection, the launcher calls qtmcpProbeInit()
+// linking case. For runtime injection, the launcher calls qtpilotProbeInit()
 // which either inits immediately or registers via qAddPreRoutine().
 #include <QCoreApplication>
 
-static void qtmcpAutoInit() {
+static void qtpilotAutoInit() {
   // Check if probe is disabled via environment
-  QByteArray enabled = qgetenv("QTMCP_ENABLED");
+  QByteArray enabled = qgetenv("QTPILOT_ENABLED");
   if (enabled == "0") {
-    OutputDebugStringA("[QtMCP] Probe disabled via QTMCP_ENABLED=0\n");
+    OutputDebugStringA("[qtPilot] Probe disabled via QTPILOT_ENABLED=0\n");
     return;
   }
 
-  OutputDebugStringA("[QtMCP] qtmcpAutoInit — calling ensureInitialized()\n");
-  qtmcp::ensureInitialized();
+  OutputDebugStringA("[qtPilot] qtpilotAutoInit — calling ensureInitialized()\n");
+  qtPilot::ensureInitialized();
 }
 
 // Register the startup function with Qt (fallback for build-time linking)
-Q_COREAPP_STARTUP_FUNCTION(qtmcpAutoInit)
+Q_COREAPP_STARTUP_FUNCTION(qtpilotAutoInit)
 
 /// Explicit initialization entry point for runtime injection.
 /// Called by the launcher via CreateRemoteThread after LoadLibraryW completes.
 /// Has LPTHREAD_START_ROUTINE signature: DWORD WINAPI func(LPVOID).
-extern "C" __declspec(dllexport) DWORD WINAPI qtmcpProbeInit(LPVOID /*param*/) {
-  OutputDebugStringA("[QtMCP] qtmcpProbeInit() called by launcher\n");
+extern "C" __declspec(dllexport) DWORD WINAPI qtpilotProbeInit(LPVOID /*param*/) {
+  OutputDebugStringA("[qtPilot] qtpilotProbeInit() called by launcher\n");
 
   g_dllLoaded = true;
 
   if (QCoreApplication::instance()) {
     // QApp already exists (attached to running process) — init now
-    OutputDebugStringA("[QtMCP] QCoreApplication exists, initializing immediately\n");
-    qtmcp::ensureInitialized();
+    OutputDebugStringA("[qtPilot] QCoreApplication exists, initializing immediately\n");
+    qtPilot::ensureInitialized();
   } else {
     // QApp doesn't exist yet (suspended process) — register for later.
     // qAddPreRoutine calls the callback immediately if QApp exists,
     // otherwise adds to the list for QCoreApplication constructor to call.
-    OutputDebugStringA("[QtMCP] QCoreApplication not yet created, registering qAddPreRoutine\n");
-    qAddPreRoutine(qtmcpAutoInit);
+    OutputDebugStringA("[qtPilot] QCoreApplication not yet created, registering qAddPreRoutine\n");
+    qAddPreRoutine(qtpilotAutoInit);
   }
 
   return 0;
@@ -144,7 +144,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID reserved) {
       // not access any global data or call cleanup code.
       if (reserved == nullptr) {
         // Normal DLL unload - safe to cleanup
-        qtmcp::Probe::instance()->shutdown();
+        qtPilot::Probe::instance()->shutdown();
       }
       break;
 

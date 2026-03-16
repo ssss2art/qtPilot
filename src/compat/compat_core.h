@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -7,7 +7,7 @@
 #include <QMetaType>
 #include <QtGlobal>
 
-namespace qtmcp {
+namespace qtPilot {
 namespace compat {
 
 /// Returns the QMetaType ID for the given type name.
@@ -33,4 +33,4 @@ inline const char* methodParameterTypeName(const QMetaMethod& method, int index)
 }
 
 }  // namespace compat
-}  // namespace qtmcp
+}  // namespace qtPilot

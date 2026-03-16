@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
@@ -14,7 +14,7 @@
 #include "introspection/meta_inspector.h"
 #include "introspection/variant_json.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Test helper class with custom properties and signals
 class TestObject : public QObject {

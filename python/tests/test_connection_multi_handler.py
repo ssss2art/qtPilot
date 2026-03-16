@@ -21,14 +21,14 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {"objectId": "btn", "signal": "clicked"},
         })
         await asyncio.sleep(0.1)
 
         assert len(received_a) == 1
         assert len(received_b) == 1
-        assert received_a[0] == "qtmcp.signalEmitted"
+        assert received_a[0] == "qtpilot.signalEmitted"
 
     async def test_remove_handler(self, mock_probe):
         """Removed handler stops receiving notifications."""
@@ -40,7 +40,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -50,7 +50,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -74,7 +74,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -91,7 +91,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -109,7 +109,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)
@@ -134,7 +134,7 @@ class TestMultiNotificationHandlers:
 
         await mock_ws.inject_notification({
             "jsonrpc": "2.0",
-            "method": "qtmcp.signalEmitted",
+            "method": "qtpilot.signalEmitted",
             "params": {},
         })
         await asyncio.sleep(0.1)

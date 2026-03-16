@@ -1,15 +1,15 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include "core/probe.h"  // For QTMCP_EXPORT
+#include "core/probe.h"  // For QTPILOT_EXPORT
 
 #include <QHash>
 #include <QString>
 #include <Qt>
 
-namespace qtmcp {
+namespace qtPilot {
 
 /// @brief Result of parsing a key combination string.
 struct KeyCombo {
@@ -32,7 +32,7 @@ struct KeyCombo {
 ///   KeyCombo combo = KeyNameMapper::parseKeyCombo("ctrl+shift+s");
 ///   // combo.key == Qt::Key_S, combo.modifiers == Ctrl|Shift
 /// @endcode
-class QTMCP_EXPORT KeyNameMapper {
+class QTPILOT_EXPORT KeyNameMapper {
  public:
   /// @brief Resolve a single key name to Qt::Key.
   /// @param name Chrome/xdotool key name (case-insensitive)
@@ -55,4 +55,4 @@ class QTMCP_EXPORT KeyNameMapper {
   static const QHash<QString, Qt::KeyboardModifier>& modifierMap();
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot

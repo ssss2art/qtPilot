@@ -11,7 +11,7 @@ requires:
   - phase: 01-04
     provides: WebSocket server for JSON-RPC communication
 provides:
-  - qtmcp-launch CLI tool with platform-consistent interface
+  - qtpilot-launch CLI tool with platform-consistent interface
   - Windows DLL injection via CreateRemoteThread
   - Linux LD_PRELOAD injection via fork/exec
   - Automatic probe initialization via Q_COREAPP_STARTUP_FUNCTION
@@ -45,7 +45,7 @@ key-decisions:
   - "RAII HandleGuard class for automatic Windows handle cleanup"
 
 patterns-established:
-  - "Launcher CLI: qtmcp-launch --port X --detach --quiet target [args]"
+  - "Launcher CLI: qtpilot-launch --port X --detach --quiet target [args]"
   - "Windows injection: CREATE_SUSPENDED -> VirtualAllocEx -> WriteProcessMemory -> CreateRemoteThread -> ResumeThread"
   - "Linux injection: fork -> setenv LD_PRELOAD -> execvp"
   - "Auto-init: Q_COREAPP_STARTUP_FUNCTION triggers ensureInitialized() when Qt starts"
@@ -72,7 +72,7 @@ completed: 2026-01-30
 - Windows DLL injection using CreateRemoteThread with proper error handling
 - Linux LD_PRELOAD injection via fork/exec
 - Automatic probe initialization when Qt application starts (no manual triggering needed)
-- Port configuration passed via QTMCP_PORT environment variable
+- Port configuration passed via QTPILOT_PORT environment variable
 
 ## Task Commits
 
@@ -126,7 +126,7 @@ None - no external service configuration required.
 - Launcher and injection complete for both Windows and Linux
 - WebSocket server auto-starts when Qt application runs
 - Ready for Object Registry (01-06) to add object tracking
-- Full end-to-end testing: `qtmcp-launch target.exe` -> connect to `ws://localhost:9222` -> send JSON-RPC
+- Full end-to-end testing: `qtpilot-launch target.exe` -> connect to `ws://localhost:9222` -> send JSON-RPC
 
 ---
 *Phase: 01-foundation*

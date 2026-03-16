@@ -6,7 +6,7 @@
 
 ## Summary
 
-Phase 1 establishes the injection and transport foundation for QtMCP. The probe must load into any Qt application on Windows (via launcher with DLL injection) and Linux (via LD_PRELOAD), then expose a WebSocket server for JSON-RPC 2.0 communication.
+Phase 1 establishes the injection and transport foundation for qtPilot. The probe must load into any Qt application on Windows (via launcher with DLL injection) and Linux (via LD_PRELOAD), then expose a WebSocket server for JSON-RPC 2.0 communication.
 
 The primary technical challenges are Windows-specific: CRT mismatch, TLS corruption in injected DLLs, and loader lock deadlocks from DllMain. These are well-documented pitfalls with established solutions. Linux injection via LD_PRELOAD is straightforward in comparison.
 
@@ -74,7 +74,7 @@ src/
 │       └── jsonrpc_handler.cpp
 ├── launcher/
 │   ├── CMakeLists.txt
-│   ├── main.cpp              # qtmcp-launch CLI
+│   ├── main.cpp              # qtpilot-launch CLI
 │   └── process_launcher.cpp  # Platform-specific process launch + injection
 ```
 
@@ -111,11 +111,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID reserved) {
 // Called later, after Qt event loop is running
 BOOL CALLBACK InitOnceCallback(PINIT_ONCE, PVOID, PVOID*) {
     // SAFE: Now we can do real work
-    qtmcp::Probe::instance()->initialize();
+    qtpilot::Probe::instance()->initialize();
     return TRUE;
 }
 
-void qtmcp::ensureInitialized() {
+void qtpilot::ensureInitialized() {
     if (!g_dllLoaded) return;
     InitOnceExecuteOnce(&g_initOnce, InitOnceCallback, nullptr, nullptr);
 }
@@ -146,7 +146,7 @@ static void onLibraryLoad() {
     // This works because QCoreApplication::instance() may be null here
     if (QCoreApplication::instance()) {
         QTimer::singleShot(0, []() {
-            qtmcp::Probe::instance()->initialize();
+            qtpilot::Probe::instance()->initialize();
         });
     } else {
         // Qt not started yet - will need to hook startup
@@ -208,7 +208,7 @@ private:
 
 **What:** Launch target process suspended, inject DLL, then resume.
 
-**When to use:** The `qtmcp-launch.exe` launcher on Windows.
+**When to use:** The `qtpilot-launch.exe` launcher on Windows.
 
 **Why:** Clean injection before target's main() runs; no admin rights needed.
 
@@ -474,7 +474,7 @@ bool launchWithProbe(const QString& targetExe, const QStringList& args,
     }
 
     // Set configuration
-    env.insert("QTMCP_PORT", QString::number(port));
+    env.insert("QTPILOT_PORT", QString::number(port));
 
     process.setProcessEnvironment(env);
     process.setProgram(targetExe);
@@ -494,7 +494,7 @@ bool launchWithProbe(const QString& targetExe, const QStringList& args,
 
 #include <Windows.h>
 
-namespace qtmcp {
+namespace qtpilot {
     void ensureInitialized();  // Defined elsewhere, uses InitOnce
 }
 

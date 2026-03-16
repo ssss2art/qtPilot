@@ -161,12 +161,12 @@ class TestPhase2_2_RootCMakeLists:
         return content
 
     def test_no_clang_tidy_option(self, cmake):
-        assert "QTMCP_ENABLE_CLANG_TIDY" not in cmake, \
-            "QTMCP_ENABLE_CLANG_TIDY option should be removed"
+        assert "QTPILOT_ENABLE_CLANG_TIDY" not in cmake, \
+            "QTPILOT_ENABLE_CLANG_TIDY option should be removed"
 
     def test_no_deploy_qt_option(self, cmake):
-        assert "QTMCP_DEPLOY_QT" not in cmake, \
-            "QTMCP_DEPLOY_QT option should be removed"
+        assert "QTPILOT_DEPLOY_QT" not in cmake, \
+            "QTPILOT_DEPLOY_QT option should be removed"
 
     def test_no_windeployqt(self, cmake):
         assert "windeployqt" not in cmake.lower(), \
@@ -185,18 +185,18 @@ class TestPhase2_2_RootCMakeLists:
             "write_basic_package_version_file call should be removed"
 
     def test_flat_install_path(self, cmake):
-        # Should use "lib" not "lib/qtmcp/${QTMCP_QT_VERSION_TAG}"
+        # Should use "lib" not "lib/qtpilot/${QTPILOT_QT_VERSION_TAG}"
         assert '"lib"' in cmake or "'lib'" in cmake, \
             "Install path should be flat 'lib', not versioned"
-        assert "lib/qtmcp/" not in cmake, \
-            "Versioned lib/qtmcp/ path should be removed"
+        assert "lib/qtpilot/" not in cmake, \
+            "Versioned lib/qtpilot/ path should be removed"
 
     def test_has_qt_detection(self, cmake):
         assert "find_package(Qt6" in cmake
         assert "find_package(Qt5" in cmake
 
     def test_has_qt_version_tag(self, cmake):
-        assert "QTMCP_QT_VERSION_TAG" in cmake
+        assert "QTPILOT_QT_VERSION_TAG" in cmake
 
     def test_has_compiler_warnings(self, cmake):
         assert "-Wall" in cmake or "/W4" in cmake
@@ -209,9 +209,9 @@ class TestPhase2_2_RootCMakeLists:
         assert "add_subdirectory(src/launcher)" in cmake
         assert "add_subdirectory(tests)" in cmake
 
-    def test_no_qtmcp_deploy_qt_function(self, cmake):
-        assert "function(qtmcp_deploy_qt" not in cmake, \
-            "qtmcp_deploy_qt function definition should be removed"
+    def test_no_qtpilot_deploy_qt_function(self, cmake):
+        assert "function(qtpilot_deploy_qt" not in cmake, \
+            "qtpilot_deploy_qt function definition should be removed"
 
     def test_line_count_reduced(self, cmake):
         lines = len(cmake.strip().split("\n"))
@@ -229,13 +229,13 @@ class TestPhase2_3_TestsCMakeLists:
         return content
 
     def test_has_helper_function(self, cmake):
-        assert "function(qtmcp_add_test)" in cmake, \
-            "Should define qtmcp_add_test helper function"
+        assert "function(qtPilot_add_test)" in cmake, \
+            "Should define qtPilot_add_test helper function"
 
     def test_uses_helper_for_tests(self, cmake):
-        calls = re.findall(r"qtmcp_add_test\(", cmake)
+        calls = re.findall(r"qtPilot_add_test\(", cmake)
         assert len(calls) >= 13, \
-            f"Should have at least 13 qtmcp_add_test calls, found {len(calls)}"
+            f"Should have at least 13 qtPilot_add_test calls, found {len(calls)}"
 
     def test_all_test_names_present(self, cmake):
         expected_tests = [
@@ -293,11 +293,11 @@ class TestPhase2_4_ProbeCMakeLists:
             "spdlog conditional linking should be removed"
 
     def test_no_deploy_qt(self, cmake):
-        assert "qtmcp_deploy_qt" not in cmake, \
-            "qtmcp_deploy_qt call should be removed"
+        assert "qtpilot_deploy_qt" not in cmake, \
+            "qtpilot_deploy_qt call should be removed"
 
     def test_keeps_output_name_with_version_tag(self, cmake):
-        assert "qtmcp-probe-${QTMCP_QT_VERSION_TAG}" in cmake, \
+        assert "qtPilot-probe-${QTPILOT_QT_VERSION_TAG}" in cmake, \
             "OUTPUT_NAME should keep version tag"
 
 
@@ -311,13 +311,13 @@ class TestPhase2_5_LauncherCMakeLists:
         return content
 
     def test_no_deploy_qt(self, cmake):
-        assert "qtmcp_deploy_qt" not in cmake, \
-            "qtmcp_deploy_qt call should be removed"
+        assert "qtpilot_deploy_qt" not in cmake, \
+            "qtpilot_deploy_qt call should be removed"
 
     def test_output_name_is_just_launcher(self, cmake):
-        assert '"qtmcp-launcher"' in cmake, \
-            "Output name should be just 'qtmcp-launcher' (not versioned)"
-        assert "qtmcp-launch-${QTMCP_QT_VERSION_TAG}" not in cmake, \
+        assert '"qtPilot-launcher"' in cmake, \
+            "Output name should be just 'qtPilot-launcher' (not versioned)"
+        assert "qtpilot-launch-${QTPILOT_QT_VERSION_TAG}" not in cmake, \
             "Old versioned output name should be removed"
 
 
@@ -331,16 +331,16 @@ class TestPhase2_6_TestAppCMakeLists:
         return content
 
     def test_no_deploy_qt(self, cmake):
-        assert "qtmcp_deploy_qt" not in cmake, \
-            "qtmcp_deploy_qt call should be removed"
+        assert "qtpilot_deploy_qt" not in cmake, \
+            "qtpilot_deploy_qt call should be removed"
 
 
-class TestPhase2_7_QtMCPConfigCmake:
-    """Verify cmake/QtMCPConfig.cmake.in has been simplified."""
+class TestPhase2_7_qtPilotConfigCmake:
+    """Verify cmake/qtPilotConfig.cmake.in has been simplified."""
 
     @pytest.fixture
     def cmake(self):
-        content = read_file("cmake/QtMCPConfig.cmake.in")
+        content = read_file("cmake/qtPilotConfig.cmake.in")
         assert content is not None
         return content
 
@@ -356,13 +356,13 @@ class TestPhase2_7_QtMCPConfigCmake:
             "Debug variant detection for Linux should be removed"
 
     def test_flat_lib_path(self, cmake):
-        assert "lib/qtmcp/" not in cmake, \
-            "Versioned lib/qtmcp/ path should be removed"
+        assert "lib/qtpilot/" not in cmake, \
+            "Versioned lib/qtpilot/ path should be removed"
         # Should reference just lib/
-        assert '${QTMCP_PREFIX}/lib"' in cmake or "${QTMCP_PREFIX}/lib" in cmake
+        assert '${QTPILOT_PREFIX}/lib"' in cmake or "${QTPILOT_PREFIX}/lib" in cmake
 
     def test_has_imported_target(self, cmake):
-        assert "QtMCP::Probe" in cmake
+        assert "qtPilot::Probe" in cmake
 
     def test_has_include_dirs(self, cmake):
         assert "INTERFACE_INCLUDE_DIRECTORIES" in cmake
@@ -370,7 +370,7 @@ class TestPhase2_7_QtMCPConfigCmake:
     def test_line_count_reduced(self, cmake):
         lines = len(cmake.strip().split("\n"))
         assert lines < 140, \
-            f"QtMCPConfig.cmake.in should be ~80-125 lines, got {lines}"
+            f"qtPilotConfig.cmake.in should be ~80-125 lines, got {lines}"
 
 
 class TestPhase2_8_PyprojectToml:
@@ -501,7 +501,7 @@ class TestPhase3_2_NewReleaseWorkflow:
         assert "SHA256SUMS" in release or "sha256sum" in release
 
     def test_extracts_launcher(self, release):
-        assert "qtmcp-launcher" in release
+        assert "qtPilot-launcher" in release
 
 
 class TestPhase3_3_PublishPyPIKept:
@@ -527,7 +527,7 @@ class TestConsistency:
             "src/probe/CMakeLists.txt",
             "src/launcher/CMakeLists.txt",
             "test_app/CMakeLists.txt",
-            "cmake/QtMCPConfig.cmake.in",
+            "cmake/qtPilotConfig.cmake.in",
             ".github/workflows/ci.yml",
             ".github/workflows/release.yml",
         ]
@@ -538,7 +538,7 @@ class TestConsistency:
                     f"{f} should have no vcpkg references"
 
     def test_no_deploy_qt_anywhere(self):
-        """No qtmcp_deploy_qt calls in any CMakeLists."""
+        """No qtpilot_deploy_qt calls in any CMakeLists."""
         files_to_check = [
             "src/probe/CMakeLists.txt",
             "src/launcher/CMakeLists.txt",
@@ -547,8 +547,8 @@ class TestConsistency:
         for f in files_to_check:
             content = read_file(f)
             if content:
-                assert "qtmcp_deploy_qt" not in content, \
-                    f"{f} should have no qtmcp_deploy_qt calls"
+                assert "qtpilot_deploy_qt" not in content, \
+                    f"{f} should have no qtpilot_deploy_qt calls"
 
     def test_no_nlohmann_or_spdlog_anywhere(self):
         """No nlohmann_json or spdlog in any build file."""
@@ -605,7 +605,7 @@ class TestFileStatistics:
             assert lines < 150, f"tests/CMakeLists.txt has {lines} lines, target is ~60"
 
     def test_config_cmake_under_140_lines(self):
-        content = read_file("cmake/QtMCPConfig.cmake.in")
+        content = read_file("cmake/qtPilotConfig.cmake.in")
         if content:
             lines = len(content.strip().split("\n"))
-            assert lines < 140, f"QtMCPConfig.cmake.in has {lines} lines, target is ~80"
+            assert lines < 140, f"qtPilotConfig.cmake.in has {lines} lines, target is ~80"

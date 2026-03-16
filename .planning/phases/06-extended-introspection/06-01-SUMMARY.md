@@ -21,7 +21,7 @@ key-files:
     - src/probe/api/error_codes.h
 decisions:
   - id: qml-optional-dependency
-    description: "Qt Quick is optional — QTMCP_HAS_QML compile guard with inline stub fallbacks"
+    description: "Qt Quick is optional — QTPILOT_HAS_QML compile guard with inline stub fallbacks"
     rationale: "Build must succeed without Qt Quick installed; stubs return safe defaults"
   - id: qml-id-highest-priority
     description: "QML id takes highest priority in generateIdSegment(), above objectName"
@@ -52,7 +52,7 @@ QML introspection foundation with optional Qt Quick dependency, QmlItemInfo meta
 - `inspectQmlItem()`: extracts QML metadata via QQmlContext::nameForObject() and QQmlEngine::contextForObject()
 - `stripQmlPrefix()`: removes "QQuick" prefix from class names (e.g., "QQuickRectangle" -> "Rectangle")
 - `isQmlItem()`: quick check via qobject_cast<QQuickItem*>
-- Inline stub fallbacks when QTMCP_HAS_QML is not defined
+- Inline stub fallbacks when QTPILOT_HAS_QML is not defined
 
 ### QML-Aware Object ID Generation (object_id.cpp)
 - Priority order for QQuickItems: QML id > objectName > text > shortTypeName
@@ -61,9 +61,9 @@ QML introspection foundation with optional Qt Quick dependency, QmlItemInfo meta
 - serializeObjectInfo() and serializeTreeRecursive() include QML metadata fields
 
 ### CMake Changes
-- `find_package(Qt6 COMPONENTS Qml Quick QUIET)` with QTMCP_HAS_QML flag
-- Conditional `target_link_libraries(qtmcp_probe PUBLIC Qt6::Qml Qt6::Quick)`
-- `target_compile_definitions(qtmcp_probe PUBLIC QTMCP_HAS_QML)`
+- `find_package(Qt6 COMPONENTS Qml Quick QUIET)` with QTPILOT_HAS_QML flag
+- Conditional `target_link_libraries(qtPilot_probe PUBLIC Qt6::Qml Qt6::Quick)`
+- `target_compile_definitions(qtPilot_probe PUBLIC QTPILOT_HAS_QML)`
 - Same pattern for Qt5 fallback block
 - Configuration summary includes QML support status
 
@@ -73,7 +73,7 @@ QML introspection foundation with optional Qt Quick dependency, QmlItemInfo meta
 
 ## Decisions Made
 
-1. **Qt Quick as optional dependency** — QTMCP_HAS_QML compile guard wraps all QML code; inline stub functions return safe defaults (isQmlItem=false) when Qt Quick is not available.
+1. **Qt Quick as optional dependency** — QTPILOT_HAS_QML compile guard wraps all QML code; inline stub functions return safe defaults (isQmlItem=false) when Qt Quick is not available.
 
 2. **QML id as highest priority in ID generation** — QML ids are human-authored, stable identifiers that should take precedence over objectName for generating hierarchical paths.
 
@@ -87,7 +87,7 @@ None — plan executed exactly as written.
 
 - Build: zero errors (MSVC /W4 /WX)
 - Tests: 11/11 suites pass, zero regressions
-- QTMCP_HAS_QML detected correctly on system with Qt Quick installed
+- QTPILOT_HAS_QML detected correctly on system with Qt Quick installed
 - Compile guards present in qml_inspector.h, qml_inspector.cpp, object_id.cpp
 
 ## Next Phase Readiness

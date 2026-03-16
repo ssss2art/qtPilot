@@ -1,11 +1,11 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include <QtTest>
 
 #include "interaction/key_name_mapper.h"
 
-using namespace qtmcp;
+using namespace qtPilot;
 
 /// @brief Unit tests for KeyNameMapper: key name resolution and combo parsing.
 ///

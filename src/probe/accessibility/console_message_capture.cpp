@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "console_message_capture.h"
@@ -8,7 +8,7 @@
 #include <QMutexLocker>
 #include <QRegularExpression>
 
-namespace qtmcp {
+namespace qtPilot {
 
 Q_GLOBAL_STATIC(ConsoleMessageCapture, s_instance)
 
@@ -102,4 +102,4 @@ void ConsoleMessageCapture::clear() {
   m_messages.clear();
 }
 
-}  // namespace qtmcp
+}  // namespace qtPilot

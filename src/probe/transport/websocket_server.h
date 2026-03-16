@@ -1,4 +1,4 @@
-// Copyright (c) 2024 QtMCP Contributors
+// Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -10,21 +10,21 @@ class QWebSocketServer;
 class QWebSocket;
 
 // Export macro for Windows DLL
-#if defined(QTMCP_PROBE_LIBRARY)
+#if defined(QTPILOT_PROBE_LIBRARY)
 #if defined(_WIN32)
-#define QTMCP_EXPORT __declspec(dllexport)
+#define QTPILOT_EXPORT __declspec(dllexport)
 #else
-#define QTMCP_EXPORT __attribute__((visibility("default")))
+#define QTPILOT_EXPORT __attribute__((visibility("default")))
 #endif
 #else
 #if defined(_WIN32)
-#define QTMCP_EXPORT __declspec(dllimport)
+#define QTPILOT_EXPORT __declspec(dllimport)
 #else
-#define QTMCP_EXPORT
+#define QTPILOT_EXPORT
 #endif
 #endif
 
-namespace qtmcp {
+namespace qtPilot {
 
 class JsonRpcHandler;
 
@@ -37,7 +37,7 @@ class JsonRpcHandler;
 ///
 /// Messages received from the client are routed to a JsonRpcHandler for
 /// processing, and responses are sent back to the client.
-class QTMCP_EXPORT WebSocketServer : public QObject {
+class QTPILOT_EXPORT WebSocketServer : public QObject {
   Q_OBJECT
 
  public:
@@ -110,4 +110,4 @@ class QTMCP_EXPORT WebSocketServer : public QObject {
   quint16 m_port;
 };
 
-}  // namespace qtmcp
+}  // namespace qtPilot
