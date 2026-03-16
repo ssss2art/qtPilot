@@ -27,6 +27,8 @@ class SignalRelay : public QObject {
   SignalRelay(const QString& subId, const QString& objId, const QString& sigName, QObject* parent)
       : QObject(parent), m_subscriptionId(subId), m_objectId(objId), m_signalName(sigName) {}
 
+  void setObjectId(const QString& id) { m_objectId = id; }
+
  Q_SIGNALS:
   /// @brief Emitted when the monitored signal fires.
   void signalTriggered(const QJsonObject& notification);
@@ -62,6 +64,21 @@ SignalMonitor::SignalMonitor() : QObject(nullptr) {
           &SignalMonitor::onObjectAdded);
   connect(ObjectRegistry::instance(), &ObjectRegistry::objectRemoved, this,
           &SignalMonitor::onObjectRemoved);
+
+  // Update cached objectIds in subscriptions and relays when IDs are refreshed
+  connect(ObjectRegistry::instance(), &ObjectRegistry::objectIdChanged, this,
+          [this](QObject* obj, const QString& /*oldId*/, const QString& newId) {
+            QMutexLocker lock(&m_mutex);
+            for (auto it = m_subscriptions.begin(); it != m_subscriptions.end(); ++it) {
+              if (it->object.data() == obj) {
+                it->objectId = newId;
+                // Also update the relay so emitted notifications use the new ID
+                if (it->relay) {
+                  it->relay->setObjectId(newId);
+                }
+              }
+            }
+          });
 
   qDebug() << "[QtMCP] SignalMonitor created";
 }

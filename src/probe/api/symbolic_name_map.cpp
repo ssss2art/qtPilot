@@ -17,6 +17,20 @@ Q_GLOBAL_STATIC(SymbolicNameMap, s_symbolicNameMap)
 
 SymbolicNameMap::SymbolicNameMap() {
   autoLoad();
+
+  // Update stored paths when object IDs are refreshed.
+  // SymbolicNameMap is not a QObject, so use a functor connection
+  // via a QObject context that outlives us (the ObjectRegistry singleton).
+  auto* registry = ObjectRegistry::instance();
+  QObject::connect(registry, &ObjectRegistry::objectIdChanged, registry,
+                   [this](QObject* /*obj*/, const QString& oldId, const QString& newId) {
+                     QMutexLocker locker(&m_mutex);
+                     for (auto it = m_nameMap.begin(); it != m_nameMap.end(); ++it) {
+                       if (it.value() == oldId) {
+                         it.value() = newId;
+                       }
+                     }
+                   });
 }
 
 SymbolicNameMap* SymbolicNameMap::instance() {

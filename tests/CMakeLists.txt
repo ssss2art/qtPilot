@@ -88,6 +88,10 @@ qtmcp_add_test(NAME test_object_id SOURCES test_object_id.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+qtmcp_add_test(NAME test_object_id_refresh SOURCES test_object_id_refresh.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
+    ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
 qtmcp_add_test(NAME test_meta_inspector SOURCES test_meta_inspector.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTMCP_ENABLED=0;QT_QPA_PLATFORM=minimal")

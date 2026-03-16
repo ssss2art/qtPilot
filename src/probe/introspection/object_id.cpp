@@ -3,6 +3,7 @@
 
 #include "introspection/object_id.h"
 
+#include "core/object_registry.h"
 #include "introspection/qml_inspector.h"
 
 #include <QCoreApplication>
@@ -304,7 +305,7 @@ QJsonObject serializeObjectInfo(QObject* obj) {
     return result;
   }
 
-  result[QLatin1String("id")] = generateObjectId(obj);
+  result[QLatin1String("id")] = ObjectRegistry::instance()->objectId(obj);
   result[QLatin1String("className")] = QString::fromLatin1(obj->metaObject()->className());
 
   QString objectName = obj->objectName();

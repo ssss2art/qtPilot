@@ -29,9 +29,12 @@ namespace qtmcp {
 /// Usage: Call installObjectHooks() after QCoreApplication is created to
 /// start tracking objects. Call uninstallObjectHooks() before shutdown.
 ///
-/// Object IDs: Each tracked object gets a hierarchical ID computed at
-/// registration time. IDs follow the format "parent/child/grandchild" where
-/// segments prefer objectName, then text property, then ClassName#N.
+/// Object IDs: Each tracked object gets a hierarchical ID in the format
+/// "parent/child/grandchild" where segments prefer objectName, then text
+/// property, then ClassName#N. IDs are initially computed at registration
+/// time and automatically refreshed when objectName changes, so they stay
+/// human-readable once names are set post-construction. Stale IDs remain
+/// resolvable via an internal alias map for backward compatibility.
 class QTMCP_EXPORT ObjectRegistry : public QObject {
   Q_OBJECT
 
@@ -67,8 +70,8 @@ class QTMCP_EXPORT ObjectRegistry : public QObject {
 
   /// @brief Get the cached hierarchical ID for an object.
   ///
-  /// Returns the ID that was computed when the object was registered.
-  /// If the object isn't tracked (shouldn't happen), generates ID on-the-fly.
+  /// Returns the current cached ID, which is automatically refreshed when
+  /// objectName changes. If the object isn't tracked, generates ID on-the-fly.
   ///
   /// @param obj The object to get the ID for.
   /// @return The hierarchical ID string, or empty string if obj is null.
@@ -101,6 +104,12 @@ class QTMCP_EXPORT ObjectRegistry : public QObject {
   /// @note Emitted on the main thread via QueuedConnection.
   void objectRemoved(QObject* obj);
 
+  /// @brief Emitted when an object's cached ID is refreshed.
+  /// @param obj The object whose ID changed.
+  /// @param oldId The previous cached ID.
+  /// @param newId The new cached ID.
+  void objectIdChanged(QObject* obj, const QString& oldId, const QString& newId);
+
  private:
   // Hook callback friends - these are called from Qt's internal hooks
   // Note: These are global functions (not in namespace) for Qt hook compatibility
@@ -115,16 +124,28 @@ class QTMCP_EXPORT ObjectRegistry : public QObject {
   /// @param obj The object to unregister.
   void unregisterObject(QObject* obj);
 
+  /// @brief Recompute and update the cached ID for an object.
+  /// Called when objectName changes or after construction completes.
+  void refreshObjectId(QObject* obj);
+
+  /// @brief Refresh IDs for all descendants of an object.
+  /// Needed because child IDs include parent path segments.
+  void refreshDescendantIds(QObject* obj);
+
   /// @brief Set of tracked objects.
   QSet<QObject*> m_objects;
 
-  /// @brief Map from object pointer to its hierarchical ID.
-  /// IDs are computed once at registration time.
+  /// @brief Map from object pointer to its current hierarchical ID.
+  /// Refreshed automatically when objectName changes post-construction.
   QHash<QObject*, QString> m_objectToId;
 
   /// @brief Map from hierarchical ID to object pointer.
   /// Uses QPointer to safely detect deleted objects.
   QHash<QString, QPointer<QObject>> m_idToObject;
+
+  /// @brief Alias map from old (stale) IDs to current IDs.
+  /// Ensures backward compatibility when clients hold stale IDs.
+  QHash<QString, QString> m_oldToNewId;
 
   /// @brief Mutex for thread-safe access.
   /// Must be recursive because hook callbacks may nest.

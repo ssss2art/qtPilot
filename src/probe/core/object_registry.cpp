@@ -158,6 +158,24 @@ void ObjectRegistry::registerObject(QObject* obj) {
               return;
             }
           }
+          // Refresh ID now that construction is complete — objectName
+          // and parent are likely set by this point
+          refreshObjectId(obj);
+
+          // Connect to objectNameChanged to refresh cached ID when name
+          // changes post-construction. Done here (on main thread, after
+          // construction) rather than in the hook callback to avoid
+          // thread safety issues with cross-thread signal connections.
+          connect(obj, &QObject::objectNameChanged, this, [this, obj]() {
+            QMutexLocker lock(&m_mutex);
+            if (!m_objects.contains(obj)) {
+              return;
+            }
+            lock.unlock();
+            refreshObjectId(obj);
+            refreshDescendantIds(obj);
+          }, Qt::QueuedConnection);
+
           emit objectAdded(obj);
         },
         Qt::QueuedConnection);
@@ -183,6 +201,16 @@ void ObjectRegistry::unregisterObject(QObject* obj) {
     QString id = m_objectToId.take(obj);
     if (!id.isEmpty()) {
       m_idToObject.remove(id);
+
+      // Clean up alias entries that point to this object's current ID
+      auto aliasIt = m_oldToNewId.begin();
+      while (aliasIt != m_oldToNewId.end()) {
+        if (aliasIt.value() == id || aliasIt.key() == id) {
+          aliasIt = m_oldToNewId.erase(aliasIt);
+        } else {
+          ++aliasIt;
+        }
+      }
     }
   }
 
@@ -290,9 +318,89 @@ QObject* ObjectRegistry::findById(const QString& id) {
     m_idToObject.remove(id);
   }
 
+  // Check if this is a stale ID that was refreshed
+  auto aliasIt = m_oldToNewId.constFind(id);
+  if (aliasIt != m_oldToNewId.constEnd()) {
+    auto newIt = m_idToObject.constFind(aliasIt.value());
+    if (newIt != m_idToObject.constEnd()) {
+      QObject* obj = newIt.value().data();
+      if (obj) {
+        return obj;
+      }
+    }
+  }
+
   // Fall back to tree search using object_id module
   // This handles cases where ID wasn't cached (e.g., manual search)
   return findByObjectId(id);
+}
+
+void ObjectRegistry::refreshObjectId(QObject* obj) {
+  if (!obj) {
+    return;
+  }
+
+  QString oldId;
+  QString newId;
+
+  {
+    QMutexLocker lock(&m_mutex);
+    if (!m_objects.contains(obj)) {
+      return;
+    }
+
+    oldId = m_objectToId.value(obj);
+    newId = generateObjectId(obj);
+
+    if (oldId == newId) {
+      return;  // No change
+    }
+
+    // Handle collision on the new ID
+    if (m_idToObject.contains(newId)) {
+      QObject* existing = m_idToObject.value(newId).data();
+      if (existing && existing != obj) {
+        int suffix = 1;
+        QString uniqueId;
+        do {
+          uniqueId = newId + QStringLiteral("~") + QString::number(suffix++);
+        } while (m_idToObject.contains(uniqueId));
+        newId = uniqueId;
+      }
+    }
+
+    // Update maps
+    m_idToObject.remove(oldId);
+    m_objectToId.insert(obj, newId);
+    m_idToObject.insert(newId, QPointer<QObject>(obj));
+
+    // Store alias for backward compatibility. Also update any existing
+    // aliases that pointed to oldId so we don't need chain-following.
+    if (!oldId.isEmpty()) {
+      for (auto it = m_oldToNewId.begin(); it != m_oldToNewId.end(); ++it) {
+        if (it.value() == oldId) {
+          it.value() = newId;
+        }
+      }
+      m_oldToNewId.insert(oldId, newId);
+    }
+  }
+
+  // Emit outside the lock to avoid deadlocks in connected slots
+  if (QCoreApplication::instance()) {
+    emit objectIdChanged(obj, oldId, newId);
+  }
+}
+
+void ObjectRegistry::refreshDescendantIds(QObject* obj) {
+  if (!obj) {
+    return;
+  }
+
+  for (QObject* child : obj->children()) {
+    refreshObjectId(child);
+    refreshDescendantIds(child);
+  }
 }
 
 void ObjectRegistry::scanExistingObjects(QObject* root) {
@@ -324,6 +432,20 @@ void ObjectRegistry::scanExistingObjects(QObject* root) {
 
       m_objectToId.insert(root, id);
       m_idToObject.insert(id, QPointer<QObject>(root));
+
+      // Connect objectNameChanged for future name changes.
+      // scanExistingObjects runs on the main thread during Probe::initialize(),
+      // so we can connect directly without the queued indirection used by
+      // registerObject().
+      connect(root, &QObject::objectNameChanged, this, [this, root]() {
+        QMutexLocker lk(&m_mutex);
+        if (!m_objects.contains(root)) {
+          return;
+        }
+        lk.unlock();
+        refreshObjectId(root);
+        refreshDescendantIds(root);
+      }, Qt::QueuedConnection);
 
       // Don't emit signal for pre-existing objects to avoid noise
       // during initialization
