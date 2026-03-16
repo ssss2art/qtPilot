@@ -6,6 +6,7 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "test_app/**"
       - "CMakeLists.txt"
       - "cmake/**"
       - "CMakePresets.json"
@@ -84,6 +85,58 @@ jobs:
       - name: Install
         shell: bash
         run: cmake --install build/${{ matrix.preset }} --prefix install/${{ matrix.preset }}
+
+      - name: Bundle test app (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          PRESET="${{ matrix.preset }}"
+          # Resolve Qt prefix (same logic as Configure step)
+          if [ -n "$QT_ROOT_DIR" ]; then
+            QT_PATH="$QT_ROOT_DIR"
+          elif [ -n "$Qt6_DIR" ]; then
+            QT_PATH="$(cd "$Qt6_DIR/../../.." && pwd)"
+          elif [ -n "$Qt5_DIR" ]; then
+            QT_PATH="$(cd "$Qt5_DIR/../../.." && pwd)"
+          fi
+          mkdir -p "install/$PRESET/testapp"
+          cp "build/$PRESET/bin/Release/qtPilot-test-app.exe" "install/$PRESET/testapp/"
+          "$QT_PATH/bin/windeployqt.exe" --no-translations "install/$PRESET/testapp/qtPilot-test-app.exe"
+          echo "Test app bundle size:"
+          du -sh "install/$PRESET/testapp/"
+
+      - name: Bundle test app (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          PRESET="${{ matrix.preset }}"
+          QT_MAJOR=$(echo "${{ matrix.qt }}" | cut -c1)
+          if [ -n "$QT_ROOT_DIR" ]; then
+            QT_PATH="$QT_ROOT_DIR"
+          elif [ -n "$Qt6_DIR" ]; then
+            QT_PATH="$(cd "$Qt6_DIR/../../.." && pwd)"
+          elif [ -n "$Qt5_DIR" ]; then
+            QT_PATH="$(cd "$Qt5_DIR/../../.." && pwd)"
+          fi
+          mkdir -p "install/$PRESET/testapp/lib" "install/$PRESET/testapp/plugins/platforms"
+          cp "build/$PRESET/bin/qtPilot-test-app" "install/$PRESET/testapp/"
+          # Copy minimal Qt runtime
+          for lib in libQt${QT_MAJOR}Core.so* libQt${QT_MAJOR}Gui.so* libQt${QT_MAJOR}Widgets.so* libQt${QT_MAJOR}DBus.so* libQt${QT_MAJOR}XcbQpa.so* libicui18n.so* libicuuc.so* libicudata.so*; do
+            find "$QT_PATH/lib" -name "$lib" -exec cp {} "install/$PRESET/testapp/lib/" \; 2>/dev/null || true
+          done
+          cp "$QT_PATH/plugins/platforms/libqxcb.so" "install/$PRESET/testapp/plugins/platforms/" 2>/dev/null || true
+          cp "$QT_PATH/plugins/platforms/libqminimal.so" "install/$PRESET/testapp/plugins/platforms/" 2>/dev/null || true
+          # Create wrapper script
+          cat > "install/$PRESET/testapp/qtPilot-test-app.sh" << 'WRAPPER'
+          #!/bin/sh
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR/lib:$LD_LIBRARY_PATH"
+          export QT_PLUGIN_PATH="$DIR/plugins"
+          exec "$DIR/qtPilot-test-app" "$@"
+          WRAPPER
+          chmod +x "install/$PRESET/testapp/qtPilot-test-app.sh"
+          echo "Test app bundle size:"
+          du -sh "install/$PRESET/testapp/"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
