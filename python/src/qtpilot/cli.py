@@ -24,6 +24,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
             )
             return 1
         args.target = str(testapp)
+        # Set launcher path (lives next to probe, one level up from testapp/)
+        from qtpilot.download import get_launcher_filename
+        launcher = testapp.parent.parent / get_launcher_filename()
+        if launcher.exists() and not args.launcher_path:
+            args.launcher_path = str(launcher)
         # Add testapp dir to PATH so the launcher can find Qt DLLs
         testapp_dir = str(testapp.parent)
         os.environ["PATH"] = testapp_dir + os.pathsep + os.environ.get("PATH", "")
