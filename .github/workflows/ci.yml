@@ -40,6 +40,8 @@ jobs:
           - { qt: "6.8.0",  os: windows-latest, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
           - { qt: "6.9.0",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
           - { qt: "6.9.0",  os: windows-latest, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
+          - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
+          - { qt: "6.10.0", os: windows-latest, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
