@@ -101,7 +101,14 @@ jobs:
           fi
           mkdir -p "install/$PRESET/testapp"
           cp "build/$PRESET/bin/Release/qtPilot-test-app.exe" "install/$PRESET/testapp/"
+          # Copy launcher and probe into testapp so everything is self-contained
+          cp "install/$PRESET/bin/qtPilot-launcher.exe" "install/$PRESET/testapp/" 2>/dev/null || true
+          for f in "install/$PRESET/lib/"qtPilot-probe-*.dll; do
+            [ -f "$f" ] && cp "$f" "install/$PRESET/testapp/qtPilot-probe.dll"
+          done
+          # Run windeployqt on both test app and probe to capture all Qt deps (incl. WebSockets)
           "$QT_PATH/bin/windeployqt.exe" --no-translations "install/$PRESET/testapp/qtPilot-test-app.exe"
+          "$QT_PATH/bin/windeployqt.exe" --no-translations "install/$PRESET/testapp/qtPilot-probe.dll" 2>/dev/null || true
           echo "Test app bundle size:"
           du -sh "install/$PRESET/testapp/"
 
@@ -120,8 +127,13 @@ jobs:
           fi
           mkdir -p "install/$PRESET/testapp/lib" "install/$PRESET/testapp/plugins/platforms"
           cp "build/$PRESET/bin/qtPilot-test-app" "install/$PRESET/testapp/"
-          # Copy minimal Qt runtime
-          for lib in libQt${QT_MAJOR}Core.so* libQt${QT_MAJOR}Gui.so* libQt${QT_MAJOR}Widgets.so* libQt${QT_MAJOR}DBus.so* libQt${QT_MAJOR}XcbQpa.so* libicui18n.so* libicuuc.so* libicudata.so*; do
+          # Copy launcher and probe into testapp so everything is self-contained
+          cp "install/$PRESET/bin/qtPilot-launcher" "install/$PRESET/testapp/" 2>/dev/null || true
+          for f in "install/$PRESET/lib/"libqtPilot-probe-*.so; do
+            [ -f "$f" ] && cp "$f" "install/$PRESET/testapp/qtPilot-probe.so"
+          done
+          # Copy minimal Qt runtime (including WebSockets for the probe)
+          for lib in libQt${QT_MAJOR}Core.so* libQt${QT_MAJOR}Gui.so* libQt${QT_MAJOR}Widgets.so* libQt${QT_MAJOR}Network.so* libQt${QT_MAJOR}WebSockets.so* libQt${QT_MAJOR}DBus.so* libQt${QT_MAJOR}XcbQpa.so* libicui18n.so* libicuuc.so* libicudata.so*; do
             find "$QT_PATH/lib" -name "$lib" -exec cp {} "install/$PRESET/testapp/lib/" \; 2>/dev/null || true
           done
           cp "$QT_PATH/plugins/platforms/libqxcb.so" "install/$PRESET/testapp/plugins/platforms/" 2>/dev/null || true
