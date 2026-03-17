@@ -24,6 +24,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
             )
             return 1
         args.target = str(testapp)
+        # Add testapp dir to PATH so the launcher can find Qt DLLs
+        testapp_dir = str(testapp.parent)
+        os.environ["PATH"] = testapp_dir + os.pathsep + os.environ.get("PATH", "")
+        os.environ["QT_PLUGIN_PATH"] = testapp_dir
 
     # ws_url is None unless explicitly provided or a target is specified
     ws_url = None
