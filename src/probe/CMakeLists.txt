@@ -143,6 +143,11 @@ if(WIN32)
     target_link_libraries(qtPilot_probe PRIVATE qtPilot_shared detours)
 endif()
 
+# macOS: link CoreGraphics for CGPreflightScreenCaptureAccess (screenshot permission check)
+if(APPLE)
+    target_link_libraries(qtPilot_probe PRIVATE "-framework CoreGraphics")
+endif()
+
 # Platform-specific configurations
 if(UNIX AND NOT APPLE)
     find_package(X11)
