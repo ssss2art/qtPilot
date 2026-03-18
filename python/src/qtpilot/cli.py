@@ -24,15 +24,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
             )
             return 1
         args.target = str(testapp)
-        # Set launcher path (lives next to probe, one level up from testapp/)
+        # Use the self-contained launcher bundled inside testapp/
         from qtpilot.download import get_launcher_filename
-        launcher = testapp.parent.parent / get_launcher_filename()
+        launcher = testapp.parent / get_launcher_filename()
         if launcher.exists() and not args.launcher_path:
             args.launcher_path = str(launcher)
-        # Add testapp dir to PATH so the launcher can find Qt DLLs
-        testapp_dir = str(testapp.parent)
-        os.environ["PATH"] = testapp_dir + os.pathsep + os.environ.get("PATH", "")
-        os.environ["QT_PLUGIN_PATH"] = testapp_dir
 
     # ws_url is None unless explicitly provided or a target is specified
     ws_url = None
@@ -56,6 +52,58 @@ def cmd_serve(args: argparse.Namespace) -> int:
     )
     server.run()
     return 0
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    """One-command demo: download tools if needed, then launch."""
+    from qtpilot.download import (
+        ChecksumError,
+        DownloadError,
+        UnsupportedPlatformError,
+        VersionNotFoundError,
+        download_and_extract,
+        get_testapp_path,
+        latest_version,
+    )
+
+    output_dir = args.output
+    qt_version = args.qt_version or latest_version()
+
+    # Download if testapp not already present
+    testapp = get_testapp_path(output_dir=output_dir)
+    if testapp is None:
+        print(f"Downloading qtPilot tools for Qt {qt_version}...")
+        try:
+            download_and_extract(
+                qt_version=qt_version,
+                output_dir=output_dir,
+                verify=not args.no_verify,
+                arch=args.arch,
+            )
+        except (VersionNotFoundError, UnsupportedPlatformError, ChecksumError, DownloadError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        testapp = get_testapp_path(output_dir=output_dir)
+        if testapp is None:
+            print("Error: Test app not found after download.", file=sys.stderr)
+            return 1
+        print(f"Downloaded to: {testapp.parent}")
+
+    # Build a serve-compatible namespace and delegate
+    serve_args = argparse.Namespace(
+        mode="native",
+        ws_url=None,
+        target=None,
+        port=args.port,
+        launcher_path=None,
+        discovery_port=9221,
+        no_discovery=False,
+        qt_version=None,
+        qt_dir=None,
+        arch=args.arch,
+        demo=True,
+    )
+    return cmd_serve(serve_args)
 
 
 def cmd_download_tools(args: argparse.Namespace) -> int:
@@ -83,7 +131,7 @@ def cmd_download_tools(args: argparse.Namespace) -> int:
         testapp = get_testapp_path(output_dir=args.output)
         if testapp:
             print(f"Test app:           {testapp}")
-            print(f"\nRun 'qtpilot serve --demo' to try it out!")
+            print(f"\nRun 'qtpilot demo' to try it out!")
     except VersionNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         print(f"Available versions: {', '.join(sorted(AVAILABLE_VERSIONS))}", file=sys.stderr)
@@ -185,6 +233,52 @@ def create_parser() -> argparse.ArgumentParser:
         help="Launch the bundled test app (requires download-tools first)",
     )
     serve_parser.set_defaults(func=cmd_serve)
+
+    # --- demo subcommand ---
+    demo_parser = subparsers.add_parser(
+        "demo",
+        help="Download tools (if needed) and launch the bundled test app",
+        description=(
+            "One-command demo: downloads the qtPilot probe, launcher, and test app\n"
+            "if not already present, then starts the MCP server with the test app.\n\n"
+            "Example:\n"
+            "  qtpilot demo\n"
+            "  qtpilot demo --qt-version 6.5\n"
+            "  qtpilot demo --port 9333"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    demo_parser.add_argument(
+        "--qt-version",
+        default=None,
+        metavar="VERSION",
+        help="Qt version to download (default: latest available)",
+    )
+    demo_parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("QTPILOT_PORT", "9222")),
+        help="Port for the probe WebSocket (default: 9222)",
+    )
+    demo_parser.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        metavar="DIR",
+        help="Directory for downloaded tools (default: current directory)",
+    )
+    demo_parser.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Skip SHA256 checksum verification",
+    )
+    demo_parser.add_argument(
+        "--arch",
+        default=None,
+        choices=["x64", "x86"],
+        help="Target architecture (default: x64)",
+    )
+    demo_parser.set_defaults(func=cmd_demo)
 
     # --- download-tools subcommand ---
     download_parser = subparsers.add_parser(

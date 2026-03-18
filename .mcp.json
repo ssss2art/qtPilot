@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "qtPilot": {
+    "qtpilot": {
       "command": "qtpilot",
       "args": ["serve"]
     }

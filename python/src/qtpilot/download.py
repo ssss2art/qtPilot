@@ -36,6 +36,11 @@ AVAILABLE_VERSIONS = frozenset([
     "6.9",
 ])
 
+
+def latest_version() -> str:
+    """Return the highest non-patched Qt version available."""
+    return max(v for v in AVAILABLE_VERSIONS if not v.endswith("-patched"))
+
 # Supported architectures per platform
 WINDOWS_ARCHITECTURES = frozenset(["x64", "x86"])
 LINUX_ARCHITECTURES = frozenset(["x64", "x86"])

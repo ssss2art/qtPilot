@@ -57,9 +57,15 @@ _version.py
 dist/
 *.egg-info/
 
-# Claude Code local config
-.claude/
+# Claude Code - local settings (personal/machine-specific)
+**.claude/settings.local.json
 
+# Environment files 
+.env
+.env.*
+.env.local
+
+# Standard entries for your stack (Node, Python, etc.) still apply
 # Test output and artifacts
 stderr.txt
 stdout.txt
