@@ -36,6 +36,8 @@ jobs:
             # Determine platform from preset name
             if [[ "$basename" == *"windows"* ]]; then
               platform="windows"
+            elif [[ "$basename" == *"macos"* ]]; then
+              platform="macos"
             else
               platform="linux"
             fi
@@ -63,6 +65,13 @@ jobs:
               for f in "$dir"/bin/qtPilot-launcher*; do
                 [ -f "$f" ] && cp "$f" "$staging/qtPilot-launcher.exe"
               done
+            elif [ "$platform" = "macos" ]; then
+              for f in "$dir"/lib/libqtPilot-probe-*.dylib; do
+                [ -f "$f" ] && cp "$f" "$staging/qtPilot-probe.dylib"
+              done
+              for f in "$dir"/bin/qtPilot-launcher*; do
+                [ -f "$f" ] && cp "$f" "$staging/qtPilot-launcher"
+              done
             else
               for f in "$dir"/lib/libqtPilot-probe-*.so; do
                 [ -f "$f" ] && cp "$f" "$staging/qtPilot-probe.so"
@@ -85,12 +94,15 @@ jobs:
           for staging_dir in staging/*/; do
             tag_platform_arch=$(basename "$staging_dir")
             qt_tag=$(echo "$tag_platform_arch" | grep -oP '^qt[0-9]+\.[0-9]+(-patched)?')
-            platform=$(echo "$tag_platform_arch" | grep -oP '(windows|linux)')
+            platform=$(echo "$tag_platform_arch" | grep -oP '(windows|linux|macos)')
             arch=$(echo "$tag_platform_arch" | grep -oP '(x64|x86)$')
 
             if [ "$platform" = "windows" ]; then
               archive="qtpilot-${qt_tag}-${platform}-${arch}.zip"
               (cd "$staging_dir" && zip -r "../../release/$archive" .)
+            elif [ "$platform" = "macos" ]; then
+              archive="qtpilot-${qt_tag}-macos.tar.gz"
+              tar -czf "release/$archive" -C "$staging_dir" .
             else
               if [ "$arch" = "x86" ]; then
                 archive="qtpilot-${qt_tag}-${platform}-x86.tar.gz"

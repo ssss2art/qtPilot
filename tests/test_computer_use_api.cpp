@@ -189,18 +189,37 @@ QJsonObject TestComputerUseApi::callExpectError(const QString& method, const QJs
 // ========================================================================
 
 void TestComputerUseApi::testScreenshot() {
-  QJsonValue result = callResult("cu.screenshot", QJsonObject());
-  QVERIFY(result.isObject());
+  // On minimal/headless platforms or without screen capture permission,
+  // grabWindow() returns a null pixmap. The probe now throws (returning a
+  // JSON-RPC error) instead of crashing. Accept either outcome.
+  QJsonObject response = callRaw("cu.screenshot", QJsonObject());
 
-  QJsonObject obj = result.toObject();
+  if (response.contains("error")) {
+    // Error response — expected on minimal platform / no screen capture permission
+    QJsonObject error = response["error"].toObject();
+    QVERIFY(error.contains("message"));
+    QString msg = error["message"].toString();
+    QVERIFY2(msg.contains("null pixmap") || msg.contains("screen capture"),
+             qPrintable("Unexpected error: " + msg));
+    qWarning("Screenshot returned error (expected on minimal platform): %s", qPrintable(msg));
+    return;
+  }
+
+  // Success path
+  QJsonValue resultVal = response["result"];
+  QVERIFY(resultVal.isObject());
+
+  QJsonObject envelope = resultVal.toObject();
+  QJsonValue innerResult = envelope["result"];
+  QVERIFY(innerResult.isObject());
+
+  QJsonObject obj = innerResult.toObject();
 
   // Must have image, width, height keys in response
   QVERIFY(obj.contains("image"));
   QVERIFY(obj.contains("width"));
   QVERIFY(obj.contains("height"));
 
-  // On minimal platform, screen->grabWindow() may return a null pixmap,
-  // producing empty base64. Verify PNG content only when image is non-empty.
   QString image = obj["image"].toString();
   if (!image.isEmpty()) {
     QVERIFY(obj["width"].toInt() > 0);
@@ -450,11 +469,25 @@ void TestComputerUseApi::testTypeNoFocusedWidget() {
 void TestComputerUseApi::testIncludeScreenshot() {
   QPoint btnCenter = m_testButton->mapTo(m_testWindow, m_testButton->rect().center());
 
-  QJsonValue result = callResult(
+  // On minimal/headless platforms, the screenshot portion of include_screenshot
+  // may fail (null pixmap), causing the method to return an error. Accept either.
+  QJsonObject response = callRaw(
       "cu.click",
       QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}, {"include_screenshot", true}});
   QApplication::processEvents();
 
+  if (response.contains("error")) {
+    // Error from screenshot capture — expected on minimal platform
+    QString msg = response["error"].toObject()["message"].toString();
+    QVERIFY2(msg.contains("null pixmap") || msg.contains("screen capture"),
+             qPrintable("Unexpected error: " + msg));
+    qWarning("include_screenshot returned error (expected on minimal platform): %s",
+             qPrintable(msg));
+    return;
+  }
+
+  QJsonObject envelope = response["result"].toObject();
+  QJsonValue result = envelope["result"];
   QVERIFY(result.isObject());
   QJsonObject obj = result.toObject();
   QCOMPARE(obj["success"].toBool(), true);

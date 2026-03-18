@@ -31,6 +31,9 @@ QString findProbePath(const QString& qtVersion) {
 
 #ifdef Q_OS_WIN
   const QStringList globPatterns = {QStringLiteral("qtPilot-probe*.dll")};
+#elif defined(Q_OS_MACOS)
+  const QStringList globPatterns = {QStringLiteral("libqtPilot-probe*.dylib"),
+                                    QStringLiteral("qtPilot-probe*.dylib")};
 #else
   // Match both CMake build output (libqtPilot-probe*.so) and
   // archive-extracted probes (qtPilot-probe*.so)

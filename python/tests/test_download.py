@@ -55,12 +55,17 @@ class TestPlatformDetection:
         with mock.patch("qtpilot.download.sys.platform", "win32"):
             assert detect_platform() == "windows"
 
+    def test_darwin_platform_detection(self) -> None:
+        """darwin should return 'macos'."""
+        with mock.patch("qtpilot.download.sys.platform", "darwin"):
+            assert detect_platform() == "macos"
+
     def test_unsupported_platform_raises(self) -> None:
         """Unsupported platforms should raise UnsupportedPlatformError."""
-        with mock.patch("qtpilot.download.sys.platform", "darwin"):
+        with mock.patch("qtpilot.download.sys.platform", "freebsd"):
             with pytest.raises(UnsupportedPlatformError) as exc_info:
                 detect_platform()
-            assert "darwin" in str(exc_info.value)
+            assert "freebsd" in str(exc_info.value)
             assert "Supported platforms" in str(exc_info.value)
 
 

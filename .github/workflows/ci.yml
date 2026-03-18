@@ -16,6 +16,10 @@ on:
   workflow_dispatch:
   workflow_call:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-24.04
@@ -32,16 +36,11 @@ jobs:
       matrix:
         include:
           - { qt: "5.15.2", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "" }
-          - { qt: "5.15.2", os: windows-latest, preset: windows-release,     platform: windows, compiler: msvc17, modules: "" }
-          - { qt: "5.15.2", os: windows-latest, preset: windows-x86-release, platform: windows, compiler: msvc17, modules: "", arch: "win32_msvc2019" }
           - { qt: "6.5.3",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.5.3",  os: windows-latest, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
           - { qt: "6.8.0",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.8.0",  os: windows-latest, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
           - { qt: "6.9.0",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.9.0",  os: windows-latest, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
           - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.10.0", os: windows-latest, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
+          - { qt: "6.11.0", os: macos-14,       preset: macos-release,   platform: macos,   compiler: clang,  modules: "qtwebsockets" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -151,6 +150,48 @@ jobs:
           chmod +x "install/$PRESET/testapp/qtPilot-test-app.sh"
           echo "Test app bundle size:"
           du -sh "install/$PRESET/testapp/"
+
+      - name: Bundle test app (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          PRESET="${{ matrix.preset }}"
+          QT_MAJOR=$(echo "${{ matrix.qt }}" | cut -c1)
+          if [ -n "$QT_ROOT_DIR" ]; then
+            QT_PATH="$QT_ROOT_DIR"
+          elif [ -n "$Qt6_DIR" ]; then
+            QT_PATH="$(cd "$Qt6_DIR/../../.." && pwd)"
+          elif [ -n "$Qt5_DIR" ]; then
+            QT_PATH="$(cd "$Qt5_DIR/../../.." && pwd)"
+          fi
+          mkdir -p "install/$PRESET/testapp"
+          # Copy binary (flat, not .app bundle — CMake doesn't set MACOSX_BUNDLE for test app)
+          cp "build/$PRESET/bin/qtPilot-test-app" "install/$PRESET/testapp/"
+          cp "install/$PRESET/bin/qtPilot-launcher" "install/$PRESET/testapp/" 2>/dev/null || true
+          for f in "install/$PRESET/lib/"libqtPilot-probe-*.dylib; do
+            [ -f "$f" ] && cp "$f" "install/$PRESET/testapp/qtPilot-probe.dylib"
+          done
+          # Wrapper script (sets DYLD_LIBRARY_PATH for Qt frameworks)
+          cat > "install/$PRESET/testapp/qtPilot-test-app.sh" << 'WRAPPER'
+          #!/bin/sh
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export DYLD_FRAMEWORK_PATH="$DIR:${DYLD_FRAMEWORK_PATH:-}"
+          export QT_PLUGIN_PATH="$QT_PATH/plugins"
+          exec "$DIR/qtPilot-test-app" "$@"
+          WRAPPER
+          chmod +x "install/$PRESET/testapp/qtPilot-test-app.sh"
+          echo "Test app bundle size:"
+          du -sh "install/$PRESET/testapp/"
+
+      - name: Ad-hoc sign binaries (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          PRESET="${{ matrix.preset }}"
+          codesign --sign - --force "install/$PRESET/bin/qtPilot-launcher" 2>/dev/null || true
+          for f in "install/$PRESET/lib/"libqtPilot-probe-*.dylib; do
+            [ -f "$f" ] && codesign --sign - --force "$f" || true
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

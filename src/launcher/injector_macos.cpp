@@ -1,16 +1,20 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
-// Linux implementation of probe injection using LD_PRELOAD.
-// This file is only compiled on Linux (see CMakeLists.txt).
+// macOS implementation of probe injection using DYLD_INSERT_LIBRARIES.
+// This file is only compiled on macOS (see CMakeLists.txt).
 //
-// LD_PRELOAD causes the dynamic linker to load our probe library before
-// the application's own libraries. The probe's __attribute__((constructor))
+// DYLD_INSERT_LIBRARIES causes the dynamic linker to load our probe library
+// before the application's own libraries. The probe's __attribute__((constructor))
 // function runs early and sets up the WebSocket server.
+//
+// Note: System Integrity Protection (SIP) strips DYLD_INSERT_LIBRARIES for
+// binaries in /usr/, /System/, and other protected paths. Only user-built
+// or non-protected executables can be injected this way.
 
 #include "injector.h"
 
-#if defined(Q_OS_LINUX)
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
 
 #include <cstdio>
 #include <cstdlib>
@@ -22,9 +26,39 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 
+namespace {
+
+/// @brief Warn if the target executable is in a SIP-protected path.
+/// DYLD_INSERT_LIBRARIES is stripped for such binaries.
+void warnIfSipProtected(const QString& targetPath, bool quiet) {
+  if (quiet)
+    return;
+
+  static const char* sipPaths[] = {"/usr/", "/System/", "/bin/", "/sbin/", nullptr};
+  QByteArray pathBytes = targetPath.toUtf8();
+  const char* path = pathBytes.constData();
+
+  for (const char** p = sipPaths; *p != nullptr; ++p) {
+    if (strncmp(path, *p, strlen(*p)) == 0) {
+      fprintf(stderr,
+              "[injector] WARNING: Target '%s' is in a SIP-protected path.\n"
+              "[injector]   DYLD_INSERT_LIBRARIES will be stripped by macOS.\n"
+              "[injector]   Probe injection will NOT work for this binary.\n"
+              "[injector]   Use a non-SIP-protected executable instead.\n",
+              qPrintable(targetPath));
+      return;
+    }
+  }
+}
+
+}  // namespace
+
 namespace qtPilot {
 
 qint64 launchWithProbe(const LaunchOptions& options) {
+  // Warn about SIP restrictions
+  warnIfSipProtected(options.targetExecutable, options.quiet);
+
   // 1. Set up environment for the child process
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
 
@@ -34,45 +68,24 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   // Get absolute path to probe library
   QString absProbe = QFileInfo(options.probePath).absoluteFilePath();
 
-  // Prepend to LD_PRELOAD (preserve existing preloads)
-  QString existingPreload = env.value(QStringLiteral("LD_PRELOAD"));
-  if (existingPreload.isEmpty()) {
-    env.insert(QStringLiteral("LD_PRELOAD"), absProbe);
+  // Prepend to DYLD_INSERT_LIBRARIES (preserve existing entries)
+  QString existingInsert = env.value(QStringLiteral("DYLD_INSERT_LIBRARIES"));
+  if (existingInsert.isEmpty()) {
+    env.insert(QStringLiteral("DYLD_INSERT_LIBRARIES"), absProbe);
   } else {
-    // Prepend our library, space-separated
-    env.insert(QStringLiteral("LD_PRELOAD"), absProbe + QLatin1Char(' ') + existingPreload);
+    // Prepend our library, colon-separated
+    env.insert(QStringLiteral("DYLD_INSERT_LIBRARIES"),
+               absProbe + QLatin1Char(':') + existingInsert);
   }
 
   if (!options.quiet) {
-    fprintf(stderr, "[injector] LD_PRELOAD: %s\n",
-            qPrintable(env.value(QStringLiteral("LD_PRELOAD"))));
+    fprintf(stderr, "[injector] DYLD_INSERT_LIBRARIES: %s\n",
+            qPrintable(env.value(QStringLiteral("DYLD_INSERT_LIBRARIES"))));
     fprintf(stderr, "[injector] QTPILOT_PORT: %s\n",
             qPrintable(env.value(QStringLiteral("QTPILOT_PORT"))));
   }
 
-  // 2. Use QProcess for launching
-  // This handles all the complexity of process management
-  if (options.detach) {
-    // Detached mode: use QProcess::startDetached
-    qint64 pid = 0;
-    bool success = QProcess::startDetached(options.targetExecutable, options.targetArgs,
-                                           QString(),  // Working directory (current)
-                                           &pid);
-
-    if (!success) {
-      if (!options.quiet) {
-        fprintf(stderr, "[injector] Failed to start detached process\n");
-      }
-      return -1;
-    }
-
-    // Note: QProcess::startDetached doesn't apply environment to Qt 5 < 5.15
-    // For better compatibility, we use fork/exec below
-
-    // Actually, let's use fork/exec for proper environment handling
-  }
-
-  // Fork the process
+  // 2. Fork the process
   pid_t pid = fork();
 
   if (pid < 0) {
@@ -94,13 +107,13 @@ qint64 launchWithProbe(const LaunchOptions& options) {
       setenv("QTPILOT_INJECT_CHILDREN", "1", 1);
     }
 
-    // Set LD_PRELOAD
-    const char* existingPreload = getenv("LD_PRELOAD");
-    if (existingPreload && existingPreload[0] != '\0') {
-      QString newPreload = absProbe + QLatin1Char(' ') + QString::fromLocal8Bit(existingPreload);
-      setenv("LD_PRELOAD", qPrintable(newPreload), 1);
+    // Set DYLD_INSERT_LIBRARIES
+    const char* existingInsert = getenv("DYLD_INSERT_LIBRARIES");
+    if (existingInsert && existingInsert[0] != '\0') {
+      QString newInsert = absProbe + QLatin1Char(':') + QString::fromLocal8Bit(existingInsert);
+      setenv("DYLD_INSERT_LIBRARIES", qPrintable(newInsert), 1);
     } else {
-      setenv("LD_PRELOAD", qPrintable(absProbe), 1);
+      setenv("DYLD_INSERT_LIBRARIES", qPrintable(absProbe), 1);
     }
 
     // Build argv for execvp
@@ -162,4 +175,4 @@ qint64 launchWithProbe(const LaunchOptions& options) {
 
 }  // namespace qtPilot
 
-#endif  // Q_OS_LINUX
+#endif  // Q_OS_MACOS || Q_OS_MAC

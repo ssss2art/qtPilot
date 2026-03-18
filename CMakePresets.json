@@ -132,6 +132,38 @@
       }
     },
     {
+      "name": "macos-debug",
+      "displayName": "macOS Debug",
+      "description": "macOS debug build",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
+      }
+    },
+    {
+      "name": "macos-release",
+      "displayName": "macOS Release",
+      "description": "macOS release build",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "QTPILOT_BUILD_TESTS": "ON",
+        "QTPILOT_BUILD_TEST_APP": "ON"
+      }
+    },
+    {
       "name": "qt5-release",
       "displayName": "Qt 5 Linux/Mac Release",
       "description": "Release build targeting Qt 5.15.x",
@@ -186,6 +218,14 @@
       "configuration": "Release"
     },
     {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug"
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release"
+    },
+    {
       "name": "qt5-release",
       "configurePreset": "qt5-release"
     },
@@ -238,6 +278,20 @@
       "name": "windows-x86-release",
       "configurePreset": "windows-x86-release",
       "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "macos-debug",
+      "configurePreset": "macos-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release",
       "output": {
         "outputOnFailure": true
       }

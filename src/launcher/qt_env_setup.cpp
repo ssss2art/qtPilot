@@ -22,8 +22,9 @@
 
 namespace {
 
-/// @brief Check if a directory has bin/Qt*Core*.dll and plugins/platforms/.
+/// @brief Check if a directory has the expected Qt prefix layout for this platform.
 bool hasQtPrefixLayout(const QDir& d) {
+#ifdef Q_OS_WIN
   QDir binDir(d.filePath(QStringLiteral("bin")));
   if (!binDir.exists())
     return false;
@@ -32,14 +33,41 @@ bool hasQtPrefixLayout(const QDir& d) {
       {QStringLiteral("Qt*Core.dll"), QStringLiteral("Qt*Core*.dll")}, QDir::Files);
   if (coreMatches.isEmpty())
     return false;
+#elif defined(Q_OS_MACOS)
+  QDir libDir(d.filePath(QStringLiteral("lib")));
+  if (!libDir.exists())
+    return false;
+
+  // Check for framework bundle or plain dylib
+  QStringList coreMatches =
+      libDir.entryList({QStringLiteral("QtCore.framework"), QStringLiteral("libQt*Core.dylib")},
+                       QDir::Dirs | QDir::Files);
+  if (coreMatches.isEmpty())
+    return false;
+#else
+  QDir libDir(d.filePath(QStringLiteral("lib")));
+  if (!libDir.exists())
+    return false;
+
+  QStringList coreMatches = libDir.entryList({QStringLiteral("libQt*Core.so*")}, QDir::Files);
+  if (coreMatches.isEmpty())
+    return false;
+#endif
 
   return QFileInfo::exists(d.filePath(QStringLiteral("plugins/platforms")));
 }
 
-/// @brief Check if a directory contains Qt*Core*.dll directly (i.e. is bin/).
+/// @brief Check if a directory contains Qt core library directly.
 bool dirContainsQtCore(const QDir& d) {
+#ifdef Q_OS_WIN
   return !d.entryList({QStringLiteral("Qt*Core.dll"), QStringLiteral("Qt*Core*.dll")}, QDir::Files)
               .isEmpty();
+#elif defined(Q_OS_MACOS)
+  return !d.entryList({QStringLiteral("libQt*Core.dylib")}, QDir::Files).isEmpty() ||
+         !d.entryList({QStringLiteral("QtCore.framework")}, QDir::Dirs).isEmpty();
+#else
+  return !d.entryList({QStringLiteral("libQt*Core.so*")}, QDir::Files).isEmpty();
+#endif
 }
 
 /// @brief Resolve a user-provided path to a Qt prefix directory.
@@ -75,9 +103,16 @@ QString resolveQtPrefix(const QString& dir) {
       return parent.absolutePath();
   }
 
-  // User pointed at plugins/platforms/ (has qwindows.dll)?
-  if (QFileInfo::exists(d.filePath(QStringLiteral("qwindows.dll"))) ||
-      QFileInfo::exists(d.filePath(QStringLiteral("qwindowsd.dll")))) {
+  // User pointed at plugins/platforms/ (has platform plugin)?
+#ifdef Q_OS_WIN
+  bool hasPlatformPlugin = QFileInfo::exists(d.filePath(QStringLiteral("qwindows.dll"))) ||
+                           QFileInfo::exists(d.filePath(QStringLiteral("qwindowsd.dll")));
+#elif defined(Q_OS_MACOS)
+  bool hasPlatformPlugin = QFileInfo::exists(d.filePath(QStringLiteral("libqcocoa.dylib")));
+#else
+  bool hasPlatformPlugin = QFileInfo::exists(d.filePath(QStringLiteral("libqxcb.so")));
+#endif
+  if (hasPlatformPlugin) {
     QDir grandparent(d);
     if (grandparent.cdUp() && grandparent.cdUp() && hasQtPrefixLayout(grandparent))
       return grandparent.absolutePath();
@@ -127,24 +162,40 @@ QString qtPrefixFromLibraryInfo() {
 
   QString prefix = prefixDir.absolutePath();
 
-  // Verify bin/ exists too
+  // Verify the prefix has the expected subdirectory
+#ifdef Q_OS_WIN
   if (!QFileInfo::exists(prefix + QStringLiteral("/bin")))
     return QString();
+#else
+  // macOS and Linux: lib/ is the key directory (bin/ may not exist on macOS)
+  if (!QFileInfo::exists(prefix + QStringLiteral("/lib")))
+    return QString();
+#endif
 
   return prefix;
 }
 
-/// @brief Scan a directory for platforms/qwindows.dll (windeployqt layout).
-/// @return The directory path if a platforms/ subdir is found, else empty.
+/// @brief Scan a directory for a platform plugin in platforms/ subdirectory.
+/// @return The directory path if a platforms/ subdir with plugins is found, else empty.
 QString qtPrefixFromPlatformsDir(const QString& directory) {
   QDir dir(directory);
   if (!dir.exists())
     return QString();
 
+#ifdef Q_OS_WIN
   if (QFileInfo::exists(dir.filePath(QStringLiteral("platforms/qwindows.dll"))) ||
       QFileInfo::exists(dir.filePath(QStringLiteral("platforms/qwindowsd.dll")))) {
     return dir.absolutePath();
   }
+#elif defined(Q_OS_MACOS)
+  if (QFileInfo::exists(dir.filePath(QStringLiteral("platforms/libqcocoa.dylib")))) {
+    return dir.absolutePath();
+  }
+#else
+  if (QFileInfo::exists(dir.filePath(QStringLiteral("platforms/libqxcb.so")))) {
+    return dir.absolutePath();
+  }
+#endif
 
   return QString();
 }
@@ -168,6 +219,18 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
     QString nativePluginsPath = QDir::toNativeSeparators(pluginsPath);
     SetEnvironmentVariableW(L"QT_PLUGIN_PATH", nativePluginsPath.toStdWString().c_str());
     qputenv("QT_PLUGIN_PATH", nativePluginsPath.toLocal8Bit());
+  }
+#elif defined(Q_OS_MACOS)
+  // macOS: DYLD_LIBRARY_PATH and QT_PLUGIN_PATH
+  QString currentDyldPath = QString::fromLocal8Bit(qgetenv("DYLD_LIBRARY_PATH"));
+  if (!currentDyldPath.contains(binPath)) {
+    QString newDyldPath = binPath + QStringLiteral(":") + currentDyldPath;
+    qputenv("DYLD_LIBRARY_PATH", newDyldPath.toLocal8Bit());
+  }
+
+  QByteArray existingPluginPath = qgetenv("QT_PLUGIN_PATH");
+  if (existingPluginPath.isEmpty()) {
+    qputenv("QT_PLUGIN_PATH", pluginsPath.toLocal8Bit());
   }
 #else
   // Linux: LD_LIBRARY_PATH and QT_PLUGIN_PATH
@@ -197,7 +260,12 @@ QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& tar
     QString resolved = resolveQtPrefix(qtDir);
     if (!resolved.isEmpty()) {
       result.qtDir = resolved;
+#ifdef Q_OS_WIN
       result.binPath = QDir(resolved).filePath(QStringLiteral("bin"));
+#else
+      // macOS and Linux: library path is lib/, not bin/
+      result.binPath = QDir(resolved).filePath(QStringLiteral("lib"));
+#endif
       result.pluginsPath = QDir(resolved).filePath(QStringLiteral("plugins"));
       result.source = (resolved == QDir(qtDir).absolutePath())
                           ? QStringLiteral("--qt-dir flag")
@@ -205,7 +273,7 @@ QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& tar
     } else {
       result.warnings.append(
           QStringLiteral("--qt-dir '%1' does not look like a Qt installation "
-                         "(could not find bin/Qt*Core*.dll and plugins/platforms/)")
+                         "(could not find expected Qt layout and plugins/platforms/)")
               .arg(qtDir));
       // Fall through to other strategies
     }
@@ -227,7 +295,11 @@ QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& tar
     QString prefix = qtPrefixFromLibraryInfo();
     if (!prefix.isEmpty()) {
       result.qtDir = prefix;
+#ifdef Q_OS_WIN
       result.binPath = prefix + QStringLiteral("/bin");
+#else
+      result.binPath = prefix + QStringLiteral("/lib");
+#endif
       result.pluginsPath = prefix + QStringLiteral("/plugins");
       result.source = QStringLiteral("QLibraryInfo (launcher's Qt)");
     }
@@ -239,7 +311,11 @@ QtEnvironmentResult ensureQtEnvironment(const QString& qtDir, const QString& tar
     QString resolved = resolveQtPrefix(QStringLiteral(QTPILOT_BUILD_QT_PREFIX));
     if (!resolved.isEmpty()) {
       result.qtDir = resolved;
+#ifdef Q_OS_WIN
       result.binPath = QDir(resolved).filePath(QStringLiteral("bin"));
+#else
+      result.binPath = QDir(resolved).filePath(QStringLiteral("lib"));
+#endif
       result.pluginsPath = QDir(resolved).filePath(QStringLiteral("plugins"));
       result.source = QStringLiteral("build-time Qt prefix");
     }

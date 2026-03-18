@@ -50,6 +50,7 @@ DEFAULT_ARCH = "x64"
 PLATFORM_MAP: dict[str, tuple[str, str, str]] = {
     "linux": ("linux", "tar.gz", "so"),
     "win32": ("windows", "zip", "dll"),
+    "darwin": ("macos", "tar.gz", "dylib"),
 }
 
 
@@ -99,7 +100,12 @@ def get_probe_filename(platform_name: str | None = None) -> str:
     """
     if platform_name is None:
         platform_name = detect_platform()
-    ext = "dll" if platform_name == "windows" else "so"
+    if platform_name == "windows":
+        ext = "dll"
+    elif platform_name == "macos":
+        ext = "dylib"
+    else:
+        ext = "so"
     return f"qtPilot-probe.{ext}"
 
 
@@ -196,7 +202,7 @@ def get_archive_filename(
     if platform_name == "windows":
         return f"qtpilot-qt{version}-{platform_name}-{arch}.{ext}"
 
-    # Linux: only include arch suffix for x86 (backward compat for x64)
+    # Linux/macOS: only include arch suffix for x86 (backward compat for x64)
     if arch == "x86":
         return f"qtpilot-qt{version}-{platform_name}-x86.{ext}"
     return f"qtpilot-qt{version}-{platform_name}.{ext}"
@@ -486,8 +492,8 @@ def download_and_extract(
         # Clean up the archive file after extraction
         archive_path.unlink(missing_ok=True)
 
-    # Set executable permissions on Linux
-    if platform_name == "linux":
+    # Set executable permissions on Linux and macOS
+    if platform_name in ("linux", "macos"):
         import stat
 
         for name in [get_probe_filename(platform_name), get_launcher_filename(platform_name)]:

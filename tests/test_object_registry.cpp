@@ -193,7 +193,7 @@ void TestObjectRegistry::testThreadSafety() {
   QVector<QThread*> threads;
 
   for (int t = 0; t < threadCount; ++t) {
-    QThread* thread = QThread::create([&createdCount, &errors, t, objectsPerThread]() {
+    QThread* thread = QThread::create([&createdCount, &errors, t]() {
       QVector<QObject*> localObjects;
       localObjects.reserve(objectsPerThread);
 
