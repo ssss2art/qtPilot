@@ -95,7 +95,7 @@ def require_probe() -> ProbeConnection:
     probe = get_probe()
     if probe is None or not probe.is_connected:
         raise ProbeError(
-            "No probe connected. Use qtpilot_list_probes to see available probes, "
+            "No probe connected. Use qtpilot_status to see available probes, "
             "then qtpilot_connect_probe to connect to one."
         )
     return probe
@@ -316,7 +316,7 @@ def create_server(
                 except Exception as e:
                     logger.warning(
                         "Could not auto-connect to %s: %s. "
-                        "Use qtpilot_list_probes and qtpilot_connect_probe to connect later.",
+                        "Use qtpilot_status and qtpilot_connect_probe to connect later.",
                         actual_ws_url,
                         e,
                     )

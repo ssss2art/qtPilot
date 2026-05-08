@@ -6,20 +6,54 @@
 #include "core/object_registry.h"
 #include "core/object_resolver.h"
 #include "transport/jsonrpc_handler.h"
+#include "introspection/model_navigator.h"
 
+#include <QAbstractListModel>
 #include <QApplication>
+#include <QComboBox>
 #include <QPushButton>
 #include <QStandardItemModel>
 #include <QTableView>
+#include <QTreeView>
 #include <QtTest>
 
 using namespace qtPilot;
 
-/// @brief Integration tests for qt.models.* and qt.qml.inspect API methods.
+/// Minimal lazy model: rowCount reports 0 until fetchMore is called.
+class LazyFlatModel : public QAbstractListModel {
+ public:
+  explicit LazyFlatModel(int virtualCount, QObject* parent = nullptr)
+      : QAbstractListModel(parent), m_virtualCount(virtualCount) {}
+
+  int rowCount(const QModelIndex& parent = QModelIndex()) const override {
+    return parent.isValid() ? 0 : m_fetched;
+  }
+  QVariant data(const QModelIndex& idx, int role = Qt::DisplayRole) const override {
+    if (!idx.isValid() || role != Qt::DisplayRole) return {};
+    return QString("Row%1").arg(idx.row());
+  }
+  bool canFetchMore(const QModelIndex& parent) const override {
+    return !parent.isValid() && m_fetched < m_virtualCount;
+  }
+  void fetchMore(const QModelIndex& parent) override {
+    if (parent.isValid() || m_fetched >= m_virtualCount) return;
+    const int toAdd = m_virtualCount - m_fetched;
+    beginInsertRows(QModelIndex(), m_fetched, m_fetched + toAdd - 1);
+    m_fetched += toAdd;
+    endInsertRows();
+  }
+  int fetchedRows() const { return m_fetched; }
+
+ private:
+  int m_virtualCount;
+  int m_fetched = 0;
+};
+
+/// @brief Integration tests for qt.models.* API methods.
 ///
-/// Tests model discovery, info, data retrieval (with smart pagination),
-/// role filtering, view-to-model auto-resolution, QML inspect on non-QML
-/// objects, and error handling for all model/QML methods.
+/// Tests model discovery, data retrieval (with smart pagination), role
+/// filtering, view-to-model auto-resolution, and error handling for all
+/// model methods.
 class TestModelNavigator : public QObject {
   Q_OBJECT
 
@@ -33,11 +67,6 @@ class TestModelNavigator : public QObject {
   void testModelsListFindsTestModel();
   void testModelsListIncludesRoleNames();
 
-  // qt.models.info
-  void testModelsInfoByModelId();
-  void testModelsInfoByViewId();
-  void testModelsInfoInvalidId();
-
   // qt.models.data
   void testModelsDataSmallModel();
   void testModelsDataDisplayRole();
@@ -48,13 +77,66 @@ class TestModelNavigator : public QObject {
   void testModelsDataInvalidRole();
   void testModelsDataNotAModel();
 
-  // qt.qml.inspect
-  void testQmlInspectNonQmlObject();
-  void testQmlInspectInvalidId();
+  // Tree/path helpers
+  void testEnsureFetchedCallsFetchMoreOnLazyModel();
+  void testPathToIndexRoot();
+  void testPathToIndexTwoLevel();
+  void testPathToIndexInvalidReturnsFailedSegment();
+  void testPathToIndexCallsEnsureFetched();
+  void testTextPathToIndexTwoLevel();
+  void testTextPathToIndexMissingSegment();
+  void testTextPathToIndexWithColumn();
 
   // Response format
   void testResponseEnvelopeWrapping();
   void testModelsListResponseEnvelope();
+
+  // indexToRowData helper
+  void testIndexToRowDataProducesPathAndCells();
+
+  // getModelData with parentPath
+  void testGetModelDataWithTwoLevelParentPath();
+  void testGetModelDataRowsHavePathField();
+  void testGetModelDataInvalidParentPathReturnsEmpty();
+
+  // qt.models.data JSON-RPC handler
+  void testApiModelsDataWithParentArray();
+  void testApiModelsDataInvalidParentPathError();
+  void testApiModelsDataEchoesParent();
+
+  // findRecursive walker
+  void testFindRecursiveExactMatch();
+  void testFindRecursiveContainsMultipleLevels();
+  void testFindRecursiveRespectsMaxHits();
+  void testFindRecursiveScopesToParent();
+  void testFindRecursiveFindsLazyChildren();
+  void testFindRecursiveRegex();
+  void testFindRecursiveInvalidRegex();
+
+  // qt.models.search JSON-RPC handler
+  void testApiModelsFindExact();
+  void testApiModelsFindContainsReturnsPathAndCells();
+  void testApiModelsFindScopesToParent();
+  void testApiModelsFindTruncated();
+  void testApiModelsFindInvalidRegexError();
+  void testApiModelsFindRoleNotFoundError();
+
+  // qt.ui.clickItem JSON-RPC handler
+  void testApiUiClickItemPathSelect();
+  void testApiUiClickItemMissingPathAndItemPath();
+  void testApiUiClickItemBothPathAndItemPathError();
+  void testApiUiClickItemInvalidPathError();
+  void testApiUiClickItemTextPathSelect();
+  void testApiUiClickItemTextPathMissingSegment();
+  void testApiUiClickItemClickAction();
+  void testApiUiClickItemDoubleClickAction();
+  void testApiUiClickItemEditOpensEditor();
+  void testApiUiClickItemEditInvalidColumnError();
+  void testApiUiClickItemEditNonEditableError();
+  void testApiUiClickItemComboBoxSelectsValue();
+  void testApiUiClickItemComboBoxEditReturnsNotEditable();
+  void testApiUiClickItemComboBoxRejectsNonZeroColumn();
+  void testApiUiClickItemExpandsAncestors();
 
  private:
   /// @brief Make a JSON-RPC call and return the full parsed response object.
@@ -230,48 +312,6 @@ void TestModelNavigator::testModelsListIncludesRoleNames() {
 }
 
 // ========================================================================
-// qt.models.info Tests
-// ========================================================================
-
-void TestModelNavigator::testModelsInfoByModelId() {
-  QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
-  QVERIFY(!modelId.isEmpty());
-
-  QJsonValue result = callResult("qt.models.info", QJsonObject{{"objectId", modelId}});
-  QVERIFY(result.isObject());
-
-  QJsonObject info = result.toObject();
-  QCOMPARE(info["rowCount"].toInt(), 3);
-  QCOMPARE(info["columnCount"].toInt(), 2);
-  QCOMPARE(info["className"].toString(), QString("QStandardItemModel"));
-  QVERIFY(info.contains("roleNames"));
-  QVERIFY(info.contains("hasChildren"));
-}
-
-void TestModelNavigator::testModelsInfoByViewId() {
-  // Use the VIEW's objectId - should auto-resolve to its model
-  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
-  QVERIFY(!viewId.isEmpty());
-
-  QJsonValue result = callResult("qt.models.info", QJsonObject{{"objectId", viewId}});
-  QVERIFY(result.isObject());
-
-  QJsonObject info = result.toObject();
-  // Should return the same model info as calling with model ID directly
-  QCOMPARE(info["rowCount"].toInt(), 3);
-  QCOMPARE(info["columnCount"].toInt(), 2);
-  QCOMPARE(info["className"].toString(), QString("QStandardItemModel"));
-}
-
-void TestModelNavigator::testModelsInfoInvalidId() {
-  QJsonObject error =
-      callExpectError("qt.models.info", QJsonObject{{"objectId", "nonexistent/path/xyz"}});
-
-  QCOMPARE(error["code"].toInt(), ErrorCode::kObjectNotFound);
-  QVERIFY(!error["message"].toString().isEmpty());
-}
-
-// ========================================================================
 // qt.models.data Tests
 // ========================================================================
 
@@ -412,46 +452,14 @@ void TestModelNavigator::testModelsDataNotAModel() {
 }
 
 // ========================================================================
-// qt.qml.inspect Tests
-// ========================================================================
-
-void TestModelNavigator::testQmlInspectNonQmlObject() {
-  // Without QTPILOT_HAS_QML, this will throw kQmlNotAvailable.
-  // With QTPILOT_HAS_QML, it returns isQmlItem=false for a QWidget.
-  // Either way, the test verifies the method handles non-QML objects.
-  QString buttonId = ObjectRegistry::instance()->objectId(m_plainButton);
-
-  QJsonObject response = callRaw("qt.qml.inspect", QJsonObject{{"objectId", buttonId}});
-
-  if (response.contains("result")) {
-    // QML support compiled: should get isQmlItem=false
-    QJsonObject envelope = response["result"].toObject();
-    QJsonObject result = envelope["result"].toObject();
-    QCOMPARE(result["isQmlItem"].toBool(), false);
-  } else {
-    // QML not compiled: kQmlNotAvailable error
-    QJsonObject error = response["error"].toObject();
-    QCOMPARE(error["code"].toInt(), ErrorCode::kQmlNotAvailable);
-  }
-}
-
-void TestModelNavigator::testQmlInspectInvalidId() {
-  QJsonObject error =
-      callExpectError("qt.qml.inspect", QJsonObject{{"objectId", "nonexistent/path/xyz"}});
-
-  QCOMPARE(error["code"].toInt(), ErrorCode::kObjectNotFound);
-  QVERIFY(!error["message"].toString().isEmpty());
-}
-
-// ========================================================================
 // Response Envelope Tests
 // ========================================================================
 
 void TestModelNavigator::testResponseEnvelopeWrapping() {
-  // qt.models.info should return envelope with result + meta
+  // qt.models.data should return envelope with result + meta
   QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
 
-  QJsonObject envelope = callEnvelope("qt.models.info", QJsonObject{{"objectId", modelId}});
+  QJsonObject envelope = callEnvelope("qt.models.data", QJsonObject{{"objectId", modelId}});
 
   QVERIFY(envelope.contains("result"));
   QVERIFY(envelope.contains("meta"));
@@ -469,6 +477,682 @@ void TestModelNavigator::testModelsListResponseEnvelope() {
   QVERIFY(envelope.contains("result"));
   QVERIFY(envelope.contains("meta"));
   QVERIFY(envelope["result"].isArray());
+}
+
+// ========================================================================
+// Tree/Path Helper Tests
+// ========================================================================
+
+void TestModelNavigator::testEnsureFetchedCallsFetchMoreOnLazyModel() {
+  LazyFlatModel lazy(42, this);
+  QCOMPARE(lazy.fetchedRows(), 0);
+
+  ModelNavigator::ensureFetched(&lazy, QModelIndex());
+
+  QCOMPARE(lazy.fetchedRows(), 42);
+  QCOMPARE(lazy.rowCount(), 42);
+}
+
+void TestModelNavigator::testPathToIndexRoot() {
+  QModelIndex idx = ModelNavigator::pathToIndex(m_smallModel, {});
+  QVERIFY(!idx.isValid());  // root
+}
+
+void TestModelNavigator::testPathToIndexTwoLevel() {
+  // Build a 2-level tree in a QStandardItemModel.
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("A");
+  auto* b = new QStandardItem("B");
+  a->appendRow(new QStandardItem("A.0"));
+  a->appendRow(new QStandardItem("A.1"));
+  b->appendRow(new QStandardItem("B.0"));
+  tree->appendRow(a);
+  tree->appendRow(b);
+
+  QModelIndex idx = ModelNavigator::pathToIndex(tree, {0, 1});
+  QVERIFY(idx.isValid());
+  QCOMPARE(tree->data(idx, Qt::DisplayRole).toString(), QString("A.1"));
+
+  delete tree;
+}
+
+void TestModelNavigator::testPathToIndexInvalidReturnsFailedSegment() {
+  int failed = -1;
+  QModelIndex idx = ModelNavigator::pathToIndex(m_smallModel, {99}, &failed);
+  QVERIFY(!idx.isValid());
+  QCOMPARE(failed, 0);
+}
+
+void TestModelNavigator::testPathToIndexCallsEnsureFetched() {
+  LazyFlatModel lazy(10, this);
+  QModelIndex idx = ModelNavigator::pathToIndex(&lazy, {5});
+  QVERIFY(idx.isValid());
+  QCOMPARE(lazy.data(idx, Qt::DisplayRole).toString(), QString("Row5"));
+}
+
+void TestModelNavigator::testTextPathToIndexTwoLevel() {
+  auto* tree = new QStandardItemModel(this);
+  auto* etc = new QStandardItem("ETC");
+  etc->appendRow(new QStandardItem("fos4 Fresnel"));
+  etc->appendRow(new QStandardItem("ColorSource"));
+  tree->appendRow(etc);
+
+  QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"ETC", "fos4 Fresnel"}, 0);
+  QVERIFY(idx.isValid());
+  QCOMPARE(tree->data(idx, Qt::DisplayRole).toString(), QString("fos4 Fresnel"));
+
+  delete tree;
+}
+
+void TestModelNavigator::testTextPathToIndexMissingSegment() {
+  auto* tree = new QStandardItemModel(this);
+  tree->appendRow(new QStandardItem("A"));
+
+  int failed = -1;
+  QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"A", "missing"}, 0, &failed);
+  QVERIFY(!idx.isValid());
+  QCOMPARE(failed, 1);
+
+  delete tree;
+}
+
+void TestModelNavigator::testTextPathToIndexWithColumn() {
+  // 2-column flat model, match against column 1.
+  auto* tree = new QStandardItemModel(3, 2, this);
+  tree->setItem(0, 0, new QStandardItem("r0c0"));
+  tree->setItem(0, 1, new QStandardItem("r0c1"));
+  tree->setItem(1, 0, new QStandardItem("r1c0"));
+  tree->setItem(1, 1, new QStandardItem("r1c1"));
+  tree->setItem(2, 0, new QStandardItem("r2c0"));
+  tree->setItem(2, 1, new QStandardItem("r2c1"));
+
+  QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"r1c1"}, 1);
+  QVERIFY(idx.isValid());
+  // Row identity should be row 1 (addressed via column 0).
+  QCOMPARE(idx.row(), 1);
+}
+
+// ========================================================================
+// indexToRowData Helper Tests
+// ========================================================================
+
+void TestModelNavigator::testIndexToRowDataProducesPathAndCells() {
+  auto* tree = new QStandardItemModel(this);
+  auto* parent = new QStandardItem("P");
+  parent->appendRow(new QStandardItem("C0"));
+  parent->appendRow(new QStandardItem("C1"));
+  tree->appendRow(parent);
+
+  const QModelIndex c1 = tree->index(1, 0, tree->index(0, 0));
+  QJsonObject row = ModelNavigator::indexToRowData(tree, c1, {Qt::DisplayRole});
+
+  QJsonArray path = row["path"].toArray();
+  QCOMPARE(path.size(), 2);
+  QCOMPARE(path[0].toInt(), 0);
+  QCOMPARE(path[1].toInt(), 1);
+
+  QJsonArray cells = row["cells"].toArray();
+  QCOMPARE(cells.size(), 1);  // single column
+  QCOMPARE(cells[0].toObject()["display"].toString(), QString("C1"));
+  QCOMPARE(row["hasChildren"].toBool(), false);
+
+  delete tree;
+}
+
+// ========================================================================
+// getModelData with parentPath Tests
+// ========================================================================
+
+void TestModelNavigator::testGetModelDataWithTwoLevelParentPath() {
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("A");
+  a->appendRow(new QStandardItem("A.0"));
+  a->appendRow(new QStandardItem("A.1"));
+  auto* aa0 = new QStandardItem("A.0 child placeholder");
+  a->child(0)->appendRow(aa0);
+  tree->appendRow(a);
+
+  QJsonObject data = ModelNavigator::getModelData(tree, {0, 0}, 0, -1, {});
+  QCOMPARE(data["totalRows"].toInt(), 1);
+  QJsonArray rows = data["rows"].toArray();
+  QCOMPARE(rows.size(), 1);
+  QJsonArray path = rows[0].toObject()["path"].toArray();
+  QCOMPARE(path.size(), 3);
+  QCOMPARE(path[0].toInt(), 0);
+  QCOMPARE(path[1].toInt(), 0);
+  QCOMPARE(path[2].toInt(), 0);
+
+  delete tree;
+}
+
+void TestModelNavigator::testGetModelDataRowsHavePathField() {
+  QJsonObject data = ModelNavigator::getModelData(m_smallModel, {}, 0, -1, {});
+  QJsonArray rows = data["rows"].toArray();
+  QCOMPARE(rows.size(), 3);
+  for (int i = 0; i < 3; ++i) {
+    QJsonArray path = rows[i].toObject()["path"].toArray();
+    QCOMPARE(path.size(), 1);
+    QCOMPARE(path[0].toInt(), i);
+  }
+  // parent echo
+  QCOMPARE(data["parent"].toArray().size(), 0);
+}
+
+void TestModelNavigator::testGetModelDataInvalidParentPathReturnsEmpty() {
+  QJsonObject data = ModelNavigator::getModelData(m_smallModel, {99}, 0, -1, {});
+  QCOMPARE(data["totalRows"].toInt(), 0);
+  QCOMPARE(data["rows"].toArray().size(), 0);
+}
+
+// ========================================================================
+// qt.models.data JSON-RPC handler Tests
+// ========================================================================
+
+void TestModelNavigator::testApiModelsDataWithParentArray() {
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("A");
+  a->appendRow(new QStandardItem("A.0"));
+  a->appendRow(new QStandardItem("A.1"));
+  tree->appendRow(a);
+  tree->setObjectName("myTree");
+  ObjectRegistry::instance()->scanExistingObjects(tree);
+
+  QString modelId = ObjectRegistry::instance()->objectId(tree);
+
+  QJsonValue result = callResult("qt.models.data",
+                                 QJsonObject{{"objectId", modelId},
+                                             {"parent", QJsonArray{0}}});
+  QJsonObject data = result.toObject();
+  QCOMPARE(data["totalRows"].toInt(), 2);
+  QCOMPARE(data["rows"].toArray().size(), 2);
+  QCOMPARE(data["rows"].toArray()[0].toObject()["cells"].toArray()[0]
+               .toObject()["display"].toString(),
+           QString("A.0"));
+}
+
+void TestModelNavigator::testApiModelsDataInvalidParentPathError() {
+  QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
+  QJsonObject error = callExpectError("qt.models.data",
+                                      QJsonObject{{"objectId", modelId},
+                                                  {"parent", QJsonArray{99}}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidParentPath);
+  QJsonObject details = error["data"].toObject();
+  QCOMPARE(details["failedSegment"].toInt(), 0);
+  QVERIFY(details.contains("path"));
+  QVERIFY(details.contains("availableRows"));
+}
+
+void TestModelNavigator::testApiModelsDataEchoesParent() {
+  QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
+  QJsonValue result = callResult("qt.models.data",
+                                 QJsonObject{{"objectId", modelId},
+                                             {"parent", QJsonArray{}}});
+  QCOMPARE(result.toObject()["parent"].toArray().size(), 0);
+}
+
+// ========================================================================
+// findRecursive Walker Tests
+// ========================================================================
+
+void TestModelNavigator::testFindRecursiveExactMatch() {
+  auto* tree = new QStandardItemModel(this);
+  auto* etc = new QStandardItem("ETC");
+  etc->appendRow(new QStandardItem("fos4 Fresnel"));
+  tree->appendRow(etc);
+  tree->appendRow(new QStandardItem("Martin"));
+
+  ModelNavigator::FindOptions opts;
+  opts.value = "Martin";
+  opts.match = ModelNavigator::MatchMode::Exact;
+  opts.maxHits = 10;
+
+  QJsonArray matches;
+  bool truncated = ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
+  QCOMPARE(matches.size(), 1);
+  QCOMPARE(truncated, false);
+  QJsonArray path = matches[0].toObject()["path"].toArray();
+  QCOMPARE(path.size(), 1);
+  QCOMPARE(path[0].toInt(), 1);
+
+  delete tree;
+}
+
+void TestModelNavigator::testFindRecursiveContainsMultipleLevels() {
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("ETC");
+  a->appendRow(new QStandardItem("fos4 Fresnel"));
+  a->appendRow(new QStandardItem("ColorSource"));
+  tree->appendRow(a);
+  auto* b = new QStandardItem("Martin");
+  b->appendRow(new QStandardItem("MAC Fresnel"));
+  tree->appendRow(b);
+
+  ModelNavigator::FindOptions opts;
+  opts.value = "Fresnel";
+  opts.match = ModelNavigator::MatchMode::Contains;
+  opts.maxHits = 10;
+
+  QJsonArray matches;
+  ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
+  QCOMPARE(matches.size(), 2);
+
+  delete tree;
+}
+
+void TestModelNavigator::testFindRecursiveRespectsMaxHits() {
+  auto* tree = new QStandardItemModel(this);
+  for (int i = 0; i < 5; ++i) tree->appendRow(new QStandardItem("match"));
+
+  ModelNavigator::FindOptions opts;
+  opts.value = "match";
+  opts.match = ModelNavigator::MatchMode::Exact;
+  opts.maxHits = 2;
+
+  QJsonArray matches;
+  bool truncated = ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
+  QCOMPARE(matches.size(), 2);
+  QCOMPARE(truncated, true);
+
+  delete tree;
+}
+
+void TestModelNavigator::testFindRecursiveScopesToParent() {
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("A");
+  a->appendRow(new QStandardItem("target"));
+  auto* b = new QStandardItem("B");
+  b->appendRow(new QStandardItem("target"));
+  tree->appendRow(a);
+  tree->appendRow(b);
+
+  ModelNavigator::FindOptions opts;
+  opts.value = "target";
+  opts.match = ModelNavigator::MatchMode::Exact;
+  opts.maxHits = 10;
+
+  QJsonArray matches;
+  ModelNavigator::findRecursive(tree, tree->index(0, 0), opts, matches);
+  QCOMPARE(matches.size(), 1);
+
+  delete tree;
+}
+
+void TestModelNavigator::testFindRecursiveFindsLazyChildren() {
+  LazyFlatModel lazy(20, this);
+
+  ModelNavigator::FindOptions opts;
+  opts.value = "Row15";
+  opts.match = ModelNavigator::MatchMode::Exact;
+  opts.maxHits = 10;
+
+  QJsonArray matches;
+  ModelNavigator::findRecursive(&lazy, QModelIndex(), opts, matches);
+  QCOMPARE(matches.size(), 1);
+  QCOMPARE(lazy.fetchedRows(), 20);
+}
+
+void TestModelNavigator::testFindRecursiveRegex() {
+  auto* tree = new QStandardItemModel(this);
+  tree->appendRow(new QStandardItem("foo123"));
+  tree->appendRow(new QStandardItem("bar"));
+  tree->appendRow(new QStandardItem("foo456"));
+
+  ModelNavigator::FindOptions opts;
+  opts.value = "foo[0-9]+";
+  opts.match = ModelNavigator::MatchMode::Regex;
+  opts.maxHits = 10;
+
+  QString err;
+  QVERIFY(ModelNavigator::compileFindOptions(opts, &err));
+  QJsonArray matches;
+  ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
+  QCOMPARE(matches.size(), 2);
+
+  delete tree;
+}
+
+void TestModelNavigator::testFindRecursiveInvalidRegex() {
+  auto* tree = new QStandardItemModel(this);
+  tree->appendRow(new QStandardItem("x"));
+
+  ModelNavigator::FindOptions opts;
+  opts.value = "[unclosed";
+  opts.match = ModelNavigator::MatchMode::Regex;
+  opts.maxHits = 10;
+
+  QString err;
+  bool ok = ModelNavigator::compileFindOptions(opts, &err);
+  QCOMPARE(ok, false);
+  QVERIFY(!err.isEmpty());
+
+  delete tree;
+}
+
+// ========================================================================
+// qt.models.search JSON-RPC handler Tests
+// ========================================================================
+
+void TestModelNavigator::testApiModelsFindExact() {
+  QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
+  QJsonValue result = callResult("qt.models.search",
+                                 QJsonObject{{"objectId", modelId},
+                                             {"value", "B1"},
+                                             {"match", "exact"}});
+  QJsonObject data = result.toObject();
+  QCOMPARE(data["count"].toInt(), 1);
+  QJsonArray matches = data["matches"].toArray();
+  QCOMPARE(matches[0].toObject()["path"].toArray()[0].toInt(), 1);
+}
+
+void TestModelNavigator::testApiModelsFindContainsReturnsPathAndCells() {
+  QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
+  QJsonValue result = callResult("qt.models.search",
+                                 QJsonObject{{"objectId", modelId},
+                                             {"value", "1"},
+                                             {"match", "contains"}});
+  QJsonObject data = result.toObject();
+  // A1, B1, C1 contain "1" in column 0 → 3 matches.
+  QCOMPARE(data["count"].toInt(), 3);
+  QJsonArray first = data["matches"].toArray()[0].toObject()["cells"].toArray();
+  QVERIFY(!first.isEmpty());
+}
+
+void TestModelNavigator::testApiModelsFindScopesToParent() {
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("A");
+  a->appendRow(new QStandardItem("target"));
+  auto* b = new QStandardItem("B");
+  b->appendRow(new QStandardItem("target"));
+  tree->appendRow(a);
+  tree->appendRow(b);
+  tree->setObjectName("scopedTree");
+  ObjectRegistry::instance()->scanExistingObjects(tree);
+  QString id = ObjectRegistry::instance()->objectId(tree);
+
+  QJsonValue result = callResult("qt.models.search",
+                                 QJsonObject{{"objectId", id},
+                                             {"value", "target"},
+                                             {"match", "exact"},
+                                             {"parent", QJsonArray{0}}});
+  QCOMPARE(result.toObject()["count"].toInt(), 1);
+}
+
+void TestModelNavigator::testApiModelsFindTruncated() {
+  QString modelId = ObjectRegistry::instance()->objectId(m_largeModel);
+  QJsonValue result = callResult("qt.models.search",
+                                 QJsonObject{{"objectId", modelId},
+                                             {"value", "Row"},
+                                             {"match", "contains"},
+                                             {"maxHits", 3}});
+  QJsonObject data = result.toObject();
+  QCOMPARE(data["count"].toInt(), 3);
+  QCOMPARE(data["truncated"].toBool(), true);
+}
+
+void TestModelNavigator::testApiModelsFindInvalidRegexError() {
+  QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
+  QJsonObject error = callExpectError("qt.models.search",
+                                      QJsonObject{{"objectId", modelId},
+                                                  {"value", "[unclosed"},
+                                                  {"match", "regex"}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidRegex);
+  QVERIFY(error["data"].toObject().contains("pattern"));
+  QVERIFY(error["data"].toObject().contains("error"));
+}
+
+void TestModelNavigator::testApiModelsFindRoleNotFoundError() {
+  QString modelId = ObjectRegistry::instance()->objectId(m_smallModel);
+  QJsonObject error = callExpectError("qt.models.search",
+                                      QJsonObject{{"objectId", modelId},
+                                                  {"value", "x"},
+                                                  {"role", "nonexistent"}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kModelRoleNotFound);
+}
+
+// ========================================================================
+// qt.ui.clickItem JSON-RPC handler Tests
+// ========================================================================
+
+void TestModelNavigator::testApiUiClickItemPathSelect() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonValue result = callResult("qt.ui.clickItem",
+                                 QJsonObject{{"objectId", viewId},
+                                             {"path", QJsonArray{1}},
+                                             {"action", "select"}});
+  QJsonObject data = result.toObject();
+  QCOMPARE(data["found"].toBool(), true);
+  QCOMPARE(data["path"].toArray()[0].toInt(), 1);
+  // Verify the view's current index reflects the selection.
+  QCOMPARE(m_tableView->currentIndex().row(), 1);
+}
+
+void TestModelNavigator::testApiUiClickItemMissingPathAndItemPath() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", viewId},
+                                                  {"action", "select"}});
+  QCOMPARE(error["code"].toInt(), JsonRpcError::kInvalidParams);
+}
+
+void TestModelNavigator::testApiUiClickItemBothPathAndItemPathError() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", viewId},
+                                                  {"path", QJsonArray{0}},
+                                                  {"itemPath", QJsonArray{"A1"}}});
+  QCOMPARE(error["code"].toInt(), JsonRpcError::kInvalidParams);
+}
+
+void TestModelNavigator::testApiUiClickItemInvalidPathError() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", viewId},
+                                                  {"path", QJsonArray{99}}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kItemNotFound);
+  QJsonObject details = error["data"].toObject();
+  QCOMPARE(details["mode"].toString(), QString("row"));
+  QCOMPARE(details["failedSegment"].toInt(), 0);
+  QCOMPARE(details["requestedRow"].toInt(), 99);
+}
+
+void TestModelNavigator::testApiUiClickItemTextPathSelect() {
+  auto* tree = new QStandardItemModel(this);
+  auto* etc = new QStandardItem("ETC");
+  etc->appendRow(new QStandardItem("fos4 Fresnel"));
+  tree->appendRow(etc);
+  auto* view = new QTreeView();
+  view->setObjectName("treeView");
+  view->setModel(tree);
+  view->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(tree);
+  ObjectRegistry::instance()->scanExistingObjects(view);
+
+  QString viewId = ObjectRegistry::instance()->objectId(view);
+  QJsonValue result = callResult("qt.ui.clickItem",
+                                 QJsonObject{{"objectId", viewId},
+                                             {"itemPath", QJsonArray{"ETC", "fos4 Fresnel"}},
+                                             {"action", "select"}});
+  QJsonObject data = result.toObject();
+  QCOMPARE(data["found"].toBool(), true);
+  QJsonArray path = data["path"].toArray();
+  QCOMPARE(path.size(), 2);
+  QCOMPARE(path[0].toInt(), 0);
+  QCOMPARE(path[1].toInt(), 0);
+
+  delete view;
+  delete tree;
+}
+
+void TestModelNavigator::testApiUiClickItemTextPathMissingSegment() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", viewId},
+                                                  {"itemPath", QJsonArray{"not-a-value"}}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kItemNotFound);
+  QJsonObject details = error["data"].toObject();
+  QCOMPARE(details["mode"].toString(), QString("text"));
+  QCOMPARE(details["segmentText"].toString(), QString("not-a-value"));
+}
+
+void TestModelNavigator::testApiUiClickItemClickAction() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  callResult("qt.ui.clickItem",
+             QJsonObject{{"objectId", viewId},
+                         {"path", QJsonArray{1}},
+                         {"action", "click"}});
+  QCOMPARE(m_tableView->currentIndex().row(), 1);
+}
+
+void TestModelNavigator::testApiUiClickItemDoubleClickAction() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonValue result = callResult("qt.ui.clickItem",
+                                 QJsonObject{{"objectId", viewId},
+                                             {"path", QJsonArray{0}},
+                                             {"action", "doubleClick"}});
+  QCOMPARE(result.toObject()["found"].toBool(), true);
+  QCOMPARE(m_tableView->currentIndex().row(), 0);
+}
+
+void TestModelNavigator::testApiUiClickItemEditOpensEditor() {
+  // QStandardItem cells are editable by default.
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonValue result = callResult("qt.ui.clickItem",
+                                 QJsonObject{{"objectId", viewId},
+                                             {"path", QJsonArray{0}},
+                                             {"action", "edit"},
+                                             {"column", 0},
+                                             {"editColumn", 1}});
+  QCOMPARE(result.toObject()["found"].toBool(), true);
+  // Edit succeeded without throwing, and the current index moved to the
+  // edit cell. (state() is protected so we can't query EditingState directly;
+  // the non-throw path + currentIndex shift is the observable contract.)
+  QCOMPARE(m_tableView->currentIndex().row(), 0);
+  QCOMPARE(m_tableView->currentIndex().column(), 1);
+}
+
+void TestModelNavigator::testApiUiClickItemEditInvalidColumnError() {
+  QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", viewId},
+                                                  {"path", QJsonArray{0}},
+                                                  {"action", "edit"},
+                                                  {"editColumn", 99}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidColumn);
+  QCOMPARE(error["data"].toObject()["editColumn"].toInt(), 99);
+}
+
+void TestModelNavigator::testApiUiClickItemEditNonEditableError() {
+  // Build a read-only model.
+  auto* model = new QStandardItemModel(1, 1, this);
+  auto* item = new QStandardItem("readonly");
+  item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);  // NOT editable
+  model->setItem(0, 0, item);
+  auto* view = new QTableView();
+  view->setObjectName("readonlyView");
+  view->setModel(model);
+  view->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(model);
+  ObjectRegistry::instance()->scanExistingObjects(view);
+
+  QString viewId = ObjectRegistry::instance()->objectId(view);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", viewId},
+                                                  {"path", QJsonArray{0}},
+                                                  {"action", "edit"}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kNotEditable);
+
+  delete view;
+  delete model;
+}
+
+void TestModelNavigator::testApiUiClickItemComboBoxSelectsValue() {
+  auto* combo = new QComboBox();
+  combo->setObjectName("combo1");
+  combo->addItems({"Alpha", "Beta", "Gamma"});
+  combo->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(combo);
+
+  QString id = ObjectRegistry::instance()->objectId(combo);
+  callResult("qt.ui.clickItem",
+             QJsonObject{{"objectId", id},
+                         {"itemPath", QJsonArray{"Beta"}},
+                         {"action", "select"}});
+  QCOMPARE(combo->currentIndex(), 1);
+
+  delete combo;
+}
+
+void TestModelNavigator::testApiUiClickItemComboBoxEditReturnsNotEditable() {
+  auto* combo = new QComboBox();
+  combo->setObjectName("combo2");
+  combo->addItems({"X"});
+  combo->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(combo);
+
+  QString id = ObjectRegistry::instance()->objectId(combo);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", id},
+                                                  {"itemPath", QJsonArray{"X"}},
+                                                  {"action", "edit"}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kNotEditable);
+
+  delete combo;
+}
+
+void TestModelNavigator::testApiUiClickItemComboBoxRejectsNonZeroColumn() {
+  auto* combo = new QComboBox();
+  combo->setObjectName("combo3");
+  combo->addItems({"Y"});
+  combo->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(combo);
+
+  QString id = ObjectRegistry::instance()->objectId(combo);
+  QJsonObject error = callExpectError("qt.ui.clickItem",
+                                      QJsonObject{{"objectId", id},
+                                                  {"itemPath", QJsonArray{"Y"}},
+                                                  {"column", 1}});
+  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidColumn);
+
+  delete combo;
+}
+
+void TestModelNavigator::testApiUiClickItemExpandsAncestors() {
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("A");
+  auto* aa = new QStandardItem("A.A");
+  aa->appendRow(new QStandardItem("leaf"));
+  a->appendRow(aa);
+  tree->appendRow(a);
+
+  auto* view = new QTreeView();
+  view->setObjectName("expandTree");
+  view->setModel(tree);
+  view->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(tree);
+  ObjectRegistry::instance()->scanExistingObjects(view);
+
+  QString viewId = ObjectRegistry::instance()->objectId(view);
+
+  // All ancestors start collapsed.
+  QVERIFY(!view->isExpanded(tree->index(0, 0)));
+  QVERIFY(!view->isExpanded(tree->index(0, 0, tree->index(0, 0))));
+
+  callResult("qt.ui.clickItem",
+             QJsonObject{{"objectId", viewId},
+                         {"path", QJsonArray{0, 0, 0}},
+                         {"action", "select"}});
+
+  QVERIFY(view->isExpanded(tree->index(0, 0)));
+  QVERIFY(view->isExpanded(tree->index(0, 0, tree->index(0, 0))));
+
+  delete view;
+  delete tree;
 }
 
 QTEST_MAIN(TestModelNavigator)

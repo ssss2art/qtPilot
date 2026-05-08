@@ -356,6 +356,20 @@
         </item>
        </layout>
       </widget>
+      <widget class="QWidget" name="treeTab">
+       <attribute name="title">
+        <string>Tree</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="treeLayout">
+        <item>
+         <widget class="QTreeView" name="treeView">
+          <property name="objectName">
+           <string>treeView</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
      </widget>
     </item>
    </layout>

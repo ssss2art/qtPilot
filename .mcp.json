@@ -2,7 +2,7 @@
   "mcpServers": {
     "qtpilot": {
       "command": "qtpilot",
-      "args": ["serve"]
+      "args": ["serve", "--mode", "all"]
     }
   }
 }

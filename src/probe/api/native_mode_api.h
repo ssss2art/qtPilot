@@ -21,7 +21,7 @@ namespace qtPilot {
 ///   - qt.signals.*  - Signal monitoring
 ///   - qt.ui.*       - UI interaction (click, keys, screenshot, geometry, hit test)
 ///   - qt.names.*    - Symbolic name map management
-///   - qt.ping/qt.version/qt.modes - System methods
+///   - qt.ping/qt.version - System methods
 ///
 /// All methods use ObjectResolver for ID resolution, ResponseEnvelope for
 /// response wrapping, and ErrorCode constants for structured errors.
@@ -44,7 +44,7 @@ class QTPILOT_EXPORT NativeModeApi : public QObject {
   void registerSignalMethods();    ///< qt.signals.*
   void registerUiMethods();        ///< qt.ui.*
   void registerNameMapMethods();   ///< qt.names.*
-  void registerSystemMethods();    ///< qt.ping, qt.version, qt.modes
+  void registerSystemMethods();    ///< qt.ping, qt.version
   void registerEventMethods();     ///< qt.events.*
   void registerQmlMethods();       ///< qt.qml.*
   void registerModelMethods();     ///< qt.models.*

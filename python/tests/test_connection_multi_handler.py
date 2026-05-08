@@ -176,11 +176,11 @@ class TestCallObservers:
             "id": probe._next_id,
         }
         with pytest.raises(Exception, match="Not found"):
-            await probe.call("qt.objects.info", {"objectId": "gone"})
+            await probe.call("qt.objects.inspect", {"objectId": "gone"})
 
         assert len(observed) == 1
         req, res_or_exc, dur = observed[0]
-        assert req["method"] == "qt.objects.info"
+        assert req["method"] == "qt.objects.inspect"
         assert isinstance(res_or_exc, Exception)
         assert dur >= 0
 

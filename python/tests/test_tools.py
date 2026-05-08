@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 from qtpilot.tools.native import register_native_tools
 from qtpilot.tools.cu import register_cu_tools
 from qtpilot.tools.chrome import register_chrome_tools
+from qtpilot.tools.discovery_tools import register_discovery_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:
@@ -18,9 +19,9 @@ def _tool_names(mcp: FastMCP) -> set[str]:
 
 class TestNativeTools:
     def test_native_tools_registered(self, mock_mcp):
-        """Native mode registers >= 32 tools."""
+        """Native mode registers >= 25 tools."""
         register_native_tools(mock_mcp)
-        assert len(_tool_names(mock_mcp)) >= 32
+        assert len(_tool_names(mock_mcp)) >= 25
 
     def test_native_tool_names(self, mock_mcp):
         """Key native tool names are present."""
@@ -28,25 +29,20 @@ class TestNativeTools:
         names = _tool_names(mock_mcp)
         expected = {
             "qt_ping",
-            "qt_objects_find",
-            "qt_objects_findByClass",
+            "qt_objects_search",
             "qt_objects_tree",
-            "qt_objects_info",
             "qt_objects_inspect",
             "qt_properties_get",
             "qt_properties_set",
-            "qt_properties_list",
-            "qt_methods_list",
             "qt_methods_invoke",
-            "qt_signals_list",
             "qt_signals_subscribe",
             "qt_ui_click",
             "qt_ui_screenshot",
             "qt_ui_sendKeys",
+            "qt_ui_clickItem",
             "qt_models_list",
-            "qt_models_info",
             "qt_models_data",
-            "qt_qml_inspect",
+            "qt_models_search",
             "qt_names_register",
             "qt_names_list",
         }
@@ -81,6 +77,21 @@ class TestCuTools:
         }
         missing = expected - names
         assert not missing, f"Missing CU tools: {missing}"
+
+
+class TestDiscoveryTools:
+    def test_discovery_tool_names(self, mock_mcp):
+        """Discovery-layer tools include the unified qtpilot_status."""
+        register_discovery_tools(mock_mcp)
+        names = _tool_names(mock_mcp)
+        expected = {
+            "qtpilot_status",
+            "qtpilot_connect_probe",
+            "qtpilot_disconnect_probe",
+            "qtpilot_set_mode",
+        }
+        missing = expected - names
+        assert not missing, f"Missing discovery tools: {missing}"
 
 
 class TestChromeTools:

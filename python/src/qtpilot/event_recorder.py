@@ -176,7 +176,7 @@ class EventRecorder:
         # Start global event capture if requested
         if capture_events:
             try:
-                await probe.call("qt.events.startCapture")
+                await probe.call("qt.events.start")
             except Exception:
                 logger.debug("Failed to start event capture", exc_info=True)
 
@@ -221,7 +221,7 @@ class EventRecorder:
         # Stop event capture if we enabled it
         if self._capture_events:
             try:
-                await probe.call("qt.events.stopCapture")
+                await probe.call("qt.events.stop")
             except Exception:
                 logger.debug("Failed to stop event capture", exc_info=True)
 
@@ -301,10 +301,12 @@ class EventRecorder:
         if target.recursive:
             try:
                 resp = await probe.call(
-                    "qt.objects.info", {"objectId": target.object_id}
+                    "qt.objects.inspect",
+                    {"objectId": target.object_id, "parts": ["info"]},
                 )
-                # Probe wraps: {"meta":{...}, "result": {"children":[...]}}
-                info = resp.get("result", resp)
+                # Probe wraps: {"meta":{...}, "result": {"info": {"children":[...]}}}
+                body = resp.get("result", resp)
+                info = body.get("info", body)
                 children = info.get("children", [])
                 objects_to_subscribe.extend(
                     c.get("objectId", c) if isinstance(c, dict) else c
@@ -345,9 +347,12 @@ class EventRecorder:
     ) -> list[str]:
         """Determine default signals for an object based on its class."""
         try:
-            resp = await probe.call("qt.objects.info", {"objectId": object_id})
-            # Probe wraps: {"meta":{...}, "result": {"className":...}}
-            info = resp.get("result", resp)
+            resp = await probe.call(
+                "qt.objects.inspect", {"objectId": object_id, "parts": ["info"]}
+            )
+            # Probe wraps: {"meta":{...}, "result": {"info": {"className":...}}}
+            body = resp.get("result", resp)
+            info = body.get("info", body)
             class_name = info.get("className", "")
         except Exception:
             return FALLBACK_SIGNALS

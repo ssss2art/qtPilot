@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QStandardItemModel>
 
 namespace Ui {
 class MainWindow;
@@ -28,4 +29,5 @@ class MainWindow : public QMainWindow {
 
  private:
   Ui::MainWindow* ui_;
+  QStandardItemModel* treeModel_ = nullptr;
 };

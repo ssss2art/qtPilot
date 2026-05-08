@@ -80,29 +80,40 @@ QJsonObject ModelNavigator::getModelInfo(QAbstractItemModel* model) {
   return info;
 }
 
-QJsonObject ModelNavigator::getModelData(QAbstractItemModel* model, int offset, int limit,
-                                         const QList<int>& roles, int parentRow, int parentCol) {
+QJsonObject ModelNavigator::getModelData(QAbstractItemModel* model, const QList<int>& parentPath,
+                                         int offset, int limit, const QList<int>& roles) {
   QJsonObject result;
-  if (!model) {
+  // Echo the parent path first so all early-return shapes match.
+  QJsonArray parentArr;
+  for (int seg : parentPath)
+    parentArr.append(seg);
+  result[QStringLiteral("parent")] = parentArr;
+
+  auto fillEmpty = [&](int off, int lim) {
     result[QStringLiteral("rows")] = QJsonArray();
     result[QStringLiteral("totalRows")] = 0;
     result[QStringLiteral("totalColumns")] = 0;
-    result[QStringLiteral("offset")] = 0;
-    result[QStringLiteral("limit")] = 0;
+    result[QStringLiteral("offset")] = off;
+    result[QStringLiteral("limit")] = lim;
     result[QStringLiteral("hasMore")] = false;
+  };
+  if (!model) {
+    fillEmpty(0, 0);
     return result;
   }
 
-  // Build parent QModelIndex for tree navigation
-  QModelIndex parentIdx;
-  if (parentRow >= 0) {
-    parentIdx = model->index(parentRow, parentCol, QModelIndex());
+  // Resolve parent. Invalid path → empty result (handler emits kInvalidParentPath).
+  QModelIndex parentIdx = pathToIndex(model, parentPath);
+  if (!parentPath.isEmpty() && !parentIdx.isValid()) {
+    fillEmpty(0, 0);
+    return result;
   }
 
+  ensureFetched(model, parentIdx);
   const int totalRows = model->rowCount(parentIdx);
   const int totalCols = model->columnCount(parentIdx);
 
-  // Smart pagination
+  // Smart pagination.
   if (limit <= 0) {
     if (totalRows <= 100) {
       offset = 0;
@@ -111,74 +122,154 @@ QJsonObject ModelNavigator::getModelData(QAbstractItemModel* model, int offset, 
       limit = 100;
     }
   }
-
-  // Clamp offset
   if (offset < 0)
     offset = 0;
   if (offset > totalRows)
     offset = totalRows;
-
   const int endRow = qMin(offset + limit, totalRows);
 
-  // Default roles
-  QList<int> effectiveRoles = roles;
-  if (effectiveRoles.isEmpty()) {
-    effectiveRoles.append(Qt::DisplayRole);
-  }
+  QList<int> effective = roles;
+  if (effective.isEmpty())
+    effective.append(Qt::DisplayRole);
 
-  // Build role name map for output keys
-  const QHash<int, QByteArray> modelRoleNames = model->roleNames();
-
-  // Fetch data
-  QJsonArray rowsArray;
+  QJsonArray rowsArr;
   for (int row = offset; row < endRow; ++row) {
-    QJsonObject rowObj;
-    QJsonArray cellsArray;
-
-    for (int col = 0; col < totalCols; ++col) {
-      const QModelIndex idx = model->index(row, col, parentIdx);
-      QJsonObject cellObj;
-
-      for (int role : effectiveRoles) {
-        const QVariant data = model->data(idx, role);
-        // Determine role name for JSON key
-        QString roleName;
-        if (modelRoleNames.contains(role)) {
-          roleName = QString::fromUtf8(modelRoleNames.value(role));
-        } else {
-          // Fallback to standard role name
-          const auto& stdRoles = standardRoleNames();
-          for (auto it = stdRoles.constBegin(); it != stdRoles.constEnd(); ++it) {
-            if (it.value() == role) {
-              roleName = it.key();
-              break;
-            }
-          }
-          if (roleName.isEmpty()) {
-            roleName = QStringLiteral("role_") + QString::number(role);
-          }
-        }
-        cellObj[roleName] = variantToJson(data);
-      }
-
-      cellsArray.append(cellObj);
-    }
-
-    // Check if row has children (for tree navigation)
-    const QModelIndex firstColIdx = model->index(row, 0, parentIdx);
-    rowObj[QStringLiteral("cells")] = cellsArray;
-    rowObj[QStringLiteral("hasChildren")] = model->hasChildren(firstColIdx);
-    rowsArray.append(rowObj);
+    const QModelIndex idx = model->index(row, 0, parentIdx);
+    rowsArr.append(indexToRowData(model, idx, effective));
   }
 
-  result[QStringLiteral("rows")] = rowsArray;
+  result[QStringLiteral("rows")] = rowsArr;
   result[QStringLiteral("totalRows")] = totalRows;
   result[QStringLiteral("totalColumns")] = totalCols;
   result[QStringLiteral("offset")] = offset;
   result[QStringLiteral("limit")] = limit;
   result[QStringLiteral("hasMore")] = (endRow < totalRows);
-
   return result;
+}
+
+void ModelNavigator::ensureFetched(QAbstractItemModel* model, const QModelIndex& parentIdx) {
+  if (!model)
+    return;
+  // Drain fetchMore loop — some models fetch in batches.
+  while (model->canFetchMore(parentIdx)) {
+    model->fetchMore(parentIdx);
+  }
+}
+
+QModelIndex ModelNavigator::pathToIndex(QAbstractItemModel* model, const QList<int>& path,
+                                        int* outFailedSegment) {
+  if (!model) {
+    if (outFailedSegment)
+      *outFailedSegment = 0;
+    return {};
+  }
+  QModelIndex current;  // invalid = root
+  for (int i = 0; i < path.size(); ++i) {
+    ensureFetched(model, current);
+    const int row = path[i];
+    if (row < 0 || row >= model->rowCount(current)) {
+      if (outFailedSegment)
+        *outFailedSegment = i;
+      return {};
+    }
+    current = model->index(row, 0, current);
+    if (!current.isValid()) {
+      if (outFailedSegment)
+        *outFailedSegment = i;
+      return {};
+    }
+  }
+  return current;
+}
+
+QModelIndex ModelNavigator::textPathToIndex(QAbstractItemModel* model, const QStringList& itemPath,
+                                            int matchColumn, int* outFailedSegment) {
+  if (!model) {
+    if (outFailedSegment)
+      *outFailedSegment = 0;
+    return {};
+  }
+  QModelIndex current;  // invalid = root
+  for (int i = 0; i < itemPath.size(); ++i) {
+    ensureFetched(model, current);
+    const QString& wanted = itemPath[i];
+    const int rows = model->rowCount(current);
+    bool matched = false;
+    for (int row = 0; row < rows; ++row) {
+      const QModelIndex cell = model->index(row, matchColumn, current);
+      if (!cell.isValid())
+        continue;
+      if (model->data(cell, Qt::DisplayRole).toString() == wanted) {
+        current = model->index(row, 0, current);  // row identity in column 0
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      if (outFailedSegment)
+        *outFailedSegment = i;
+      return {};
+    }
+  }
+  return current;
+}
+
+bool ModelNavigator::compileFindOptions(FindOptions& opts, QString* outError) {
+  if (opts.match != MatchMode::Regex)
+    return true;
+  opts.compiledRegex.setPattern(opts.value);
+  opts.compiledRegex.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
+  if (!opts.compiledRegex.isValid()) {
+    if (outError)
+      *outError = opts.compiledRegex.errorString();
+    return false;
+  }
+  return true;
+}
+
+namespace {
+bool matchesValue(const QString& cell, const ModelNavigator::FindOptions& opts) {
+  switch (opts.match) {
+    case ModelNavigator::MatchMode::Exact:
+      return cell.compare(opts.value, Qt::CaseInsensitive) == 0;
+    case ModelNavigator::MatchMode::Contains:
+      return cell.contains(opts.value, Qt::CaseInsensitive);
+    case ModelNavigator::MatchMode::StartsWith:
+      return cell.startsWith(opts.value, Qt::CaseInsensitive);
+    case ModelNavigator::MatchMode::EndsWith:
+      return cell.endsWith(opts.value, Qt::CaseInsensitive);
+    case ModelNavigator::MatchMode::Regex:
+      return opts.compiledRegex.match(cell).hasMatch();
+    default:
+      return false;
+  }
+}
+}  // namespace
+
+bool ModelNavigator::findRecursive(QAbstractItemModel* model, const QModelIndex& parentIdx,
+                                   FindOptions& opts, QJsonArray& outMatches) {
+  if (!model)
+    return false;
+  ensureFetched(model, parentIdx);
+  const int rows = model->rowCount(parentIdx);
+  for (int row = 0; row < rows; ++row) {
+    const QModelIndex cellIdx = model->index(row, opts.column, parentIdx);
+    if (cellIdx.isValid()) {
+      const QString cellText = model->data(cellIdx, opts.role).toString();
+      if (matchesValue(cellText, opts)) {
+        const QModelIndex rowIdx = model->index(row, 0, parentIdx);
+        outMatches.append(indexToRowData(model, rowIdx, {opts.role}));
+        if (opts.maxHits >= 0 && outMatches.size() >= opts.maxHits)
+          return true;
+      }
+    }
+    const QModelIndex childParent = model->index(row, 0, parentIdx);
+    if (model->hasChildren(childParent)) {
+      if (findRecursive(model, childParent, opts, outMatches))
+        return true;
+    }
+  }
+  return false;
 }
 
 QAbstractItemModel* ModelNavigator::resolveModel(QObject* obj) {
@@ -228,6 +319,56 @@ int ModelNavigator::resolveRoleName(QAbstractItemModel* model, const QString& ro
     return it.value();
 
   return -1;
+}
+
+QJsonObject ModelNavigator::indexToRowData(QAbstractItemModel* model, const QModelIndex& index,
+                                           const QList<int>& roles) {
+  QJsonObject row;
+  if (!model || !index.isValid())
+    return row;
+
+  // Build path by walking up to root.
+  QJsonArray pathArr;
+  for (QModelIndex walk = index; walk.isValid(); walk = walk.parent()) {
+    pathArr.prepend(walk.row());
+  }
+  row[QStringLiteral("path")] = pathArr;
+
+  // Effective roles.
+  QList<int> effective = roles;
+  if (effective.isEmpty())
+    effective.append(Qt::DisplayRole);
+
+  const QHash<int, QByteArray> modelRoleNames = model->roleNames();
+  const QModelIndex parent = index.parent();
+  const int colCount = model->columnCount(parent);
+
+  QJsonArray cells;
+  for (int col = 0; col < colCount; ++col) {
+    const QModelIndex cellIdx = model->index(index.row(), col, parent);
+    QJsonObject cell;
+    for (int role : effective) {
+      QString roleName;
+      if (modelRoleNames.contains(role)) {
+        roleName = QString::fromUtf8(modelRoleNames.value(role));
+      } else {
+        const auto& std = standardRoleNames();
+        for (auto it = std.constBegin(); it != std.constEnd(); ++it) {
+          if (it.value() == role) {
+            roleName = it.key();
+            break;
+          }
+        }
+        if (roleName.isEmpty())
+          roleName = QStringLiteral("role_") + QString::number(role);
+      }
+      cell[roleName] = variantToJson(model->data(cellIdx, role));
+    }
+    cells.append(cell);
+  }
+  row[QStringLiteral("cells")] = cells;
+  row[QStringLiteral("hasChildren")] = model->hasChildren(model->index(index.row(), 0, parent));
+  return row;
 }
 
 QJsonObject ModelNavigator::getRoleNames(QAbstractItemModel* model) {

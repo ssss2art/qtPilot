@@ -227,17 +227,18 @@ manually set `PATH` or `QT_PLUGIN_PATH`.
 ### 2. Discover and Connect
 
 ```
-qtpilot_list_probes()        # find running probes
-qtpilot_connect_probe(ws_url="ws://...")  # connect using the URL from list
-qt_ping()                  # verify connectivity
+qtpilot_status()                          # session snapshot (mode, connection, discovered probes)
+qtpilot_connect_probe(ws_url="ws://...")  # connect using a ws_url from discovery.probes
+qt_ping()                                 # verify connectivity
 ```
 
 ### 3. Interact
 
-- **Find widgets:** `qt_objects_findByClass`, `qt_objects_query` (by property/text), `qt_objects_find` (by objectName)
-- **Read properties:** `qt_properties_get` / `qt_properties_list`
+- **Find widgets:** `qt_objects_search` (unified discovery — filter by `objectName`, `className`, and/or `properties`)
+- **Inspect an object:** `qt_objects_inspect(objectId="...", parts=["info","properties","methods","signals","qml","geometry","model"])` — default `parts=["info"]`; pass `"all"` for everything
+- **Read/write properties:** `qt_properties_get` / `qt_properties_set` (list of all properties: `qt_objects_inspect(parts=["properties"])`)
 - **Click & type:** `qt_ui_click`, `qt_ui_sendKeys` (use `text` for typing, `sequence` for shortcuts like `"Ctrl+A"`)
-- **Trigger menu actions:** Find QActions with `qt_objects_query(className="QAction", properties={"text": "Copy"})`, then use `qt_ui_sendKeys` with the action's shortcut sequence. Note: `qt_methods_invoke(method="trigger")` on QActions may not preserve widget focus context.
+- **Trigger menu actions:** Find QActions with `qt_objects_search(className="QAction", properties={"text": "Copy"})`, then use `qt_ui_sendKeys` with the action's shortcut sequence. Note: `qt_methods_invoke(method="trigger")` on QActions may not preserve widget focus context.
 - **Screenshots:** `qt_ui_screenshot(objectId="...", fullWindow=true)`
 - **Object tree:** `qt_objects_tree(maxDepth=5)` for full hierarchy
 

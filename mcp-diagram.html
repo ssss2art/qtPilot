@@ -1908,12 +1908,12 @@
       <div class="tool-group-title">Probe Management — Always Available</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtpilot_list_probes</div>
-          <div class="tool-desc">Discover qtPilot probes via UDP broadcast. Returns app name, PID, Qt version, WebSocket URL, and uptime.</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_status</div>
+          <div class="tool-desc">Unified session snapshot: current mode, available modes, connection state, and discovered probes (replaces qtpilot_list_probes, qtpilot_get_mode, qtPilot_probe_status).</div>
         </div>
         <div class="tool-card">
           <div class="tool-name" style="color:var(--accent)">qtpilot_connect_probe</div>
-          <div class="tool-desc">Connect to a specific probe by WebSocket URL.</div>
+          <div class="tool-desc">Connect to a specific probe by WebSocket URL. Returns {ok, ws_url}.</div>
           <div class="tool-params"><span class="param-tag required">ws_url</span></div>
         </div>
         <div class="tool-card">
@@ -1921,8 +1921,9 @@
           <div class="tool-desc">Disconnect from the currently connected probe.</div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtPilot_probe_status</div>
-          <div class="tool-desc">Get connection state, discovery status, and number of discovered probes.</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_set_mode</div>
+          <div class="tool-desc">Switch the active API mode (native / cu / chrome / all).</div>
+          <div class="tool-params"><span class="param-tag required">mode</span></div>
         </div>
       </div>
     </div>
@@ -1941,12 +1942,12 @@
       <div class="tool-group-title">Recording — Native Mode</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtpilot_start_recording</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_recording_start</div>
           <div class="tool-desc">Start recording signals on specific objects. Captures lifecycle events and signal emissions.</div>
           <div class="tool-params"><span class="param-tag required">targets</span><span class="param-tag">include_lifecycle</span><span class="param-tag">capture_events</span></div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--accent)">qtpilot_stop_recording</div>
+          <div class="tool-name" style="color:var(--accent)">qtpilot_recording_stop</div>
           <div class="tool-desc">Stop recording and return the full event log.</div>
         </div>
         <div class="tool-card">
@@ -1965,7 +1966,6 @@
       <div class="tool-grid">
         <div class="tool-card"><div class="tool-name" style="color:var(--green)">qt_ping</div><div class="tool-desc">Check connectivity and measure event-loop latency.</div></div>
         <div class="tool-card"><div class="tool-name" style="color:var(--green)">qt_version</div><div class="tool-desc">Return probe version and deprecation notices.</div></div>
-        <div class="tool-card"><div class="tool-name" style="color:var(--green)">qt_modes</div><div class="tool-desc">List available API modes on this probe.</div></div>
       </div>
     </div>
 
@@ -1973,14 +1973,9 @@
       <div class="tool-group-title">Object Discovery</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_objects_find</div>
-          <div class="tool-desc">Find QObjects by <code>objectName</code>.</div>
-          <div class="tool-params"><span class="param-tag required">name</span><span class="param-tag">root</span></div>
-        </div>
-        <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_objects_findByClass</div>
-          <div class="tool-desc">Find all instances of a given class name.</div>
-          <div class="tool-params"><span class="param-tag required">className</span><span class="param-tag">root</span></div>
+          <div class="tool-name" style="color:var(--green)">qt_objects_search</div>
+          <div class="tool-desc">Unified object search. Filter by <code>objectName</code>, <code>className</code>, and/or property values. Replaces the legacy find / findByClass / query tools.</div>
+          <div class="tool-params"><span class="param-tag">name</span><span class="param-tag">className</span><span class="param-tag">properties</span><span class="param-tag">root</span></div>
         </div>
         <div class="tool-card">
           <div class="tool-name" style="color:var(--green)">qt_objects_tree</div>
@@ -1988,19 +1983,9 @@
           <div class="tool-params"><span class="param-tag">root</span><span class="param-tag">maxDepth</span></div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_objects_info</div>
-          <div class="tool-desc">Get basic info: class, parent, children.</div>
-          <div class="tool-params"><span class="param-tag required">objectId</span></div>
-        </div>
-        <div class="tool-card">
           <div class="tool-name" style="color:var(--green)">qt_objects_inspect</div>
-          <div class="tool-desc">Deep inspect — info + properties + methods + signals combined.</div>
-          <div class="tool-params"><span class="param-tag required">objectId</span></div>
-        </div>
-        <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_objects_query</div>
-          <div class="tool-desc">Rich query by class name and property values.</div>
-          <div class="tool-params"><span class="param-tag">className</span><span class="param-tag">properties</span><span class="param-tag">root</span></div>
+          <div class="tool-desc">Composable object introspection. Pick exactly what to return via <code>parts</code>: <code>info</code>, <code>properties</code>, <code>methods</code>, <code>signals</code>, <code>qml</code>, <code>geometry</code>, <code>model</code>. Replaces the legacy info / query / properties.list / methods.list / signals.list / qml.inspect / models.info tools.</div>
+          <div class="tool-params"><span class="param-tag required">objectId</span><span class="param-tag">parts</span></div>
         </div>
       </div>
     </div>
@@ -2009,13 +1994,8 @@
       <div class="tool-group-title">Properties</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_properties_list</div>
-          <div class="tool-desc">List all properties on an object.</div>
-          <div class="tool-params"><span class="param-tag required">objectId</span></div>
-        </div>
-        <div class="tool-card">
           <div class="tool-name" style="color:var(--green)">qt_properties_get</div>
-          <div class="tool-desc">Get a single property value.</div>
+          <div class="tool-desc">Get a single property value. Use <code>qt_objects_inspect(parts=["properties"])</code> to list all properties.</div>
           <div class="tool-params"><span class="param-tag required">objectId</span><span class="param-tag required">name</span></div>
         </div>
         <div class="tool-card">
@@ -2030,13 +2010,8 @@
       <div class="tool-group-title">Methods</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_methods_list</div>
-          <div class="tool-desc">List all invokable methods and slots.</div>
-          <div class="tool-params"><span class="param-tag required">objectId</span></div>
-        </div>
-        <div class="tool-card">
           <div class="tool-name" style="color:var(--green)">qt_methods_invoke</div>
-          <div class="tool-desc">Invoke a method or slot with arguments.</div>
+          <div class="tool-desc">Invoke a method or slot with arguments. Use <code>qt_objects_inspect(parts=["methods"])</code> to list invokable methods.</div>
           <div class="tool-params"><span class="param-tag required">objectId</span><span class="param-tag required">method</span><span class="param-tag">args</span></div>
         </div>
       </div>
@@ -2046,13 +2021,8 @@
       <div class="tool-group-title">Signals</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_signals_list</div>
-          <div class="tool-desc">List all signals on an object.</div>
-          <div class="tool-params"><span class="param-tag required">objectId</span></div>
-        </div>
-        <div class="tool-card">
           <div class="tool-name" style="color:var(--green)">qt_signals_subscribe</div>
-          <div class="tool-desc">Subscribe to a signal. Returns a subscriptionId for push notifications.</div>
+          <div class="tool-desc">Subscribe to a signal. Returns a subscriptionId for push notifications. Use <code>qt_objects_inspect(parts=["signals"])</code> to list available signals.</div>
           <div class="tool-params"><span class="param-tag required">objectId</span><span class="param-tag required">signal</span></div>
         </div>
         <div class="tool-card">
@@ -2103,11 +2073,11 @@
       <div class="tool-group-title">Event Capture</div>
       <div class="tool-grid">
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_events_startCapture</div>
+          <div class="tool-name" style="color:var(--green)">qt_events_start</div>
           <div class="tool-desc">Install a global event filter to capture mouse, keyboard, and focus events.</div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_events_stopCapture</div>
+          <div class="tool-name" style="color:var(--green)">qt_events_stop</div>
           <div class="tool-desc">Remove the global event filter and return captured events.</div>
         </div>
       </div>
@@ -2150,25 +2120,14 @@
           <div class="tool-desc">List all QAbstractItemModel instances in the application.</div>
         </div>
         <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_models_info</div>
-          <div class="tool-desc">Get model metadata: row count, column count, role names.</div>
-          <div class="tool-params"><span class="param-tag required">objectId</span></div>
+          <div class="tool-name" style="color:var(--green)">qt_models_search</div>
+          <div class="tool-desc">Search model rows by role-value predicates. Replaces the legacy <code>qt_models_find</code>.</div>
+          <div class="tool-params"><span class="param-tag required">objectId</span><span class="param-tag required">filters</span><span class="param-tag">limit</span></div>
         </div>
         <div class="tool-card">
           <div class="tool-name" style="color:var(--green)">qt_models_data</div>
-          <div class="tool-desc">Fetch model data with pagination and role filtering.</div>
+          <div class="tool-desc">Fetch model data with pagination and role filtering. Use <code>qt_objects_inspect(parts=["model"])</code> for model metadata (row count, column count, role names).</div>
           <div class="tool-params"><span class="param-tag required">objectId</span><span class="param-tag">row</span><span class="param-tag">column</span><span class="param-tag">role</span><span class="param-tag">offset</span><span class="param-tag">limit</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="tool-group">
-      <div class="tool-group-title">QML</div>
-      <div class="tool-grid">
-        <div class="tool-card">
-          <div class="tool-name" style="color:var(--green)">qt_qml_inspect</div>
-          <div class="tool-desc">Get QML-specific metadata: component id, source file, QML type name.</div>
-          <div class="tool-params"><span class="param-tag required">objectId</span></div>
         </div>
       </div>
     </div>

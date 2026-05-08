@@ -195,7 +195,7 @@ class TestMessageLoggerEntries:
             path = os.path.join(tmpdir, "test.jsonl")
             logger.start(path=path, level=2)
             logger._on_call_complete(
-                {"method": "qt.objects.info", "id": 2},
+                {"method": "qt.objects.inspect", "id": 2},
                 RuntimeError("Not found"),
                 30.0,
             )
@@ -203,7 +203,7 @@ class TestMessageLoggerEntries:
             with open(path) as f:
                 entry = json.loads(f.readline())
             assert entry["dir"] == "err"
-            assert entry["method"] == "qt.objects.info"
+            assert entry["method"] == "qt.objects.inspect"
             assert "Not found" in entry["error"]
 
     def test_notification_entry(self):

@@ -25,8 +25,8 @@ class TestRecordingTools:
         register_recording_tools(mock_mcp)
         names = _tool_names(mock_mcp)
         expected = {
-            "qtpilot_start_recording",
-            "qtpilot_stop_recording",
+            "qtpilot_recording_start",
+            "qtpilot_recording_stop",
             "qtpilot_recording_status",
         }
         missing = expected - names

@@ -7,6 +7,10 @@ description: Comprehensive end-to-end test of the qtPilot MCP server across all 
 
 Comprehensive end-to-end test of the qtPilot MCP server covering all three interaction modes (native, chrome, computer_use), the message logging subsystem, and the event recording subsystem.
 
+## Tool surface
+
+Native-mode consolidation merged discovery/inspection into two tools: `qt_objects_search` (filter by `objectName` / `className` / `properties`) and `qt_objects_inspect(objectId, parts=[...])` with parts `info`, `properties`, `methods`, `signals`, `qml`, `geometry`, `model`. Session state (mode, connection, discovered probes) lives in `qtpilot_status`. Recording uses `qtpilot_recording_{start,stop,status}`. Logging uses `qtpilot_log_{start,stop,status}` — tail recent entries via `qtpilot_log_status(tail=N)`.
+
 ## Prerequisites
 
 The project must be built (`cmake --build build --config Release`). The MCP server `qtpilot` must be configured in `.mcp.json`.
@@ -23,8 +27,8 @@ The project must be built (`cmake --build build --config Release`). The MCP serv
    ```
    Use `run_in_background: true`. Wait 4 seconds for startup.
 3. **Discover and connect:**
-   - `qtpilot_list_probes()` — expect 1 probe with app_name "qtPilot Test App"
-   - `qtpilot_connect_probe(ws_url=...)` — connect using the URL from list
+   - `qtpilot_status()` — expect at least one probe under `.discovery.probes[]` (each has `ws_url`, `app_name`, `pid`, `qt_version`, `uptime`, `connected`). App name should be "qtPilot Test App".
+   - `qtpilot_connect_probe(ws_url=...)` — connect using a `ws_url` from the probes list
    - `qt_ping()` — expect `pong: true`
 
 Record: probe PID, Qt version, WebSocket URL.
@@ -38,14 +42,14 @@ Record: probe PID, Qt version, WebSocket URL.
 
 ### Phase 2: Native Mode Tests (qt_* tools)
 
-Verify mode: `qtpilot_get_mode()` — expect `"native"` (default).
+Verify mode: `qtpilot_status()` — expect `.mode == "native"` (or `"all"`, depending on server launch args).
 
 Run these tests, recording pass/fail for each:
 
 1. **Object discovery:**
-   - `qt_objects_findByClass(className="QLineEdit")` — expect 2 results with hierarchical objectIds containing `nameEdit` and `emailEdit`
-   - `qt_objects_findByClass(className="QPushButton")` — expect 3+ results including `submitButton`, `clearButton`
-   - `qt_objects_find(name="nameEdit")` — expect 1 result
+   - `qt_objects_search(className="QLineEdit")` — expect `{count: 2, objects: [...], truncated: false}` with hierarchical `objectId`s containing `nameEdit` and `emailEdit`
+   - `qt_objects_search(className="QPushButton")` — expect 3+ results including `submitButton`, `clearButton`
+   - `qt_objects_search(objectName="nameEdit")` — expect 1 result
 
 2. **Properties:**
    - `qt_properties_get(objectId="...", name="placeholderText")` on the nameEdit — expect "Enter your name"
@@ -70,14 +74,14 @@ Run these tests, recording pass/fail for each:
    - `qt_properties_get(objectId=<nameEdit>, name="text")` — expect "" (empty after clear)
 
 7. **Methods:**
-   - `qt_methods_list(objectId=<nameEdit>)` — expect a list of invocable methods including `clear`, `selectAll`
+   - `qt_objects_inspect(objectId=<nameEdit>, parts=["methods"])` — expect `{methods:[…]}` containing `clear`, `selectAll`
    - `qt_ui_sendKeys(objectId=<nameEdit>, text="Method Test")` — fill a value first
-   - `qt_methods_invoke(objectId=<nameEdit>, method="clear")` — expect success
+   - `qt_methods_invoke(objectId=<nameEdit>, method="clear")` — expect `{result: null}` for this void method (null is success, not error)
    - `qt_properties_get(objectId=<nameEdit>, name="text")` — expect "" (cleared by method)
 
 8. **Signals:**
-   - `qt_signals_list(objectId=<nameEdit>)` — expect signals including `textChanged`, `textEdited`
-   - `qt_signals_subscribe(objectId=<nameEdit>, signal="textChanged")` — expect a subscriptionId
+   - `qt_objects_inspect(objectId=<nameEdit>, parts=["signals"])` — expect `{signals:[…]}` containing `textChanged`, `textEdited`
+   - `qt_signals_subscribe(objectId=<nameEdit>, signal="textChanged")` — expect a `subscriptionId`
    - `qt_ui_sendKeys(objectId=<nameEdit>, text="Sig")` — trigger the signal
    - `qt_signals_unsubscribe(subscriptionId=<from above>)` — expect success
 
@@ -85,34 +89,44 @@ Run these tests, recording pass/fail for each:
    - `qt_names_register(name="myNameField", path=<nameEdit objectId>)` — expect success
    - `qt_names_list()` — expect entry with "myNameField"
    - `qt_names_validate()` — expect all valid
-   - `qt_objects_find(name="nameEdit")` using the registered name — verify it resolves
    - `qt_names_unregister(name="myNameField")` — expect success
 
-10. **Models (table data):**
-    - `qt_models_list()` — expect at least 1 model (the QTableWidget's internal model)
-    - Pick a model objectId from the list
-    - `qt_models_info(objectId=<model>)` — expect rows >= 3, columns >= 3
-    - `qt_models_data(objectId=<model>, row=0, column=0)` — expect "Alpha" or similar data
+10. **Models (table data, flat model):**
+    - `qt_models_list()` — expect at least 2 models (tableWidget's internal model, treeView's model). Each entry carries `rowCount` and `columnCount` — verify the tableWidget model reports `rowCount >= 3` and `columnCount >= 3`.
+    - Pick the tableWidget model objectId from the list
+    - `qt_models_data(objectId=<tableModel>)` — expect a rows array with display cells; the first row should contain "Alpha"
 
-11. **Hit test and geometry:**
-    - `qt_ui_geometry(objectId=<submitButton>)` — expect x, y, width, height values
-    - `qt_ui_hitTest(x=<center_x>, y=<center_y>)` using submitButton center — expect result identifying the submitButton
+11. **Tree navigation (qt_models_data with parent, qt_models_search, qt_ui_clickItem):**
+    - Switch to the Tree tab: `qt_properties_set(objectId="MainWindow/centralWidget/tabWidget", name="currentIndex", value=3)` — expect `{ok: true}`. (Clicking the tab page widget also works, but setting `currentIndex` is more robust.) The canonical tree-view path is `MainWindow/centralWidget/tabWidget/qt_tabwidget_stackedwidget/treeTab/treeView`; bare `"treeView"` works via probe fallback resolution.
+    - `qt_models_data(objectId="treeView")` — expect top-level rows (ETC, Martin, BulkManufacturer), each with `hasChildren=true`, each row having a `path` field
+    - `qt_models_data(objectId="treeView", parent=[0])` — expect ETC's children (fos4..., ColorSource PAR), `path` starts with `[0, ...]`
+    - `qt_models_data(objectId="treeView", parent=[0, 0])` — expect fos4's children (Mode 8ch, Mode 12ch)
+    - `qt_models_data(objectId="treeView", parent=[99])` — expect an MCP error call response with message `Parent path invalid at segment 0`
+    - `qt_models_search(objectId="treeView", value="Aura", match="contains")` — expect at least 1 match with `path=[1, 0]` (under Martin)
+    - `qt_models_search(objectId="treeView", value="Fixture 0500", match="exact", parent=[2])` — expect 1 match inside the BulkManufacturer subtree
+    - `qt_ui_clickItem(objectId="treeView", itemPath=["Martin","MAC Aura XB","Mode 12ch"], action="select")` — expect `found=true`, `path=[1,0,1]`, ancestors auto-expanded
+    - `qt_ui_clickItem(objectId="treeView", path=[0, 0], action="select")` — dual-addressing proof; expect `found=true`
+    - Pagination: `qt_models_data(objectId="treeView", parent=[2], offset=1100, limit=100)` — expect 100 rows, `hasMore=false`, first row path `[2, 1100]`
 
-12. **Events:**
-    - `qt_events_startCapture()` — expect success
+12. **Hit test and geometry:**
+    - `qt_ui_geometry(objectId=<submitButton>)` — expect response with both `local` (widget-relative) and `global` (screen) keys, each with `x`, `y`, `width`, `height`
+    - `qt_ui_hitTest(x=<center_x>, y=<center_y>)` using the submitButton center in **global** (screen) coords — expect result identifying the submitButton
+
+13. **Events:**
+    - `qt_events_start()` — expect `{capturing: true}`
     - `qt_ui_click(objectId=<submitButton>)` — generate some events
-    - `qt_events_stopCapture()` — expect captured events list with entries
+    - `qt_events_stop()` — expect `{capturing: false}`. Note: this call only toggles the global event filter; it does **not** return captured events. Captured events flow via the recording subsystem (Phase 3) or signal subscriptions.
 
-13. **QML inspect** (may return empty if no QML items, but should not error):
-    - `qt_qml_inspect(objectId=<nameEdit>)` — expect a result (possibly indicating not a QML item)
+14. **QML inspect** (may return null for non-QML widgets, but should not error):
+    - `qt_objects_inspect(objectId=<nameEdit>, parts=["qml"])` — expect `{"qml": null}` for a plain QWidget. `null` is a PASS (part doesn't apply), not an error.
 
 ### Phase 3: Recording Tests
 
 Test the event recording subsystem before switching modes.
 
 1. **Start recording:**
-   - `qtpilot_start_recording(targets=[<nameEdit objectId>])` — expect `recording: true`
-   - `qtpilot_recording_status()` — expect `recording: true` with target info
+   - `qtpilot_recording_start(targets=[{"object_id": "<nameEdit objectId>"}])` — targets are a list of dicts; each is `{object_id, signals?, recursive?}`. Expect `{recording: true, subscriptions, targets, capture_events}`.
+   - `qtpilot_recording_status()` — expect `recording: true` with `event_count` and `duration`
 
 2. **Generate recorded events:**
    - `qt_ui_click(objectId=<nameEdit>)` — click to focus
@@ -120,13 +134,15 @@ Test the event recording subsystem before switching modes.
    - `qt_ui_click(objectId=<clearButton>)` — click clear
 
 3. **Stop recording and verify:**
-   - `qtpilot_stop_recording()` — expect `recording: false` with an event list
-   - Verify the event list contains entries (timestamps, event types, object IDs)
+   - `qtpilot_recording_stop()` — expect `{recording: false, duration, event_count, events:[…]}`
+   - Verify the `events` list contains entries (timestamps `t`, event/signal types, object IDs)
 
 ### Phase 4: Chrome Mode Tests (chr_* tools)
 
-1. **Switch mode:** `qtpilot_set_mode(mode="chrome")` — expect `changed: true`
-2. **Verify:** `qtpilot_get_mode()` — expect `"chrome"`
+1. **Switch mode:** `qtpilot_set_mode(mode="chrome")` — expect `{ok: true, mode: "chrome", previous_mode: "…"}`
+2. **Verify:** `qtpilot_status()` — expect `.mode == "chrome"`
+
+Note: mode switches cause the MCP server to re-advertise a different tool list. Native `qt_*` tools become unavailable until the client refetches tools (usually next tool call). This is normal.
 
 Run these tests:
 
@@ -146,7 +162,7 @@ Run these tests:
    - `chr_tabsContext()` — expect window/tab info
 
 7. **Console messages:**
-   - `chr_readConsoleMessages()` — expect a result (may be empty list, but should not error)
+   - `chr_readConsoleMessages(limit=3)` — accept either a successful response **or** an MCP "result exceeds maximum allowed tokens" overflow as PASS (the call itself succeeded). The current build may not honor `limit`; either outcome is acceptable.
 
 8. **Navigate:**
    - Find a tab ref from `chr_readPage()`
@@ -154,30 +170,33 @@ Run these tests:
 
 ### Phase 5: Computer Use Mode Tests (cu_* tools)
 
-1. **Switch mode:** `qtpilot_set_mode(mode="cu")` — expect `changed: true`
-2. **Verify:** `qtpilot_get_mode()` — expect `"cu"`
+1. **Switch mode:** `qtpilot_set_mode(mode="cu")` — expect `{ok: true, mode: "cu", previous_mode: "…"}`
+2. **Verify:** `qtpilot_status()` — expect `.mode == "cu"`
+
+**Coordinate system note:** `cu_leftClick`, `cu_rightClick`, `cu_doubleClick`, `cu_mouseMove`, `cu_scroll` use **window-relative** coordinates by default (`screenAbsolute` omitted or `false`). Passing screen-absolute coords with `screenAbsolute=true` fails with "No widget found at screen coordinates …" when the widget is on a non-visible tab. `cu_cursorPosition` returns both `{x, y}` (window-relative) and `{screenX, screenY}`.
 
 Run these tests:
 
 3. **Screenshot:**
-   - `cu_screenshot()` — expect base64 image data with width/height
+   - `cu_screenshot()` — expect base64 image data with `width`/`height`
 
 4. **Cursor:**
-   - `cu_cursorPosition()` — expect x, y coordinates
+   - `cu_cursorPosition()` — expect `{x, y, screenX, screenY}`
 
-5. **Click and type** (use coordinates from the screenshot or known widget positions):
+5. **Click and type** (use window-relative coordinates):
    - First switch briefly to all mode: `qtpilot_set_mode(mode="all")`
-   - `qt_ui_geometry(objectId=<nameEdit>)` — get x, y, width, height
+   - Ensure the form tab is visible: `qt_properties_set(objectId="MainWindow/centralWidget/tabWidget", name="currentIndex", value=0)`
+   - `qt_ui_geometry(objectId=<nameEdit>)` — use the **`local`** (window-relative) fields for CU coords. (Alternatively: subtract the window origin from `global`.)
    - Switch back: `qtpilot_set_mode(mode="cu")`
-   - `cu_leftClick(x=<center_x>, y=<center_y>)` — expect success
+   - `cu_leftClick(x=<local center_x>, y=<local center_y>)` — expect `{success: true}`
    - `cu_type(text="CU Test")` — expect success
    - `cu_key(key="Tab")` — expect success (moves to next field)
 
 6. **Mouse operations:**
    - `cu_mouseMove(x=100, y=100)` — expect success
-   - `cu_cursorPosition()` — expect x ~100, y ~100
-   - `cu_rightClick(x=<center_x>, y=<center_y>)` — expect success (may open context menu)
-   - `cu_doubleClick(x=<nameEdit center_x>, y=<nameEdit center_y>)` — expect success (selects word)
+   - `cu_cursorPosition()` — expect `x ~100, y ~100` (window-relative)
+   - `cu_rightClick(x=<local center_x>, y=<local center_y>)` — expect success (may open context menu)
+   - `cu_doubleClick(x=<nameEdit local center_x>, y=<nameEdit local center_y>)` — expect success (selects word)
 
 7. **Scroll:**
    - `cu_scroll(x=200, y=200, direction="down", amount=3)` — expect success
@@ -190,9 +209,8 @@ Run these tests:
 ### Phase 6: Logging Verification
 
 1. **Tail recent log entries:**
-   - `qtpilot_log_tail(count=20)` — expect entries with `dir` field (`mcp_in`, `mcp_out`, `req`, `res`)
-   - Verify entries include tool calls from the preceding test phases
-   - Verify entries have timestamps
+   - `qtpilot_log_status(tail=20)` — returns status fields plus `.entries` (the most recent 20 ring-buffer entries) when `tail > 0`. Verify entries have a `dir` field (`mcp_in`, `mcp_out`, `req`, `res`) and timestamps. `req`/`res` appear only at level ≥ 2; `mcp_in`/`mcp_out` are always present.
+   - Verify entries include tool calls from the preceding test phases.
 
 2. **Stop logging:**
    - `qtpilot_log_stop()` — expect `logging: false`, a file path, `entries` count > 0, and `duration` > 0
@@ -206,14 +224,9 @@ Run these tests:
 
 1. **Switch back to native mode:** `qtpilot_set_mode(mode="native")`
 2. **Close the app:** `qt_methods_invoke(objectId="QApplication", method="quit")`
-   - Expect WebSocket closed error (normal — app exits)
-3. Wait for background launcher process to exit.
+   - Expect "WebSocket closed" error — this is the PASS signal (the app exited and tore down the connection).
+3. Wait for the background launcher process to exit.
 4. **Clean up log file:** Delete the test log file (path from Phase 6).
-
-1. **Switch back to native mode:** `qtpilot_set_mode(mode="native")`
-2. **Close the app:** `qt_methods_invoke(objectId="QApplication", method="quit")`
-   - Expect WebSocket closed error (normal — app exits)
-3. Wait for background launcher process to exit.
 
 ### Phase 8: Report
 
@@ -224,7 +237,7 @@ Print a summary table:
 
 | Phase | Test | Result |
 |-------|------|--------|
-| Connect | list_probes | PASS/FAIL |
+| Connect | status_probes | PASS/FAIL |
 | Connect | connect_probe | PASS/FAIL |
 | Connect | ping | PASS/FAIL |
 | Connect | log_start | PASS/FAIL |
@@ -238,7 +251,10 @@ Print a summary table:
 | Native | methods | PASS/FAIL |
 | Native | signals | PASS/FAIL |
 | Native | named_objects | PASS/FAIL |
-| Native | models | PASS/FAIL |
+| Native | models_flat_read | PASS/FAIL |
+| Native | models_tree_read | PASS/FAIL |
+| Native | models_search | PASS/FAIL |
+| Native | ui_clickItem | PASS/FAIL |
 | Native | hit_test_geometry | PASS/FAIL |
 | Native | events | PASS/FAIL |
 | Native | qml_inspect | PASS/FAIL |
@@ -267,11 +283,21 @@ Print a summary table:
 
 Mark a test as PASS if the tool returned the expected result type without error. Mark FAIL with a brief reason.
 
-Report total: **X/39 tests passed**.
+Report total: **X/42 tests passed**.
 
 ## Error Handling
 
 - If the test app fails to launch (e.g., Qt DLLs not found), report the launcher output and stop.
 - If a mode switch fails, skip that mode's tests and continue to the next.
 - If an individual test fails, record FAIL and continue — don't abort the whole suite.
-- Always attempt cleanup (Phase 5) even if earlier phases failed.
+- Always attempt cleanup (Phase 7) even if earlier phases failed.
+
+## Appendix: Known object paths
+
+The test app exposes these hierarchical `objectId`s. Most tools also accept bare last-segment names (e.g. `"treeView"`) via probe fallback resolution, but the full path is more robust.
+
+- `MainWindow/centralWidget/tabWidget` — set `currentIndex` (`0`=Form, `1`=List, `2`=Table, `3`=Tree) to switch tabs
+- `MainWindow/centralWidget/tabWidget/qt_tabwidget_stackedwidget/formTab/{nameEdit,emailEdit,submitButton,clearButton,messageEdit,comboBox,checkBox,slider,resultGroup,spawnChildButton}`
+- `MainWindow/centralWidget/tabWidget/qt_tabwidget_stackedwidget/tableTab/tableWidget/QTableModel`
+- `MainWindow/centralWidget/tabWidget/qt_tabwidget_stackedwidget/treeTab/treeView`
+- `QApplication` (for the quit method in cleanup)
