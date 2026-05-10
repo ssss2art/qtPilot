@@ -2,6 +2,8 @@
 
 Status of macOS platform support, implementation notes, and known issues.
 
+> **Heads-up:** Screenshot tools (`qt_ui_screenshot` with `fullWindow=true`, `cu_screenshot`) require **Screen Recording** permission for the terminal/launcher process — grant it in System Settings → Privacy & Security → Screen Recording, then restart the terminal. See [Screen Recording Permission](#screen-recording-permission) for details. Widget-only screenshots don't need it.
+
 ## Implementation Summary
 
 macOS support was added by creating platform-specific files for probe initialization and launcher injection, and updating CMake, Python, and C++ code to handle macOS framework layouts and environment variables.

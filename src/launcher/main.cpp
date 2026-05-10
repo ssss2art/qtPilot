@@ -15,6 +15,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QSet>
 
 #ifdef Q_OS_WIN
 #include "elevation_windows.h"
@@ -89,17 +90,27 @@ QString findProbePath(const QString& qtVersion) {
       exeDir.absoluteFilePath(QStringLiteral("lib")),
   };
 
-  // Glob for probe libraries across all search dirs
+  // Glob for probe libraries across all search dirs.
+  // Dedupe by canonical path so symlinks pointing to the same physical file
+  // (e.g. libqtPilot-probe-qt6.11.dylib -> ...qt6.11.0.dylib -> ...qt6.11.0.3.1.dylib)
+  // collapse to a single entry.
   QStringList allMatches;
+  QSet<QString> seenCanonical;
   for (const QString& dir : searchDirs) {
     QDir d(dir);
     if (!d.exists())
       continue;
     for (const QString& globPattern : globPatterns) {
       for (const QString& entry : d.entryList({globPattern}, QDir::Files, QDir::Name)) {
-        QString fullPath = QFileInfo(d.filePath(entry)).absoluteFilePath();
-        if (!allMatches.contains(fullPath))
-          allMatches.append(fullPath);
+        const QFileInfo fi(d.filePath(entry));
+        const QString canonical = fi.canonicalFilePath();
+        const QString fullPath = fi.absoluteFilePath();
+        // Fall back to absolute path if canonical can't be resolved (broken symlink etc.)
+        const QString& key = canonical.isEmpty() ? fullPath : canonical;
+        if (seenCanonical.contains(key))
+          continue;
+        seenCanonical.insert(key);
+        allMatches.append(fullPath);
       }
     }
   }
