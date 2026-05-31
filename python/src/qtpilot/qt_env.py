@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Qt DLL names to scan for when inferring Qt presence in a directory.
 _QT_CORE_DLLS_WINDOWS = ("Qt5Core.dll", "Qt6Core.dll")
 _QT_CORE_SOS_LINUX = ("libQt5Core.so.5", "libQt6Core.so.6")
+_QT_CORE_DYLIBS_MACOS = ("libQt5Core.dylib", "libQt6Core.dylib")
 
 
 def _is_valid_qt_prefix(qt_dir: Path) -> bool:
@@ -37,6 +38,14 @@ def _is_valid_qt_prefix(qt_dir: Path) -> bool:
             return False
         # Check for a Qt core DLL
         return any((bin_dir / dll).exists() for dll in _QT_CORE_DLLS_WINDOWS)
+    elif sys.platform == "darwin":
+        lib_dir = qt_dir / "lib"
+        if not lib_dir.is_dir():
+            return False
+        # Check for dylib or framework bundle
+        has_dylib = any((lib_dir / dylib).exists() for dylib in _QT_CORE_DYLIBS_MACOS)
+        has_framework = (lib_dir / "QtCore.framework").is_dir()
+        return has_dylib or has_framework
     else:
         lib_dir = qt_dir / "lib"
         if not lib_dir.is_dir():
@@ -56,6 +65,10 @@ def _env_from_qt_dir(qt_dir: Path) -> dict[str, str]:
         bin_path = qt_dir / "bin"
         if bin_path.is_dir():
             env["_PATH_PREPEND"] = str(bin_path)
+    elif sys.platform == "darwin":
+        lib_path = qt_dir / "lib"
+        if lib_path.is_dir():
+            env["_DYLD_LIBRARY_PATH_PREPEND"] = str(lib_path)
     else:
         lib_path = qt_dir / "lib"
         if lib_path.is_dir():
@@ -78,16 +91,20 @@ def _scan_target_directory(target_dir: Path) -> dict[str, str]:
     # Check for Qt DLLs in the target directory (windeployqt layout)
     if sys.platform == "win32":
         has_qt_dlls = any((target_dir / dll).exists() for dll in _QT_CORE_DLLS_WINDOWS)
+    elif sys.platform == "darwin":
+        has_qt_dlls = any((target_dir / dylib).exists() for dylib in _QT_CORE_DYLIBS_MACOS)
     else:
         has_qt_dlls = any((target_dir / so).exists() for so in _QT_CORE_SOS_LINUX)
 
     has_platforms = (target_dir / "platforms").is_dir()
 
     if has_qt_dlls and has_platforms:
-        # windeployqt layout: DLLs + platforms/ in the same directory
+        # Deploy layout: DLLs/dylibs + platforms/ in the same directory
         env["QT_PLUGIN_PATH"] = str(target_dir)
         if sys.platform == "win32":
             env["_PATH_PREPEND"] = str(target_dir)
+        elif sys.platform == "darwin":
+            env["_DYLD_LIBRARY_PATH_PREPEND"] = str(target_dir)
         else:
             env["_LD_LIBRARY_PATH_PREPEND"] = str(target_dir)
         logger.info("Detected Qt in target directory (windeployqt layout): %s", target_dir)
@@ -209,6 +226,13 @@ def build_subprocess_env(
         current_path = env.get("PATH", "")
         if path_prepend.lower() not in current_path.lower():
             env["PATH"] = path_prepend + os.pathsep + current_path
+
+    # Prepend to DYLD_LIBRARY_PATH (macOS)
+    dyld_prepend = overrides.get("_DYLD_LIBRARY_PATH_PREPEND")
+    if dyld_prepend:
+        current_dyld = env.get("DYLD_LIBRARY_PATH", "")
+        if dyld_prepend not in current_dyld:
+            env["DYLD_LIBRARY_PATH"] = dyld_prepend + os.pathsep + current_dyld
 
     # Prepend to LD_LIBRARY_PATH (Linux)
     ld_prepend = overrides.get("_LD_LIBRARY_PATH_PREPEND")

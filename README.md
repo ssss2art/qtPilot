@@ -86,7 +86,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for detailed build instructions.
 - **Zero modification** to target applications required
 - **Child process injection** - `--inject-children` automatically injects the probe into child processes (Windows: Detours hook on CreateProcessW; Linux: LD_PRELOAD propagation)
 - **Admin elevation** - `--run-as-admin` launches target apps with administrator privileges on Windows (auto-elevates via UAC)
-- **Cross-platform** - Windows and Linux (macOS planned)
+- **Cross-platform** - Windows, Linux, and macOS
 
 ## Connecting to Claude
 
@@ -161,8 +161,9 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 | Platform | Qt 5.15 | Qt 6.5+ | Status |
 |----------|---------|---------|--------|
 | **Windows x64** | ✅ | ✅ | Supported |
+| **Windows x86** | ✅ | - | Supported (Qt 5.15 only) |
 | **Linux x64** | ✅ | ✅ | Supported |
-| **macOS** | - | - | Planned (v1.1) |
+| **macOS arm64** | - | ✅ | Supported (tested against Qt 6.10) |
 
 ## Requirements
 

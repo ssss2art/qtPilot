@@ -7,6 +7,7 @@ archive for your Qt version and platform.
 from __future__ import annotations
 
 import hashlib
+import platform
 import sys
 import tarfile
 import urllib.error
@@ -34,6 +35,7 @@ AVAILABLE_VERSIONS = frozenset([
     "6.5",
     "6.8",
     "6.9",
+    "6.10",
 ])
 
 
@@ -44,12 +46,15 @@ def latest_version() -> str:
 # Supported architectures per platform
 WINDOWS_ARCHITECTURES = frozenset(["x64", "x86"])
 LINUX_ARCHITECTURES = frozenset(["x64", "x86"])
+MACOS_ARCHITECTURES = frozenset(["arm64", "x86_64"])
 DEFAULT_ARCH = "x64"
+MACOS_DEFAULT_ARCH = "arm64"
 
 # Platform mapping: sys.platform -> (platform_name, archive_ext, lib_ext)
 PLATFORM_MAP: dict[str, tuple[str, str, str]] = {
     "linux": ("linux", "tar.gz", "so"),
     "win32": ("windows", "zip", "dll"),
+    "darwin": ("macos", "tar.gz", "dylib"),
 }
 
 
@@ -73,7 +78,7 @@ def detect_platform() -> str:
     """Detect the current platform name.
 
     Returns:
-        Platform name string: "linux" or "windows"
+        Platform name string: "linux", "windows", or "macos"
 
     Raises:
         UnsupportedPlatformError: If the current platform is not supported.
@@ -91,6 +96,18 @@ def detect_platform() -> str:
     return PLATFORM_MAP[platform][0]
 
 
+def detect_macos_arch() -> str:
+    """Detect the macOS architecture at runtime.
+
+    Returns:
+        "arm64" on Apple Silicon, "x86_64" on Intel Macs.
+    """
+    machine = platform.machine()
+    if machine == "arm64":
+        return "arm64"
+    return "x86_64"
+
+
 def get_probe_filename(platform_name: str | None = None) -> str:
     """Get the simplified probe filename for the current platform.
 
@@ -99,7 +116,12 @@ def get_probe_filename(platform_name: str | None = None) -> str:
     """
     if platform_name is None:
         platform_name = detect_platform()
-    ext = "dll" if platform_name == "windows" else "so"
+    if platform_name == "windows":
+        ext = "dll"
+    elif platform_name == "macos":
+        ext = "dylib"
+    else:
+        ext = "so"
     return f"qtPilot-probe.{ext}"
 
 
@@ -189,11 +211,18 @@ def get_archive_filename(
     if platform_name is None:
         platform_name = detect_platform()
     if arch is None:
-        arch = DEFAULT_ARCH
+        if platform_name == "macos":
+            arch = detect_macos_arch()
+        else:
+            arch = DEFAULT_ARCH
     ext = "zip" if platform_name == "windows" else "tar.gz"
 
     # Windows: always include arch suffix
     if platform_name == "windows":
+        return f"qtpilot-qt{version}-{platform_name}-{arch}.{ext}"
+
+    # macOS: always include arch suffix (arm64 or x86_64)
+    if platform_name == "macos":
         return f"qtpilot-qt{version}-{platform_name}-{arch}.{ext}"
 
     # Linux: only include arch suffix for x86 (backward compat for x64)
@@ -486,8 +515,8 @@ def download_and_extract(
         # Clean up the archive file after extraction
         archive_path.unlink(missing_ok=True)
 
-    # Set executable permissions on Linux
-    if platform_name == "linux":
+    # Set executable permissions on Linux and macOS
+    if platform_name in ("linux", "macos"):
         import stat
 
         for name in [get_probe_filename(platform_name), get_launcher_filename(platform_name)]:

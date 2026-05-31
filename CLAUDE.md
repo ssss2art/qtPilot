@@ -49,6 +49,18 @@ QT_DIR=$(grep "QTPILOT_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
 QT_PLUGIN_PATH="${QT_DIR}/plugins" LD_LIBRARY_PATH="${QT_DIR}/lib" ctest --test-dir build -C Release --output-on-failure
 ```
 
+### Running Tests (macOS)
+Qt on macOS uses framework bundles; point `DYLD_FRAMEWORK_PATH` at the Qt `lib/`
+directory (where the `.framework` bundles live). `QTPILOT_ENABLED=0` prevents the
+probe from auto-loading during tests on arm64 where permission prompts can hang
+headless runs.
+```bash
+QT_DIR=$(grep "QTPILOT_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
+DYLD_FRAMEWORK_PATH="${QT_DIR}/lib" QT_PLUGIN_PATH="${QT_DIR}/plugins" \
+  QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 \
+  ctest --test-dir build -C Release --output-on-failure
+```
+
 **Windows test caveat:** On Windows, env vars set in bash/git-bash do NOT propagate
 through ctest to child processes. You **must** use one of these approaches:
 1. **From bash/git-bash:** Use `cmd //c` (double-slash — bash converts `//c` to `/c` for cmd.exe).
@@ -109,7 +121,7 @@ The MCP (Model Context Protocol) defines how AI assistants communicate with exte
 - Each test file should test a single class or module
 
 ### Running Tests
-See "Running Tests (Windows)" and "Running Tests (Linux)" in the Build System section above.
+See "Running Tests (Windows)", "Running Tests (Linux)", and "Running Tests (macOS)" in the Build System section above.
 
 ```bash
 # Run a single test directly (Qt DLLs are copied to the same directory during build):

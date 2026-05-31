@@ -69,7 +69,9 @@ if(WIN32)
     list(APPEND PROBE_HEADERS
         core/child_injector_windows.h
     )
-elseif(UNIX AND NOT APPLE)
+elseif(APPLE)
+    list(APPEND PROBE_SOURCES core/probe_init_macos.cpp)
+elseif(UNIX)
     list(APPEND PROBE_SOURCES core/probe_init_linux.cpp)
 endif()
 
@@ -139,6 +141,11 @@ endif()
 # Windows: link shared injection utilities and Detours for child-process hooking
 if(WIN32)
     target_link_libraries(qtPilot_probe PRIVATE qtPilot_shared detours)
+endif()
+
+# macOS: link CoreGraphics for CGPreflightScreenCaptureAccess (screenshot permission check)
+if(APPLE)
+    target_link_libraries(qtPilot_probe PRIVATE "-framework CoreGraphics")
 endif()
 
 # Platform-specific configurations

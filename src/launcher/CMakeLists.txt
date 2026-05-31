@@ -16,7 +16,9 @@ set(LAUNCHER_HEADERS
 # Platform-specific injection implementation
 if(WIN32)
     list(APPEND LAUNCHER_SOURCES injector_windows.cpp elevation_windows.cpp)
-elseif(UNIX AND NOT APPLE)
+elseif(APPLE)
+    list(APPEND LAUNCHER_SOURCES injector_macos.cpp)
+elseif(UNIX)
     list(APPEND LAUNCHER_SOURCES injector_linux.cpp)
 endif()
 
@@ -57,8 +59,16 @@ target_include_directories(qtPilot_launcher PRIVATE
 # when QLibraryInfo reports a relocated (incorrect) path for dev builds.
 get_target_property(_qt_core_loc Qt${QT_VERSION_MAJOR}::Core LOCATION)
 if(_qt_core_loc)
-    get_filename_component(_qt_bin_dir "${_qt_core_loc}" DIRECTORY)
-    get_filename_component(_qt_prefix "${_qt_bin_dir}" DIRECTORY)
+    if(APPLE AND _qt_core_loc MATCHES "\\.framework/")
+        # macOS framework: e.g. .../lib/QtCore.framework/Versions/A/QtCore
+        # Navigate up to the lib/ directory, then one more to get the prefix
+        string(REGEX REPLACE "/lib/Qt[^/]*\\.framework/.*$" "" _qt_prefix "${_qt_core_loc}")
+    else()
+        # Windows: bin/Qt6Core.dll -> bin/ -> prefix
+        # Linux: lib/libQt6Core.so -> lib/ -> prefix
+        get_filename_component(_qt_bin_dir "${_qt_core_loc}" DIRECTORY)
+        get_filename_component(_qt_prefix "${_qt_bin_dir}" DIRECTORY)
+    endif()
     target_compile_definitions(qtPilot_launcher PRIVATE
         QTPILOT_BUILD_QT_PREFIX="${_qt_prefix}"
     )

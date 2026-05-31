@@ -3,7 +3,7 @@
 
 // qtPilot Launcher
 // Launches a Qt application with the qtPilot probe library injected.
-// Works on both Windows (DLL injection) and Linux (LD_PRELOAD).
+// Works on Windows (DLL injection), Linux (LD_PRELOAD), and macOS (DYLD_INSERT_LIBRARIES).
 
 #include "injector.h"
 #include "qt_env_setup.h"
@@ -15,12 +15,55 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QSet>
 
 #ifdef Q_OS_WIN
 #include "elevation_windows.h"
 #endif
 
+#ifdef Q_OS_MACOS
+#include <QFile>
+#include <QRegularExpression>
+#include <QTextStream>
+#endif
+
 namespace {
+
+#ifdef Q_OS_MACOS
+/// @brief Resolve a .app bundle path to its inner executable.
+/// Reads CFBundleExecutable from Contents/Info.plist, falls back to the bundle name.
+/// Returns the original path unchanged if it doesn't end with ".app".
+QString resolveAppBundle(const QString& path) {
+  QString cleanPath = path;
+  while (cleanPath.endsWith(QLatin1Char('/')))
+    cleanPath.chop(1);
+
+  if (!cleanPath.endsWith(QStringLiteral(".app")))
+    return path;
+
+  QString plistPath = cleanPath + QStringLiteral("/Contents/Info.plist");
+  QString execName;
+
+  QFile plist(plistPath);
+  if (plist.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    QString content = QTextStream(&plist).readAll();
+    // Find <key>CFBundleExecutable</key> followed by <string>...</string>
+    QRegularExpression re(
+        QStringLiteral("<key>CFBundleExecutable</key>\\s*<string>([^<]+)</string>"));
+    auto match = re.match(content);
+    if (match.hasMatch()) {
+      execName = match.captured(1);
+    }
+  }
+
+  if (execName.isEmpty()) {
+    // Fallback: use the .app basename
+    execName = QFileInfo(cleanPath).completeBaseName();
+  }
+
+  return cleanPath + QStringLiteral("/Contents/MacOS/") + execName;
+}
+#endif
 
 /// @brief Find the probe library adjacent to the launcher executable.
 /// @param qtVersion If non-empty, filter matches to those containing
@@ -31,6 +74,9 @@ QString findProbePath(const QString& qtVersion) {
 
 #ifdef Q_OS_WIN
   const QStringList globPatterns = {QStringLiteral("qtPilot-probe*.dll")};
+#elif defined(Q_OS_MACOS)
+  const QStringList globPatterns = {QStringLiteral("libqtPilot-probe*.dylib"),
+                                    QStringLiteral("qtPilot-probe*.dylib")};
 #else
   // Match both CMake build output (libqtPilot-probe*.so) and
   // archive-extracted probes (qtPilot-probe*.so)
@@ -44,17 +90,27 @@ QString findProbePath(const QString& qtVersion) {
       exeDir.absoluteFilePath(QStringLiteral("lib")),
   };
 
-  // Glob for probe libraries across all search dirs
+  // Glob for probe libraries across all search dirs.
+  // Dedupe by canonical path so symlinks pointing to the same physical file
+  // (e.g. libqtPilot-probe-qt6.11.dylib -> ...qt6.11.0.dylib -> ...qt6.11.0.3.1.dylib)
+  // collapse to a single entry.
   QStringList allMatches;
+  QSet<QString> seenCanonical;
   for (const QString& dir : searchDirs) {
     QDir d(dir);
     if (!d.exists())
       continue;
     for (const QString& globPattern : globPatterns) {
       for (const QString& entry : d.entryList({globPattern}, QDir::Files, QDir::Name)) {
-        QString fullPath = QFileInfo(d.filePath(entry)).absoluteFilePath();
-        if (!allMatches.contains(fullPath))
-          allMatches.append(fullPath);
+        const QFileInfo fi(d.filePath(entry));
+        const QString canonical = fi.canonicalFilePath();
+        const QString fullPath = fi.absoluteFilePath();
+        // Fall back to absolute path if canonical can't be resolved (broken symlink etc.)
+        const QString& key = canonical.isEmpty() ? fullPath : canonical;
+        if (seenCanonical.contains(key))
+          continue;
+        seenCanonical.insert(key);
+        allMatches.append(fullPath);
       }
     }
   }
@@ -171,7 +227,7 @@ int main(int argc, char* argv[]) {
   if (parser.isSet(runAsAdminOption)) {
     fprintf(stderr,
             "Warning: --run-as-admin is only supported on Windows. "
-            "Use sudo on Linux.\n");
+            "Use sudo on Linux/macOS.\n");
   }
 #endif
 
@@ -201,6 +257,11 @@ int main(int argc, char* argv[]) {
     return 1;
   }
   options.port = static_cast<quint16>(portValue);
+
+  // Resolve .app bundles on macOS (e.g., Foo.app -> Foo.app/Contents/MacOS/Foo)
+#ifdef Q_OS_MACOS
+  options.targetExecutable = resolveAppBundle(options.targetExecutable);
+#endif
 
   // Resolve target executable path
   QFileInfo targetInfo(options.targetExecutable);
