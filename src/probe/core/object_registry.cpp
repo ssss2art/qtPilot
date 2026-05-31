@@ -28,6 +28,19 @@ bool g_hooksInstalled = false;
 // Using std::atomic instead of thread_local to avoid TLS issues with injected DLLs
 std::atomic<bool> g_singletonCreating{false};
 
+// Returns true if `meta` is `className` or derives from it. Walking the
+// superclass chain makes className queries subclass-aware (e.g. searching
+// "QPushButton" matches a custom MyButton : QPushButton), matching the
+// documented behaviour of the search API.
+bool metaInheritsClassName(const QMetaObject* meta, const QString& className) {
+  for (const QMetaObject* m = meta; m != nullptr; m = m->superClass()) {
+    if (QString::fromLatin1(m->className()) == className) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 // Hook callbacks - these are called by Qt for every QObject creation/destruction
@@ -259,8 +272,8 @@ QList<QObject*> ObjectRegistry::findAllByClassName(const QString& className, QOb
   QList<QObject*> result;
 
   if (root) {
-    // Search within root's subtree
-    if (QString::fromLatin1(root->metaObject()->className()) == className) {
+    // Search within root's subtree (subclass-aware)
+    if (metaInheritsClassName(root->metaObject(), className)) {
       result.append(root);
     }
     for (QObject* child : root->children()) {
@@ -269,9 +282,9 @@ QList<QObject*> ObjectRegistry::findAllByClassName(const QString& className, QOb
     return result;
   }
 
-  // Search all tracked objects
+  // Search all tracked objects (subclass-aware)
   for (QObject* obj : std::as_const(m_objects)) {
-    if (obj && QString::fromLatin1(obj->metaObject()->className()) == className) {
+    if (obj && metaInheritsClassName(obj->metaObject(), className)) {
       result.append(obj);
     }
   }

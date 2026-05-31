@@ -53,6 +53,7 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
     propInfo[QStringLiteral("type")] = QString::fromLatin1(prop.typeName());
     propInfo[QStringLiteral("readable")] = prop.isReadable();
     propInfo[QStringLiteral("writable")] = prop.isWritable();
+    propInfo[QStringLiteral("dynamic")] = false;
 
     // Include current value if readable
     if (prop.isReadable()) {
@@ -61,6 +62,25 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
     } else {
       propInfo[QStringLiteral("value")] = QJsonValue();
     }
+
+    result.append(propInfo);
+  }
+
+  // Dynamic properties (set via QObject::setProperty with a name not declared
+  // as a Q_PROPERTY) are not part of the static meta-object. They are widely
+  // used for QSS styling hooks (e.g. setProperty("status", "error") driving a
+  // [status="error"] selector), so surface them too, flagged dynamic.
+  const QList<QByteArray> dynamicNames = obj->dynamicPropertyNames();
+  for (const QByteArray& name : dynamicNames) {
+    const QVariant value = obj->property(name.constData());
+
+    QJsonObject propInfo;
+    propInfo[QStringLiteral("name")] = QString::fromLatin1(name);
+    propInfo[QStringLiteral("type")] = QString::fromLatin1(value.typeName());
+    propInfo[QStringLiteral("readable")] = true;
+    propInfo[QStringLiteral("writable")] = true;
+    propInfo[QStringLiteral("dynamic")] = true;
+    propInfo[QStringLiteral("value")] = variantToJson(value);
 
     result.append(propInfo);
   }

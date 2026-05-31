@@ -392,6 +392,8 @@ void TestMetaInspector::testListProperties() {
   TestObject obj;
   obj.setIntValue(123);
   obj.setStringValue(QStringLiteral("hello"));
+  // Dynamic property (not declared as Q_PROPERTY) — e.g. a QSS styling hook.
+  obj.setProperty("status", QStringLiteral("error"));
 
   QJsonArray props = MetaInspector::listProperties(&obj);
 
@@ -402,6 +404,7 @@ void TestMetaInspector::testListProperties() {
   bool foundIntValue = false;
   bool foundStringValue = false;
   bool foundReadOnly = false;
+  bool foundDynamicStatus = false;
 
   for (const QJsonValue& val : props) {
     QJsonObject prop = val.toObject();
@@ -413,6 +416,8 @@ void TestMetaInspector::testListProperties() {
       QCOMPARE(prop[QStringLiteral("readable")].toBool(), true);
       QCOMPARE(prop[QStringLiteral("writable")].toBool(), true);
       QCOMPARE(prop[QStringLiteral("value")].toInt(), 123);
+      // Statically-declared properties are flagged dynamic=false.
+      QCOMPARE(prop[QStringLiteral("dynamic")].toBool(), false);
     } else if (name == QStringLiteral("stringValue")) {
       foundStringValue = true;
       QCOMPARE(prop[QStringLiteral("value")].toString(), QStringLiteral("hello"));
@@ -420,12 +425,20 @@ void TestMetaInspector::testListProperties() {
       foundReadOnly = true;
       QCOMPARE(prop[QStringLiteral("writable")].toBool(), false);
       QCOMPARE(prop[QStringLiteral("value")].toBool(), true);
+    } else if (name == QStringLiteral("status")) {
+      // Dynamic properties are surfaced, flagged dynamic=true, read/write.
+      foundDynamicStatus = true;
+      QCOMPARE(prop[QStringLiteral("dynamic")].toBool(), true);
+      QCOMPARE(prop[QStringLiteral("readable")].toBool(), true);
+      QCOMPARE(prop[QStringLiteral("writable")].toBool(), true);
+      QCOMPARE(prop[QStringLiteral("value")].toString(), QStringLiteral("error"));
     }
   }
 
   QVERIFY2(foundIntValue, "intValue property not found");
   QVERIFY2(foundStringValue, "stringValue property not found");
   QVERIFY2(foundReadOnly, "readOnly property not found");
+  QVERIFY2(foundDynamicStatus, "dynamic 'status' property not found");
 }
 
 void TestMetaInspector::testListPropertiesWidget() {
