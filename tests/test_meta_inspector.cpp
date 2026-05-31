@@ -16,14 +16,30 @@
 
 using namespace qtPilot;
 
+/// @brief Test helper Q_GADGET exposing introspectable sub-properties.
+class TestGadget {
+  Q_GADGET
+  Q_PROPERTY(int width MEMBER width)
+  Q_PROPERTY(QString label MEMBER label)
+
+ public:
+  int width = 0;
+  QString label;
+};
+Q_DECLARE_METATYPE(TestGadget)
+
 /// @brief Test helper class with custom properties and signals
 class TestObject : public QObject {
   Q_OBJECT
   Q_PROPERTY(int intValue READ intValue WRITE setIntValue NOTIFY intValueChanged)
   Q_PROPERTY(QString stringValue READ stringValue WRITE setStringValue)
   Q_PROPERTY(bool readOnly READ readOnly CONSTANT)
+  Q_PROPERTY(Color color READ color WRITE setColor)
 
  public:
+  enum Color { Red, Green, Blue };
+  Q_ENUM(Color)
+
   explicit TestObject(QObject* parent = nullptr) : QObject(parent) {}
 
   int intValue() const { return m_intValue; }
@@ -39,6 +55,9 @@ class TestObject : public QObject {
 
   bool readOnly() const { return true; }
 
+  Color color() const { return m_color; }
+  void setColor(Color c) { m_color = c; }
+
  public slots:
   void doSomething() {}
   int addNumbers(int a, int b) { return a + b; }
@@ -50,6 +69,7 @@ class TestObject : public QObject {
  private:
   int m_intValue = 42;
   QString m_stringValue = QStringLiteral("test");
+  Color m_color = Green;
 };
 
 /// @brief Test suite for MetaInspector and variant_json utilities
@@ -97,6 +117,10 @@ class TestMetaInspector : public QObject {
   void testSetPropertyReadOnly();
   void testSetPropertyTypeCoercion();
   void testDynamicProperty();
+  void testEnumPropertyMetadata();
+  void testNotifySignalMetadata();
+  void testVariantToJsonGadget();
+  void testVariantToJsonQObjectRef();
 
   // Method invocation (OBJ-09)
   void testInvokeVoidMethod();
@@ -646,6 +670,89 @@ void TestMetaInspector::testDynamicProperty() {
   // Get dynamic property
   QJsonValue result = MetaInspector::getProperty(&obj, QStringLiteral("dynamicProp"));
   QCOMPARE(result.toString(), QStringLiteral("dynamic value"));
+}
+
+void TestMetaInspector::testEnumPropertyMetadata() {
+  TestObject obj;
+  obj.setColor(TestObject::Green);
+
+  QJsonArray props = MetaInspector::listProperties(&obj);
+
+  bool foundColor = false;
+  for (const QJsonValue& val : props) {
+    QJsonObject prop = val.toObject();
+    if (prop[QStringLiteral("name")].toString() != QStringLiteral("color")) {
+      continue;
+    }
+    foundColor = true;
+    // Symbolic key for the current value, not just the raw int.
+    QCOMPARE(prop[QStringLiteral("enumKey")].toString(), QStringLiteral("Green"));
+    QCOMPARE(prop[QStringLiteral("isFlag")].toBool(), false);
+    // Full set of valid keys is surfaced so callers can set by name.
+    QJsonArray keys = prop[QStringLiteral("enumKeys")].toArray();
+    QCOMPARE(keys.size(), 3);
+    QVERIFY(keys.contains(QJsonValue(QStringLiteral("Red"))));
+    QVERIFY(keys.contains(QJsonValue(QStringLiteral("Green"))));
+    QVERIFY(keys.contains(QJsonValue(QStringLiteral("Blue"))));
+  }
+  QVERIFY2(foundColor, "enum 'color' property not found");
+}
+
+void TestMetaInspector::testNotifySignalMetadata() {
+  TestObject obj;
+  QJsonArray props = MetaInspector::listProperties(&obj);
+
+  bool foundIntValue = false;
+  bool foundStringValue = false;
+  for (const QJsonValue& val : props) {
+    QJsonObject prop = val.toObject();
+    QString name = prop[QStringLiteral("name")].toString();
+    if (name == QStringLiteral("intValue")) {
+      foundIntValue = true;
+      // intValue has NOTIFY intValueChanged — surfaced so callers know what
+      // signal to subscribe to instead of polling.
+      QCOMPARE(prop[QStringLiteral("notifySignal")].toString(),
+               QStringLiteral("intValueChanged"));
+    } else if (name == QStringLiteral("stringValue")) {
+      foundStringValue = true;
+      // No NOTIFY — empty string.
+      QCOMPARE(prop[QStringLiteral("notifySignal")].toString(), QString());
+    }
+  }
+  QVERIFY(foundIntValue);
+  QVERIFY(foundStringValue);
+}
+
+void TestMetaInspector::testVariantToJsonGadget() {
+  // Q_GADGET value types with introspectable Q_PROPERTYs should serialize their
+  // sub-properties rather than collapsing to an empty/opaque value.
+  TestGadget gadget;
+  gadget.width = 42;
+  gadget.label = QStringLiteral("hi");
+
+  QJsonValue result = variantToJson(QVariant::fromValue(gadget));
+  QVERIFY(result.isObject());
+
+  QJsonObject obj = result.toObject();
+  QCOMPARE(obj[QStringLiteral("_type")].toString(), QStringLiteral("TestGadget"));
+  QCOMPARE(obj[QStringLiteral("width")].toInt(), 42);
+  QCOMPARE(obj[QStringLiteral("label")].toString(), QStringLiteral("hi"));
+}
+
+void TestMetaInspector::testVariantToJsonQObjectRef() {
+  // QObject* values serialize as a navigable reference (identity), not null.
+  TestObject target;
+  target.setObjectName(QStringLiteral("refTarget"));
+
+  QJsonValue result = variantToJson(QVariant::fromValue<QObject*>(&target));
+  QVERIFY(result.isObject());
+
+  QJsonObject obj = result.toObject();
+  QCOMPARE(obj[QStringLiteral("className")].toString(), QStringLiteral("TestObject"));
+  QCOMPARE(obj[QStringLiteral("objectName")].toString(), QStringLiteral("refTarget"));
+
+  // A null QObject* serializes as JSON null.
+  QVERIFY(variantToJson(QVariant::fromValue<QObject*>(nullptr)).isNull());
 }
 
 // ============================================================================

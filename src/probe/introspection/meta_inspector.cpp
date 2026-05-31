@@ -55,12 +55,41 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
     propInfo[QStringLiteral("writable")] = prop.isWritable();
     propInfo[QStringLiteral("dynamic")] = false;
 
+    // Notify signal name lets callers know what to subscribe to for change
+    // notifications instead of polling. Empty when the property has none.
+    if (prop.hasNotifySignal()) {
+      propInfo[QStringLiteral("notifySignal")] =
+          QString::fromLatin1(prop.notifySignal().name());
+    } else {
+      propInfo[QStringLiteral("notifySignal")] = QString();
+    }
+
     // Include current value if readable
+    QVariant value;
     if (prop.isReadable()) {
-      QVariant value = prop.read(obj);
+      value = prop.read(obj);
       propInfo[QStringLiteral("value")] = variantToJson(value);
     } else {
       propInfo[QStringLiteral("value")] = QJsonValue();
+    }
+
+    // Enum/flag properties otherwise serialize as opaque integers. Surface the
+    // symbolic key(s) and the full set of valid keys so callers can read and
+    // set them by name (e.g. alignment 132 -> "AlignLeft|AlignVCenter").
+    if (prop.isEnumType() || prop.isFlagType()) {
+      const QMetaEnum me = prop.enumerator();
+      if (me.isValid()) {
+        const int intValue = value.toInt();
+        const QByteArray key = prop.isFlagType() ? me.valueToKeys(intValue)
+                                                 : QByteArray(me.valueToKey(intValue));
+        propInfo[QStringLiteral("enumKey")] = QString::fromLatin1(key);
+        propInfo[QStringLiteral("isFlag")] = prop.isFlagType();
+        QJsonArray keys;
+        for (int k = 0; k < me.keyCount(); ++k) {
+          keys.append(QString::fromLatin1(me.key(k)));
+        }
+        propInfo[QStringLiteral("enumKeys")] = keys;
+      }
     }
 
     result.append(propInfo);
