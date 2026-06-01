@@ -95,7 +95,7 @@ class QTPILOT_EXPORT SignalMonitor : public QObject {
   ///   - subscriptionId: The subscription ID
   ///   - objectId: The object's hierarchical ID
   ///   - signal: The signal name
-  ///   - arguments: Array of signal arguments (empty for MVP)
+  ///   - arguments: Array of the signal's argument values (JSON-encoded)
   ///
   /// @param notification JSON object with signal emission details.
   void signalEmitted(const QJsonObject& notification);
@@ -130,6 +130,11 @@ class QTPILOT_EXPORT SignalMonitor : public QObject {
 
   /// @brief Handle destruction of subscribed objects.
   void onSubscribedObjectDestroyed(QObject* obj);
+
+  /// @brief Re-emit a relay's notification on the monitor's thread.
+  /// Invoked by SignalRelay via QMetaObject::invokeMethod so cross-thread
+  /// emissions are marshalled correctly. Internal use only.
+  void deliverNotification(const QJsonObject& notification);
 
  public:
   // Constructor/destructor public for Q_GLOBAL_STATIC compatibility
