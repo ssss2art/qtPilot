@@ -73,7 +73,13 @@ class SignalRelay : public QObject {
         jsonArgs.append(QJsonValue());
         continue;
       }
+      // The QVariant(QMetaType, const void*) constructor is Qt 6 only; Qt 5
+      // uses the int-typeId overload.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
       jsonArgs.append(variantToJson(QVariant(metaType, args[i + 1])));
+#else
+      jsonArgs.append(variantToJson(QVariant(metaType.id(), args[i + 1])));
+#endif
     }
 
     QJsonObject notification;
