@@ -5,9 +5,12 @@
 
 #include "compat/compat_core.h"
 #include "compat/compat_variant.h"
+#include "core/object_registry.h"
 
 #include <QColor>
 #include <QDateTime>
+#include <QMetaObject>
+#include <QMetaProperty>
 #include <QMetaType>
 #include <QPoint>
 #include <QPointF>
@@ -157,6 +160,47 @@ QJsonValue variantToJson(const QVariant& value) {
       obj.insert(it.key(), variantToJson(it.value()));
     }
     return obj;
+  }
+
+  // QObject* pointers: emit a navigable reference (objectId + identity) instead
+  // of a useless null, so callers can follow object graphs — e.g. a "color"
+  // property that points at a child token object.
+  if (QMetaType(typeId).flags().testFlag(QMetaType::PointerToQObject)) {
+    QObject* ref = value.value<QObject*>();
+    if (!ref) {
+      return QJsonValue();  // null pointer
+    }
+    QJsonObject obj{
+        {QStringLiteral("_type"), QString::fromLatin1(value.typeName())},
+        {QStringLiteral("className"), QString::fromLatin1(ref->metaObject()->className())},
+        {QStringLiteral("objectName"), ref->objectName()}};
+    const QString id = ObjectRegistry::instance()->objectId(ref);
+    if (!id.isEmpty()) {
+      obj.insert(QStringLiteral("objectId"), id);
+    }
+    return obj;
+  }
+
+  // Gadget value types (Q_GADGET: QFont, QSizePolicy, QPen, custom gadgets)
+  // expose queryable sub-properties via their static meta-object. Recurse so
+  // the structure is observable instead of collapsing to an empty toString().
+  if (QMetaType(typeId).flags().testFlag(QMetaType::IsGadget)) {
+    const QMetaObject* gadgetMeta = QMetaType(typeId).metaObject();
+    // Only intercept gadgets that actually expose introspectable properties;
+    // otherwise (e.g. QFont, which declares none) fall through to the generic
+    // toString()/_type fallback below.
+    if (gadgetMeta && gadgetMeta->propertyCount() > 0) {
+      QJsonObject obj{{QStringLiteral("_type"), QString::fromLatin1(value.typeName())}};
+      const void* gadget = value.constData();
+      for (int i = 0; i < gadgetMeta->propertyCount(); ++i) {
+        const QMetaProperty gp = gadgetMeta->property(i);
+        if (!gp.isReadable()) {
+          continue;
+        }
+        obj.insert(QString::fromLatin1(gp.name()), variantToJson(gp.readOnGadget(gadget)));
+      }
+      return obj;
+    }
   }
 
   // For unknown types, try toString() and include type name
