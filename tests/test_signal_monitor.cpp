@@ -5,6 +5,7 @@
 #include "introspection/signal_monitor.h"
 
 #include <QApplication>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QtTest>
@@ -27,6 +28,7 @@ class TestSignalMonitor : public QObject {
   void testSubscribeReturnsValidId();
   void testUnsubscribe();
   void testSignalEmission();
+  void testSignalArgumentValues();
   void testAutoUnsubscribeOnDestruction();
   void testLifecycleCreated();
   void testLifecycleDestroyed();
@@ -138,9 +140,40 @@ void TestSignalMonitor::testSignalEmission() {
   QCOMPARE(notification["subscriptionId"].toString(), subId);
   QCOMPARE(notification["objectId"].toString(), objId);
   QCOMPARE(notification["signal"].toString(), QString("clicked"));
+  // clicked(bool checked) emits its argument value (false for a plain click).
   QVERIFY(notification.contains("arguments"));
+  QJsonArray args = notification["arguments"].toArray();
+  QCOMPARE(args.size(), 1);
+  QCOMPARE(args.at(0).toBool(), false);
 
   // Cleanup
+  SignalMonitor::instance()->unsubscribe(subId);
+}
+
+void TestSignalMonitor::testSignalArgumentValues() {
+  // A signal carrying a QString argument should deliver its value, not an
+  // empty placeholder.
+  auto* edit = new QLineEdit();
+  edit->setObjectName("argEdit");
+  m_testObjects.append(edit);
+
+  QCoreApplication::processEvents();
+
+  QString objId = ObjectRegistry::instance()->objectId(edit);
+  QString subId = SignalMonitor::instance()->subscribe(objId, "textChanged");
+
+  QSignalSpy spy(SignalMonitor::instance(), &SignalMonitor::signalEmitted);
+  QVERIFY(spy.isValid());
+
+  edit->setText(QStringLiteral("hello"));
+
+  QCOMPARE(spy.count(), 1);
+  QJsonObject notification = spy.at(0).at(0).toJsonObject();
+  QCOMPARE(notification["signal"].toString(), QString("textChanged"));
+  QJsonArray args = notification["arguments"].toArray();
+  QCOMPARE(args.size(), 1);
+  QCOMPARE(args.at(0).toString(), QStringLiteral("hello"));
+
   SignalMonitor::instance()->unsubscribe(subId);
 }
 
