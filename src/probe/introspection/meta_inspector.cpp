@@ -58,8 +58,7 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
     // Notify signal name lets callers know what to subscribe to for change
     // notifications instead of polling. Empty when the property has none.
     if (prop.hasNotifySignal()) {
-      propInfo[QStringLiteral("notifySignal")] =
-          QString::fromLatin1(prop.notifySignal().name());
+      propInfo[QStringLiteral("notifySignal")] = QString::fromLatin1(prop.notifySignal().name());
     } else {
       propInfo[QStringLiteral("notifySignal")] = QString();
     }
@@ -80,13 +79,15 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
       const QMetaEnum me = prop.enumerator();
       if (me.isValid()) {
         const int intValue = value.toInt();
-        const QByteArray key = prop.isFlagType() ? me.valueToKeys(intValue)
-                                                 : QByteArray(me.valueToKey(intValue));
+        const char* keyStr = me.valueToKey(intValue);
+        const QByteArray key =
+            prop.isFlagType() ? me.valueToKeys(intValue) : QByteArray(keyStr ? keyStr : "");
         propInfo[QStringLiteral("enumKey")] = QString::fromLatin1(key);
         propInfo[QStringLiteral("isFlag")] = prop.isFlagType();
         QJsonArray keys;
         for (int k = 0; k < me.keyCount(); ++k) {
-          keys.append(QString::fromLatin1(me.key(k)));
+          const char* keyName = me.key(k);
+          keys.append(QString::fromLatin1(keyName ? keyName : ""));
         }
         propInfo[QStringLiteral("enumKeys")] = keys;
       }
@@ -105,7 +106,8 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
 
     QJsonObject propInfo;
     propInfo[QStringLiteral("name")] = QString::fromLatin1(name);
-    propInfo[QStringLiteral("type")] = QString::fromLatin1(value.typeName());
+    const char* typeName = value.typeName();
+    propInfo[QStringLiteral("type")] = QString::fromLatin1(typeName ? typeName : "");
     propInfo[QStringLiteral("readable")] = true;
     propInfo[QStringLiteral("writable")] = true;
     propInfo[QStringLiteral("dynamic")] = true;

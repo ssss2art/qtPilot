@@ -162,10 +162,21 @@ QJsonValue variantToJson(const QVariant& value) {
     return obj;
   }
 
+  // Check QObject pointer and gadget flags using version-compatible API
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  const auto typeFlags = QMetaType(typeId).flags();
+  const bool isQObjectPtr = typeFlags.testFlag(QMetaType::PointerToQObject);
+  const bool isGadget = typeFlags.testFlag(QMetaType::IsGadget);
+#else
+  const auto typeFlags = QMetaType::typeFlags(typeId);
+  const bool isQObjectPtr = typeFlags.testFlag(QMetaType::PointerToQObject);
+  const bool isGadget = typeFlags.testFlag(QMetaType::IsGadget);
+#endif
+
   // QObject* pointers: emit a navigable reference (objectId + identity) instead
   // of a useless null, so callers can follow object graphs — e.g. a "color"
   // property that points at a child token object.
-  if (QMetaType(typeId).flags().testFlag(QMetaType::PointerToQObject)) {
+  if (isQObjectPtr) {
     QObject* ref = value.value<QObject*>();
     if (!ref) {
       return QJsonValue();  // null pointer
@@ -184,8 +195,12 @@ QJsonValue variantToJson(const QVariant& value) {
   // Gadget value types (Q_GADGET: QFont, QSizePolicy, QPen, custom gadgets)
   // expose queryable sub-properties via their static meta-object. Recurse so
   // the structure is observable instead of collapsing to an empty toString().
-  if (QMetaType(typeId).flags().testFlag(QMetaType::IsGadget)) {
+  if (isGadget) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     const QMetaObject* gadgetMeta = QMetaType(typeId).metaObject();
+#else
+    const QMetaObject* gadgetMeta = QMetaType::metaObjectForType(typeId);
+#endif
     // Only intercept gadgets that actually expose introspectable properties;
     // otherwise (e.g. QFont, which declares none) fall through to the generic
     // toString()/_type fallback below.

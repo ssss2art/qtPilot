@@ -32,13 +32,28 @@ std::atomic<bool> g_singletonCreating{false};
 // superclass chain makes className queries subclass-aware (e.g. searching
 // "QPushButton" matches a custom MyButton : QPushButton), matching the
 // documented behaviour of the search API.
-bool metaInheritsClassName(const QMetaObject* meta, const QString& className) {
+bool metaInheritsClassName(const QMetaObject* meta, const QByteArray& className) {
+  const char* target = className.constData();
   for (const QMetaObject* m = meta; m != nullptr; m = m->superClass()) {
-    if (QString::fromLatin1(m->className()) == className) {
+    if (m->className() && std::strcmp(m->className(), target) == 0) {
       return true;
     }
   }
   return false;
+}
+
+// Helper to recursively search subtree for objects matching className (subclass-aware)
+// Accumulates matches into the reference parameter to avoid temporary QList allocations.
+void findAllByClassNameHelper(const QByteArray& className, QObject* root, QList<QObject*>& result) {
+  if (!root) {
+    return;
+  }
+  if (metaInheritsClassName(root->metaObject(), className)) {
+    result.append(root);
+  }
+  for (QObject* child : root->children()) {
+    findAllByClassNameHelper(className, child, result);
+  }
 }
 
 }  // namespace
@@ -270,21 +285,16 @@ QObject* ObjectRegistry::findByObjectName(const QString& name, QObject* root) {
 QList<QObject*> ObjectRegistry::findAllByClassName(const QString& className, QObject* root) {
   QMutexLocker lock(&m_mutex);
   QList<QObject*> result;
+  const QByteArray classNameBytes = className.toLatin1();
 
   if (root) {
-    // Search within root's subtree (subclass-aware)
-    if (metaInheritsClassName(root->metaObject(), className)) {
-      result.append(root);
-    }
-    for (QObject* child : root->children()) {
-      result.append(findAllByClassName(className, child));
-    }
+    findAllByClassNameHelper(classNameBytes, root, result);
     return result;
   }
 
   // Search all tracked objects (subclass-aware)
   for (QObject* obj : std::as_const(m_objects)) {
-    if (obj && metaInheritsClassName(obj->metaObject(), className)) {
+    if (obj && metaInheritsClassName(obj->metaObject(), classNameBytes)) {
       result.append(obj);
     }
   }
