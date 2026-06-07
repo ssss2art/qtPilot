@@ -4,51 +4,101 @@
 #include "introspection/signal_monitor.h"
 
 #include "core/object_registry.h"
+#include "introspection/variant_json.h"
 
 #include <stdexcept>
+#include <utility>
 
 #include <QDebug>
 #include <QGlobalStatic>
 #include <QMetaMethod>
+#include <QMetaType>
 #include <QMutexLocker>
+#include <QVariant>
 
 namespace qtPilot {
 
-/// @brief Helper class that acts as a relay between dynamic signals and SignalMonitor.
+/// @brief Helper that relays a monitored signal (with its arguments) to the
+/// SignalMonitor.
 ///
-/// Each subscription creates one SignalRelay instance. The relay has a generic
-/// handleSignal() slot that can be connected to any parameterless signal (or signals
-/// whose parameters we ignore for MVP). When invoked, it emits signalTriggered
-/// with the subscription context.
+/// Each subscription creates one SignalRelay. Rather than connecting to a
+/// fixed parameterless slot (which discards arguments), the relay uses the
+/// same technique as QSignalSpy: it has no moc-generated meta-object, and the
+/// monitored signal is connected to a synthetic slot whose index is QObject's
+/// methodCount(). When that slot is invoked, qt_metacall receives the raw
+/// argument array, which we decode using the signal's parameter metatypes
+/// (captured at subscribe time). The decoded arguments are converted to JSON
+/// and delivered to the monitor on its own thread.
 class SignalRelay : public QObject {
-  Q_OBJECT
-
  public:
-  SignalRelay(const QString& subId, const QString& objId, const QString& sigName, QObject* parent)
-      : QObject(parent), m_subscriptionId(subId), m_objectId(objId), m_signalName(sigName) {}
+  SignalRelay(QString subId, QString objId, QString sigName, QList<int> argTypes,
+              SignalMonitor* monitor, QObject* parent)
+      : QObject(parent),
+        m_subscriptionId(std::move(subId)),
+        m_objectId(std::move(objId)),
+        m_signalName(std::move(sigName)),
+        m_argTypes(std::move(argTypes)),
+        m_monitor(monitor) {}
 
   void setObjectId(const QString& id) { m_objectId = id; }
 
- Q_SIGNALS:
-  /// @brief Emitted when the monitored signal fires.
-  void signalTriggered(const QJsonObject& notification);
+  /// @brief Synthetic-slot dispatch (QSignalSpy pattern). Index 0 (after
+  /// QObject's own methods) is our monitored-signal receiver.
+  int qt_metacall(QMetaObject::Call call, int methodId, void** args) override {
+    methodId = QObject::qt_metacall(call, methodId, args);
+    if (methodId < 0) {
+      return methodId;
+    }
+    if (call == QMetaObject::InvokeMetaMethod) {
+      if (methodId == 0) {
+        deliver(args);
+      }
+      --methodId;
+    }
+    return methodId;
+  }
 
- public Q_SLOTS:
-  /// @brief Generic slot that can receive any signal (ignoring parameters).
-  void handleSignal() {
+ private:
+  /// @brief Decode the void** argument array into JSON and hand it to the
+  /// monitor. args[0] is the (unused) return-value slot; arguments begin at
+  /// args[1], one per captured parameter metatype.
+  void deliver(void** args) {
+    QJsonArray jsonArgs;
+    for (int i = 0; i < m_argTypes.size(); ++i) {
+      const QMetaType metaType(m_argTypes.at(i));
+      // An unregistered parameter type (no Q_DECLARE_METATYPE) yields an
+      // invalid metatype; emit an explicit null so a dropped argument is not
+      // mistaken for a genuine null value.
+      if (!metaType.isValid()) {
+        jsonArgs.append(QJsonValue());
+        continue;
+      }
+      // The QVariant(QMetaType, const void*) constructor is Qt 6 only; Qt 5
+      // uses the int-typeId overload.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+      jsonArgs.append(variantToJson(QVariant(metaType, args[i + 1])));
+#else
+      jsonArgs.append(variantToJson(QVariant(metaType.id(), args[i + 1])));
+#endif
+    }
+
     QJsonObject notification;
     notification[QStringLiteral("subscriptionId")] = m_subscriptionId;
     notification[QStringLiteral("objectId")] = m_objectId;
     notification[QStringLiteral("signal")] = m_signalName;
-    notification[QStringLiteral("arguments")] = QJsonArray();  // Empty for MVP
+    notification[QStringLiteral("arguments")] = jsonArgs;
 
-    Q_EMIT signalTriggered(notification);
+    // Marshal to the monitor's thread before emitting (AutoConnection: direct
+    // when the signal fires on the monitor's thread, queued otherwise).
+    QMetaObject::invokeMethod(m_monitor, "deliverNotification", Qt::AutoConnection,
+                              Q_ARG(QJsonObject, notification));
   }
 
- private:
   QString m_subscriptionId;
   QString m_objectId;
   QString m_signalName;
+  QList<int> m_argTypes;
+  SignalMonitor* m_monitor;
 };
 
 // Thread-safe singleton storage using Q_GLOBAL_STATIC
@@ -130,28 +180,26 @@ QString SignalMonitor::subscribe(const QString& objectId, const QString& signalN
 
   QMetaMethod signal = meta->method(signalIndex);
 
-  // Create a SignalRelay QObject per subscription that stores context
-  // and has a generic slot for receiving the signal.
-  auto* relay = new SignalRelay(subId, objectId, signalName, this);
-
-  // Find the relay's handleSignal slot
-  const QMetaObject* relayMeta = relay->metaObject();
-  int slotIndex = relayMeta->indexOfSlot("handleSignal()");
-  if (slotIndex < 0) {
-    delete relay;
-    throw std::runtime_error("Internal error: handleSignal slot not found");
+  // Capture the signal's parameter metatypes so the relay can decode argument
+  // values when the signal fires.
+  QList<int> argTypes;
+  argTypes.reserve(signal.parameterCount());
+  for (int p = 0; p < signal.parameterCount(); ++p) {
+    argTypes.append(signal.parameterType(p));
   }
-  QMetaMethod slot = relayMeta->method(slotIndex);
 
-  // Connect the signal to the relay's slot
-  auto conn = QObject::connect(obj, signal, relay, slot);
+  // Create a SignalRelay per subscription. It receives the signal through a
+  // synthetic slot (index == QObject's methodCount) and decodes arguments via
+  // qt_metacall — see the SignalRelay docs above.
+  auto* relay = new SignalRelay(subId, objectId, signalName, argTypes, this, this);
+
+  // Connect the signal to the relay's synthetic slot index.
+  auto conn = QMetaObject::connect(obj, signal.methodIndex(), relay,
+                                   QObject::staticMetaObject.methodCount());
   if (!conn) {
     delete relay;
     throw std::runtime_error("Failed to connect to signal: " + signalName.toStdString());
   }
-
-  // Relay emits signalTriggered which we connect to our signalEmitted signal
-  connect(relay, &SignalRelay::signalTriggered, this, &SignalMonitor::signalEmitted);
 
   // Watch for object destruction to auto-unsubscribe
   // Note: We use DirectConnection to ensure cleanup happens immediately
@@ -327,7 +375,9 @@ void SignalMonitor::onSubscribedObjectDestroyed(QObject* obj) {
   }
 }
 
-}  // namespace qtPilot
+void SignalMonitor::deliverNotification(const QJsonObject& notification) {
+  // Re-emit on the monitor's thread; the relay marshals here via invokeMethod.
+  Q_EMIT signalEmitted(notification);
+}
 
-// Include the moc file for SignalRelay (defined in this cpp file)
-#include "signal_monitor.moc"
+}  // namespace qtPilot
