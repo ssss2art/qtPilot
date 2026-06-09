@@ -6,6 +6,7 @@
 #include "introspection/object_id.h"
 
 #include <atomic>
+#include <cstring>  // std::strcmp (not transitively included on Qt5/gcc)
 
 #include <QCoreApplication>
 #include <QDebug>
