@@ -149,11 +149,13 @@ void TestObjectRegistry::testFindAllByClassName() {
   QVERIFY(timers.contains(timer2));
   QVERIFY(!timers.contains(child));
 
-  // Find all QObjects (should include everything)
+  // Search is subclass-aware: querying the base class "QObject" matches every
+  // tracked object, including the QTimer instances (QTimer derives QObject).
   QList<QObject*> allObjects = registry->findAllByClassName(QStringLiteral("QObject"), parent);
-  // Should find parent and the non-timer child (timers are QTimer, not QObject exactly)
   QVERIFY(allObjects.contains(parent));
   QVERIFY(allObjects.contains(child));
+  QVERIFY(allObjects.contains(timer1));
+  QVERIFY(allObjects.contains(timer2));
 }
 
 void TestObjectRegistry::testObjectRemoval() {

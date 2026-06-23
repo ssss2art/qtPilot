@@ -53,14 +53,65 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
     propInfo[QStringLiteral("type")] = QString::fromLatin1(prop.typeName());
     propInfo[QStringLiteral("readable")] = prop.isReadable();
     propInfo[QStringLiteral("writable")] = prop.isWritable();
+    propInfo[QStringLiteral("dynamic")] = false;
+
+    // Notify signal name lets callers know what to subscribe to for change
+    // notifications instead of polling. Empty when the property has none.
+    if (prop.hasNotifySignal()) {
+      propInfo[QStringLiteral("notifySignal")] = QString::fromLatin1(prop.notifySignal().name());
+    } else {
+      propInfo[QStringLiteral("notifySignal")] = QString();
+    }
 
     // Include current value if readable
+    QVariant value;
     if (prop.isReadable()) {
-      QVariant value = prop.read(obj);
+      value = prop.read(obj);
       propInfo[QStringLiteral("value")] = variantToJson(value);
     } else {
       propInfo[QStringLiteral("value")] = QJsonValue();
     }
+
+    // Enum/flag properties otherwise serialize as opaque integers. Surface the
+    // symbolic key(s) and the full set of valid keys so callers can read and
+    // set them by name (e.g. alignment 132 -> "AlignLeft|AlignVCenter").
+    if (prop.isEnumType() || prop.isFlagType()) {
+      const QMetaEnum me = prop.enumerator();
+      if (me.isValid()) {
+        const int intValue = value.toInt();
+        const char* keyStr = me.valueToKey(intValue);
+        const QByteArray key =
+            prop.isFlagType() ? me.valueToKeys(intValue) : QByteArray(keyStr ? keyStr : "");
+        propInfo[QStringLiteral("enumKey")] = QString::fromLatin1(key);
+        propInfo[QStringLiteral("isFlag")] = prop.isFlagType();
+        QJsonArray keys;
+        for (int k = 0; k < me.keyCount(); ++k) {
+          const char* keyName = me.key(k);
+          keys.append(QString::fromLatin1(keyName ? keyName : ""));
+        }
+        propInfo[QStringLiteral("enumKeys")] = keys;
+      }
+    }
+
+    result.append(propInfo);
+  }
+
+  // Dynamic properties (set via QObject::setProperty with a name not declared
+  // as a Q_PROPERTY) are not part of the static meta-object. They are widely
+  // used for QSS styling hooks (e.g. setProperty("status", "error") driving a
+  // [status="error"] selector), so surface them too, flagged dynamic.
+  const QList<QByteArray> dynamicNames = obj->dynamicPropertyNames();
+  for (const QByteArray& name : dynamicNames) {
+    const QVariant value = obj->property(name.constData());
+
+    QJsonObject propInfo;
+    propInfo[QStringLiteral("name")] = QString::fromLatin1(name);
+    const char* typeName = value.typeName();
+    propInfo[QStringLiteral("type")] = QString::fromLatin1(typeName ? typeName : "");
+    propInfo[QStringLiteral("readable")] = true;
+    propInfo[QStringLiteral("writable")] = true;
+    propInfo[QStringLiteral("dynamic")] = true;
+    propInfo[QStringLiteral("value")] = variantToJson(value);
 
     result.append(propInfo);
   }
