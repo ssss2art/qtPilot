@@ -140,49 +140,19 @@ QList<QObject*> getTopLevelObjects() {
 }
 
 /// @brief Match a single ID segment against an object.
+///
+/// A segment matches iff it equals the segment generateIdSegment() would emit
+/// for this object. Delegating to the generator keeps the forward (id creation)
+/// and reverse (id resolution) paths in lockstep — including the QML id priority
+/// and the stripped short type name — so they cannot drift. The previous
+/// hand-rolled matcher never checked qmlId and compared against the full
+/// className (e.g. "QQuickRectangle"), so it could never match a QML segment
+/// (a qmlId, or a stripped "Rectangle"/"Rectangle#2") that the generator emits.
 bool matchesSegment(QObject* obj, const QString& segment) {
   if (!obj) {
     return false;
   }
-
-  // First, check if segment matches objectName
-  if (!obj->objectName().isEmpty() && obj->objectName() == segment) {
-    return true;
-  }
-
-  // Check if segment matches text_* pattern
-  if (segment.startsWith(QLatin1String("text_"))) {
-    QString text = getTextProperty(obj);
-    if (!text.isEmpty()) {
-      QString expectedSegment = QStringLiteral("text_") + sanitizeForId(text);
-      if (segment == expectedSegment) {
-        return true;
-      }
-    }
-  }
-
-  // Check if segment matches ClassName or ClassName#N pattern
-  QString className = QString::fromLatin1(obj->metaObject()->className());
-
-  // Direct class name match (when unique)
-  if (segment == className) {
-    return true;
-  }
-
-  // ClassName#N pattern
-  if (segment.startsWith(className + QLatin1Char('#'))) {
-    QString indexStr = segment.mid(className.length() + 1);
-    bool ok = false;
-    int index = indexStr.toInt(&ok);
-    if (ok && index > 0) {
-      int actualIndex = getSiblingIndex(obj);
-      if (actualIndex == index) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return generateIdSegment(obj) == segment;
 }
 
 /// @brief Find object by path segments starting from a list of candidates.
