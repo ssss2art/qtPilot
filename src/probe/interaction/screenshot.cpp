@@ -218,8 +218,8 @@ QByteArray Screenshot::captureRegion(QWindow* window, const QRect& region) {
   // grabWindow() honors the device pixel ratio; scale the (logical) region to
   // match the pixmap's physical pixels before cropping.
   qreal dpr = full.devicePixelRatio();
-  QRect physRegion(qRound(region.x() * dpr), qRound(region.y() * dpr),
-                   qRound(region.width() * dpr), qRound(region.height() * dpr));
+  QRect physRegion(qRound(region.x() * dpr), qRound(region.y() * dpr), qRound(region.width() * dpr),
+                   qRound(region.height() * dpr));
   return encodePixmap(full.copy(physRegion), "captureRegion");
 }
 

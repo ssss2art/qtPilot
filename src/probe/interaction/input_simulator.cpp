@@ -250,8 +250,7 @@ void InputSimulator::mousePress(QWindow* window, MouseButton button, const QPoin
     throw std::invalid_argument("mousePress: window cannot be null");
   }
   Qt::MouseButton qtButton = toQtButton(button);
-  sendMouseToWindow(window, QEvent::MouseButtonPress, pos, qtButton,
-                    qtButton, modifiers);
+  sendMouseToWindow(window, QEvent::MouseButtonPress, pos, qtButton, qtButton, modifiers);
 }
 
 void InputSimulator::mouseRelease(QWindow* window, MouseButton button, const QPoint& pos,
@@ -259,8 +258,8 @@ void InputSimulator::mouseRelease(QWindow* window, MouseButton button, const QPo
   if (!window) {
     throw std::invalid_argument("mouseRelease: window cannot be null");
   }
-  sendMouseToWindow(window, QEvent::MouseButtonRelease, pos,
-                    toQtButton(button), Qt::NoButton, modifiers);
+  sendMouseToWindow(window, QEvent::MouseButtonRelease, pos, toQtButton(button), Qt::NoButton,
+                    modifiers);
 }
 
 void InputSimulator::mouseClick(QWindow* window, MouseButton button, const QPoint& pos,

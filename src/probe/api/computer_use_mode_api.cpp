@@ -298,14 +298,16 @@ void ComputerUseModeApi::registerScreenshotMethods() {
 
     QByteArray base64;
     if (fullScreen) {
-      base64 = t.isWindow() ? Screenshot::captureScreen(t.window) : Screenshot::captureScreen(t.widget);
+      base64 =
+          t.isWindow() ? Screenshot::captureScreen(t.window) : Screenshot::captureScreen(t.widget);
     } else if (!region.isEmpty()) {
       QRect rect(region[QStringLiteral("x")].toInt(), region[QStringLiteral("y")].toInt(),
                  region[QStringLiteral("width")].toInt(), region[QStringLiteral("height")].toInt());
       base64 = t.isWindow() ? Screenshot::captureRegion(t.window, rect)
                             : Screenshot::captureRegion(t.widget, rect);
     } else if (physicalPixels) {
-      base64 = t.isWindow() ? Screenshot::captureWindow(t.window) : Screenshot::captureWindow(t.widget);
+      base64 =
+          t.isWindow() ? Screenshot::captureWindow(t.window) : Screenshot::captureWindow(t.widget);
     } else {
       // Default: logical pixel capture (1:1 coordinate matching)
       base64 = t.isWindow() ? Screenshot::captureWindowLogical(t.window)
