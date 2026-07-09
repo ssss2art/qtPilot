@@ -11,16 +11,18 @@
 
 namespace qtPilot {
 
-WalkResult AccessibilityTreeWalker::walk(QWidget* rootWidget, const WalkOptions& opts) {
+WalkResult AccessibilityTreeWalker::walk(QObject* root, const WalkOptions& opts) {
   WalkResult result;
 
-  if (!rootWidget)
+  if (!root)
     return result;
 
   // Ensure accessibility framework is active (critical on Linux/AT-SPI)
   QAccessible::setActive(true);
 
-  QAccessibleInterface* rootIface = QAccessible::queryAccessibleInterface(rootWidget);
+  // queryAccessibleInterface accepts any QObject; for a QQuickWindow it returns
+  // the scene's accessible root whose children are the QML item interfaces.
+  QAccessibleInterface* rootIface = QAccessible::queryAccessibleInterface(root);
   if (!rootIface)
     return result;
 
@@ -28,7 +30,7 @@ WalkResult AccessibilityTreeWalker::walk(QWidget* rootWidget, const WalkOptions&
   // previously stored ref map. Since refs are ephemeral (rebuilt each walk),
   // scopeRef resolution is handled by the caller (ChromeModeApi) which
   // maintains the current ref map. For now, walk from root.
-  // The caller can pass a scoped widget directly as rootWidget.
+  // The caller can pass a scoped object directly as root.
 
   int refCounter = 0;
   int charCount = 0;
