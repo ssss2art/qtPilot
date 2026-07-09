@@ -173,9 +173,20 @@ namespace {
 QPixmap grabWindowPixmap(QWindow* window, const char* context) {
 #ifdef QTPILOT_HAS_QML
   if (auto* quickWindow = qobject_cast<QQuickWindow*>(window)) {
-    QImage image = quickWindow->grabWindow();
-    if (!image.isNull()) {
-      return QPixmap::fromImage(image);
+    // grabWindow() is only reliable while the window is exposed/rendering; when
+    // it is not, skip straight to the screen-grab fallback rather than risk a
+    // null image or a stall waiting for the next expose.
+    if (quickWindow->isExposed()) {
+      QImage image = quickWindow->grabWindow();
+      if (!image.isNull()) {
+        QPixmap pixmap = QPixmap::fromImage(image);
+        // Ensure the device pixel ratio is set so the downstream logical/region
+        // scaling is correct on HiDPI displays even if grabWindow() left it 1.0.
+        if (pixmap.devicePixelRatio() <= 1.0) {
+          pixmap.setDevicePixelRatio(quickWindow->devicePixelRatio());
+        }
+        return pixmap;
+      }
     }
   }
 #endif
