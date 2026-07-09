@@ -8,10 +8,12 @@
 #include <stdexcept>
 
 #include <QApplication>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QMouseEvent>
 #include <QTest>
 #include <QWheelEvent>
+#include <QWindow>
 
 namespace qtPilot {
 
@@ -219,6 +221,138 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
                            qtButton, Qt::NoButton, modifiers);
   QCoreApplication::sendEvent(endWidget, &releaseEvent);
   QApplication::processEvents();
+}
+
+// --- QWindow overloads (pure Qt Quick apps) ---
+
+namespace {
+
+/// @brief Resolve a window-local position, defaulting to the window center.
+QPoint windowPosOrCenter(QWindow* window, const QPoint& pos) {
+  return pos.isNull() ? QPoint(window->width() / 2, window->height() / 2) : pos;
+}
+
+/// @brief Deliver a QMouseEvent to a window at a local position.
+void sendMouseToWindow(QWindow* window, QEvent::Type type, const QPoint& localPos,
+                       Qt::MouseButton button, Qt::MouseButtons buttons,
+                       Qt::KeyboardModifiers modifiers) {
+  QPoint globalPos = window->mapToGlobal(localPos);
+  QMouseEvent event(type, QPointF(localPos), QPointF(globalPos), button, buttons, modifiers);
+  QCoreApplication::sendEvent(window, &event);
+  QCoreApplication::processEvents();
+}
+
+}  // namespace
+
+void InputSimulator::mousePress(QWindow* window, MouseButton button, const QPoint& pos,
+                                Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mousePress: window cannot be null");
+  }
+  Qt::MouseButton qtButton = toQtButton(button);
+  sendMouseToWindow(window, QEvent::MouseButtonPress, windowPosOrCenter(window, pos), qtButton,
+                    qtButton, modifiers);
+}
+
+void InputSimulator::mouseRelease(QWindow* window, MouseButton button, const QPoint& pos,
+                                  Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseRelease: window cannot be null");
+  }
+  sendMouseToWindow(window, QEvent::MouseButtonRelease, windowPosOrCenter(window, pos),
+                    toQtButton(button), Qt::NoButton, modifiers);
+}
+
+void InputSimulator::mouseClick(QWindow* window, MouseButton button, const QPoint& pos,
+                                Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseClick: window cannot be null");
+  }
+  QPoint clickPos = windowPosOrCenter(window, pos);
+  mousePress(window, button, clickPos, modifiers);
+  mouseRelease(window, button, clickPos, modifiers);
+}
+
+void InputSimulator::mouseDoubleClick(QWindow* window, MouseButton button, const QPoint& pos,
+                                      Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseDoubleClick: window cannot be null");
+  }
+  QPoint clickPos = windowPosOrCenter(window, pos);
+  Qt::MouseButton qtButton = toQtButton(button);
+  // Qt delivers a double-click as press, release, press, dblclick, release.
+  mousePress(window, button, clickPos, modifiers);
+  mouseRelease(window, button, clickPos, modifiers);
+  mousePress(window, button, clickPos, modifiers);
+  sendMouseToWindow(window, QEvent::MouseButtonDblClick, clickPos, qtButton, qtButton, modifiers);
+  mouseRelease(window, button, clickPos, modifiers);
+}
+
+void InputSimulator::mouseMove(QWindow* window, const QPoint& pos, Qt::MouseButtons buttons,
+                               Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseMove: window cannot be null");
+  }
+  sendMouseToWindow(window, QEvent::MouseMove, pos, Qt::NoButton, buttons, modifiers);
+}
+
+void InputSimulator::scroll(QWindow* window, const QPoint& pos, int dx, int dy,
+                            Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("scroll: window cannot be null");
+  }
+  QPoint localPos = windowPosOrCenter(window, pos);
+  QPoint globalPos = window->mapToGlobal(localPos);
+
+  // 120 units = 1 standard mouse wheel tick (15 degrees)
+  QPoint angleDelta(dx * 120, dy * 120);
+  QPoint pixelDelta(0, 0);
+
+  QWheelEvent event(QPointF(localPos), QPointF(globalPos), pixelDelta, angleDelta, Qt::NoButton,
+                    modifiers, Qt::NoScrollPhase, false);
+  QCoreApplication::sendEvent(window, &event);
+  QCoreApplication::processEvents();
+}
+
+void InputSimulator::mouseDrag(QWindow* window, const QPoint& startPos, const QPoint& endPos,
+                               MouseButton button, Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseDrag: window cannot be null");
+  }
+  Qt::MouseButton qtButton = toQtButton(button);
+  // QQuickWindow routes each event to the item at the scene position; no
+  // childAt resolution is needed (unlike the QWidget path).
+  sendMouseToWindow(window, QEvent::MouseButtonPress, startPos, qtButton, qtButton, modifiers);
+  sendMouseToWindow(window, QEvent::MouseMove, endPos, Qt::NoButton, qtButton, modifiers);
+  sendMouseToWindow(window, QEvent::MouseButtonRelease, endPos, qtButton, Qt::NoButton, modifiers);
+}
+
+void InputSimulator::sendText(QWindow* window, const QString& text) {
+  if (!window) {
+    throw std::invalid_argument("sendText: window cannot be null");
+  }
+  // Deliver each character as a key press+release carrying its text; a
+  // QQuickWindow forwards these to its focused item (e.g. a TextInput).
+  for (const QChar ch : text) {
+    int key = ch.toUpper().unicode();
+    QString s(ch);
+    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, s);
+    QCoreApplication::sendEvent(window, &press);
+    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, s);
+    QCoreApplication::sendEvent(window, &release);
+  }
+  QCoreApplication::processEvents();
+}
+
+void InputSimulator::sendKey(QWindow* window, Qt::Key key, Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("sendKey: window cannot be null");
+  }
+  QKeyEvent press(QEvent::KeyPress, key, modifiers);
+  QCoreApplication::sendEvent(window, &press);
+  QKeyEvent release(QEvent::KeyRelease, key, modifiers);
+  QCoreApplication::sendEvent(window, &release);
+  QCoreApplication::processEvents();
 }
 
 }  // namespace qtPilot

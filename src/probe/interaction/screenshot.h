@@ -9,6 +9,8 @@
 #include <QRect>
 #include <QWidget>
 
+class QWindow;
+
 namespace qtPilot {
 
 /// @brief Screenshot capture utility (UI-03).
@@ -71,6 +73,24 @@ class QTPILOT_EXPORT Screenshot {
   /// @throws std::invalid_argument if window is null
   /// @throws std::runtime_error if screen cannot be determined
   static QByteArray captureWindowLogical(QWidget* window);
+
+  // --- QWindow overloads (pure Qt Quick apps: QQuickWindow has no QWidget) ---
+  //
+  // A QQuickWindow is captured with QQuickWindow::grabWindow() (an offscreen
+  // render needing no screen-recording permission, like QWidget::grab());
+  // other QWindows fall back to a composited screen grab of the native window.
+
+  /// @brief Capture a window (QQuickWindow rendered offscreen when possible).
+  static QByteArray captureWindow(QWindow* window);
+
+  /// @brief Capture a rectangular region (window-local coordinates) of a window.
+  static QByteArray captureRegion(QWindow* window, const QRect& region);
+
+  /// @brief Capture the entire screen containing the given window.
+  static QByteArray captureScreen(QWindow* windowOnTargetScreen);
+
+  /// @brief Capture a window scaled to logical pixel dimensions.
+  static QByteArray captureWindowLogical(QWindow* window);
 };
 
 }  // namespace qtPilot
