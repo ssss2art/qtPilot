@@ -227,10 +227,10 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
 
 namespace {
 
-/// @brief Resolve a window-local position, defaulting to the window center.
-QPoint windowPosOrCenter(QWindow* window, const QPoint& pos) {
-  return pos.isNull() ? QPoint(window->width() / 2, window->height() / 2) : pos;
-}
+// The window overloads always receive an explicit, bounds-resolved position
+// from the Computer-Use dispatch layer, so there is no "default to center"
+// convenience here — that would misread a legitimate (0,0) top-left position
+// (QPoint(0,0).isNull() is true) as "unset".
 
 /// @brief Deliver a QMouseEvent to a window at a local position.
 void sendMouseToWindow(QWindow* window, QEvent::Type type, const QPoint& localPos,
@@ -250,7 +250,7 @@ void InputSimulator::mousePress(QWindow* window, MouseButton button, const QPoin
     throw std::invalid_argument("mousePress: window cannot be null");
   }
   Qt::MouseButton qtButton = toQtButton(button);
-  sendMouseToWindow(window, QEvent::MouseButtonPress, windowPosOrCenter(window, pos), qtButton,
+  sendMouseToWindow(window, QEvent::MouseButtonPress, pos, qtButton,
                     qtButton, modifiers);
 }
 
@@ -259,7 +259,7 @@ void InputSimulator::mouseRelease(QWindow* window, MouseButton button, const QPo
   if (!window) {
     throw std::invalid_argument("mouseRelease: window cannot be null");
   }
-  sendMouseToWindow(window, QEvent::MouseButtonRelease, windowPosOrCenter(window, pos),
+  sendMouseToWindow(window, QEvent::MouseButtonRelease, pos,
                     toQtButton(button), Qt::NoButton, modifiers);
 }
 
@@ -268,7 +268,7 @@ void InputSimulator::mouseClick(QWindow* window, MouseButton button, const QPoin
   if (!window) {
     throw std::invalid_argument("mouseClick: window cannot be null");
   }
-  QPoint clickPos = windowPosOrCenter(window, pos);
+  QPoint clickPos = pos;
   mousePress(window, button, clickPos, modifiers);
   mouseRelease(window, button, clickPos, modifiers);
 }
@@ -278,7 +278,7 @@ void InputSimulator::mouseDoubleClick(QWindow* window, MouseButton button, const
   if (!window) {
     throw std::invalid_argument("mouseDoubleClick: window cannot be null");
   }
-  QPoint clickPos = windowPosOrCenter(window, pos);
+  QPoint clickPos = pos;
   Qt::MouseButton qtButton = toQtButton(button);
   // Qt delivers a double-click as press, release, press, dblclick, release.
   mousePress(window, button, clickPos, modifiers);
@@ -301,7 +301,7 @@ void InputSimulator::scroll(QWindow* window, const QPoint& pos, int dx, int dy,
   if (!window) {
     throw std::invalid_argument("scroll: window cannot be null");
   }
-  QPoint localPos = windowPosOrCenter(window, pos);
+  QPoint localPos = pos;
   QPoint globalPos = window->mapToGlobal(localPos);
 
   // 120 units = 1 standard mouse wheel tick (15 degrees)
