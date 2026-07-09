@@ -7,9 +7,11 @@
 #include "introspection/qml_inspector.h"
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QMetaProperty>
 #include <QWidget>
+#include <QWindow>
 
 namespace qtPilot {
 
@@ -116,6 +118,22 @@ QList<QObject*> getTopLevelObjects() {
     // with the app's segment (e.g., "QApplication/..."). The search
     // must begin from the app to match that first segment.
     result.append(app);
+  }
+
+  // Top-level windows (e.g. a QQuickWindow for a pure Qt Quick app) have
+  // parent()==nullptr and are NOT QObject children of the application, so the
+  // parent-based tree walk rooted at the app never reaches them. Add them as
+  // additional roots so qt.objects.tree surfaces QML scenes, and so
+  // findByObjectId can resolve window-rooted IDs.
+  if (auto* guiApp = qobject_cast<QGuiApplication*>(app)) {
+    const auto topWindows = guiApp->topLevelWindows();
+    for (QWindow* w : topWindows) {
+      // Skip the internal backing window of a top-level QWidget: those belong
+      // to the Widgets object graph, not a standalone window root.
+      if (w->inherits("QWidgetWindow"))
+        continue;
+      result.append(w);
+    }
   }
 
   return result;
