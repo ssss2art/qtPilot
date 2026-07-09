@@ -15,7 +15,7 @@ notes why it matters and a rough effort estimate (S/M/L).
 ## Already shipped / in flight
 
 All of the below are implemented on feature branches, unit-tested, **and
-live-validated against the Luminol Gallery app**. Not yet pushed to origin.
+live-validated against a real Qt application**. Not yet pushed to origin.
 
 | # | Gap | Where | Status |
 |---|-----|-------|--------|
