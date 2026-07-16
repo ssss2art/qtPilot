@@ -11,6 +11,7 @@
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMouseEvent>
+#include <QPointer>
 #include <QTest>
 #include <QWheelEvent>
 #include <QWindow>
@@ -267,9 +268,13 @@ void InputSimulator::mouseClick(QWindow* window, MouseButton button, const QPoin
   if (!window) {
     throw std::invalid_argument("mouseClick: window cannot be null");
   }
-  QPoint clickPos = pos;
-  mousePress(window, button, clickPos, modifiers);
-  mouseRelease(window, button, clickPos, modifiers);
+  // Each primitive pumps the event loop; if a handler destroys the window
+  // (e.g. clicking a "Close" control), bail before re-dereferencing it.
+  QPointer<QWindow> guard(window);
+  mousePress(window, button, pos, modifiers);
+  if (!guard)
+    return;
+  mouseRelease(window, button, pos, modifiers);
 }
 
 void InputSimulator::mouseDoubleClick(QWindow* window, MouseButton button, const QPoint& pos,
@@ -277,14 +282,21 @@ void InputSimulator::mouseDoubleClick(QWindow* window, MouseButton button, const
   if (!window) {
     throw std::invalid_argument("mouseDoubleClick: window cannot be null");
   }
-  QPoint clickPos = pos;
+  QPointer<QWindow> guard(window);
   Qt::MouseButton qtButton = toQtButton(button);
-  // Qt delivers a double-click as press, release, press, dblclick, release.
-  mousePress(window, button, clickPos, modifiers);
-  mouseRelease(window, button, clickPos, modifiers);
-  mousePress(window, button, clickPos, modifiers);
-  sendMouseToWindow(window, QEvent::MouseButtonDblClick, clickPos, qtButton, qtButton, modifiers);
-  mouseRelease(window, button, clickPos, modifiers);
+  // Qt delivers a double-click as press, release, dblclick, release — the second
+  // physical press arrives AS the MouseButtonDblClick, not a separate press, so
+  // there is no extra MousePress (which would fire a spurious onPressed).
+  mousePress(window, button, pos, modifiers);
+  if (!guard)
+    return;
+  mouseRelease(window, button, pos, modifiers);
+  if (!guard)
+    return;
+  sendMouseToWindow(window, QEvent::MouseButtonDblClick, pos, qtButton, qtButton, modifiers);
+  if (!guard)
+    return;
+  mouseRelease(window, button, pos, modifiers);
 }
 
 void InputSimulator::mouseMove(QWindow* window, const QPoint& pos, Qt::MouseButtons buttons,
@@ -320,9 +332,15 @@ void InputSimulator::mouseDrag(QWindow* window, const QPoint& startPos, const QP
   }
   Qt::MouseButton qtButton = toQtButton(button);
   // QQuickWindow routes each event to the item at the scene position; no
-  // childAt resolution is needed (unlike the QWidget path).
+  // childAt resolution is needed (unlike the QWidget path). Guard against the
+  // window being destroyed by a handler between pumped events.
+  QPointer<QWindow> guard(window);
   sendMouseToWindow(window, QEvent::MouseButtonPress, startPos, qtButton, qtButton, modifiers);
+  if (!guard)
+    return;
   sendMouseToWindow(window, QEvent::MouseMove, endPos, Qt::NoButton, qtButton, modifiers);
+  if (!guard)
+    return;
   sendMouseToWindow(window, QEvent::MouseButtonRelease, endPos, qtButton, Qt::NoButton, modifiers);
 }
 
@@ -333,8 +351,27 @@ void InputSimulator::sendText(QWindow* window, const QString& text) {
   // Deliver each character as a key press+release carrying its text; a
   // QQuickWindow forwards these to its focused item (e.g. a TextInput).
   for (const QChar ch : text) {
-    int key = ch.toUpper().unicode();
     QString s(ch);
+    int key;
+    switch (ch.unicode()) {
+      case u'\n':
+      case u'\r':
+        key = Qt::Key_Return;  // so QML onAccepted / Keys.onReturnPressed fires
+        break;
+      case u'\t':
+        key = Qt::Key_Tab;
+        break;
+      case u'\b':
+        key = Qt::Key_Backspace;
+        break;
+      default:
+        // ASCII letters/digits/punctuation map 1:1 to Qt::Key_* by their
+        // uppercased code point (Qt keys are case-insensitive — the letter case
+        // lives in text()). Non-ASCII gets a best-effort code; text() carries
+        // the actual character for insertion regardless.
+        key = ch.toUpper().unicode();
+        break;
+    }
     QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, s);
     QCoreApplication::sendEvent(window, &press);
     QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, s);

@@ -86,9 +86,21 @@ QAccessibleInterface* resolveRef(const QString& ref) {
 /// falls back to QWindow discovery so Chrome mode works against QML-only apps.
 /// @throws JsonRpcException if no active window found.
 QObject* getActiveWindowObject() {
-  // Widgets path. Guard the QApplication cast so the Widgets-only statics are
-  // never called under a pure QGuiApplication (where they would be unsafe).
-  if (qobject_cast<QApplication*>(QCoreApplication::instance())) {
+  auto* coreApp = QCoreApplication::instance();
+  auto* guiApp = qobject_cast<QGuiApplication*>(coreApp);
+
+  // Prefer a focused real top-level window (e.g. a QQuickWindow), so a hybrid
+  // app (QApplication hosting a focused QQuickWindow) targets that window. Skip
+  // the internal QWidgetWindow backing store — a Widgets app should resolve to
+  // its QWidget below (the QApplication cast guards the Widgets-only statics).
+  if (guiApp) {
+    if (QWindow* focus = guiApp->focusWindow()) {
+      if (focus->isVisible() && !focus->inherits("QWidgetWindow"))
+        return focus;
+    }
+  }
+
+  if (qobject_cast<QApplication*>(coreApp)) {
     if (QWidget* window = QApplication::activeWindow())
       return window;
 
@@ -100,15 +112,11 @@ QObject* getActiveWindowObject() {
     }
   }
 
-  // QWindow path for pure Qt Quick apps (QQuickWindow has no backing QWidget).
-  if (auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
-    if (QWindow* focus = guiApp->focusWindow()) {
-      if (focus->isVisible())
-        return focus;
-    }
+  // QWindow fallback for pure Qt Quick apps, skipping QWidgetWindow backing stores.
+  if (guiApp) {
     const auto windows = guiApp->topLevelWindows();
     for (QWindow* w : windows) {
-      if (w->isVisible())
+      if (w->isVisible() && !w->inherits("QWidgetWindow"))
         return w;
     }
   }
