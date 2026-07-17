@@ -3,7 +3,8 @@ name = "qtpilot"
 dynamic = ["version"]
 description = "MCP server for controlling Qt applications via qtPilot probe"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
     {name = "Scott Johnson"}
@@ -13,18 +14,21 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Testing",
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-    "fastmcp>=2.0,<3",
-    "websockets>=14.0",
+    # fastmcp.server.middleware (used by logging_middleware) requires >= 2.9.
+    "fastmcp>=2.9,<3",
+    # websockets.asyncio.client (used by connection) requires >= 13.
+    "websockets>=13",
 ]
 
 [project.optional-dependencies]
