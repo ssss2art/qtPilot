@@ -173,10 +173,12 @@ namespace {
 QPixmap grabWindowPixmap(QWindow* window, const char* context) {
 #ifdef QTPILOT_HAS_QML
   if (auto* quickWindow = qobject_cast<QQuickWindow*>(window)) {
-    // grabWindow() is only reliable while the window is exposed/rendering; when
-    // it is not, skip straight to the screen-grab fallback rather than risk a
-    // null image or a stall waiting for the next expose.
-    if (quickWindow->isExposed()) {
+    // grabWindow() re-renders the scene graph to an offscreen surface, so it
+    // captures the actual UI even when the window is occluded or on a background
+    // Space (unlike a screen grab, which would capture whatever is on top). Try
+    // it whenever the window has been shown; only fall back to the screen grab
+    // if it yields nothing.
+    if (quickWindow->isVisible()) {
       QImage image = quickWindow->grabWindow();
       if (!image.isNull()) {
         QPixmap pixmap = QPixmap::fromImage(image);
