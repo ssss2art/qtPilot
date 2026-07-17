@@ -51,6 +51,11 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 source = "vcs"
 raw-options.root = ".."
+# Building from a GitHub source tarball / `git archive` (no .git, no PKG-INFO)
+# would otherwise hard-fail with "unable to detect version". Downstream
+# packagers (conda-forge, distros) get this fallback; PyPI sdists still bake the
+# real version into PKG-INFO.
+raw-options.fallback_version = "0.0.0"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/qtpilot/_version.py"
