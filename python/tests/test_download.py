@@ -230,11 +230,11 @@ class TestArchiveUrlBuilding:
         )
 
     def test_build_archive_url_windows_x86(self) -> None:
-        """Build correct URL for Windows x86 archive."""
-        url = build_archive_url("6.8", release_tag="v0.3.0", platform_name="windows", arch="x86")
+        """Build correct URL for Windows x86 archive (only built for Qt 5.15)."""
+        url = build_archive_url("5.15", release_tag="v0.3.0", platform_name="windows", arch="x86")
         assert url == (
             "https://github.com/ssss2art/qtPilot/releases/download/"
-            "v0.3.0/qtpilot-qt6.8-windows-x86.zip"
+            "v0.3.0/qtpilot-qt5.15-windows-x86.zip"
         )
 
     def test_build_archive_url_linux(self) -> None:
@@ -245,21 +245,15 @@ class TestArchiveUrlBuilding:
             "v0.3.0/qtpilot-qt6.8-linux.tar.gz"
         )
 
-    def test_build_archive_url_linux_x86(self) -> None:
-        """Build correct URL for Linux x86 archive."""
-        url = build_archive_url("6.8", release_tag="v0.3.0", platform_name="linux", arch="x86")
-        assert url == (
-            "https://github.com/ssss2art/qtPilot/releases/download/"
-            "v0.3.0/qtpilot-qt6.8-linux-x86.tar.gz"
-        )
+    def test_build_archive_url_linux_x86_not_built(self) -> None:
+        """Linux x86 is not built by CI; requesting it fails fast (not a 404)."""
+        with pytest.raises(VersionNotFoundError):
+            build_archive_url("6.8", release_tag="v0.3.0", platform_name="linux", arch="x86")
 
-    def test_build_archive_url_patched(self) -> None:
-        """Build correct URL for patched Qt version."""
-        url = build_archive_url("5.15-patched", release_tag="v0.3.0", platform_name="linux")
-        assert url == (
-            "https://github.com/ssss2art/qtPilot/releases/download/"
-            "v0.3.0/qtpilot-qt5.15-patched-linux.tar.gz"
-        )
+    def test_build_archive_url_patched_not_built(self) -> None:
+        """5.15-patched is not built by CI; requesting it fails fast (not a 404)."""
+        with pytest.raises(VersionNotFoundError):
+            build_archive_url("5.15-patched", release_tag="v0.3.0", platform_name="linux")
 
     def test_build_archive_url_invalid_version(self) -> None:
         """Invalid Qt version should raise VersionNotFoundError."""
@@ -603,11 +597,12 @@ class TestAvailableVersions:
     def test_expected_versions_available(self) -> None:
         """All expected Qt versions should be available."""
         assert "5.15" in AVAILABLE_VERSIONS
-        assert "5.15-patched" in AVAILABLE_VERSIONS
         assert "6.5" in AVAILABLE_VERSIONS
         assert "6.8" in AVAILABLE_VERSIONS
         assert "6.9" in AVAILABLE_VERSIONS
         assert "6.10" in AVAILABLE_VERSIONS
+        # 5.15-patched was advertised but never built by CI.
+        assert "5.15-patched" not in AVAILABLE_VERSIONS
 
     def test_versions_is_frozen(self) -> None:
         """AVAILABLE_VERSIONS should be immutable."""
@@ -668,14 +663,14 @@ class TestArchitectureConstants:
         assert "x86" in WINDOWS_ARCHITECTURES
 
     def test_linux_architectures(self) -> None:
-        """Linux should support x64 and x86."""
+        """Linux builds x64 only (x86 is not built by CI)."""
         assert "x64" in LINUX_ARCHITECTURES
-        assert "x86" in LINUX_ARCHITECTURES
+        assert "x86" not in LINUX_ARCHITECTURES
 
     def test_macos_architectures(self) -> None:
-        """macOS should support arm64 and x86_64."""
+        """macOS builds arm64 only (x86_64 is not built by CI)."""
         assert "arm64" in MACOS_ARCHITECTURES
-        assert "x86_64" in MACOS_ARCHITECTURES
+        assert "x86_64" not in MACOS_ARCHITECTURES
 
     def test_architecture_sets_are_frozen(self) -> None:
         """Architecture sets should be immutable."""
