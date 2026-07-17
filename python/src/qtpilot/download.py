@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import platform
+import re
 import sys
 import tarfile
 import urllib.error
@@ -19,6 +20,14 @@ from pathlib import Path
 # GitHub repository for qtPilot releases
 GITHUB_REPO = "ssss2art/qtPilot"
 RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/download"
+
+# Safety limits — guard against runaway responses and zip/tar bombs. Probe
+# archives are a few tens of MB, so these are generous headroom.
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024  # 512 MiB (compressed, on the wire)
+MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024  # 1 GiB (sum of extracted members)
+
+# A SHA-256 hex digest is exactly 64 hex characters.
+_SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def _default_release_tag() -> str:
@@ -364,7 +373,10 @@ def parse_checksums(content: str) -> dict[str, str]:
         if len(parts) >= 2:
             hash_value = parts[0]
             filename = parts[-1].lstrip("*")
-            checksums[filename] = hash_value
+            # Only accept well-formed SHA-256 digests; ignore malformed lines
+            # rather than storing a bogus "hash" that can never match.
+            if _SHA256_HEX.match(hash_value):
+                checksums[filename] = hash_value
     return checksums
 
 
@@ -385,28 +397,39 @@ def verify_checksum(filepath: Path, expected_hash: str) -> bool:
     return sha256.hexdigest().lower() == expected_hash.lower()
 
 
-def download_file(url: str, output_path: Path) -> None:
+def download_file(url: str, output_path: Path, *, max_bytes: int = MAX_DOWNLOAD_BYTES) -> None:
     """Download a file from URL.
 
     Args:
         url: URL to download
         output_path: Local path to save file
+        max_bytes: Abort (and delete the partial file) if the body exceeds this.
 
     Raises:
-        DownloadError: If download fails
+        DownloadError: If download fails or exceeds ``max_bytes``.
     """
     try:
         # Create parent directories if needed
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Download with progress indication
+        # Download, enforcing a maximum size (guards against a runaway/malicious
+        # response body).
         with urllib.request.urlopen(url, timeout=60) as response:
+            total = 0
             with open(output_path, "wb") as f:
                 while True:
                     chunk = response.read(8192)
                     if not chunk:
                         break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise DownloadError(
+                            f"Download exceeds maximum size ({max_bytes} bytes): {url}"
+                        )
                     f.write(chunk)
+    except DownloadError:
+        output_path.unlink(missing_ok=True)
+        raise
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise DownloadError(f"File not found: {url}") from e
@@ -435,34 +458,72 @@ def _validate_tar_member(member: tarfile.TarInfo) -> bool:
     return True
 
 
-def extract_archive(archive_path: Path, output_dir: Path) -> list[Path]:
+def _unsafe_zip_member(name: str) -> bool:
+    """Detect an unsafe zip member name (traversal / absolute / drive letter).
+
+    The stdlib ``zipfile`` sanitizes on extract, but we reject explicitly so the
+    check does not silently under-cover (the previous check split only on "/",
+    missing backslash separators and Windows drive letters like ``C:\\``).
+    """
+    if not name:
+        return False
+    if name.startswith("/") or name.startswith("\\"):
+        return True
+    if len(name) >= 2 and name[1] == ":":  # drive-letter absolute (C:\ or C:/)
+        return True
+    parts = name.replace("\\", "/").split("/")
+    return ".." in parts
+
+
+def _tar_extract_member(tf: tarfile.TarFile, member: tarfile.TarInfo, output_dir: Path) -> None:
+    """Extract one tar member, tolerating pre-3.11.4 interpreters.
+
+    The ``filter="data"`` kwarg was added to ``TarFile.extract`` in 3.11.4; on
+    3.11.0-3.11.3 (which ``requires-python`` still admits) passing it raises
+    ``TypeError``. ``_validate_tar_member`` has already rejected traversal and
+    symlinks, so the unfiltered fallback is safe.
+    """
+    try:
+        tf.extract(member, output_dir, filter="data")
+    except TypeError:
+        tf.extract(member, output_dir)
+
+
+def extract_archive(
+    archive_path: Path, output_dir: Path, *, max_uncompressed: int = MAX_UNCOMPRESSED_BYTES,
+) -> list[Path]:
     """Extract a zip or tar.gz archive to a directory.
 
     Args:
         archive_path: Path to the archive file
         output_dir: Directory to extract into
+        max_uncompressed: Abort if the summed uncompressed member size exceeds
+            this (guards against a decompression bomb).
 
     Returns:
         List of extracted file paths
 
     Raises:
-        DownloadError: If extraction fails or archive contains unsafe paths
+        DownloadError: If extraction fails, the archive contains unsafe paths,
+            or the uncompressed size exceeds ``max_uncompressed``.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    extracted = []
+    extracted: list[Path] = []
+    total = 0
 
     name = archive_path.name
     try:
         if name.endswith(".zip"):
             with zipfile.ZipFile(archive_path, "r") as zf:
                 for info in zf.infolist():
-                    # Skip directories
                     if info.is_dir():
                         continue
-                    # Validate path safety
-                    if ".." in info.filename.split("/") or info.filename.startswith("/"):
+                    if _unsafe_zip_member(info.filename):
+                        raise DownloadError(f"Archive contains unsafe path: {info.filename}")
+                    total += info.file_size
+                    if total > max_uncompressed:
                         raise DownloadError(
-                            f"Archive contains unsafe path: {info.filename}"
+                            f"Archive uncompressed size exceeds limit ({max_uncompressed} bytes)"
                         )
                     zf.extract(info, output_dir)
                     extracted.append(output_dir / info.filename)
@@ -472,10 +533,13 @@ def extract_archive(archive_path: Path, output_dir: Path) -> list[Path]:
                     if member.isdir():
                         continue
                     if not _validate_tar_member(member):
+                        raise DownloadError(f"Archive contains unsafe path: {member.name}")
+                    total += member.size
+                    if total > max_uncompressed:
                         raise DownloadError(
-                            f"Archive contains unsafe path: {member.name}"
+                            f"Archive uncompressed size exceeds limit ({max_uncompressed} bytes)"
                         )
-                    tf.extract(member, output_dir, filter="data")
+                    _tar_extract_member(tf, member, output_dir)
                     extracted.append(output_dir / member.name)
         else:
             raise DownloadError(f"Unsupported archive format: {name}")

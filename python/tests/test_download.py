@@ -291,23 +291,26 @@ class TestChecksumParsing:
 
     def test_parse_standard_format(self) -> None:
         """Parse standard sha256sum output format."""
-        content = """\
-abc123def456  qtpilot-qt6.8-linux.tar.gz
-789xyz012abc  qtpilot-qt6.8-windows-x64.zip
+        h1 = "a" * 64
+        h2 = "b" * 64
+        content = f"""\
+{h1}  qtpilot-qt6.8-linux.tar.gz
+{h2}  qtpilot-qt6.8-windows-x64.zip
 """
         checksums = parse_checksums(content)
-        assert checksums["qtpilot-qt6.8-linux.tar.gz"] == "abc123def456"
-        assert checksums["qtpilot-qt6.8-windows-x64.zip"] == "789xyz012abc"
+        assert checksums["qtpilot-qt6.8-linux.tar.gz"] == h1
+        assert checksums["qtpilot-qt6.8-windows-x64.zip"] == h2
 
     def test_parse_binary_mode_format(self) -> None:
         """Parse sha256sum binary mode format (asterisk prefix)."""
-        content = "abc123def456 *qtpilot-qt6.8-linux.tar.gz\n"
+        h = "c" * 64
+        content = f"{h} *qtpilot-qt6.8-linux.tar.gz\n"
         checksums = parse_checksums(content)
-        assert checksums["qtpilot-qt6.8-linux.tar.gz"] == "abc123def456"
+        assert checksums["qtpilot-qt6.8-linux.tar.gz"] == h
 
     def test_parse_empty_lines_ignored(self) -> None:
         """Empty lines should be ignored."""
-        content = "\nabc123def456  file.zip\n\n"
+        content = f"\n{'d' * 64}  file.zip\n\n"
         checksums = parse_checksums(content)
         assert len(checksums) == 1
 
