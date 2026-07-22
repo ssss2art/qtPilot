@@ -120,6 +120,11 @@ ObjectRegistry* ObjectRegistry::instance() {
   return inst;
 }
 
+void ObjectRegistry::setClientConnected(bool connected) {
+  // No mutex needed: this is a plain atomic flag read by registerObject() on any thread.
+  m_clientConnected.store(connected, std::memory_order_relaxed);
+}
+
 ObjectRegistry::ObjectRegistry() : QObject(nullptr) {
   // Log creation for debugging - use fprintf to avoid potential qDebug issues
   // during singleton initialization
@@ -148,38 +153,26 @@ void ObjectRegistry::registerObject(QObject* obj) {
   {
     QMutexLocker lock(&m_mutex);
     m_objects.insert(obj);
-
-    // Generate and cache the hierarchical ID
-    QString id = generateObjectId(obj);
-
-    // Handle potential ID collision by appending unique suffix
-    // This can happen if hierarchy changes or two objects have identical paths
-    if (m_idToObject.contains(id)) {
-      // Check if existing entry is for a deleted object
-      QObject* existing = m_idToObject.value(id).data();
-      if (existing && existing != obj) {
-        // Collision with live object - append suffix
-        int suffix = 1;
-        QString uniqueId;
-        do {
-          uniqueId = id + QStringLiteral("~") + QString::number(suffix++);
-        } while (m_idToObject.contains(uniqueId));
-        id = uniqueId;
-      }
-    }
-
-    m_objectToId.insert(obj, id);
-    m_idToObject.insert(id, QPointer<QObject>(obj));
   }
 
-  // Emit signal on main thread to avoid threading issues with slots
-  // Use QueuedConnection to ensure the signal is delivered asynchronously
-  // Skip if no event loop (e.g., during shutdown)
+  // Defer all ID computation and notifications until a client is actually connected.
+  // Until then the pull-based native API reads m_objects directly and objectId()
+  // computes IDs lazily on demand, so injection stays O(1) per object even when the
+  // target builds a very large object graph at startup (thousands of QObjects). Once a
+  // client connects, setClientConnected(true) flips this and newly created objects get
+  // the full eager treatment so live push notifications remain correct.
+  if (!m_clientConnected.load(std::memory_order_relaxed)) {
+    return;
+  }
+
+  // A client is connected: push a live objectAdded notification. The hierarchical ID and
+  // objectName-change tracking are established lazily on first objectId() query (see
+  // objectId()), so nothing else is done here. Posted via QueuedConnection because the
+  // hook fires mid-construction — objectName/parent may not be set yet, and slots must run
+  // on the main thread.
   if (QCoreApplication::instance()) {
-    // Use QPointer to safely detect object destruction before the queued
-    // lambda runs. Raw pointer checks against m_objects are insufficient
-    // because memory addresses can be reused after deletion — a new object
-    // at the same address would pass the m_objects.contains() check.
+    // QPointer safely detects destruction before the queued lambda runs; a raw-pointer
+    // m_objects check is insufficient because a freed address can be reused.
     QPointer<QObject> weak(obj);
     QMetaObject::invokeMethod(
         this,
@@ -188,34 +181,12 @@ void ObjectRegistry::registerObject(QObject* obj) {
           if (!obj) {
             return;  // Object was destroyed before this lambda ran
           }
-          // Double-check object still exists in the registry
           {
             QMutexLocker lock(&m_mutex);
             if (!m_objects.contains(obj)) {
               return;
             }
           }
-          // Refresh ID now that construction is complete — objectName
-          // and parent are likely set by this point
-          refreshObjectId(obj);
-
-          // Connect to objectNameChanged to refresh cached ID when name
-          // changes post-construction. Done here (on main thread, after
-          // construction) rather than in the hook callback to avoid
-          // thread safety issues with cross-thread signal connections.
-          connect(
-              obj, &QObject::objectNameChanged, this,
-              [this, obj]() {
-                QMutexLocker lock(&m_mutex);
-                if (!m_objects.contains(obj)) {
-                  return;
-                }
-                lock.unlock();
-                refreshObjectId(obj);
-                refreshDescendantIds(obj);
-              },
-              Qt::QueuedConnection);
-
           emit objectAdded(obj);
         },
         Qt::QueuedConnection);
@@ -236,6 +207,7 @@ void ObjectRegistry::unregisterObject(QObject* obj) {
   {
     QMutexLocker lock(&m_mutex);
     m_objects.remove(obj);
+    m_nameTracked.remove(obj);
 
     // Remove from ID maps using cached ID (don't regenerate)
     QString id = m_objectToId.take(obj);
@@ -302,6 +274,36 @@ QList<QObject*> ObjectRegistry::findAllByClassName(const QString& className, QOb
   return result;
 }
 
+void ObjectRegistry::ensureNameTrackingLocked(QObject* obj) {
+  // Caller holds m_mutex. Walk from obj up to the root, wiring an objectNameChanged
+  // refresh on each ancestor not yet tracked. The full walk (rather than breaking at the
+  // first tracked ancestor) keeps tracking correct across reparenting; depth is small, so
+  // the cost is negligible and paid only once per object across its lifetime.
+  for (QObject* node = obj; node != nullptr; node = node->parent()) {
+    if (m_nameTracked.contains(node)) {
+      continue;
+    }
+    m_nameTracked.insert(node);
+
+    QObject* target = node;
+    // QueuedConnection: the slot runs on the registry's (main) thread and re-locks the
+    // mutex, so it must not run synchronously inside this locked section.
+    connect(
+        target, &QObject::objectNameChanged, this,
+        [this, target]() {
+          {
+            QMutexLocker lock(&m_mutex);
+            if (!m_objects.contains(target)) {
+              return;
+            }
+          }
+          refreshObjectId(target);
+          refreshDescendantIds(target);
+        },
+        Qt::QueuedConnection);
+  }
+}
+
 QList<QObject*> ObjectRegistry::allObjects() {
   QMutexLocker lock(&m_mutex);
   return m_objects.values();
@@ -330,9 +332,39 @@ QString ObjectRegistry::objectId(QObject* obj) {
     return it.value();
   }
 
-  // Object not in cache (shouldn't happen if hooks are working)
-  // Generate ID on-the-fly but don't cache (object may not be tracked)
-  return generateObjectId(obj);
+  // Not cached yet. With deferred registration, tracked objects don't get an ID until
+  // first inspected — so compute it now (construction is complete, so objectName/parent
+  // are stable) and cache it. Caching here is what keeps findById() correct: a client can
+  // only ever hold an ID we handed out, and handing one out populates m_idToObject.
+  QString id = generateObjectId(obj);
+
+  // Only cache IDs for objects we actually track; untracked objects get a transient ID.
+  if (!m_objects.contains(obj)) {
+    return id;
+  }
+
+  // Resolve collisions the same way registerObject does (O(1) amortized counter).
+  if (m_idToObject.contains(id)) {
+    QObject* existing = m_idToObject.value(id).data();
+    if (existing && existing != obj) {
+      int& next = m_idCollisionCounter[id];
+      QString uniqueId;
+      do {
+        uniqueId = id + QStringLiteral("~") + QString::number(++next);
+      } while (m_idToObject.contains(uniqueId));
+      id = uniqueId;
+    }
+  }
+
+  m_objectToId.insert(obj, id);
+  m_idToObject.insert(id, QPointer<QObject>(obj));
+
+  // Now that this object is being introspected, keep its cached ID fresh if objectName
+  // changes post-construction — for the object itself and its ancestors (a child's ID
+  // embeds its parents' path segments). Done lazily here so never-queried objects cost
+  // nothing at registration time.
+  ensureNameTrackingLocked(obj);
+  return id;
 }
 
 QObject* ObjectRegistry::findById(const QString& id) {
