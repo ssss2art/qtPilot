@@ -5,6 +5,8 @@
 
 #include "probe.h"  // For QTPILOT_EXPORT
 
+#include <atomic>
+
 #include <QHash>
 #include <QObject>
 #include <QPointer>
@@ -31,10 +33,12 @@ namespace qtPilot {
 ///
 /// Object IDs: Each tracked object gets a hierarchical ID in the format
 /// "parent/child/grandchild" where segments prefer objectName, then text
-/// property, then ClassName#N. IDs are initially computed at registration
-/// time and automatically refreshed when objectName changes, so they stay
-/// human-readable once names are set post-construction. Stale IDs remain
-/// resolvable via an internal alias map for backward compatibility.
+/// property, then ClassName#N. IDs are computed lazily on first introspection
+/// (objectId()) — not eagerly at registration — so injecting into apps that build
+/// very large object graphs at startup stays cheap. Once computed, an ID is cached
+/// and automatically refreshed when objectName changes, so it stays human-readable
+/// as names are set post-construction. Stale IDs remain resolvable via an internal
+/// alias map for backward compatibility.
 class QTPILOT_EXPORT ObjectRegistry : public QObject {
   Q_OBJECT
 
@@ -42,6 +46,13 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// @brief Get the singleton instance.
   /// @return Pointer to the global ObjectRegistry instance.
   static ObjectRegistry* instance();
+
+  /// @brief Enable/disable eager per-object tracking (IDs + objectAdded notifications).
+  /// Off by default: until a client connects, registerObject() only records the object
+  /// pointer and IDs are computed lazily (see objectId()). This keeps injection into apps
+  /// that build large object graphs at startup O(1) per object instead of O(N) eager work.
+  /// The probe flips this on when the first WebSocket client connects.
+  void setClientConnected(bool connected);
 
   /// @brief Find object by objectName.
   /// @param name The objectName to search for.
@@ -132,6 +143,11 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// Needed because child IDs include parent path segments.
   void refreshDescendantIds(QObject* obj);
 
+  /// @brief Lazily wire objectName-change auto-refresh for an object and its ancestors.
+  /// Called from objectId() the first time an object is introspected, so never-queried
+  /// objects cost nothing. Caller must hold m_mutex. Idempotent via m_nameTracked.
+  void ensureNameTrackingLocked(QObject* obj);
+
   /// @brief Set of tracked objects.
   QSet<QObject*> m_objects;
 
@@ -146,6 +162,22 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// @brief Alias map from old (stale) IDs to current IDs.
   /// Ensures backward compatibility when clients hold stale IDs.
   QHash<QString, QString> m_oldToNewId;
+
+  /// @brief Monotonic per-base-ID collision counter.
+  /// Makes ID uniquification O(1) amortized instead of the previous O(k) linear
+  /// probe. Apps that build large object graphs at startup (thousands of same-type
+  /// sibling QObjects sharing a base ID) otherwise made registration O(N^2).
+  QHash<QString, int> m_idCollisionCounter;
+
+  /// @brief When false (no client connected yet), registerObject() defers all ID/
+  /// notification work — only the object pointer is stored. Atomic because the QObject
+  /// creation hook can fire from any thread.
+  std::atomic<bool> m_clientConnected{false};
+
+  /// @brief Objects whose objectName-change auto-refresh has been wired (see
+  /// ensureNameTrackingLocked). Prevents duplicate connections when an object (or an
+  /// ancestor shared by many children) is introspected more than once.
+  QSet<QObject*> m_nameTracked;
 
   /// @brief Mutex for thread-safe access.
   /// Must be recursive because hook callbacks may nest.
