@@ -29,6 +29,15 @@ bool g_hooksInstalled = false;
 // Using std::atomic instead of thread_local to avoid TLS issues with injected DLLs
 std::atomic<bool> g_singletonCreating{false};
 
+// Set once the singleton has been fully constructed. After that, instance() takes a fast
+// path that never touches g_singletonCreating. This is critical for correctness, not just
+// speed: the object hooks skip (un)registration while g_singletonCreating is true, so if
+// instance() toggled that flag on *every* call, a QObject destroyed on another thread
+// during any instance() call would have its unregisterObject skipped — leaving a dangling
+// pointer in m_objects that later crashes findAllByClassName. Only the genuine first
+// construction needs the guard.
+std::atomic<bool> g_singletonConstructed{false};
+
 // Returns true if `meta` is `className` or derives from it. Walking the
 // superclass chain makes className queries subclass-aware (e.g. searching
 // "QPushButton" matches a custom MyButton : QPushButton), matching the
@@ -106,14 +115,23 @@ namespace qtPilot {
 Q_GLOBAL_STATIC(ObjectRegistry, s_objectRegistryInstance)
 
 ObjectRegistry* ObjectRegistry::instance() {
-  // Set flag before accessing singleton (which may trigger creation)
-  // This guards against re-entry from hook callbacks during construction
+  // Fast path: once constructed, never touch g_singletonCreating again. Toggling it on
+  // every call opens a race where a QObject destroyed on another thread mid-call has its
+  // unregisterObject skipped (the remove hook honors g_singletonCreating), stranding a
+  // dangling pointer in m_objects.
+  if (g_singletonConstructed.load(std::memory_order_acquire)) {
+    return s_objectRegistryInstance();
+  }
+
+  // First construction: guard against re-entry from hook callbacks (the ObjectRegistry is
+  // itself a QObject, so constructing it fires the AddQObject hook, which calls instance()).
   bool wasCreating = g_singletonCreating.exchange(true, std::memory_order_acq_rel);
 
   ObjectRegistry* inst = s_objectRegistryInstance();
 
-  // Only clear flag if we were the one who set it
+  // Only clear/publish if we were the one who set it (the outermost, real constructor).
   if (!wasCreating) {
+    g_singletonConstructed.store(true, std::memory_order_release);
     g_singletonCreating.store(false, std::memory_order_release);
   }
 
