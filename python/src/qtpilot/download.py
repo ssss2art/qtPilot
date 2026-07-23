@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import platform
+import re
 import sys
 import tarfile
 import urllib.error
@@ -20,6 +21,14 @@ from pathlib import Path
 GITHUB_REPO = "ssss2art/qtPilot"
 RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/download"
 
+# Safety limits — guard against runaway responses and zip/tar bombs. Probe
+# archives are a few tens of MB, so these are generous headroom.
+MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024  # 512 MiB (compressed, on the wire)
+MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024  # 1 GiB (sum of extracted members)
+
+# A SHA-256 hex digest is exactly 64 hex characters.
+_SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
+
 
 def _default_release_tag() -> str:
     """Derive the default release tag from the installed package version."""
@@ -28,27 +37,78 @@ def _default_release_tag() -> str:
     base = v.split(".dev")[0].split("+")[0].split(".post")[0]
     return f"v{base}"
 
-# Available Qt versions (release workflow builds these)
-AVAILABLE_VERSIONS = frozenset([
-    "5.15",
-    "5.15-patched",
-    "6.5",
-    "6.8",
-    "6.9",
-    "6.10",
+# The exact (qt_version, platform, arch) combinations the release workflow
+# builds. This is the single source of truth for availability and MUST mirror
+# the CI matrix in .github/workflows/ci.yml — a drift is caught by
+# tests/test_download_matrix.py (and test_ci_matrix_consistency.py). Advertising
+# combos that CI never builds turns a clear "not available" error into a 404 at
+# download time, so keep this honest rather than aspirational.
+BUILD_MATRIX = frozenset([
+    # Qt version, platform, arch
+    ("5.15", "linux", "x64"),
+    ("6.5", "linux", "x64"),
+    ("6.8", "linux", "x64"),
+    ("6.9", "linux", "x64"),
+    ("6.10", "linux", "x64"),
+    ("5.15", "windows", "x64"),
+    ("6.5", "windows", "x64"),
+    ("6.8", "windows", "x64"),
+    ("6.9", "windows", "x64"),
+    ("6.10", "windows", "x64"),
+    ("5.15", "windows", "x86"),
+    ("6.10", "macos", "arm64"),
 ])
+
+# Available Qt versions, derived from the build matrix.
+AVAILABLE_VERSIONS = frozenset(v for (v, _p, _a) in BUILD_MATRIX)
+
+DEFAULT_ARCH = "x64"
+MACOS_DEFAULT_ARCH = "arm64"
+
+# Supported architectures per platform, derived from the build matrix. (These
+# are unions across versions; a specific version may support fewer — always
+# validate the full (version, platform, arch) tuple via is_build_available.)
+WINDOWS_ARCHITECTURES = frozenset(a for (_v, p, a) in BUILD_MATRIX if p == "windows")
+LINUX_ARCHITECTURES = frozenset(a for (_v, p, a) in BUILD_MATRIX if p == "linux")
+MACOS_ARCHITECTURES = frozenset(a for (_v, p, a) in BUILD_MATRIX if p == "macos")
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    """Sort key for a normalized Qt version (numeric, so 6.10 > 6.9)."""
+    base = version.split("-")[0]  # drop any "-patched"-style suffix
+    return tuple(int(part) for part in base.split("."))
 
 
 def latest_version() -> str:
-    """Return the highest non-patched Qt version available."""
-    return max(v for v in AVAILABLE_VERSIONS if not v.endswith("-patched"))
+    """Return the highest non-patched Qt version available (numeric compare)."""
+    return max(
+        (v for v in AVAILABLE_VERSIONS if not v.endswith("-patched")),
+        key=_version_key,
+    )
 
-# Supported architectures per platform
-WINDOWS_ARCHITECTURES = frozenset(["x64", "x86"])
-LINUX_ARCHITECTURES = frozenset(["x64", "x86"])
-MACOS_ARCHITECTURES = frozenset(["arm64", "x86_64"])
-DEFAULT_ARCH = "x64"
-MACOS_DEFAULT_ARCH = "arm64"
+
+def _resolve_arch(platform_name: str, arch: str | None) -> str:
+    """Resolve the effective architecture, applying the per-platform default."""
+    if arch is not None:
+        return arch
+    return MACOS_DEFAULT_ARCH if platform_name == "macos" else DEFAULT_ARCH
+
+
+def is_build_available(qt_version: str, platform_name: str, arch: str | None = None) -> bool:
+    """Whether the release workflow builds this (version, platform, arch)."""
+    version = normalize_version(qt_version)
+    return (version, platform_name, _resolve_arch(platform_name, arch)) in BUILD_MATRIX
+
+
+def _validate_release_tag(release_tag: str) -> None:
+    """Reject release tags that could traverse the release URL/path."""
+    if (
+        not release_tag
+        or "/" in release_tag
+        or "\\" in release_tag
+        or release_tag.startswith(".")
+    ):
+        raise ValueError(f"Invalid release tag: {release_tag!r}")
 
 # Platform mapping: sys.platform -> (platform_name, archive_ext, lib_ext)
 PLATFORM_MAP: dict[str, tuple[str, str, str]] = {
@@ -253,6 +313,9 @@ def build_archive_url(
         VersionNotFoundError: If the Qt version is not available
     """
     version = normalize_version(qt_version)
+    if platform_name is None:
+        platform_name = detect_platform()
+    arch = _resolve_arch(platform_name, arch)
 
     if version not in AVAILABLE_VERSIONS:
         available = ", ".join(sorted(AVAILABLE_VERSIONS))
@@ -260,11 +323,20 @@ def build_archive_url(
             f"Qt version '{version}' not available. Available versions: {available}"
         )
 
-    filename = get_archive_filename(version, platform_name, arch)
+    # Fail fast when the version exists but not for this platform/arch, instead
+    # of building a URL that 404s at download time.
+    if (version, platform_name, arch) not in BUILD_MATRIX:
+        combos = sorted(f"{p}/{a}" for (v, p, a) in BUILD_MATRIX if v == version)
+        raise VersionNotFoundError(
+            f"No qtPilot build for Qt {version} on {platform_name}/{arch}. "
+            f"Qt {version} is built for: {', '.join(combos) or '(none)'}."
+        )
 
     if release_tag == "latest":
         release_tag = _default_release_tag()
+    _validate_release_tag(release_tag)
 
+    filename = get_archive_filename(version, platform_name, arch)
     return f"{RELEASES_URL}/{release_tag}/{filename}"
 
 
@@ -301,7 +373,10 @@ def parse_checksums(content: str) -> dict[str, str]:
         if len(parts) >= 2:
             hash_value = parts[0]
             filename = parts[-1].lstrip("*")
-            checksums[filename] = hash_value
+            # Only accept well-formed SHA-256 digests; ignore malformed lines
+            # rather than storing a bogus "hash" that can never match.
+            if _SHA256_HEX.match(hash_value):
+                checksums[filename] = hash_value
     return checksums
 
 
@@ -322,28 +397,39 @@ def verify_checksum(filepath: Path, expected_hash: str) -> bool:
     return sha256.hexdigest().lower() == expected_hash.lower()
 
 
-def download_file(url: str, output_path: Path) -> None:
+def download_file(url: str, output_path: Path, *, max_bytes: int = MAX_DOWNLOAD_BYTES) -> None:
     """Download a file from URL.
 
     Args:
         url: URL to download
         output_path: Local path to save file
+        max_bytes: Abort (and delete the partial file) if the body exceeds this.
 
     Raises:
-        DownloadError: If download fails
+        DownloadError: If download fails or exceeds ``max_bytes``.
     """
     try:
         # Create parent directories if needed
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Download with progress indication
+        # Download, enforcing a maximum size (guards against a runaway/malicious
+        # response body).
         with urllib.request.urlopen(url, timeout=60) as response:
+            total = 0
             with open(output_path, "wb") as f:
                 while True:
                     chunk = response.read(8192)
                     if not chunk:
                         break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise DownloadError(
+                            f"Download exceeds maximum size ({max_bytes} bytes): {url}"
+                        )
                     f.write(chunk)
+    except DownloadError:
+        output_path.unlink(missing_ok=True)
+        raise
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise DownloadError(f"File not found: {url}") from e
@@ -372,34 +458,72 @@ def _validate_tar_member(member: tarfile.TarInfo) -> bool:
     return True
 
 
-def extract_archive(archive_path: Path, output_dir: Path) -> list[Path]:
+def _unsafe_zip_member(name: str) -> bool:
+    """Detect an unsafe zip member name (traversal / absolute / drive letter).
+
+    The stdlib ``zipfile`` sanitizes on extract, but we reject explicitly so the
+    check does not silently under-cover (the previous check split only on "/",
+    missing backslash separators and Windows drive letters like ``C:\\``).
+    """
+    if not name:
+        return False
+    if name.startswith("/") or name.startswith("\\"):
+        return True
+    if len(name) >= 2 and name[1] == ":":  # drive-letter absolute (C:\ or C:/)
+        return True
+    parts = name.replace("\\", "/").split("/")
+    return ".." in parts
+
+
+def _tar_extract_member(tf: tarfile.TarFile, member: tarfile.TarInfo, output_dir: Path) -> None:
+    """Extract one tar member, tolerating pre-3.11.4 interpreters.
+
+    The ``filter="data"`` kwarg was added to ``TarFile.extract`` in 3.11.4; on
+    3.11.0-3.11.3 (which ``requires-python`` still admits) passing it raises
+    ``TypeError``. ``_validate_tar_member`` has already rejected traversal and
+    symlinks, so the unfiltered fallback is safe.
+    """
+    try:
+        tf.extract(member, output_dir, filter="data")
+    except TypeError:
+        tf.extract(member, output_dir)
+
+
+def extract_archive(
+    archive_path: Path, output_dir: Path, *, max_uncompressed: int = MAX_UNCOMPRESSED_BYTES,
+) -> list[Path]:
     """Extract a zip or tar.gz archive to a directory.
 
     Args:
         archive_path: Path to the archive file
         output_dir: Directory to extract into
+        max_uncompressed: Abort if the summed uncompressed member size exceeds
+            this (guards against a decompression bomb).
 
     Returns:
         List of extracted file paths
 
     Raises:
-        DownloadError: If extraction fails or archive contains unsafe paths
+        DownloadError: If extraction fails, the archive contains unsafe paths,
+            or the uncompressed size exceeds ``max_uncompressed``.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    extracted = []
+    extracted: list[Path] = []
+    total = 0
 
     name = archive_path.name
     try:
         if name.endswith(".zip"):
             with zipfile.ZipFile(archive_path, "r") as zf:
                 for info in zf.infolist():
-                    # Skip directories
                     if info.is_dir():
                         continue
-                    # Validate path safety
-                    if ".." in info.filename.split("/") or info.filename.startswith("/"):
+                    if _unsafe_zip_member(info.filename):
+                        raise DownloadError(f"Archive contains unsafe path: {info.filename}")
+                    total += info.file_size
+                    if total > max_uncompressed:
                         raise DownloadError(
-                            f"Archive contains unsafe path: {info.filename}"
+                            f"Archive uncompressed size exceeds limit ({max_uncompressed} bytes)"
                         )
                     zf.extract(info, output_dir)
                     extracted.append(output_dir / info.filename)
@@ -409,10 +533,13 @@ def extract_archive(archive_path: Path, output_dir: Path) -> list[Path]:
                     if member.isdir():
                         continue
                     if not _validate_tar_member(member):
+                        raise DownloadError(f"Archive contains unsafe path: {member.name}")
+                    total += member.size
+                    if total > max_uncompressed:
                         raise DownloadError(
-                            f"Archive contains unsafe path: {member.name}"
+                            f"Archive uncompressed size exceeds limit ({max_uncompressed} bytes)"
                         )
-                    tf.extract(member, output_dir, filter="data")
+                    _tar_extract_member(tf, member, output_dir)
                     extracted.append(output_dir / member.name)
         else:
             raise DownloadError(f"Unsupported archive format: {name}")
