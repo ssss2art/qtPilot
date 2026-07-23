@@ -151,7 +151,8 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 |----------|-------------|
 | [Getting Started](docs/GETTING-STARTED.md) | Installation and first steps |
 | [Building from Source](docs/BUILDING.md) | Compile qtPilot yourself |
-| [API Reference](qtPilot-specification.md) | Complete tool and protocol documentation |
+| [API Reference](qtPilot-specification.md) | Complete tool and probe-protocol documentation |
+| [MCP Conformance](docs/MCP-CONFORMANCE.md) | Which MCP protocol revision qtPilot targets/ships |
 | [API Modes](qtPilot-compatibility-modes.md) | Detailed mode comparisons |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
 | [Python CLI](python/README.md) | qtpilot command documentation |
