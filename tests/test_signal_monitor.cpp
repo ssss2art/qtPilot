@@ -51,6 +51,9 @@ void TestSignalMonitor::cleanupTestCase() {
 }
 
 void TestSignalMonitor::init() {
+  // Creation notifications are published only while a client is connected.
+  ObjectRegistry::instance()->setClientConnected(false);
+
   // Disable lifecycle notifications by default
   SignalMonitor::instance()->setLifecycleNotificationsEnabled(false);
 }
@@ -202,6 +205,9 @@ void TestSignalMonitor::testAutoUnsubscribeOnDestruction() {
 }
 
 void TestSignalMonitor::testLifecycleCreated() {
+  // Model the transport connection that enables live object-added events.
+  ObjectRegistry::instance()->setClientConnected(true);
+
   // Enable lifecycle notifications
   SignalMonitor::instance()->setLifecycleNotificationsEnabled(true);
 
