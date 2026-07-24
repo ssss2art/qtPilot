@@ -76,9 +76,8 @@ void TestQWindowInput::testDragSequence() {
 
   InputSimulator::mouseDrag(&window, QPoint(10, 20), QPoint(80, 60));
 
-  QCOMPARE(window.mouseEvents,
-           QList<QEvent::Type>({QEvent::MouseButtonPress, QEvent::MouseMove,
-                                QEvent::MouseButtonRelease}));
+  QCOMPARE(window.mouseEvents, QList<QEvent::Type>({QEvent::MouseButtonPress, QEvent::MouseMove,
+                                                    QEvent::MouseButtonRelease}));
 }
 
 void TestQWindowInput::testTextMapsControlCharactersToSpecialKeys() {
@@ -88,9 +87,8 @@ void TestQWindowInput::testTextMapsControlCharactersToSpecialKeys() {
 
   QCOMPARE(window.pressedKeys,
            QList<int>({Qt::Key_A, Qt::Key_Return, Qt::Key_Tab, Qt::Key_Backspace}));
-  QCOMPARE(window.pressedText,
-           QStringList({QStringLiteral("a"), QStringLiteral("\n"), QStringLiteral("\t"),
-                        QStringLiteral("\b")}));
+  QCOMPARE(window.pressedText, QStringList({QStringLiteral("a"), QStringLiteral("\n"),
+                                            QStringLiteral("\t"), QStringLiteral("\b")}));
 }
 
 QTEST_MAIN(TestQWindowInput)
