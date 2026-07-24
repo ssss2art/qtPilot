@@ -42,9 +42,9 @@ QJsonObject TestQmlScreenshot::callScreenshot(const QString& id) {
                       {QStringLiteral("method"), QStringLiteral("qtpilot.screenshot")},
                       {QStringLiteral("params"), QJsonObject{{QStringLiteral("id"), id}}},
                       {QStringLiteral("id"), m_requestId++}};
-  return QJsonDocument::fromJson(handler.HandleMessage(
-                                     QString::fromUtf8(QJsonDocument(request).toJson(
-                                         QJsonDocument::Compact)))
+  return QJsonDocument::fromJson(handler
+                                     .HandleMessage(QString::fromUtf8(
+                                         QJsonDocument(request).toJson(QJsonDocument::Compact)))
                                      .toUtf8())
       .object();
 }
@@ -59,18 +59,15 @@ void TestQmlScreenshot::testQuickWindowUsesQmlCapturePath() {
   const QString id = ObjectRegistry::instance()->objectId(&window);
   const QJsonObject response = callScreenshot(id);
   if (response.contains(QStringLiteral("error"))) {
-    const QString message = response[QStringLiteral("error")].toObject()
-                                [QStringLiteral("message")]
-                                    .toString();
-    QVERIFY2(!message.contains(QStringLiteral("not a widget or QML item")),
-             qPrintable(message));
+    const QString message =
+        response[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
+    QVERIFY2(!message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
     QVERIFY2(!message.contains(QStringLiteral("not rendered")), qPrintable(message));
     return;
   }
 
-  const QString image = response[QStringLiteral("result")]
-                            .toObject()[QStringLiteral("image")]
-                            .toString();
+  const QString image =
+      response[QStringLiteral("result")].toObject()[QStringLiteral("image")].toString();
   QVERIFY(QByteArray::fromBase64(image.toLatin1()).startsWith("\x89PNG"));
 }
 
@@ -79,9 +76,8 @@ void TestQmlScreenshot::testUnattachedQuickItemIsRejected() {
   item.setObjectName(QStringLiteral("unattachedQuickItem"));
   const QString id = ObjectRegistry::instance()->objectId(&item);
 
-  const QString message = callScreenshot(id)[QStringLiteral("error")]
-                              .toObject()[QStringLiteral("message")]
-                                  .toString();
+  const QString message =
+      callScreenshot(id)[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
   QVERIFY2(message.contains(QStringLiteral("not on a window")), qPrintable(message));
 }
 
@@ -92,9 +88,8 @@ void TestQmlScreenshot::testDestroyedQuickItemIsNotFound() {
   delete item;
   QCoreApplication::processEvents();
 
-  const QString message = callScreenshot(id)[QStringLiteral("error")]
-                              .toObject()[QStringLiteral("message")]
-                                  .toString();
+  const QString message =
+      callScreenshot(id)[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
   QVERIFY2(message.contains(QStringLiteral("Object not found")), qPrintable(message));
 }
 
@@ -103,9 +98,8 @@ void TestQmlScreenshot::testNonVisualObjectIsRejected() {
   object.setObjectName(QStringLiteral("nonVisualScreenshotObject"));
   const QString id = ObjectRegistry::instance()->objectId(&object);
 
-  const QString message = callScreenshot(id)[QStringLiteral("error")]
-                              .toObject()[QStringLiteral("message")]
-                                  .toString();
+  const QString message =
+      callScreenshot(id)[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
   QVERIFY2(message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
 }
 
