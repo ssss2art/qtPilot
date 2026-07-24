@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QThread>
 #include <QWidget>
 #include <QWindow>
@@ -44,18 +45,32 @@ QString envelopeToString(const QJsonObject& envelope) {
 ///        top-level QWindow / QQuickWindow (pure Qt Quick app).
 struct CuTarget {
   QWidget* widget = nullptr;
-  QWindow* window = nullptr;
-  bool isWindow() const { return window != nullptr; }
+  // QPointer so a window destroyed mid-action (e.g. a click that closes it,
+  // observed across a processEvents turn) is seen as null rather than dangling.
+  QPointer<QWindow> window;
+  bool isWindow() const { return !window.isNull(); }
 };
 
-/// @brief Resolve the active target: prefer a top-level QWidget, else a QWindow.
+/// @brief Resolve the active target: a top-level QWidget or QWindow/QQuickWindow.
 ///
-/// Mirrors Chrome mode's getActiveWindowObject(): the QApplication cast guards
-/// the Widgets-only statics so they are never called under a pure
-/// QGuiApplication, and the QWindow fallback picks up a QQuickWindow.
+/// A focused real window (e.g. a QQuickWindow) is preferred first — this handles
+/// hybrid apps where a QApplication hosts a focused QQuickWindow — but the
+/// internal QWidgetWindow backing store of a Widgets app is skipped so those
+/// apps still resolve to their QWidget (which has childAt hit resolution). The
+/// QApplication cast guards the Widgets-only statics under a pure QGuiApplication.
 /// @throws JsonRpcException if no active window found.
 CuTarget getActiveTarget() {
-  if (qobject_cast<QApplication*>(QCoreApplication::instance())) {
+  auto* coreApp = QCoreApplication::instance();
+  auto* guiApp = qobject_cast<QGuiApplication*>(coreApp);
+
+  if (guiApp) {
+    if (QWindow* focus = guiApp->focusWindow()) {
+      if (focus->isVisible() && !focus->inherits("QWidgetWindow"))
+        return {nullptr, focus};
+    }
+  }
+
+  if (qobject_cast<QApplication*>(coreApp)) {
     if (QWidget* window = QApplication::activeWindow())
       return {window, nullptr};
     const auto topLevels = QApplication::topLevelWidgets();
@@ -65,14 +80,10 @@ CuTarget getActiveTarget() {
     }
   }
 
-  if (auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
-    if (QWindow* focus = guiApp->focusWindow()) {
-      if (focus->isVisible())
-        return {nullptr, focus};
-    }
+  if (guiApp) {
     const auto windows = guiApp->topLevelWindows();
     for (QWindow* w : windows) {
-      if (w->isVisible())
+      if (w->isVisible() && !w->inherits("QWidgetWindow"))
         return {nullptr, w};
     }
   }
@@ -141,24 +152,28 @@ ResolvedTarget resolveWindowCoordinate(QWidget* window, int x, int y, bool scree
 /// @brief Resolve a coordinate to a window-local point for a QWindow target.
 /// @throws JsonRpcException if window-relative coordinates are out of bounds.
 QPoint resolveWindowLocal(QWindow* window, int x, int y, bool screenAbsolute) {
-  if (screenAbsolute) {
-    return window->mapFromGlobal(QPoint(x, y));
-  }
+  // Bounds-check the window-local point on BOTH paths. The screen-absolute path
+  // previously skipped validation, so a coordinate outside the window (or on
+  // another monitor) mapped to a negative/out-of-range local point that the
+  // QQuickWindow silently dropped while the RPC still reported success. This now
+  // matches the QWidget path, which throws when the coordinate hits nothing.
+  const QPoint local = screenAbsolute ? window->mapFromGlobal(QPoint(x, y)) : QPoint(x, y);
   const QSize winSize = window->size();
-  if (x < 0 || y < 0 || x >= winSize.width() || y >= winSize.height()) {
+  if (local.x() < 0 || local.y() < 0 || local.x() >= winSize.width() ||
+      local.y() >= winSize.height()) {
     throw JsonRpcException(
         ErrorCode::kCoordinateOutOfBounds,
         QStringLiteral("Coordinates (%1, %2) out of bounds for window size (%3 x %4)")
-            .arg(x)
-            .arg(y)
+            .arg(local.x())
+            .arg(local.y())
             .arg(winSize.width())
             .arg(winSize.height()),
-        QJsonObject{{QStringLiteral("x"), x},
-                    {QStringLiteral("y"), y},
+        QJsonObject{{QStringLiteral("x"), local.x()},
+                    {QStringLiteral("y"), local.y()},
                     {QStringLiteral("windowWidth"), winSize.width()},
                     {QStringLiteral("windowHeight"), winSize.height()}});
   }
-  return QPoint(x, y);
+  return local;
 }
 
 /// @brief Convert button string to InputSimulator::MouseButton enum.
@@ -172,11 +187,15 @@ InputSimulator::MouseButton parseMouseButton(const QString& buttonStr) {
 
 /// @brief Optionally capture a screenshot and add to result.
 void maybeAddScreenshot(QJsonObject& result, const QJsonObject& params, const CuTarget& t) {
-  if (params[QStringLiteral("include_screenshot")].toBool(false)) {
-    QByteArray base64 = t.isWindow() ? Screenshot::captureWindowLogical(t.window)
-                                     : Screenshot::captureWindowLogical(t.widget);
-    result[QStringLiteral("screenshot")] = QString::fromLatin1(base64);
-  }
+  if (!params[QStringLiteral("include_screenshot")].toBool(false))
+    return;
+  // The target may have gone away during the action (e.g. a click that closed
+  // the window); skip rather than dereference a null target.
+  if (!t.isWindow() && !t.widget)
+    return;
+  QByteArray base64 = t.isWindow() ? Screenshot::captureWindowLogical(t.window)
+                                   : Screenshot::captureWindowLogical(t.widget);
+  result[QStringLiteral("screenshot")] = QString::fromLatin1(base64);
 }
 
 /// @brief Dispatch a click (press+release) to a widget or window target.

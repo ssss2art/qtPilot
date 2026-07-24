@@ -198,7 +198,14 @@ QPixmap grabWindowPixmap(QWindow* window, const char* context) {
     throw std::runtime_error(std::string(context) + ": cannot determine screen for screenshot");
   }
   checkScreenCapturePermission(context);
-  return screen->grabWindow(window->winId());
+  QPixmap pixmap = screen->grabWindow(window->winId());
+  // QScreen::grabWindow returns physical pixels tagged with dpr==1 on most
+  // platforms; stamp the window's ratio so the downstream logical/region
+  // scaling matches the QQuickWindow::grabWindow() branch on HiDPI displays.
+  if (!pixmap.isNull() && pixmap.devicePixelRatio() <= 1.0) {
+    pixmap.setDevicePixelRatio(window->devicePixelRatio());
+  }
+  return pixmap;
 }
 
 }  // namespace
