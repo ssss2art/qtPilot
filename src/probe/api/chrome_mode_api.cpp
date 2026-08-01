@@ -26,6 +26,11 @@
 #include <QWidget>
 #include <QWindow>
 
+#ifdef QTPILOT_HAS_QML
+#include <QQuickItem>
+#include <QQuickWindow>
+#endif
+
 namespace qtPilot {
 
 // ============================================================================
@@ -388,18 +393,35 @@ void ChromeModeApi::registerClickMethod() {
     QAccessibleInterface* iface = resolveRef(ref);
     QString roleName = RoleMapper::toChromeName(iface->role());
 
-    // Try accessibility action first
+    // Try accessibility action first.
+    //
+    // Pick the action the control actually implements rather than always
+    // pressing. A checkable control exposes Toggle *and* Press, and on Qt Quick
+    // Controls the Press is inert -- QAccessibleQuickItem advertises it
+    // unconditionally (a bare Item with Accessible.role and no onPressAction
+    // still lists "Press"), while only Toggle actuates. Verified against
+    // QtQuick.Controls 6.11: a Switch lists ("Toggle","Press"); doAction(Press)
+    // left `checked` unchanged, doAction(Toggle) flipped it. Preferring Toggle
+    // is also the semantically correct verb for a checkbox on the widget side.
     QAccessibleActionInterface* actionIface = iface->actionInterface();
     if (actionIface) {
-      QStringList actions = actionIface->actionNames();
-      if (actions.contains(QAccessibleActionInterface::pressAction())) {
-        actionIface->doAction(QAccessibleActionInterface::pressAction());
+      const QStringList actions = actionIface->actionNames();
+      QString chosen;
+      if (actions.contains(QAccessibleActionInterface::toggleAction())) {
+        chosen = QAccessibleActionInterface::toggleAction();
+      } else if (actions.contains(QAccessibleActionInterface::pressAction())) {
+        chosen = QAccessibleActionInterface::pressAction();
+      }
+
+      if (!chosen.isEmpty()) {
+        actionIface->doAction(chosen);
 
         QJsonObject result;
         result[QStringLiteral("clicked")] = true;
         result[QStringLiteral("ref")] = ref;
         result[QStringLiteral("role")] = roleName;
         result[QStringLiteral("method")] = QStringLiteral("accessibilityAction");
+        result[QStringLiteral("action")] = chosen;
         return envelopeToString(ResponseEnvelope::wrap(result));
       }
     }
@@ -421,15 +443,35 @@ void ChromeModeApi::registerClickMethod() {
       return envelopeToString(ResponseEnvelope::wrap(result));
     }
 
-    // If no widget, just try press action anyway
-    if (actionIface) {
-      actionIface->doAction(QAccessibleActionInterface::pressAction());
+#ifdef QTPILOT_HAS_QML
+    // Same fallback for Qt Quick, which has no QWidget to click. Events go to
+    // the QQuickWindow in scene coords; iface->rect() is global screen coords.
+    if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+      if (QQuickWindow* window = item->window()) {
+        const QPoint scenePos = window->mapFromGlobal(iface->rect().center());
+        InputSimulator::mouseClick(window, InputSimulator::MouseButton::Left, scenePos);
+
+        QJsonObject result;
+        result[QStringLiteral("clicked")] = true;
+        result[QStringLiteral("ref")] = ref;
+        result[QStringLiteral("role")] = roleName;
+        result[QStringLiteral("method")] = QStringLiteral("mouseClick");
+        return envelopeToString(ResponseEnvelope::wrap(result));
+      }
+    }
+#endif
+
+    // Nothing else to try: press whatever action exists, even if unrecognised.
+    if (actionIface && !actionIface->actionNames().isEmpty()) {
+      const QString fallbackAction = actionIface->actionNames().constFirst();
+      actionIface->doAction(fallbackAction);
 
       QJsonObject result;
       result[QStringLiteral("clicked")] = true;
       result[QStringLiteral("ref")] = ref;
       result[QStringLiteral("role")] = roleName;
       result[QStringLiteral("method")] = QStringLiteral("accessibilityAction");
+      result[QStringLiteral("action")] = fallbackAction;
       return envelopeToString(ResponseEnvelope::wrap(result));
     }
 

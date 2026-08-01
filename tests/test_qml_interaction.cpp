@@ -7,6 +7,7 @@
 // measured or driven through the native surface.
 
 #include "core/object_registry.h"
+#include "introspection/event_capture.h"
 #include "transport/jsonrpc_handler.h"
 
 #include <QGuiApplication>
@@ -39,6 +40,9 @@ class TestQmlInteraction : public QObject {
 
   void testSendKeysOnQuickItemIsAccepted();
   void testSendKeysRejectsNonVisualObject();
+
+  void testEventCaptureSeesQuickTargets();
+  void testEventCaptureIgnoresNonVisualObjects();
 
  private:
   QJsonObject call(const QString& method, const QJsonObject& params);
@@ -265,6 +269,53 @@ void TestQmlInteraction::testSendKeysRejectsNonVisualObject() {
            QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(&object)},
                        {QStringLiteral("text"), QStringLiteral("x")}}));
   QVERIFY2(message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
+}
+
+// --- event capture ----------------------------------------------------------
+
+void TestQmlInteraction::testEventCaptureSeesQuickTargets() {
+  // EventCapture filtered on qobject_cast<QWidget*>, so a pure Qt Quick app --
+  // which has no QWidget anywhere -- produced no events at all.
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 150);
+  auto* item = new QQuickItem(window.contentItem());
+  item->setObjectName(QStringLiteral("eventItem"));
+  item->setSize(QSizeF(50, 50));
+  window.show();
+  QCoreApplication::processEvents();
+
+  int captured = 0;
+  auto* capture = EventCapture::instance();
+  const auto conn = connect(capture, &EventCapture::eventCaptured,
+                            [&captured](const QJsonObject&) { ++captured; });
+  capture->startCapture();
+
+  QMouseEvent press(QEvent::MouseButtonPress, QPointF(10, 10), QPointF(10, 10), Qt::LeftButton,
+                    Qt::LeftButton, Qt::NoModifier);
+  QCoreApplication::sendEvent(item, &press);
+
+  capture->stopCapture();
+  disconnect(conn);
+
+  QVERIFY2(captured > 0, "EventCapture saw no events for a QQuickItem target");
+}
+
+void TestQmlInteraction::testEventCaptureIgnoresNonVisualObjects() {
+  QObject plain;
+  int captured = 0;
+  auto* capture = EventCapture::instance();
+  const auto conn = connect(capture, &EventCapture::eventCaptured,
+                            [&captured](const QJsonObject&) { ++captured; });
+  capture->startCapture();
+
+  QMouseEvent press(QEvent::MouseButtonPress, QPointF(1, 1), QPointF(1, 1), Qt::LeftButton,
+                    Qt::LeftButton, Qt::NoModifier);
+  QCoreApplication::sendEvent(&plain, &press);
+
+  capture->stopCapture();
+  disconnect(conn);
+
+  QCOMPARE(captured, 0);
 }
 
 QTEST_MAIN(TestQmlInteraction)

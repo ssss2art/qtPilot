@@ -85,22 +85,22 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 |---|---|---|---|---|
 | Object tree reaches QQuickWindow + items | `qt_objects_tree(maxDepth=6)` | QQuickWindow → contentItem → QML items | ✅ was ❌ **I1**, fixed | test (`test_object_id`) |
 | Search by QML type | `qt_objects_search(className=...)` | finds QML controls | ✅ | live 2026-07-08 |
-| QML metadata | `qt_objects_inspect(parts=["qml"])` | qmlId / qmlFile / shortTypeName | ⬚ | src (`qml_inspector.cpp` implements it) |
-| Properties (static) | `qt_objects_inspect(parts=["properties"])` | QML item props | ⬚ | — |
+| QML metadata | `qt_objects_inspect(parts=["qml"])` | qmlId / qmlFile / shortTypeName | ✅ | live 2026-08-01 |
+| Properties (static) | `qt_objects_inspect(parts=["properties"])` | QML item props | ✅ QObject* refs resolve to objectIds | live 2026-08-01 |
 | Read/write property | `qt_properties_get` / `qt_properties_set` | e.g. text, checked, value | ✅ | live 2026-07-09 (read back a QML `checked`) |
 | Geometry | `qt_ui_geometry` | item bounds (scene/screen) | ✅ was ❌, **fixed on this branch** | test (`test_qml_interaction`) |
-| Invoke method | `qt_methods_invoke` | QML-invokable / slots | ⬚ | — |
-| ListModel/model access | `qt_models_*` | QML list/table models | ⬚ | — |
+| Invoke method | `qt_methods_invoke` | QML-invokable / slots | ✅ | live 2026-08-01 |
+| ListModel/model access | `qt_models_*` | QML list/table models | ⬚ **not exercisable** | live 2026-08-01 — target app has no `QAbstractItemModel` (Repeaters over JS arrays) |
 
 ### 3c. Accessibility (the focus)
 | Step | Tool | Expected | Result | Basis |
 |---|---|---|---|---|
 | Semantic tree of QML window | `chr_readPage` | ARIA-style tree of QML controls | ✅ was ❌ **F1**, fixed — 43 nodes | live 2026-07-17 |
 | Find by role/name | `chr_find` | QML controls with `Accessible.name` | ✅ | live 2026-07-08 |
-| a11y-driven click | `chr_click(ref)` | uses accessibility action iface | ⬚ | src (action iface is type-agnostic) |
-| a11y form input | `chr_formInput(ref,value)` | sets text via editableText | ⬚ | — |
+| a11y-driven click | `chr_click(ref)` | uses accessibility action iface | ✅ was ❌ silently inert, **fixed on this branch** | live 2026-08-01 + test |
+| a11y form input | `chr_formInput(ref,value)` | sets text via editableText | ✅ | live 2026-08-01 |
 | Do QML items expose roles? | inspect a11y states | role/name/state from `Accessible.*` | ✅ correct roles (checkbox/radio/textbox/combobox/tab/status) | live 2026-07-17 |
-| Unlabeled vs labeled controls | — | how the fallback name chain behaves for QML | ⬚ | — |
+| Unlabeled vs labeled controls | — | how the fallback name chain behaves for QML | ✅ 104/104 nodes named (accessible name → objectName → className) | live 2026-08-01 |
 
 ### 3d. Interaction & visuals
 | Step | Tool | Expected | Result | Basis |
@@ -115,25 +115,19 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 ### 3e. Events & signals
 | Step | Tool | Expected | Result | Basis |
 |---|---|---|---|---|
-| Subscribe to QML signal | `qt_signals_subscribe` | fires on property change / signal | ⬚ | — |
-| Event capture | `qt_events_start` / `qt_events_stop` | QML input events | ⬚ | — |
+| Subscribe to QML signal | `qt_signals_subscribe` | fires on property change / signal | ✅ `toggled` delivered | live 2026-08-01 |
+| Event capture | `qt_events_start` / `qt_events_stop` | QML input events | ✅ was ❌ zero events, **fixed on this branch** | live 2026-08-01 + test |
 
 ### What is still genuinely unknown
 
-Eight rows remain ⬚. They fall into two groups:
+**One row.** `qt_models_*` could not be exercised — the Qt Quick gallery used as
+the target builds its grids from `Repeater`s over JavaScript arrays and contains
+no `QAbstractItemModel` anywhere (`findByClassName` returns empty for both
+`QAbstractItemModel` and `QQmlListModel`). Nothing suggests it is broken; there
+was simply nothing to point it at. Closing it needs a QML app that exposes a real
+Qt model.
 
-1. **Needs a live pure-QML app** — QML metadata, property listing, method
-   invocation, model access, `chr_click`/`chr_formInput` against QML, the
-   unlabeled-control name chain, and both signal/event rows. None of these is
-   known to be broken; they have simply never been exercised against Qt Quick.
-2. **No blocking defect suspected** — every one of these paths is type-agnostic
-   in source (they operate on `QObject`, not `QWidget`), unlike the four
-   handlers fixed on this branch, which cast to `QWidget` explicitly.
-
-Closing these requires running the checklist against a pure Qt Quick target. The
-Luminol gallery referenced in earlier sessions is a **QWidgets** app and cannot
-serve as that target.
-
+Everything else in §3 has now been observed against a running pure Qt Quick app.
 
 ---
 
@@ -274,3 +268,90 @@ cases. Full suite: **19/19 passing** against Qt 6.11.1 with `QTPILOT_HAS_QML=ON`
 These are unit tests against synthetic `QQuickWindow`/`QQuickItem` objects. They
 prove routing and coordinate mapping; they do **not** substitute for a live run
 against real QML controls, which is what the remaining ⬚ rows in §3 need.
+
+---
+
+## Findings (live audit, 2026-08-01) — pure Qt Quick target
+
+Target: `LuminolQmlGallery.app` from `common-tech/luminol` @ `experimental-quick-gallery`
+— `QGuiApplication` + `QQmlApplicationEngine`, links QtQuick/QtQml and **no
+QtWidgets** (confirmed via `otool -L`). Qt 6.11.1, probe injected via launcher on
+`ws://localhost:9222`. 104-node accessibility tree.
+
+This run closed every remaining §3 gap except `qt_models_*`, and turned up two
+defects that only a live pure-QML app could expose.
+
+### D1 — `chr_click` reported success but did nothing
+
+`chr.click` hardcoded `QAccessibleActionInterface::pressAction()`. Against Qt
+Quick Controls it returned `clicked: true, method: accessibilityAction` while the
+control never actuated — a silent no-op, the worst kind of failure for an
+automation API.
+
+The cause is **not** that Qt Quick accessibility is broken. Isolated against
+QtQuick.Controls 6.11:
+
+| Target | `actionNames()` | `doAction(Press)` |
+|---|---|---|
+| bare `Item`, `Accessible.role: Button`, **no** handler | `("Press","SetFocus")` | — |
+| same **with** `Accessible.onPressAction` | `("Press","SetFocus","Press")` | fires |
+| **Controls `Switch`** | `("Toggle","Press")` | **no-op**; `doAction(Toggle)` works |
+| Controls `Button` | `("Press")` | works |
+
+Two things follow. `Press` is advertised unconditionally, so its presence proves
+nothing. And a checkable control's working verb is **`Toggle`**, not `Press` — we
+were simply calling the wrong action.
+
+**Fix:** choose the action from what the interface offers — `Toggle` when
+present, else `Press` — and report the chosen verb back as `action`. This keeps
+the accessibility path (robust to scrolling and occlusion, which a coordinate
+click is not) rather than falling back to synthetic mouse events, and it is
+equally correct for widgets: `QCheckBox` now actuates via `Toggle` too.
+
+A QML mouse fallback was added only for the case where an item exposes *no*
+usable action, mirroring the pre-existing QWidget fallback.
+
+> Rejected alternative: routing all `QQuickItem`s to a synthetic mouse click.
+> It "worked" on this app but discards the accessibility path for every QML app
+> — including ones that implement `Accessible.onPressAction` correctly — and
+> generalises a whole-toolkit claim from a single sample.
+
+### D2 — `qt_events_*` captured nothing in a pure QML app
+
+`EventCapture::eventFilter` early-returned unless `qobject_cast<QWidget*>`
+succeeded. A pure Qt Quick app has no QWidget anywhere, so `qt.events.start`
+reported `capturing: true` and then delivered zero events — even though the same
+clicks provably reached the control (the subscribed `toggled` signal fired).
+
+**Fix:** accept `QQuickItem` and `QQuickWindow` as visual targets alongside
+`QWidget`. Verified live: 0 → **25** events for one click plus one keystroke,
+carrying correct `objectId`, `className`, and window-local positions.
+
+### Confirmed working (previously unverified)
+
+- **QML metadata** — `isQmlItem`, `qmlFile`, `qmlTypeName`. `qmlId` is empty for
+  items with no `id:`, which is correct rather than a defect.
+- **Property listing** — full static property set; `QObject*`-typed properties
+  resolve to objectIds rather than serialising null.
+- **`qt_methods_invoke`**, **`chr_formInput`**, **`qt_signals_subscribe`**
+  (`toggled` delivered with the right objectId).
+- **Name chain** — 104/104 nodes carry a name via
+  accessible-name → objectName → className.
+
+### Also verified live: the four handlers fixed earlier on this branch
+
+Unit tests proved routing; this run proves behaviour.
+
+| Tool | Evidence |
+|---|---|
+| `qt_ui_geometry` | item reports `local` (884,14), `scene` (908,14), `global` (1355,129), dpr 2 — the scene/local divergence is exactly what makes clicks land |
+| `qt_ui_click` | Controls `Switch` `checked` false → true → false |
+| `qt_ui_sendKeys` | text `""` → `"QtPilot"` in a Controls `TextField`; `forceActiveFocus()` is what makes it land on the requested item |
+| `qt_ui_hitTest` | scene point (932,30) resolved to the switch's `contentItem` |
+
+### Verification
+
+`tests/test_qml_interaction.cpp` (16 cases) and a new
+`testClick_CheckablePrefersToggleAction` in `tests/test_chrome_mode_api.cpp`
+pinning the Toggle preference on the widget side. Full suite **19/19** against
+Qt 6.11.1 with `QTPILOT_HAS_QML=ON`.
