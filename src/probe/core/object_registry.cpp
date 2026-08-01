@@ -72,40 +72,52 @@ void findAllByClassNameHelper(const QByteArray& className, QObject* root, QList<
 // They must be minimal and thread-safe.
 
 void qtpilotAddObjectHook(QObject* obj) {
-  // Guard against re-entry during ObjectRegistry singleton creation
-  // When the singleton is being created, skip registration to avoid recursion
-  if (g_singletonCreating.load(std::memory_order_acquire)) {
-    // Chain to previous callback only
+  try {
+    // Guard against re-entry during ObjectRegistry singleton creation
+    // When the singleton is being created, skip registration to avoid recursion
+    if (g_singletonCreating.load(std::memory_order_acquire)) {
+      // Chain to previous callback only
+      if (g_previousAddCallback) {
+        g_previousAddCallback(obj);
+      }
+      return;
+    }
+
+    // Register the object
+    qtPilot::ObjectRegistry::instance()->registerObject(obj);
+
+    // Chain to previous callback (e.g., GammaRay)
     if (g_previousAddCallback) {
       g_previousAddCallback(obj);
     }
-    return;
-  }
-
-  // Register the object
-  qtPilot::ObjectRegistry::instance()->registerObject(obj);
-
-  // Chain to previous callback (e.g., GammaRay)
-  if (g_previousAddCallback) {
-    g_previousAddCallback(obj);
+  } catch (const std::exception& e) {
+    fprintf(stderr, "[qtPilot] Exception caught in qtpilotAddObjectHook: %s\n", e.what());
+  } catch (...) {
+    fprintf(stderr, "[qtPilot] Unknown exception caught in qtpilotAddObjectHook\n");
   }
 }
 
 void qtpilotRemoveObjectHook(QObject* obj) {
-  // Guard against re-entry during singleton creation
-  if (g_singletonCreating.load(std::memory_order_acquire)) {
+  try {
+    // Guard against re-entry during singleton creation
+    if (g_singletonCreating.load(std::memory_order_acquire)) {
+      if (g_previousRemoveCallback) {
+        g_previousRemoveCallback(obj);
+      }
+      return;
+    }
+
+    // Unregister the object
+    qtPilot::ObjectRegistry::instance()->unregisterObject(obj);
+
+    // Chain to previous callback
     if (g_previousRemoveCallback) {
       g_previousRemoveCallback(obj);
     }
-    return;
-  }
-
-  // Unregister the object
-  qtPilot::ObjectRegistry::instance()->unregisterObject(obj);
-
-  // Chain to previous callback
-  if (g_previousRemoveCallback) {
-    g_previousRemoveCallback(obj);
+  } catch (const std::exception& e) {
+    fprintf(stderr, "[qtPilot] Exception caught in qtpilotRemoveObjectHook: %s\n", e.what());
+  } catch (...) {
+    fprintf(stderr, "[qtPilot] Unknown exception caught in qtpilotRemoveObjectHook\n");
   }
 }
 
