@@ -401,4 +401,25 @@ void InputSimulator::sendKey(QWindow* window, Qt::Key key, Qt::KeyboardModifiers
   QCoreApplication::processEvents();
 }
 
+void InputSimulator::sendKeySequence(QWindow* window, const QString& sequence) {
+  if (!window) {
+    throw std::invalid_argument("sendKeySequence: window cannot be null");
+  }
+
+  QKeySequence keySeq(sequence, QKeySequence::PortableText);
+  if (keySeq.isEmpty()) {
+    throw std::invalid_argument("sendKeySequence: invalid key sequence '" + sequence.toStdString() +
+                                "'");
+  }
+
+  // Mirrors the QWidget overload: only the first key combination is sent.
+  Qt::Key extractedKey;
+  Qt::KeyboardModifiers mods;
+  qtPilot::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);
+
+  // No setFocus() equivalent here -- a QWindow delivers to whatever item
+  // currently holds focus, which is what the caller wants for a shortcut.
+  sendKey(window, extractedKey, mods);
+}
+
 }  // namespace qtPilot
