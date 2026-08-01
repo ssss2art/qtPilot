@@ -157,11 +157,17 @@ QJsonObject HitTest::itemGeometry(QQuickItem* item) {
 
   QQuickWindow* window = item->window();
   if (window) {
-    // Map the QPointF overload, not the rounded QPoint one: rounding the origin
-    // while leaving width/height fractional would put the four fields in two
-    // different precision domains, so `global.x + global.width/2` would drift
-    // from the scene rect reported above.
+    // Prefer the QPointF overload: rounding the origin while leaving
+    // width/height fractional would put the four fields in two different
+    // precision domains, so `global.x + global.width/2` would drift from the
+    // scene rect reported above. Qt 5 has no such overload, so it rounds --
+    // the sub-pixel skew is accepted there rather than dropping the whole
+    // fractional report.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     const QPointF globalTopLeft = window->mapToGlobal(sceneRect.topLeft());
+#else
+    const QPointF globalTopLeft = QPointF(window->mapToGlobal(sceneRect.topLeft().toPoint()));
+#endif
     result["global"] = QJsonObject{{"x", globalTopLeft.x()},
                                    {"y", globalTopLeft.y()},
                                    {"width", sceneRect.width()},

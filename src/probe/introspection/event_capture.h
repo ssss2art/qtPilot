@@ -5,10 +5,10 @@
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
 
-#include <QJsonObject>
-#include <QMutex>
 #include <atomic>
 
+#include <QJsonObject>
+#include <QMutex>
 #include <QObject>
 #include <QSet>
 
