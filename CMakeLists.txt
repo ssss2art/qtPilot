@@ -135,6 +135,19 @@ else()
                 endif()
             endforeach()
         endif()
+        # Fallback: macOS framework layout keeps private headers inside the
+        # framework bundle (lib/QtCore.framework/Versions/5/Headers/<ver>/QtCore)
+        # rather than under include/.
+        if(NOT _qt5_private_include AND APPLE)
+            file(GLOB _qt5_fw_version_dirs
+                "${Qt5Core_DIR}/../../../lib/QtCore.framework/Versions/5/Headers/5.*")
+            foreach(_vdir ${_qt5_fw_version_dirs})
+                if(EXISTS "${_vdir}/QtCore/private/qhooks_p.h")
+                    set(_qt5_private_include "${_vdir}/QtCore")
+                    break()
+                endif()
+            endforeach()
+        endif()
         if(_qt5_private_include)
             message(STATUS "Found Qt5 private headers at: ${_qt5_private_include}")
             # Create synthetic Qt5::CorePrivate target so downstream targets can link it.
