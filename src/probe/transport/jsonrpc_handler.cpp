@@ -18,6 +18,10 @@
 #include "introspection/signal_monitor.h"
 
 #include <QWidget>
+// Unconditional: qtpilot.getGeometry casts to QWindow* outside the QML guard,
+// and <QWidget> only reaches qwindowdefs.h, which forward-declares QWindow.
+// qobject_cast needs the complete type.
+#include <QWindow>
 
 #ifdef QTPILOT_HAS_QML
 #include <QQuickItem>
