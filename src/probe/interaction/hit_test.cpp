@@ -67,6 +67,33 @@ QString HitTest::widgetIdAt(const QPoint& globalPos) {
   return ObjectRegistry::instance()->objectId(widget);
 }
 
+QJsonObject HitTest::windowGeometry(QWindow* window) {
+  if (!window) {
+    throw std::invalid_argument("windowGeometry: window cannot be null");
+  }
+
+  QJsonObject result;
+
+  // A window's "local" rect is its own content area at the origin -- unlike a
+  // widget, there is no parent to be relative to.
+  result["local"] =
+      QJsonObject{{"x", 0}, {"y", 0}, {"width", window->width()}, {"height", window->height()}};
+
+  // geometry() is the *content* rect; frameGeometry() would include decoration.
+  // Content matches widgetGeometry's mapToGlobal(QPoint(0,0)) origin.
+  const QRect content = window->geometry();
+  result["global"] = QJsonObject{{"x", content.x()},
+                                 {"y", content.y()},
+                                 {"width", content.width()},
+                                 {"height", content.height()}};
+
+  result["devicePixelRatio"] = window->devicePixelRatio();
+
+  return result;
+}
+
+#ifdef QTPILOT_HAS_QML
+
 namespace {
 
 /// @brief Deepest visible+enabled descendant of @a parent containing @a parentPos.
@@ -108,33 +135,6 @@ QQuickItem* deepestItemAt(QQuickItem* parent, const QPointF& parentPos) {
 }
 
 }  // namespace
-
-QJsonObject HitTest::windowGeometry(QWindow* window) {
-  if (!window) {
-    throw std::invalid_argument("windowGeometry: window cannot be null");
-  }
-
-  QJsonObject result;
-
-  // A window's "local" rect is its own content area at the origin -- unlike a
-  // widget, there is no parent to be relative to.
-  result["local"] =
-      QJsonObject{{"x", 0}, {"y", 0}, {"width", window->width()}, {"height", window->height()}};
-
-  // geometry() is the *content* rect; frameGeometry() would include decoration.
-  // Content matches widgetGeometry's mapToGlobal(QPoint(0,0)) origin.
-  const QRect content = window->geometry();
-  result["global"] = QJsonObject{{"x", content.x()},
-                                 {"y", content.y()},
-                                 {"width", content.width()},
-                                 {"height", content.height()}};
-
-  result["devicePixelRatio"] = window->devicePixelRatio();
-
-  return result;
-}
-
-#ifdef QTPILOT_HAS_QML
 
 QJsonObject HitTest::itemGeometry(QQuickItem* item) {
   if (!item) {
