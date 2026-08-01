@@ -110,6 +110,13 @@ ResolvedTarget resolveWindowCoordinate(QWidget* window, int x, int y, bool scree
   if (screenAbsolute) {
     QPoint globalPos(x, y);
     QWidget* target = QApplication::widgetAt(globalPos);
+    // If no widget was found at unscaled coordinates on a High-DPI display,
+    // retry scaling physical screen coordinates to logical screen coordinates.
+    const qreal dpr = window ? window->devicePixelRatio() : 1.0;
+    if (!target && dpr > 1.0) {
+      globalPos = QPoint(qRound(x / dpr), qRound(y / dpr));
+      target = QApplication::widgetAt(globalPos);
+    }
     if (!target) {
       throw JsonRpcException(
           ErrorCode::kCoordinateOutOfBounds,
@@ -152,13 +159,19 @@ ResolvedTarget resolveWindowCoordinate(QWidget* window, int x, int y, bool scree
 /// @brief Resolve a coordinate to a window-local point for a QWindow target.
 /// @throws JsonRpcException if window-relative coordinates are out of bounds.
 QPoint resolveWindowLocal(QWindow* window, int x, int y, bool screenAbsolute) {
-  // Bounds-check the window-local point on BOTH paths. The screen-absolute path
-  // previously skipped validation, so a coordinate outside the window (or on
-  // another monitor) mapped to a negative/out-of-range local point that the
-  // QQuickWindow silently dropped while the RPC still reported success. This now
-  // matches the QWidget path, which throws when the coordinate hits nothing.
-  const QPoint local = screenAbsolute ? window->mapFromGlobal(QPoint(x, y)) : QPoint(x, y);
+  // Bounds-check the window-local point on BOTH paths.
+  QPoint local = screenAbsolute ? window->mapFromGlobal(QPoint(x, y)) : QPoint(x, y);
+  const qreal dpr = window->devicePixelRatio();
   const QSize winSize = window->size();
+
+  // If screen-absolute coordinates fall outside bounds on a High-DPI display,
+  // retry by scaling physical screen coordinates to logical screen coordinates.
+  if (screenAbsolute && dpr > 1.0 &&
+      (local.x() < 0 || local.y() < 0 || local.x() >= winSize.width() ||
+       local.y() >= winSize.height())) {
+    local = window->mapFromGlobal(QPoint(qRound(x / dpr), qRound(y / dpr)));
+  }
+
   if (local.x() < 0 || local.y() < 0 || local.x() >= winSize.width() ||
       local.y() >= winSize.height()) {
     throw JsonRpcException(

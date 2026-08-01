@@ -350,7 +350,11 @@ void InputSimulator::sendText(QWindow* window, const QString& text) {
   }
   // Deliver each character as a key press+release carrying its text; a
   // QQuickWindow forwards these to its focused item (e.g. a TextInput).
+  // Guard against window destruction mid-loop by a key handler.
+  QPointer<QWindow> guard(window);
   for (const QChar ch : text) {
+    if (!guard)
+      break;
     QString s(ch);
     int key;
     switch (ch.unicode()) {
