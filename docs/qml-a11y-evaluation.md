@@ -66,8 +66,8 @@ Legend — **basis**: `live` observed against a running pure-QML app (date) ·
 `test` covered by a unit test in `tests/` · `src` determined by source inspection
 
 > **Read the basis column.** A `test` result proves the handler accepts and routes
-> a QML target correctly; it does not prove the end-to-end behaviour against a real
-> QML control. Rows marked ⬚ need a live pure-Qt-Quick app and have not been run.
+> a QML target correctly; a `live` result proves the end-to-end behaviour against
+> a real QML control. As of 2026-08-01 every row has at least one `live` basis.
 
 ### 3a. Discovery & connection
 | Step | Tool | Expected | Result | Basis |
@@ -90,7 +90,7 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 | Read/write property | `qt_properties_get` / `qt_properties_set` | e.g. text, checked, value | ✅ | live 2026-07-09 (read back a QML `checked`) |
 | Geometry | `qt_ui_geometry` | item bounds (scene/screen) | ✅ was ❌, **fixed on this branch** | test (`test_qml_interaction`) |
 | Invoke method | `qt_methods_invoke` | QML-invokable / slots | ✅ | live 2026-08-01 |
-| ListModel/model access | `qt_models_*` | QML list/table models | ⬚ **not exercisable** | live 2026-08-01 — target app has no `QAbstractItemModel` (Repeaters over JS arrays) |
+| ListModel/model access | `qt_models_*` | QML list/table models | ✅ list / data / roles / tree paths / lazy-aware search | live 2026-08-01 against `test_app_qml` |
 
 ### 3c. Accessibility (the focus)
 | Step | Tool | Expected | Result | Basis |
@@ -120,14 +120,15 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 
 ### What is still genuinely unknown
 
-**One row.** `qt_models_*` could not be exercised — the Qt Quick gallery used as
-the target builds its grids from `Repeater`s over JavaScript arrays and contains
-no `QAbstractItemModel` anywhere (`findByClassName` returns empty for both
-`QAbstractItemModel` and `QQmlListModel`). Nothing suggests it is broken; there
-was simply nothing to point it at. Closing it needs a QML app that exposes a real
-Qt model.
+**Nothing.** Every row in §3 has now been observed against a running pure Qt
+Quick app.
 
-Everything else in §3 has now been observed against a running pure Qt Quick app.
+The last open row — `qt_models_*` — was blocked on the absence of a target, not
+on a suspected defect: the Luminol gallery builds its grids from `Repeater`s over
+JavaScript arrays and contains no `QAbstractItemModel` anywhere. `test_app_qml/`
+was written to close that gap and is now part of this repo; see
+[`test_app_qml/README.md`](../test_app_qml/README.md).
+
 
 ---
 
@@ -266,8 +267,8 @@ the success paths, the non-visual rejection, and the unattached/unrendered item
 cases. Full suite: **19/19 passing** against Qt 6.11.1 with `QTPILOT_HAS_QML=ON`.
 
 These are unit tests against synthetic `QQuickWindow`/`QQuickItem` objects. They
-prove routing and coordinate mapping; they do **not** substitute for a live run
-against real QML controls, which is what the remaining ⬚ rows in §3 need.
+prove routing and coordinate mapping; the live runs recorded below are what prove
+the behaviour against real QML controls.
 
 ---
 
@@ -355,3 +356,43 @@ Unit tests proved routing; this run proves behaviour.
 `testClick_CheckablePrefersToggleAction` in `tests/test_chrome_mode_api.cpp`
 pinning the Toggle preference on the widget side. Full suite **19/19** against
 Qt 6.11.1 with `QTPILOT_HAS_QML=ON`.
+
+---
+
+## Findings (2026-08-01) — `qt_models_*` closed via a purpose-built target
+
+The last open row could not be closed against the Luminol gallery: it builds its
+grids from `Repeater`s over JavaScript arrays and contains no
+`QAbstractItemModel` anywhere (`findByClassName` returns empty for both
+`QAbstractItemModel` and `QQmlListModel`). Rather than leave the row guessed at,
+this branch adds **`test_app_qml/`** — a pure Qt Quick app whose views are backed
+by real C++ models. See [`test_app_qml/README.md`](../test_app_qml/README.md) for
+the exact calls.
+
+| Model | Covers | Result |
+|---|---|---|
+| `TaskListModel` | flat list, 4 custom roles, mixed types | ✅ roles resolve by name; `bool`/`int`/`string` preserved |
+| `FileTreeModel` | 2-level hierarchy | ✅ `parent:[0]` descends; nested match at path `[0,1]` |
+| `LazyLogModel` | `canFetchMore`/`fetchMore`, 500 rows, 5 initially | ✅ search drove `fetchMore` to reach row 400 |
+
+**`qt_models_*` works against QML — no defects found.** The lazy case is the
+sharpest evidence: a sentinel at row 400 was found while the model held only ~55
+rows, and `rowCount` afterwards read 500. The probe drove `fetchMore` itself
+rather than riding on whatever the view had realised.
+
+### Two API-contract traps worth documenting
+
+Neither is a bug, but both cost time here and both fail *silently*:
+
+- `qt.models.data` takes **`parent`**, not `parentPath`. An unrecognised key is
+  ignored, so the call returns root-level rows and looks like broken tree
+  navigation.
+- `qt.models.search` takes **`value`** / **`match`** / **`role`**, not
+  `query`/`mode`. With no `value` the filter matches everything, so a wrong key
+  returns the whole model and reads as "search does not filter".
+
+Both are now written down in the test app's README next to working examples.
+
+`qt.models.list` also reports a `QQmlTreeModelToTableModel` — Qt's own adapter,
+created by `TreeView` to flatten a tree for display. It is expected, not a leak
+from the app.

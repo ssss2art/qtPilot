@@ -314,6 +314,21 @@ endif()
 if(QTPILOT_BUILD_TEST_APP)
     add_subdirectory(test_app)
     install(TARGETS qtPilot_test_app RUNTIME DESTINATION bin)
+
+    # Pure Qt Quick companion app backing its views with real
+    # QAbstractItemModels, so qt.models.* can be exercised against QML. Qt 6
+    # only -- qt_add_qml_module has no Qt 5 equivalent.
+    if(QTPILOT_HAS_QML AND QT_VERSION_MAJOR EQUAL 6)
+        find_package(Qt6 QUIET COMPONENTS QuickControls2)
+        if(Qt6QuickControls2_FOUND)
+            add_subdirectory(test_app_qml)
+            install(TARGETS qtPilot_test_app_qml
+                RUNTIME DESTINATION bin
+                BUNDLE DESTINATION bin)
+        else()
+            message(STATUS "QtQuickControls2 not found - skipping QML model test app")
+        endif()
+    endif()
 endif()
 
 if(QTPILOT_BUILD_TESTS)
