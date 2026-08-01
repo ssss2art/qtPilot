@@ -144,6 +144,13 @@ bool Probe::initialize() {
 
   // Connect server signals to probe signals for external monitoring
   connect(m_server, &WebSocketServer::clientConnected, this, &Probe::clientConnected);
+
+  // Enable eager per-object tracking once a client is actually connected. Before this,
+  // ObjectRegistry only records object pointers (IDs computed lazily), which keeps
+  // injection into large apps cheap. The native API is pull-based, so existing objects
+  // remain fully queryable; only live objectAdded push notifications need this flip.
+  connect(m_server, &WebSocketServer::clientConnected, ObjectRegistry::instance(),
+          []() { ObjectRegistry::instance()->setClientConnected(true); });
   connect(m_server, &WebSocketServer::clientDisconnected, this, &Probe::clientDisconnected);
   connect(m_server, &WebSocketServer::errorOccurred, this, &Probe::errorOccurred);
 

@@ -27,6 +27,7 @@ class TestObjectRegistry : public QObject {
  private slots:
   void initTestCase();
   void cleanupTestCase();
+  void init();
   void cleanup();
 
   void testSingleton();
@@ -34,6 +35,9 @@ class TestObjectRegistry : public QObject {
   void testFindByObjectName();
   void testFindAllByClassName();
   void testObjectRemoval();
+  void testDisconnectedRegistrationIsLazy();
+  void testConnectedRegistrationPublishesObjectAdded();
+  void testDestroyedObjectSuppressesQueuedObjectAdded();
   void testThreadSafety();
 
  private:
@@ -52,6 +56,10 @@ void TestObjectRegistry::initTestCase() {
 void TestObjectRegistry::cleanupTestCase() {
   // Uninstall hooks
   uninstallObjectHooks();
+}
+
+void TestObjectRegistry::init() {
+  ObjectRegistry::instance()->setClientConnected(false);
 }
 
 void TestObjectRegistry::cleanup() {
@@ -179,6 +187,58 @@ void TestObjectRegistry::testObjectRemoval() {
   // but we can verify the count decreased and we can't find by name
   QObject* shouldBeNull = registry->findByObjectName(QStringLiteral("tempObjectForRemoval"));
   QVERIFY(shouldBeNull == nullptr);
+}
+
+void TestObjectRegistry::testDisconnectedRegistrationIsLazy() {
+  ObjectRegistry* registry = ObjectRegistry::instance();
+  QSignalSpy addedSpy(registry, &ObjectRegistry::objectAdded);
+
+  auto* obj = new QObject(this);
+  obj->setObjectName(QStringLiteral("lazyRegistrationObject"));
+  QCoreApplication::processEvents();
+
+  QVERIFY(registry->contains(obj));
+  QCOMPARE(addedSpy.count(), 0);
+
+  const QString id = registry->objectId(obj);
+  QVERIFY(!id.isEmpty());
+  QCOMPARE(registry->findById(id), obj);
+}
+
+void TestObjectRegistry::testConnectedRegistrationPublishesObjectAdded() {
+  ObjectRegistry* registry = ObjectRegistry::instance();
+  registry->setClientConnected(true);
+  QSignalSpy addedSpy(registry, &ObjectRegistry::objectAdded);
+
+  auto* obj = new QObject(this);
+  obj->setObjectName(QStringLiteral("connectedRegistrationObject"));
+
+  bool found = false;
+  QTRY_VERIFY_WITH_TIMEOUT(([&]() {
+    for (const auto& emission : addedSpy) {
+      if (qvariant_cast<QObject*>(emission.at(0)) == obj) {
+        found = true;
+        return true;
+      }
+    }
+    return false;
+  })(), 1000);
+  QVERIFY(found);
+}
+
+void TestObjectRegistry::testDestroyedObjectSuppressesQueuedObjectAdded() {
+  ObjectRegistry* registry = ObjectRegistry::instance();
+  registry->setClientConnected(true);
+  QSignalSpy addedSpy(registry, &ObjectRegistry::objectAdded);
+
+  auto* obj = new QObject();
+  QObject* destroyedAddress = obj;
+  delete obj;
+  QCoreApplication::processEvents();
+
+  for (const auto& emission : addedSpy) {
+    QVERIFY(qvariant_cast<QObject*>(emission.at(0)) != destroyedAddress);
+  }
 }
 
 void TestObjectRegistry::testThreadSafety() {

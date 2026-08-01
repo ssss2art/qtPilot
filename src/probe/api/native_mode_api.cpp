@@ -27,6 +27,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QTreeView>
 #include <QWidget>
 
@@ -584,10 +585,26 @@ void NativeModeApi::registerUiMethods() {
       clickPos = QPoint(pos[QStringLiteral("x")].toInt(), pos[QStringLiteral("y")].toInt());
     }
 
-    InputSimulator::mouseClick(widget, btn, clickPos);
+    // Defer the actual click. This handler runs inside the WebSocket message dispatch
+    // (QWebSocketPrivate::processData). Clicking synchronously runs the target's slot
+    // inline — and if that slot spins a nested/modal event loop (e.g. a button that opens
+    // a modal dialog, or a Save that shows a modal progress dialog), the nested loop
+    // re-enters WebSocket frame processing. QtWebSockets is not reentrant, so processData
+    // dereferences a half-updated state and SIGSEGVs. Queuing the click makes it run from
+    // the top of the event loop after processData has fully unwound. QPointer guards
+    // against the widget being destroyed before the queued call fires.
+    QPointer<QWidget> safeWidget(widget);
+    QMetaObject::invokeMethod(
+        widget,
+        [safeWidget, btn, clickPos]() {
+          if (safeWidget)
+            InputSimulator::mouseClick(safeWidget, btn, clickPos);
+        },
+        Qt::QueuedConnection);
 
     QJsonObject result;
     result[QStringLiteral("ok")] = true;
+    result[QStringLiteral("deferred")] = true;
     return envelopeToString(ResponseEnvelope::wrap(result, objectId));
   });
 
