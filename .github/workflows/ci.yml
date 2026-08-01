@@ -211,34 +211,63 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Default resolve. Whatever pip picks inside fastmcp>=2.9,<5 without
-          # pre-releases -- the install path a user gets today.
-          - name: default
+          # --- Python version coverage -------------------------------------
+          # One leg per interpreter in `requires-python` / the classifiers, on
+          # the default resolve. Previously CI tested only 3.11 while the
+          # package advertised 3.11-3.14.
+          - name: py3.11
+            python: "3.11"
             extras: "dev"
             pip_flags: ""
             expect_revision: ""
-          # MCP 2025-11-25 (FastMCP 2.x/3.x).
+          - name: py3.12
+            python: "3.12"
+            extras: "dev"
+            pip_flags: ""
+            expect_revision: ""
+          - name: py3.13
+            python: "3.13"
+            extras: "dev"
+            pip_flags: ""
+            expect_revision: ""
+          - name: py3.14
+            python: "3.14"
+            extras: "dev"
+            pip_flags: ""
+            expect_revision: ""
+          # --- MCP revision coverage ---------------------------------------
+          # Pinned to the floor interpreter: the SDK legs are about protocol
+          # revision, and the version axis is already covered above.
           - name: mcp-stable
+            python: "3.11"
             extras: "dev,mcp-stable"
             pip_flags: ""
             expect_revision: "2025-11-25"
-          # MCP 2026-07-28 (FastMCP 4). Pre-release until FastMCP 4 GAs, so this
-          # job is allowed to fail without failing the workflow.
+          # MCP 2026-07-28 (FastMCP 4). Pre-release until FastMCP 4 GAs, so
+          # these legs are allowed to fail without failing the workflow.
+          # Run on both the oldest and newest interpreter -- this is the path
+          # being proven out, so it gets the widest check.
           - name: mcp-next
+            python: "3.11"
+            extras: "dev,mcp-next"
+            pip_flags: "--pre"
+            expect_revision: "2026-07-28"
+          - name: mcp-next-py3.14
+            python: "3.14"
             extras: "dev,mcp-next"
             pip_flags: "--pre"
             expect_revision: "2026-07-28"
     name: python (${{ matrix.name }})
     # The 2026-07-28 path tracks an upstream beta; a broken pre-release upstream
     # must not redden the whole workflow. Drop this when FastMCP 4 ships stable.
-    continue-on-error: ${{ matrix.name == 'mcp-next' }}
+    continue-on-error: ${{ startsWith(matrix.name, 'mcp-next') }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
 
       - name: Install
         working-directory: python

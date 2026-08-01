@@ -7,7 +7,7 @@ import logging
 import os
 import weakref
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, MutableMapping
 
 from fastmcp import FastMCP
 
