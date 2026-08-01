@@ -11,6 +11,11 @@
 #include <QOperatingSystemVersion>
 #include <QPixmap>
 #include <QScreen>
+#include <QWindow>
+
+#ifdef QTPILOT_HAS_QML
+#include <QQuickWindow>
+#endif
 
 #ifdef Q_OS_MACOS
 #include <CoreGraphics/CGDirectDisplay.h>
@@ -145,6 +150,119 @@ QByteArray Screenshot::captureWindowLogical(QWidget* window) {
   }
 
   // Scale down to logical pixels if on HiDPI display
+  qreal dpr = pixmap.devicePixelRatio();
+  if (dpr > 1.0) {
+    int logicalWidth = qRound(pixmap.width() / dpr);
+    int logicalHeight = qRound(pixmap.height() / dpr);
+    pixmap =
+        pixmap.scaled(logicalWidth, logicalHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+  }
+
+  return encodePixmap(pixmap, "captureWindowLogical");
+}
+
+// --- QWindow overloads (pure Qt Quick apps) ---
+
+namespace {
+
+/// @brief Grab a QWindow as a QPixmap.
+///
+/// Prefers QQuickWindow::grabWindow() (offscreen render, no screen-recording
+/// permission required); otherwise falls back to a composited screen grab of
+/// the native window (subject to the macOS permission check).
+QPixmap grabWindowPixmap(QWindow* window, const char* context) {
+#ifdef QTPILOT_HAS_QML
+  if (auto* quickWindow = qobject_cast<QQuickWindow*>(window)) {
+    // grabWindow() re-renders the scene graph to an offscreen surface, so it
+    // captures the actual UI even when the window is occluded or on a background
+    // Space (unlike a screen grab, which would capture whatever is on top). Try
+    // it whenever the window has been shown; only fall back to the screen grab
+    // if it yields nothing.
+    if (quickWindow->isVisible()) {
+      QImage image = quickWindow->grabWindow();
+      if (!image.isNull()) {
+        QPixmap pixmap = QPixmap::fromImage(image);
+        // Ensure the device pixel ratio is set so the downstream logical/region
+        // scaling is correct on HiDPI displays even if grabWindow() left it 1.0.
+        if (pixmap.devicePixelRatio() <= 1.0) {
+          pixmap.setDevicePixelRatio(quickWindow->devicePixelRatio());
+        }
+        return pixmap;
+      }
+    }
+  }
+#endif
+  QScreen* screen = window->screen();
+  if (!screen) {
+    screen = QGuiApplication::primaryScreen();
+  }
+  if (!screen) {
+    throw std::runtime_error(std::string(context) + ": cannot determine screen for screenshot");
+  }
+  checkScreenCapturePermission(context);
+  QPixmap pixmap = screen->grabWindow(window->winId());
+  // QScreen::grabWindow returns physical pixels tagged with dpr==1 on most
+  // platforms; stamp the window's ratio so the downstream logical/region
+  // scaling matches the QQuickWindow::grabWindow() branch on HiDPI displays.
+  if (!pixmap.isNull() && pixmap.devicePixelRatio() <= 1.0) {
+    pixmap.setDevicePixelRatio(window->devicePixelRatio());
+  }
+  return pixmap;
+}
+
+}  // namespace
+
+QByteArray Screenshot::captureWindow(QWindow* window) {
+  if (!window) {
+    throw std::invalid_argument("captureWindow: window cannot be null");
+  }
+  return encodePixmap(grabWindowPixmap(window, "captureWindow"), "captureWindow");
+}
+
+QByteArray Screenshot::captureRegion(QWindow* window, const QRect& region) {
+  if (!window) {
+    throw std::invalid_argument("captureRegion: window cannot be null");
+  }
+  QPixmap full = grabWindowPixmap(window, "captureRegion");
+  // grabWindow() honors the device pixel ratio; scale the (logical) region to
+  // match the pixmap's physical pixels before cropping.
+  qreal dpr = full.devicePixelRatio();
+  QRect physRegion(qRound(region.x() * dpr), qRound(region.y() * dpr), qRound(region.width() * dpr),
+                   qRound(region.height() * dpr));
+  return encodePixmap(full.copy(physRegion), "captureRegion");
+}
+
+QByteArray Screenshot::captureScreen(QWindow* windowOnTargetScreen) {
+  if (!windowOnTargetScreen) {
+    throw std::invalid_argument("captureScreen: window cannot be null");
+  }
+
+  QScreen* screen = windowOnTargetScreen->screen();
+  if (!screen) {
+    screen = QGuiApplication::primaryScreen();
+  }
+  if (!screen) {
+    throw std::runtime_error("captureScreen: cannot determine screen for screenshot");
+  }
+
+  checkScreenCapturePermission("captureScreen");
+  QPixmap pixmap = screen->grabWindow(0);
+  return encodePixmap(pixmap, "captureScreen");
+}
+
+QByteArray Screenshot::captureWindowLogical(QWindow* window) {
+  if (!window) {
+    throw std::invalid_argument("captureWindowLogical: window cannot be null");
+  }
+
+  QPixmap pixmap = grabWindowPixmap(window, "captureWindowLogical");
+  if (pixmap.isNull()) {
+    throw std::runtime_error(
+        "captureWindowLogical: grab returned a null pixmap "
+        "(window may be hidden or screen capture permission denied)");
+  }
+
+  // Scale down to logical pixels if on a HiDPI display
   qreal dpr = pixmap.devicePixelRatio();
   if (dpr > 1.0) {
     int logicalWidth = qRound(pixmap.width() / dpr);

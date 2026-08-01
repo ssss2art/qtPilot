@@ -6,8 +6,8 @@
 #include <QAccessible>
 #include <QHash>
 #include <QJsonObject>
+#include <QObject>
 #include <QString>
-#include <QWidget>
 
 namespace qtPilot {
 
@@ -30,8 +30,10 @@ struct WalkResult {
 /// @brief Recursively walks the QAccessible tree producing JSON with ref identifiers.
 ///
 /// Static utility class. Traverses the accessibility interface tree starting
-/// from a QWidget, building a JSON representation with Chrome-compatible
-/// role names, states, bounds, and Qt extras (objectName, className, objectId).
+/// from any QObject that publishes a QAccessibleInterface — a QWidget for
+/// Widgets apps, or a QWindow (e.g. a QQuickWindow) for pure Qt Quick apps —
+/// building a JSON representation with Chrome-compatible role names, states,
+/// bounds, and Qt extras (objectName, className, objectId).
 ///
 /// Interactive elements receive ref_N identifiers for subsequent interaction.
 /// In "interactive" filter mode, only interactive elements get refs but
@@ -40,16 +42,17 @@ struct WalkResult {
 /// Usage:
 ///   WalkOptions opts;
 ///   opts.filter = "interactive";
-///   WalkResult result = AccessibilityTreeWalker::walk(myWidget, opts);
+///   WalkResult result = AccessibilityTreeWalker::walk(rootObject, opts);
 ///   // result.tree contains the JSON tree
 ///   // result.refMap maps ref strings to QAccessibleInterface*
 class AccessibilityTreeWalker {
  public:
-  /// @brief Walk the accessibility tree starting from a widget.
-  /// @param rootWidget The widget to start traversal from.
+  /// @brief Walk the accessibility tree starting from a QObject root.
+  /// @param root The root object to start traversal from. May be a QWidget
+  ///        or a QWindow/QQuickWindow — anything with a QAccessibleInterface.
   /// @param opts Options controlling traversal behavior.
   /// @return WalkResult with JSON tree and ref map.
-  static WalkResult walk(QWidget* rootWidget, const WalkOptions& opts = WalkOptions());
+  static WalkResult walk(QObject* root, const WalkOptions& opts = WalkOptions());
 
  private:
   AccessibilityTreeWalker() = delete;  // Purely static

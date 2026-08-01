@@ -100,6 +100,16 @@ qtPilot_add_test(NAME test_ui_interaction SOURCES test_ui_interaction.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+qtPilot_add_test(NAME test_qwindow_input SOURCES test_qwindow_input.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Gui
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+if(QTPILOT_HAS_QML)
+    qtPilot_add_test(NAME test_qml_screenshot SOURCES test_qml_screenshot.cpp
+        LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
+        ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+endif()
+
 qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")

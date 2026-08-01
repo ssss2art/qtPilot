@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QPushButton>
+#include <QWindow>
 #include <QWidget>
 #include <QtTest>
 
@@ -38,6 +39,8 @@ class TestObjectId : public QObject {
   void testFindById();
   void testFindByIdGlobal();
   void testRegistryFindById();
+  void testVisibleTopLevelWindowIncludedAndHiddenExcluded();
+  void testTopLevelWindowIdsAreUniqueAndRoundTrip();
   void testSerializeObjectInfo();
   void testSerializeTree();
   void testSerializeTreeDepthLimit();
@@ -281,6 +284,47 @@ void TestObjectId::testRegistryFindById() {
   // After deletion, findById should return nullptr (QPointer detected deletion)
   QObject* deleted = registry->findById(id);
   QVERIFY(deleted == nullptr);
+}
+
+void TestObjectId::testVisibleTopLevelWindowIncludedAndHiddenExcluded() {
+  QWindow visibleWindow;
+  visibleWindow.setObjectName(QStringLiteral("visibleTopLevelWindow"));
+  visibleWindow.setGeometry(10, 10, 100, 80);
+  visibleWindow.show();
+
+  QWindow hiddenWindow;
+  hiddenWindow.setObjectName(QStringLiteral("hiddenTopLevelWindow"));
+  QCoreApplication::processEvents();
+
+  const QJsonArray roots = serializeObjectTree(nullptr, 0)[QStringLiteral("children")].toArray();
+  bool foundVisible = false;
+  bool foundHidden = false;
+  for (const QJsonValue& value : roots) {
+    const QString objectName = value.toObject()[QStringLiteral("objectName")].toString();
+    foundVisible |= objectName == QStringLiteral("visibleTopLevelWindow");
+    foundHidden |= objectName == QStringLiteral("hiddenTopLevelWindow");
+  }
+
+  QVERIFY(foundVisible);
+  QVERIFY(!foundHidden);
+}
+
+void TestObjectId::testTopLevelWindowIdsAreUniqueAndRoundTrip() {
+  QWindow first;
+  QWindow second;
+  first.setGeometry(10, 10, 100, 80);
+  second.setGeometry(120, 10, 100, 80);
+  first.show();
+  second.show();
+  QCoreApplication::processEvents();
+
+  const QString firstId = generateObjectId(&first);
+  const QString secondId = generateObjectId(&second);
+  QVERIFY(!firstId.isEmpty());
+  QVERIFY(!secondId.isEmpty());
+  QVERIFY(firstId != secondId);
+  QCOMPARE(findByObjectId(firstId), &first);
+  QCOMPARE(findByObjectId(secondId), &second);
 }
 
 void TestObjectId::testSerializeObjectInfo() {

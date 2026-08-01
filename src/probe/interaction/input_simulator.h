@@ -9,6 +9,8 @@
 #include <QString>
 #include <QWidget>
 
+class QWindow;
+
 namespace qtPilot {
 
 /// @brief Mouse and keyboard input simulation using QTest functions.
@@ -122,6 +124,48 @@ class QTPILOT_EXPORT InputSimulator {
   static void mouseDrag(QWidget* window, const QPoint& startPos, const QPoint& endPos,
                         MouseButton button = MouseButton::Left,
                         Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  // --- QWindow overloads (pure Qt Quick apps: QQuickWindow has no QWidget) ---
+  //
+  // Events are delivered with QCoreApplication::sendEvent(window, ...) using
+  // window-local (scene) coordinates; a QQuickWindow routes them to the item
+  // at that position via its own event delivery. Positions are window-local.
+
+  /// @brief Click at a window-local position (press + release).
+  static void mouseClick(QWindow* window, MouseButton button, const QPoint& pos,
+                         Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  /// @brief Double-click at a window-local position.
+  static void mouseDoubleClick(QWindow* window, MouseButton button, const QPoint& pos,
+                               Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  /// @brief Press a mouse button at a window-local position (no release).
+  static void mousePress(QWindow* window, MouseButton button, const QPoint& pos,
+                         Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  /// @brief Release a mouse button at a window-local position (no press).
+  static void mouseRelease(QWindow* window, MouseButton button, const QPoint& pos,
+                           Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  /// @brief Move the mouse to a window-local position.
+  static void mouseMove(QWindow* window, const QPoint& pos, Qt::MouseButtons buttons = Qt::NoButton,
+                        Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  /// @brief Scroll at a window-local position.
+  static void scroll(QWindow* window, const QPoint& pos, int dx, int dy,
+                     Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  /// @brief Drag from start to end (window-local) with the button held.
+  static void mouseDrag(QWindow* window, const QPoint& startPos, const QPoint& endPos,
+                        MouseButton button = MouseButton::Left,
+                        Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
+  /// @brief Type text into the window's focused item (per-character key events).
+  static void sendText(QWindow* window, const QString& text);
+
+  /// @brief Send a single key (press + release) to the window's focused item.
+  static void sendKey(QWindow* window, Qt::Key key,
+                      Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
  private:
   /// Convert MouseButton enum to Qt::MouseButton

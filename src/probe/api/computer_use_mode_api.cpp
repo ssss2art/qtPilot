@@ -13,12 +13,15 @@
 #include <QApplication>
 #include <QCursor>
 #include <QDateTime>
+#include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QThread>
 #include <QWidget>
+#include <QWindow>
 
 namespace qtPilot {
 
@@ -38,18 +41,50 @@ QString envelopeToString(const QJsonObject& envelope) {
   return QString::fromUtf8(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
 }
 
-/// @brief Get the active window, falling back to first visible top-level widget.
-/// @throws JsonRpcException if no active window found.
-QWidget* getActiveWindow() {
-  QWidget* window = QApplication::activeWindow();
-  if (window)
-    return window;
+/// @brief A resolved computer-use target: either a QWidget (Widgets app) or a
+///        top-level QWindow / QQuickWindow (pure Qt Quick app).
+struct CuTarget {
+  QWidget* widget = nullptr;
+  // QPointer so a window destroyed mid-action (e.g. a click that closes it,
+  // observed across a processEvents turn) is seen as null rather than dangling.
+  QPointer<QWindow> window;
+  bool isWindow() const { return !window.isNull(); }
+};
 
-  // Fall back to first visible top-level widget
-  const auto topLevels = QApplication::topLevelWidgets();
-  for (QWidget* w : topLevels) {
-    if (w->isVisible()) {
-      return w;
+/// @brief Resolve the active target: a top-level QWidget or QWindow/QQuickWindow.
+///
+/// A focused real window (e.g. a QQuickWindow) is preferred first — this handles
+/// hybrid apps where a QApplication hosts a focused QQuickWindow — but the
+/// internal QWidgetWindow backing store of a Widgets app is skipped so those
+/// apps still resolve to their QWidget (which has childAt hit resolution). The
+/// QApplication cast guards the Widgets-only statics under a pure QGuiApplication.
+/// @throws JsonRpcException if no active window found.
+CuTarget getActiveTarget() {
+  auto* coreApp = QCoreApplication::instance();
+  auto* guiApp = qobject_cast<QGuiApplication*>(coreApp);
+
+  if (guiApp) {
+    if (QWindow* focus = guiApp->focusWindow()) {
+      if (focus->isVisible() && !focus->inherits("QWidgetWindow"))
+        return {nullptr, focus};
+    }
+  }
+
+  if (qobject_cast<QApplication*>(coreApp)) {
+    if (QWidget* window = QApplication::activeWindow())
+      return {window, nullptr};
+    const auto topLevels = QApplication::topLevelWidgets();
+    for (QWidget* w : topLevels) {
+      if (w->isVisible())
+        return {w, nullptr};
+    }
+  }
+
+  if (guiApp) {
+    const auto windows = guiApp->topLevelWindows();
+    for (QWindow* w : windows) {
+      if (w->isVisible() && !w->inherits("QWidgetWindow"))
+        return {nullptr, w};
     }
   }
 
@@ -114,6 +149,33 @@ ResolvedTarget resolveWindowCoordinate(QWidget* window, int x, int y, bool scree
   return {window, QPoint(x, y)};
 }
 
+/// @brief Resolve a coordinate to a window-local point for a QWindow target.
+/// @throws JsonRpcException if window-relative coordinates are out of bounds.
+QPoint resolveWindowLocal(QWindow* window, int x, int y, bool screenAbsolute) {
+  // Bounds-check the window-local point on BOTH paths. The screen-absolute path
+  // previously skipped validation, so a coordinate outside the window (or on
+  // another monitor) mapped to a negative/out-of-range local point that the
+  // QQuickWindow silently dropped while the RPC still reported success. This now
+  // matches the QWidget path, which throws when the coordinate hits nothing.
+  const QPoint local = screenAbsolute ? window->mapFromGlobal(QPoint(x, y)) : QPoint(x, y);
+  const QSize winSize = window->size();
+  if (local.x() < 0 || local.y() < 0 || local.x() >= winSize.width() ||
+      local.y() >= winSize.height()) {
+    throw JsonRpcException(
+        ErrorCode::kCoordinateOutOfBounds,
+        QStringLiteral("Coordinates (%1, %2) out of bounds for window size (%3 x %4)")
+            .arg(local.x())
+            .arg(local.y())
+            .arg(winSize.width())
+            .arg(winSize.height()),
+        QJsonObject{{QStringLiteral("x"), local.x()},
+                    {QStringLiteral("y"), local.y()},
+                    {QStringLiteral("windowWidth"), winSize.width()},
+                    {QStringLiteral("windowHeight"), winSize.height()}});
+  }
+  return local;
+}
+
 /// @brief Convert button string to InputSimulator::MouseButton enum.
 InputSimulator::MouseButton parseMouseButton(const QString& buttonStr) {
   if (buttonStr == QStringLiteral("right"))
@@ -124,10 +186,66 @@ InputSimulator::MouseButton parseMouseButton(const QString& buttonStr) {
 }
 
 /// @brief Optionally capture a screenshot and add to result.
-void maybeAddScreenshot(QJsonObject& result, const QJsonObject& params, QWidget* window) {
-  if (params[QStringLiteral("include_screenshot")].toBool(false)) {
-    QByteArray base64 = Screenshot::captureWindowLogical(window);
-    result[QStringLiteral("screenshot")] = QString::fromLatin1(base64);
+void maybeAddScreenshot(QJsonObject& result, const QJsonObject& params, const CuTarget& t) {
+  if (!params[QStringLiteral("include_screenshot")].toBool(false))
+    return;
+  // The target may have gone away during the action (e.g. a click that closed
+  // the window); skip rather than dereference a null target.
+  if (!t.isWindow() && !t.widget)
+    return;
+  QByteArray base64 = t.isWindow() ? Screenshot::captureWindowLogical(t.window)
+                                   : Screenshot::captureWindowLogical(t.widget);
+  result[QStringLiteral("screenshot")] = QString::fromLatin1(base64);
+}
+
+/// @brief Dispatch a click (press+release) to a widget or window target.
+void dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa) {
+  if (t.isWindow()) {
+    InputSimulator::mouseClick(t.window, button, resolveWindowLocal(t.window, x, y, sa));
+  } else {
+    auto r = resolveWindowCoordinate(t.widget, x, y, sa);
+    InputSimulator::mouseClick(r.widget, button, r.localPos);
+  }
+}
+
+/// @brief Dispatch a double-click to a widget or window target.
+void dispatchDoubleClick(const CuTarget& t, int x, int y, bool sa) {
+  if (t.isWindow()) {
+    InputSimulator::mouseDoubleClick(t.window, InputSimulator::MouseButton::Left,
+                                     resolveWindowLocal(t.window, x, y, sa));
+  } else {
+    auto r = resolveWindowCoordinate(t.widget, x, y, sa);
+    InputSimulator::mouseDoubleClick(r.widget, InputSimulator::MouseButton::Left, r.localPos);
+  }
+}
+
+/// @brief Dispatch a mouse-button press to a widget or window target.
+void dispatchPress(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa) {
+  if (t.isWindow()) {
+    InputSimulator::mousePress(t.window, button, resolveWindowLocal(t.window, x, y, sa));
+  } else {
+    auto r = resolveWindowCoordinate(t.widget, x, y, sa);
+    InputSimulator::mousePress(r.widget, button, r.localPos);
+  }
+}
+
+/// @brief Dispatch a mouse-button release to a widget or window target.
+void dispatchRelease(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa) {
+  if (t.isWindow()) {
+    InputSimulator::mouseRelease(t.window, button, resolveWindowLocal(t.window, x, y, sa));
+  } else {
+    auto r = resolveWindowCoordinate(t.widget, x, y, sa);
+    InputSimulator::mouseRelease(r.widget, button, r.localPos);
+  }
+}
+
+/// @brief Dispatch a scroll to a widget or window target.
+void dispatchScroll(const CuTarget& t, int x, int y, bool sa, int dx, int dy) {
+  if (t.isWindow()) {
+    InputSimulator::scroll(t.window, resolveWindowLocal(t.window, x, y, sa), dx, dy);
+  } else {
+    auto r = resolveWindowCoordinate(t.widget, x, y, sa);
+    InputSimulator::scroll(r.widget, r.localPos, dx, dy);
   }
 }
 
@@ -152,15 +270,17 @@ static QPoint s_lastSimulatedPosition(-1, -1);
 static bool s_hasSimulatedPosition = false;
 
 /// @brief Update the tracked virtual cursor position after a coordinate-based action.
-/// @param window The active window (for mapToGlobal when using window-relative coords).
+/// @param t The active target (for mapToGlobal when using window-relative coords).
 /// @param x X coordinate as provided by the caller.
 /// @param y Y coordinate as provided by the caller.
 /// @param screenAbsolute If true, x/y are already screen-absolute.
-void trackPosition(QWidget* window, int x, int y, bool screenAbsolute) {
+void trackPosition(const CuTarget& t, int x, int y, bool screenAbsolute) {
   if (screenAbsolute) {
     s_lastSimulatedPosition = QPoint(x, y);
-  } else if (window) {
-    s_lastSimulatedPosition = window->mapToGlobal(QPoint(x, y));
+  } else if (t.isWindow()) {
+    s_lastSimulatedPosition = t.window->mapToGlobal(QPoint(x, y));
+  } else if (t.widget) {
+    s_lastSimulatedPosition = t.widget->mapToGlobal(QPoint(x, y));
   } else {
     s_lastSimulatedPosition = QPoint(x, y);
   }
@@ -189,7 +309,7 @@ ComputerUseModeApi::ComputerUseModeApi(JsonRpcHandler* handler, QObject* parent)
 void ComputerUseModeApi::registerScreenshotMethods() {
   m_handler->RegisterMethod(QStringLiteral("cu.screenshot"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     bool fullScreen = p[QStringLiteral("fullScreen")].toBool(false);
     bool physicalPixels = p[QStringLiteral("physicalPixels")].toBool(false);
@@ -197,16 +317,20 @@ void ComputerUseModeApi::registerScreenshotMethods() {
 
     QByteArray base64;
     if (fullScreen) {
-      base64 = Screenshot::captureScreen(window);
+      base64 =
+          t.isWindow() ? Screenshot::captureScreen(t.window) : Screenshot::captureScreen(t.widget);
     } else if (!region.isEmpty()) {
       QRect rect(region[QStringLiteral("x")].toInt(), region[QStringLiteral("y")].toInt(),
                  region[QStringLiteral("width")].toInt(), region[QStringLiteral("height")].toInt());
-      base64 = Screenshot::captureRegion(window, rect);
+      base64 = t.isWindow() ? Screenshot::captureRegion(t.window, rect)
+                            : Screenshot::captureRegion(t.widget, rect);
     } else if (physicalPixels) {
-      base64 = Screenshot::captureWindow(window);
+      base64 =
+          t.isWindow() ? Screenshot::captureWindow(t.window) : Screenshot::captureWindow(t.widget);
     } else {
       // Default: logical pixel capture (1:1 coordinate matching)
-      base64 = Screenshot::captureWindowLogical(window);
+      base64 = t.isWindow() ? Screenshot::captureWindowLogical(t.window)
+                            : Screenshot::captureWindowLogical(t.widget);
     }
 
     QJsonObject result = imageWithDimensions(base64);
@@ -223,7 +347,7 @@ void ComputerUseModeApi::registerMouseMethods() {
   // cu.click - click at coordinates with optional button
   m_handler->RegisterMethod(QStringLiteral("cu.click"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
@@ -235,21 +359,20 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    auto target = resolveWindowCoordinate(window, x, y, screenAbsolute);
-    InputSimulator::mouseClick(target.widget, parseMouseButton(buttonStr), target.localPos);
+    dispatchClick(t, parseMouseButton(buttonStr), x, y, screenAbsolute);
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
   // cu.rightClick - right click at coordinates
   m_handler->RegisterMethod(QStringLiteral("cu.rightClick"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
@@ -260,21 +383,20 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    auto target = resolveWindowCoordinate(window, x, y, screenAbsolute);
-    InputSimulator::mouseClick(target.widget, InputSimulator::MouseButton::Right, target.localPos);
+    dispatchClick(t, InputSimulator::MouseButton::Right, x, y, screenAbsolute);
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
   // cu.middleClick - middle click at coordinates
   m_handler->RegisterMethod(QStringLiteral("cu.middleClick"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
@@ -285,21 +407,20 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    auto target = resolveWindowCoordinate(window, x, y, screenAbsolute);
-    InputSimulator::mouseClick(target.widget, InputSimulator::MouseButton::Middle, target.localPos);
+    dispatchClick(t, InputSimulator::MouseButton::Middle, x, y, screenAbsolute);
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
   // cu.doubleClick - double click at coordinates
   m_handler->RegisterMethod(QStringLiteral("cu.doubleClick"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
@@ -310,22 +431,20 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    auto target = resolveWindowCoordinate(window, x, y, screenAbsolute);
-    InputSimulator::mouseDoubleClick(target.widget, InputSimulator::MouseButton::Left,
-                                     target.localPos);
+    dispatchDoubleClick(t, x, y, screenAbsolute);
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
   // cu.mouseMove - move cursor to coordinates
   m_handler->RegisterMethod(QStringLiteral("cu.mouseMove"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
@@ -333,23 +452,25 @@ void ComputerUseModeApi::registerMouseMethods() {
 
     if (screenAbsolute) {
       QCursor::setPos(QPoint(x, y));
+    } else if (t.isWindow()) {
+      InputSimulator::mouseMove(t.window, resolveWindowLocal(t.window, x, y, false));
     } else {
-      auto target = resolveWindowCoordinate(window, x, y, false);
+      auto target = resolveWindowCoordinate(t.widget, x, y, false);
       InputSimulator::mouseMove(target.widget, target.localPos);
     }
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
   // cu.drag - drag from start to end coordinates
   m_handler->RegisterMethod(QStringLiteral("cu.drag"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int startX = p[QStringLiteral("startX")].toInt();
     int startY = p[QStringLiteral("startY")].toInt();
@@ -357,86 +478,92 @@ void ComputerUseModeApi::registerMouseMethods() {
     int endY = p[QStringLiteral("endY")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
 
-    QPoint startPos, endPos;
-    if (screenAbsolute) {
-      // Convert screen coords to window-relative for mouseDrag
-      startPos = window->mapFromGlobal(QPoint(startX, startY));
-      endPos = window->mapFromGlobal(QPoint(endX, endY));
+    if (t.isWindow()) {
+      // resolveWindowLocal bounds-checks and maps screen-absolute coords.
+      QPoint startPos = resolveWindowLocal(t.window, startX, startY, screenAbsolute);
+      QPoint endPos = resolveWindowLocal(t.window, endX, endY, screenAbsolute);
+      InputSimulator::mouseDrag(t.window, startPos, endPos, InputSimulator::MouseButton::Left);
     } else {
-      startPos = QPoint(startX, startY);
-      endPos = QPoint(endX, endY);
+      QWidget* window = t.widget;
+      QPoint startPos, endPos;
+      if (screenAbsolute) {
+        // Convert screen coords to window-relative for mouseDrag
+        startPos = window->mapFromGlobal(QPoint(startX, startY));
+        endPos = window->mapFromGlobal(QPoint(endX, endY));
+      } else {
+        startPos = QPoint(startX, startY);
+        endPos = QPoint(endX, endY);
+      }
+
+      // Bounds-check both coordinates
+      QSize winSize = window->size();
+      auto checkBounds = [&](const QPoint& pt, const QString& label) {
+        if (pt.x() < 0 || pt.y() < 0 || pt.x() >= winSize.width() || pt.y() >= winSize.height()) {
+          throw JsonRpcException(
+              ErrorCode::kCoordinateOutOfBounds,
+              QStringLiteral("%1 coordinates (%2, %3) out of bounds for window size (%4 x %5)")
+                  .arg(label)
+                  .arg(pt.x())
+                  .arg(pt.y())
+                  .arg(winSize.width())
+                  .arg(winSize.height()),
+              QJsonObject{{QStringLiteral("x"), pt.x()},
+                          {QStringLiteral("y"), pt.y()},
+                          {QStringLiteral("which"), label}});
+        }
+      };
+      checkBounds(startPos, QStringLiteral("start"));
+      checkBounds(endPos, QStringLiteral("end"));
+
+      InputSimulator::mouseDrag(window, startPos, endPos, InputSimulator::MouseButton::Left);
     }
 
-    // Bounds-check both coordinates
-    QSize winSize = window->size();
-    auto checkBounds = [&](const QPoint& pt, const QString& label) {
-      if (pt.x() < 0 || pt.y() < 0 || pt.x() >= winSize.width() || pt.y() >= winSize.height()) {
-        throw JsonRpcException(
-            ErrorCode::kCoordinateOutOfBounds,
-            QStringLiteral("%1 coordinates (%2, %3) out of bounds for window size (%4 x %5)")
-                .arg(label)
-                .arg(pt.x())
-                .arg(pt.y())
-                .arg(winSize.width())
-                .arg(winSize.height()),
-            QJsonObject{{QStringLiteral("x"), pt.x()},
-                        {QStringLiteral("y"), pt.y()},
-                        {QStringLiteral("which"), label}});
-      }
-    };
-    checkBounds(startPos, QStringLiteral("start"));
-    checkBounds(endPos, QStringLiteral("end"));
-
-    InputSimulator::mouseDrag(window, startPos, endPos, InputSimulator::MouseButton::Left);
-
     // Track the END position (where the cursor ends up after drag)
-    trackPosition(window, endX, endY, screenAbsolute);
+    trackPosition(t, endX, endY, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
   // cu.mouseDown - press mouse button at coordinates
   m_handler->RegisterMethod(QStringLiteral("cu.mouseDown"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
-    auto target = resolveWindowCoordinate(window, x, y, screenAbsolute);
-    InputSimulator::mousePress(target.widget, parseMouseButton(buttonStr), target.localPos);
+    dispatchPress(t, parseMouseButton(buttonStr), x, y, screenAbsolute);
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
   // cu.mouseUp - release mouse button at coordinates
   m_handler->RegisterMethod(QStringLiteral("cu.mouseUp"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
-    auto target = resolveWindowCoordinate(window, x, y, screenAbsolute);
-    InputSimulator::mouseRelease(target.widget, parseMouseButton(buttonStr), target.localPos);
+    dispatchRelease(t, parseMouseButton(buttonStr), x, y, screenAbsolute);
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 }
@@ -457,28 +584,28 @@ void ComputerUseModeApi::registerKeyboardMethods() {
                              QJsonObject{{QStringLiteral("method"), QStringLiteral("cu.type")}});
     }
 
+    // Widget apps route to the focused QWidget; pure Qt Quick apps have no
+    // focus QWidget, so fall back to the active window (QQuickWindow forwards
+    // key events to its focused item).
     QWidget* focusWidget = QApplication::focusWidget();
-    if (!focusWidget) {
-      throw JsonRpcException(
-          ErrorCode::kNoFocusedWidget, QStringLiteral("No widget has keyboard focus"),
-          QJsonObject{{QStringLiteral("hint"),
-                       QStringLiteral("Click on a widget first to give it focus")}});
+    CuTarget t;
+    if (focusWidget) {
+      InputSimulator::sendText(focusWidget, text);
+      t.widget = focusWidget->window();
+    } else {
+      t = getActiveTarget();
+      if (!t.isWindow()) {
+        throw JsonRpcException(
+            ErrorCode::kNoFocusedWidget, QStringLiteral("No widget has keyboard focus"),
+            QJsonObject{{QStringLiteral("hint"),
+                         QStringLiteral("Click on a widget first to give it focus")}});
+      }
+      InputSimulator::sendText(t.window, text);
     }
-
-    InputSimulator::sendText(focusWidget, text);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-
-    // For include_screenshot, need a window
-    if (p[QStringLiteral("include_screenshot")].toBool(false)) {
-      QWidget* window = focusWidget->window();
-      if (window) {
-        QByteArray base64 = Screenshot::captureWindowLogical(window);
-        result[QStringLiteral("screenshot")] = QString::fromLatin1(base64);
-      }
-    }
-
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 
@@ -493,14 +620,6 @@ void ComputerUseModeApi::registerKeyboardMethods() {
                              QJsonObject{{QStringLiteral("method"), QStringLiteral("cu.key")}});
     }
 
-    QWidget* focusWidget = QApplication::focusWidget();
-    if (!focusWidget) {
-      throw JsonRpcException(
-          ErrorCode::kNoFocusedWidget, QStringLiteral("No widget has keyboard focus"),
-          QJsonObject{{QStringLiteral("hint"),
-                       QStringLiteral("Click on a widget first to give it focus")}});
-    }
-
     KeyCombo combo = KeyNameMapper::parseKeyCombo(keyStr);
     if (combo.key == Qt::Key_unknown) {
       throw JsonRpcException(
@@ -512,19 +631,27 @@ void ComputerUseModeApi::registerKeyboardMethods() {
                QStringLiteral("Use Chrome-style key names: ctrl+shift+s, Enter, ArrowUp, etc.")}});
     }
 
-    InputSimulator::sendKey(focusWidget, combo.key, combo.modifiers);
+    // Widget apps route to the focused QWidget; pure Qt Quick apps fall back to
+    // the active window (QQuickWindow forwards key events to its focused item).
+    QWidget* focusWidget = QApplication::focusWidget();
+    CuTarget t;
+    if (focusWidget) {
+      InputSimulator::sendKey(focusWidget, combo.key, combo.modifiers);
+      t.widget = focusWidget->window();
+    } else {
+      t = getActiveTarget();
+      if (!t.isWindow()) {
+        throw JsonRpcException(
+            ErrorCode::kNoFocusedWidget, QStringLiteral("No widget has keyboard focus"),
+            QJsonObject{{QStringLiteral("hint"),
+                         QStringLiteral("Click on a widget first to give it focus")}});
+      }
+      InputSimulator::sendKey(t.window, combo.key, combo.modifiers);
+    }
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-
-    if (p[QStringLiteral("include_screenshot")].toBool(false)) {
-      QWidget* window = focusWidget->window();
-      if (window) {
-        QByteArray base64 = Screenshot::captureWindowLogical(window);
-        result[QStringLiteral("screenshot")] = QString::fromLatin1(base64);
-      }
-    }
-
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 }
@@ -536,7 +663,7 @@ void ComputerUseModeApi::registerKeyboardMethods() {
 void ComputerUseModeApi::registerScrollMethod() {
   m_handler->RegisterMethod(QStringLiteral("cu.scroll"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* window = getActiveWindow();
+    CuTarget t = getActiveTarget();
 
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
@@ -549,8 +676,6 @@ void ComputerUseModeApi::registerScrollMethod() {
                              QStringLiteral("Missing required parameter: direction"),
                              QJsonObject{{QStringLiteral("method"), QStringLiteral("cu.scroll")}});
     }
-
-    auto target = resolveWindowCoordinate(window, x, y, screenAbsolute);
 
     // Map direction to dx/dy
     // Positive dy = scroll up (content moves down) in Qt's angleDelta convention
@@ -571,13 +696,13 @@ void ComputerUseModeApi::registerScrollMethod() {
                       {QStringLiteral("method"), QStringLiteral("cu.scroll")}});
     }
 
-    InputSimulator::scroll(target.widget, target.localPos, dx, dy);
+    dispatchScroll(t, x, y, screenAbsolute, dx, dy);
 
-    trackPosition(window, x, y, screenAbsolute);
+    trackPosition(t, x, y, screenAbsolute);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
-    maybeAddScreenshot(result, p, window);
+    maybeAddScreenshot(result, p, t);
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
 }
@@ -599,15 +724,20 @@ void ComputerUseModeApi::registerQueryMethods() {
           globalPos = QCursor::pos();
         }
 
-        QWidget* window = getActiveWindow();
-        QPoint windowPos = window->mapFromGlobal(globalPos);
-
-        QString widgetId = HitTest::widgetIdAt(globalPos);
-
-        QWidget* widgetAtPos = QApplication::widgetAt(globalPos);
+        CuTarget t = getActiveTarget();
+        QPoint windowPos;
+        QString widgetId;
         QString className;
-        if (widgetAtPos) {
-          className = QString::fromUtf8(widgetAtPos->metaObject()->className());
+        if (t.isWindow()) {
+          windowPos = t.window->mapFromGlobal(globalPos);
+          className = QString::fromUtf8(t.window->metaObject()->className());
+        } else {
+          windowPos = t.widget->mapFromGlobal(globalPos);
+          widgetId = HitTest::widgetIdAt(globalPos);
+          QWidget* widgetAtPos = QApplication::widgetAt(globalPos);
+          if (widgetAtPos) {
+            className = QString::fromUtf8(widgetAtPos->metaObject()->className());
+          }
         }
 
         QJsonObject result;

@@ -19,6 +19,12 @@
 
 #include <QWidget>
 
+#ifdef QTPILOT_HAS_QML
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QRectF>
+#endif
+
 #ifdef QTPILOT_HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
 #endif
@@ -569,20 +575,46 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
       throw std::runtime_error("Object not found: " + id.toStdString());
     }
 
-    QWidget* widget = qobject_cast<QWidget*>(obj);
-    if (!widget) {
-      throw std::runtime_error("Object is not a widget: " + id.toStdString());
-    }
+    auto rectFromRegion = [&region]() {
+      return QRect(region["x"].toInt(), region["y"].toInt(), region["width"].toInt(),
+                   region["height"].toInt());
+    };
 
     QByteArray base64;
-    if (fullWindow) {
-      base64 = Screenshot::captureWindow(widget);
-    } else if (!region.isEmpty()) {
-      QRect rect(region["x"].toInt(), region["y"].toInt(), region["width"].toInt(),
-                 region["height"].toInt());
-      base64 = Screenshot::captureRegion(widget, rect);
-    } else {
-      base64 = Screenshot::captureWidget(widget);
+    if (QWidget* widget = qobject_cast<QWidget*>(obj)) {
+      if (fullWindow) {
+        base64 = Screenshot::captureWindow(widget);
+      } else if (!region.isEmpty()) {
+        base64 = Screenshot::captureRegion(widget, rectFromRegion());
+      } else {
+        base64 = Screenshot::captureWidget(widget);
+      }
+    }
+#ifdef QTPILOT_HAS_QML
+    // Qt Quick has no QWidget: grab via the QQuickWindow (QQuickWindow::grabWindow,
+    // offscreen — no screen-recording permission needed), cropping to the item.
+    else if (auto* quickWindow = qobject_cast<QQuickWindow*>(obj)) {
+      base64 = region.isEmpty() ? Screenshot::captureWindow(quickWindow)
+                                : Screenshot::captureRegion(quickWindow, rectFromRegion());
+    } else if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+      QQuickWindow* w = item->window();
+      if (!w) {
+        throw std::runtime_error("QQuickItem is not on a window (not rendered): " +
+                                 id.toStdString());
+      }
+      if (fullWindow) {
+        base64 = Screenshot::captureWindow(w);
+      } else if (!region.isEmpty()) {
+        base64 = Screenshot::captureRegion(w, rectFromRegion());
+      } else {
+        // Crop the window grab to the item's bounds (scene coords, logical px).
+        const QRectF sceneRect = item->mapRectToScene(QRectF(0, 0, item->width(), item->height()));
+        base64 = Screenshot::captureRegion(w, sceneRect.toRect());
+      }
+    }
+#endif
+    else {
+      throw std::runtime_error("Object is not a widget or QML item: " + id.toStdString());
     }
 
     return QString::fromUtf8(QJsonDocument(QJsonObject{{"image", QString::fromLatin1(base64)}})

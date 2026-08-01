@@ -8,10 +8,13 @@
 #include <stdexcept>
 
 #include <QApplication>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QMouseEvent>
+#include <QPointer>
 #include <QTest>
 #include <QWheelEvent>
+#include <QWindow>
 
 namespace qtPilot {
 
@@ -219,6 +222,173 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
                            qtButton, Qt::NoButton, modifiers);
   QCoreApplication::sendEvent(endWidget, &releaseEvent);
   QApplication::processEvents();
+}
+
+// --- QWindow overloads (pure Qt Quick apps) ---
+
+namespace {
+
+// The window overloads always receive an explicit, bounds-resolved position
+// from the Computer-Use dispatch layer, so there is no "default to center"
+// convenience here — that would misread a legitimate (0,0) top-left position
+// (QPoint(0,0).isNull() is true) as "unset".
+
+/// @brief Deliver a QMouseEvent to a window at a local position.
+void sendMouseToWindow(QWindow* window, QEvent::Type type, const QPoint& localPos,
+                       Qt::MouseButton button, Qt::MouseButtons buttons,
+                       Qt::KeyboardModifiers modifiers) {
+  QPoint globalPos = window->mapToGlobal(localPos);
+  QMouseEvent event(type, QPointF(localPos), QPointF(globalPos), button, buttons, modifiers);
+  QCoreApplication::sendEvent(window, &event);
+  QCoreApplication::processEvents();
+}
+
+}  // namespace
+
+void InputSimulator::mousePress(QWindow* window, MouseButton button, const QPoint& pos,
+                                Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mousePress: window cannot be null");
+  }
+  Qt::MouseButton qtButton = toQtButton(button);
+  sendMouseToWindow(window, QEvent::MouseButtonPress, pos, qtButton, qtButton, modifiers);
+}
+
+void InputSimulator::mouseRelease(QWindow* window, MouseButton button, const QPoint& pos,
+                                  Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseRelease: window cannot be null");
+  }
+  sendMouseToWindow(window, QEvent::MouseButtonRelease, pos, toQtButton(button), Qt::NoButton,
+                    modifiers);
+}
+
+void InputSimulator::mouseClick(QWindow* window, MouseButton button, const QPoint& pos,
+                                Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseClick: window cannot be null");
+  }
+  // Each primitive pumps the event loop; if a handler destroys the window
+  // (e.g. clicking a "Close" control), bail before re-dereferencing it.
+  QPointer<QWindow> guard(window);
+  mousePress(window, button, pos, modifiers);
+  if (!guard)
+    return;
+  mouseRelease(window, button, pos, modifiers);
+}
+
+void InputSimulator::mouseDoubleClick(QWindow* window, MouseButton button, const QPoint& pos,
+                                      Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseDoubleClick: window cannot be null");
+  }
+  QPointer<QWindow> guard(window);
+  Qt::MouseButton qtButton = toQtButton(button);
+  // Qt delivers a double-click as press, release, dblclick, release — the second
+  // physical press arrives AS the MouseButtonDblClick, not a separate press, so
+  // there is no extra MousePress (which would fire a spurious onPressed).
+  mousePress(window, button, pos, modifiers);
+  if (!guard)
+    return;
+  mouseRelease(window, button, pos, modifiers);
+  if (!guard)
+    return;
+  sendMouseToWindow(window, QEvent::MouseButtonDblClick, pos, qtButton, qtButton, modifiers);
+  if (!guard)
+    return;
+  mouseRelease(window, button, pos, modifiers);
+}
+
+void InputSimulator::mouseMove(QWindow* window, const QPoint& pos, Qt::MouseButtons buttons,
+                               Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseMove: window cannot be null");
+  }
+  sendMouseToWindow(window, QEvent::MouseMove, pos, Qt::NoButton, buttons, modifiers);
+}
+
+void InputSimulator::scroll(QWindow* window, const QPoint& pos, int dx, int dy,
+                            Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("scroll: window cannot be null");
+  }
+  QPoint localPos = pos;
+  QPoint globalPos = window->mapToGlobal(localPos);
+
+  // 120 units = 1 standard mouse wheel tick (15 degrees)
+  QPoint angleDelta(dx * 120, dy * 120);
+  QPoint pixelDelta(0, 0);
+
+  QWheelEvent event(QPointF(localPos), QPointF(globalPos), pixelDelta, angleDelta, Qt::NoButton,
+                    modifiers, Qt::NoScrollPhase, false);
+  QCoreApplication::sendEvent(window, &event);
+  QCoreApplication::processEvents();
+}
+
+void InputSimulator::mouseDrag(QWindow* window, const QPoint& startPos, const QPoint& endPos,
+                               MouseButton button, Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("mouseDrag: window cannot be null");
+  }
+  Qt::MouseButton qtButton = toQtButton(button);
+  // QQuickWindow routes each event to the item at the scene position; no
+  // childAt resolution is needed (unlike the QWidget path). Guard against the
+  // window being destroyed by a handler between pumped events.
+  QPointer<QWindow> guard(window);
+  sendMouseToWindow(window, QEvent::MouseButtonPress, startPos, qtButton, qtButton, modifiers);
+  if (!guard)
+    return;
+  sendMouseToWindow(window, QEvent::MouseMove, endPos, Qt::NoButton, qtButton, modifiers);
+  if (!guard)
+    return;
+  sendMouseToWindow(window, QEvent::MouseButtonRelease, endPos, qtButton, Qt::NoButton, modifiers);
+}
+
+void InputSimulator::sendText(QWindow* window, const QString& text) {
+  if (!window) {
+    throw std::invalid_argument("sendText: window cannot be null");
+  }
+  // Deliver each character as a key press+release carrying its text; a
+  // QQuickWindow forwards these to its focused item (e.g. a TextInput).
+  for (const QChar ch : text) {
+    QString s(ch);
+    int key;
+    switch (ch.unicode()) {
+      case u'\n':
+      case u'\r':
+        key = Qt::Key_Return;  // so QML onAccepted / Keys.onReturnPressed fires
+        break;
+      case u'\t':
+        key = Qt::Key_Tab;
+        break;
+      case u'\b':
+        key = Qt::Key_Backspace;
+        break;
+      default:
+        // ASCII letters/digits/punctuation map 1:1 to Qt::Key_* by their
+        // uppercased code point (Qt keys are case-insensitive — the letter case
+        // lives in text()). Non-ASCII gets a best-effort code; text() carries
+        // the actual character for insertion regardless.
+        key = ch.toUpper().unicode();
+        break;
+    }
+    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, s);
+    QCoreApplication::sendEvent(window, &press);
+    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, s);
+    QCoreApplication::sendEvent(window, &release);
+  }
+  QCoreApplication::processEvents();
+}
+
+void InputSimulator::sendKey(QWindow* window, Qt::Key key, Qt::KeyboardModifiers modifiers) {
+  if (!window) {
+    throw std::invalid_argument("sendKey: window cannot be null");
+  }
+  QKeyEvent press(QEvent::KeyPress, key, modifiers);
+  QCoreApplication::sendEvent(window, &press);
+  QKeyEvent release(QEvent::KeyRelease, key, modifiers);
+  QCoreApplication::sendEvent(window, &release);
+  QCoreApplication::processEvents();
 }
 
 }  // namespace qtPilot

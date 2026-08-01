@@ -18,11 +18,13 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDateTime>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
 #include <QWidget>
+#include <QWindow>
 
 namespace qtPilot {
 
@@ -77,18 +79,45 @@ QAccessibleInterface* resolveRef(const QString& ref) {
   return it.value();
 }
 
-/// @brief Get the active window, falling back to first visible top-level widget.
+/// @brief Get the active top-level as a QObject.
+///
+/// Prefers a top-level QWidget (Widgets apps). When there is none — e.g. a pure
+/// Qt Quick app whose only top-level is a QQuickWindow on a QGuiApplication —
+/// falls back to QWindow discovery so Chrome mode works against QML-only apps.
 /// @throws JsonRpcException if no active window found.
-QWidget* getActiveWindowWidget() {
-  QWidget* window = QApplication::activeWindow();
-  if (window)
-    return window;
+QObject* getActiveWindowObject() {
+  auto* coreApp = QCoreApplication::instance();
+  auto* guiApp = qobject_cast<QGuiApplication*>(coreApp);
 
-  // Fall back to first visible top-level widget
-  const auto topLevels = QApplication::topLevelWidgets();
-  for (QWidget* w : topLevels) {
-    if (w->isVisible()) {
-      return w;
+  // Prefer a focused real top-level window (e.g. a QQuickWindow), so a hybrid
+  // app (QApplication hosting a focused QQuickWindow) targets that window. Skip
+  // the internal QWidgetWindow backing store — a Widgets app should resolve to
+  // its QWidget below (the QApplication cast guards the Widgets-only statics).
+  if (guiApp) {
+    if (QWindow* focus = guiApp->focusWindow()) {
+      if (focus->isVisible() && !focus->inherits("QWidgetWindow"))
+        return focus;
+    }
+  }
+
+  if (qobject_cast<QApplication*>(coreApp)) {
+    if (QWidget* window = QApplication::activeWindow())
+      return window;
+
+    // Fall back to first visible top-level widget
+    const auto topLevels = QApplication::topLevelWidgets();
+    for (QWidget* w : topLevels) {
+      if (w->isVisible())
+        return w;
+    }
+  }
+
+  // QWindow fallback for pure Qt Quick apps, skipping QWidgetWindow backing stores.
+  if (guiApp) {
+    const auto windows = guiApp->topLevelWindows();
+    for (QWindow* w : windows) {
+      if (w->isVisible() && !w->inherits("QWidgetWindow"))
+        return w;
     }
   }
 
@@ -310,18 +339,16 @@ void ChromeModeApi::registerReadPageMethod() {
     auto p = parseParams(params);
 
     // If ref_id provided, resolve BEFORE clearing (to scope subtree)
-    QWidget* scopeWidget = nullptr;
+    QObject* scopeObject = nullptr;
     QString refId = p[QStringLiteral("ref_id")].toString();
     if (!refId.isEmpty()) {
       QAccessibleInterface* scopeIface = resolveRef(refId);
-      QObject* obj = scopeIface->object();
-      if (obj)
-        scopeWidget = qobject_cast<QWidget*>(obj);
+      scopeObject = scopeIface->object();
     }
 
     clearRefsInternal();
 
-    QWidget* rootWidget = scopeWidget ? scopeWidget : getActiveWindowWidget();
+    QObject* rootObject = scopeObject ? scopeObject : getActiveWindowObject();
 
     // Build walk options from params
     WalkOptions opts;
@@ -329,7 +356,7 @@ void ChromeModeApi::registerReadPageMethod() {
     opts.maxDepth = p[QStringLiteral("depth")].toInt(15);
     opts.maxChars = p[QStringLiteral("max_chars")].toInt(50000);
 
-    WalkResult result = AccessibilityTreeWalker::walk(rootWidget, opts);
+    WalkResult result = AccessibilityTreeWalker::walk(rootObject, opts);
 
     // Store refs
     storeRefMap(result.refMap);
@@ -543,7 +570,7 @@ void ChromeModeApi::registerFormInputMethod() {
 void ChromeModeApi::registerGetPageTextMethod() {
   m_handler->RegisterMethod(
       QStringLiteral("chr.getPageText"), [](const QString& /*params*/) -> QString {
-        QWidget* window = getActiveWindowWidget();
+        QObject* window = getActiveWindowObject();
 
         QAccessible::setActive(true);
         QAccessibleInterface* rootIface = QAccessible::queryAccessibleInterface(window);
@@ -577,7 +604,7 @@ void ChromeModeApi::registerFindMethod() {
                              QJsonObject{{QStringLiteral("method"), QStringLiteral("chr.find")}});
     }
 
-    QWidget* window = getActiveWindowWidget();
+    QObject* window = getActiveWindowObject();
 
     QAccessible::setActive(true);
     QAccessibleInterface* rootIface = QAccessible::queryAccessibleInterface(window);
@@ -658,7 +685,7 @@ void ChromeModeApi::registerNavigateMethod() {
     }
 
     if (action == QStringLiteral("back") || action == QStringLiteral("forward")) {
-      QWidget* window = getActiveWindowWidget();
+      QObject* window = getActiveWindowObject();
 
       // Find QAction with undo/redo shortcuts
       QString targetShortcut =
@@ -704,29 +731,57 @@ void ChromeModeApi::registerNavigateMethod() {
 void ChromeModeApi::registerTabsContextMethod() {
   m_handler->RegisterMethod(
       QStringLiteral("chr.tabsContext"), [](const QString& /*params*/) -> QString {
-        QWidget* activeWindow = QApplication::activeWindow();
-        const auto topLevels = QApplication::topLevelWidgets();
+        auto geomJson = [](const QRect& g) {
+          return QJsonObject{{QStringLiteral("x"), g.x()},
+                             {QStringLiteral("y"), g.y()},
+                             {QStringLiteral("width"), g.width()},
+                             {QStringLiteral("height"), g.height()}};
+        };
 
         QJsonArray windows;
-        for (QWidget* w : topLevels) {
-          if (!w->isVisible())
-            continue;
 
-          QJsonObject info;
-          info[QStringLiteral("windowTitle")] = w->windowTitle();
-          info[QStringLiteral("className")] = QString::fromUtf8(w->metaObject()->className());
-          QString objName = w->objectName();
-          if (!objName.isEmpty())
-            info[QStringLiteral("objectName")] = objName;
-          info[QStringLiteral("isActive")] = (w == activeWindow);
+        // Widgets apps: enumerate top-level QWidgets.
+        if (qobject_cast<QApplication*>(QCoreApplication::instance())) {
+          QWidget* activeWindow = QApplication::activeWindow();
+          const auto topLevels = QApplication::topLevelWidgets();
+          for (QWidget* w : topLevels) {
+            if (!w->isVisible())
+              continue;
 
-          QRect geom = w->geometry();
-          info[QStringLiteral("geometry")] = QJsonObject{{QStringLiteral("x"), geom.x()},
-                                                         {QStringLiteral("y"), geom.y()},
-                                                         {QStringLiteral("width"), geom.width()},
-                                                         {QStringLiteral("height"), geom.height()}};
+            QJsonObject info;
+            info[QStringLiteral("windowTitle")] = w->windowTitle();
+            info[QStringLiteral("className")] = QString::fromUtf8(w->metaObject()->className());
+            QString objName = w->objectName();
+            if (!objName.isEmpty())
+              info[QStringLiteral("objectName")] = objName;
+            info[QStringLiteral("isActive")] = (w == activeWindow);
+            info[QStringLiteral("geometry")] = geomJson(w->geometry());
 
-          windows.append(info);
+            windows.append(info);
+          }
+        }
+
+        // Pure Qt Quick apps have no top-level QWidgets — enumerate QWindows.
+        if (windows.isEmpty()) {
+          if (auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
+            QWindow* focus = guiApp->focusWindow();
+            const auto topWindows = guiApp->topLevelWindows();
+            for (QWindow* w : topWindows) {
+              if (!w->isVisible())
+                continue;
+
+              QJsonObject info;
+              info[QStringLiteral("windowTitle")] = w->title();
+              info[QStringLiteral("className")] = QString::fromUtf8(w->metaObject()->className());
+              QString objName = w->objectName();
+              if (!objName.isEmpty())
+                info[QStringLiteral("objectName")] = objName;
+              info[QStringLiteral("isActive")] = (w == focus);
+              info[QStringLiteral("geometry")] = geomJson(w->geometry());
+
+              windows.append(info);
+            }
+          }
         }
 
         QJsonObject result;

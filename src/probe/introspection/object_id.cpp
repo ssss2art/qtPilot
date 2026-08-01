@@ -7,9 +7,11 @@
 #include "introspection/qml_inspector.h"
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QMetaProperty>
 #include <QWidget>
+#include <QWindow>
 
 namespace qtPilot {
 
@@ -70,8 +72,33 @@ int getSiblingIndex(QObject* obj) {
 
   QObject* parent = obj->parent();
   if (!parent) {
-    // For top-level objects, we can't easily determine siblings
-    // without more context. Return -1 to indicate no disambiguation needed.
+    // Top-level objects aren't QObject children of anything. For top-level
+    // QWindows (now first-class tree roots), disambiguate among same-class
+    // top-level windows so multiple windows get unique ids (Foo#1, Foo#2)
+    // instead of colliding on a single bare "Foo".
+    if (qobject_cast<QWindow*>(obj)) {
+      auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
+      if (!guiApp) {
+        return -1;
+      }
+      const char* targetClass = obj->metaObject()->className();
+      const auto windows = guiApp->topLevelWindows();
+      int sameClassCount = 0;
+      int indexAmongSameClass = -1;
+      for (QWindow* w : windows) {
+        if (qstrcmp(w->metaObject()->className(), targetClass) == 0) {
+          if (w == obj) {
+            indexAmongSameClass = sameClassCount;
+          }
+          sameClassCount++;
+        }
+      }
+      if (sameClassCount <= 1) {
+        return -1;
+      }
+      return indexAmongSameClass + 1;
+    }
+    // Other parentless objects: no disambiguation context.
     return -1;
   }
 
@@ -118,53 +145,44 @@ QList<QObject*> getTopLevelObjects() {
     result.append(app);
   }
 
+  // Top-level windows (e.g. a QQuickWindow for a pure Qt Quick app) have
+  // parent()==nullptr and are NOT QObject children of the application, so the
+  // parent-based tree walk rooted at the app never reaches them. Add them as
+  // additional roots so qt.objects.tree surfaces QML scenes, and so
+  // findByObjectId can resolve window-rooted IDs.
+  if (auto* guiApp = qobject_cast<QGuiApplication*>(app)) {
+    const auto topWindows = guiApp->topLevelWindows();
+    for (QWindow* w : topWindows) {
+      // Skip hidden/offscreen windows — notably a QQuickWidget's internal render
+      // surface (a non-shown QQuickWindow that is reachable through the widget
+      // hierarchy already) and never-shown transient/popup surfaces.
+      if (!w->isVisible())
+        continue;
+      // Skip the internal backing window of a top-level QWidget: those belong
+      // to the Widgets object graph, not a standalone window root.
+      if (w->inherits("QWidgetWindow"))
+        continue;
+      result.append(w);
+    }
+  }
+
   return result;
 }
 
 /// @brief Match a single ID segment against an object.
+///
+/// A segment matches iff it equals the segment generateIdSegment() would emit
+/// for this object. Delegating to the generator keeps the forward (id creation)
+/// and reverse (id resolution) paths in lockstep — including the QML id priority
+/// and the stripped short type name — so they cannot drift. The previous
+/// hand-rolled matcher never checked qmlId and compared against the full
+/// className (e.g. "QQuickRectangle"), so it could never match a QML segment
+/// (a qmlId, or a stripped "Rectangle"/"Rectangle#2") that the generator emits.
 bool matchesSegment(QObject* obj, const QString& segment) {
   if (!obj) {
     return false;
   }
-
-  // First, check if segment matches objectName
-  if (!obj->objectName().isEmpty() && obj->objectName() == segment) {
-    return true;
-  }
-
-  // Check if segment matches text_* pattern
-  if (segment.startsWith(QLatin1String("text_"))) {
-    QString text = getTextProperty(obj);
-    if (!text.isEmpty()) {
-      QString expectedSegment = QStringLiteral("text_") + sanitizeForId(text);
-      if (segment == expectedSegment) {
-        return true;
-      }
-    }
-  }
-
-  // Check if segment matches ClassName or ClassName#N pattern
-  QString className = QString::fromLatin1(obj->metaObject()->className());
-
-  // Direct class name match (when unique)
-  if (segment == className) {
-    return true;
-  }
-
-  // ClassName#N pattern
-  if (segment.startsWith(className + QLatin1Char('#'))) {
-    QString indexStr = segment.mid(className.length() + 1);
-    bool ok = false;
-    int index = indexStr.toInt(&ok);
-    if (ok && index > 0) {
-      int actualIndex = getSiblingIndex(obj);
-      if (actualIndex == index) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return generateIdSegment(obj) == segment;
 }
 
 /// @brief Find object by path segments starting from a list of candidates.
