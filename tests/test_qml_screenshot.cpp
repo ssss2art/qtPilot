@@ -61,7 +61,8 @@ void TestQmlScreenshot::testQuickWindowUsesQmlCapturePath() {
   if (response.contains(QStringLiteral("error"))) {
     const QString message =
         response[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
-    QVERIFY2(!message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
+    QVERIFY2(!message.contains(QStringLiteral("not a widget, window, or QML item")),
+             qPrintable(message));
     QVERIFY2(!message.contains(QStringLiteral("not rendered")), qPrintable(message));
     return;
   }
@@ -100,7 +101,8 @@ void TestQmlScreenshot::testNonVisualObjectIsRejected() {
 
   const QString message =
       callScreenshot(id)[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
-  QVERIFY2(message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
+  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
+           qPrintable(message));
 }
 
 QTEST_MAIN(TestQmlScreenshot)

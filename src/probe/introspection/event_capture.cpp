@@ -97,14 +97,38 @@ bool EventCapture::eventFilter(QObject* watched, QEvent* event) {
   // Capture events on visual objects only. A pure Qt Quick app has no QWidget
   // anywhere, so restricting to QWidget captured nothing at all there: input is
   // delivered to the QQuickWindow and routed to QQuickItems.
-  const bool isVisual = qobject_cast<QWidget*>(watched) != nullptr
+  if (qobject_cast<QWidget*>(watched) == nullptr) {
 #ifdef QTPILOT_HAS_QML
-                        || qobject_cast<QQuickItem*>(watched) != nullptr ||
-                        qobject_cast<QQuickWindow*>(watched) != nullptr
-#endif
-      ;
-  if (!isVisual) {
+    // Qt Quick dispatches each input event twice: once to the QQuickWindow and
+    // again to the target QQuickItem. Reporting both would double every click
+    // and keystroke and leave the consumer to guess which objectId is the real
+    // target, so take the item -- it is the one that carries a meaningful
+    // objectName/className. The window is only the subject for lifecycle
+    // events, where no item duplicate exists.
+    //
+    // The widget path never had this problem: its window-level receiver is a
+    // QWidgetWindow, which is a QWindow and so was already filtered out.
+    const bool isItem = qobject_cast<QQuickItem*>(watched) != nullptr;
+    const bool isQuickWindow = qobject_cast<QQuickWindow*>(watched) != nullptr;
+    bool accept = isItem;
+    if (isQuickWindow) {
+      switch (event->type()) {
+        case QEvent::Show:
+        case QEvent::Hide:
+        case QEvent::Close:
+        case QEvent::Resize:
+          accept = true;
+          break;
+        default:
+          break;
+      }
+    }
+    if (!accept) {
+      return false;
+    }
+#else
     return false;
+#endif
   }
 
   QJsonObject notification;

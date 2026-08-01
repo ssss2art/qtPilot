@@ -12,6 +12,7 @@
 
 #include <QGuiApplication>
 #include <QJsonDocument>
+#include <QMouseEvent>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QtTest>
@@ -43,6 +44,11 @@ class TestQmlInteraction : public QObject {
 
   void testEventCaptureSeesQuickTargets();
   void testEventCaptureIgnoresNonVisualObjects();
+  void testEventCaptureDoesNotDoubleReportQuickInput();
+
+  void testHitTestOutsideSceneReportsMiss();
+  void testSendKeysWithoutTextOrSequenceIsRejected();
+  void testHitTestRespectsZOrder();
 
  private:
   QJsonObject call(const QString& method, const QJsonObject& params);
@@ -191,7 +197,8 @@ void TestQmlInteraction::testHitTestRejectsNonVisualParent() {
            QJsonObject{{QStringLiteral("parentId"), ObjectRegistry::instance()->objectId(&object)},
                        {QStringLiteral("x"), 1},
                        {QStringLiteral("y"), 1}}));
-  QVERIFY2(message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
+  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
+           qPrintable(message));
 }
 
 // --- click ------------------------------------------------------------------
@@ -230,7 +237,8 @@ void TestQmlInteraction::testClickRejectsNonVisualObject() {
   object.setObjectName(QStringLiteral("nonVisualClickObject"));
   const QString message = errorOf(
       callWithId(QStringLiteral("qtpilot.click"), ObjectRegistry::instance()->objectId(&object)));
-  QVERIFY2(message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
+  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
+           qPrintable(message));
 }
 
 void TestQmlInteraction::testClickOnUnattachedItemIsRejected() {
@@ -268,7 +276,8 @@ void TestQmlInteraction::testSendKeysRejectsNonVisualObject() {
       call(QStringLiteral("qtpilot.sendKeys"),
            QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(&object)},
                        {QStringLiteral("text"), QStringLiteral("x")}}));
-  QVERIFY2(message.contains(QStringLiteral("not a widget or QML item")), qPrintable(message));
+  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
+           qPrintable(message));
 }
 
 // --- event capture ----------------------------------------------------------
@@ -286,7 +295,7 @@ void TestQmlInteraction::testEventCaptureSeesQuickTargets() {
 
   int captured = 0;
   auto* capture = EventCapture::instance();
-  const auto conn = connect(capture, &EventCapture::eventCaptured,
+  const auto conn = connect(capture, &EventCapture::eventCaptured, this,
                             [&captured](const QJsonObject&) { ++captured; });
   capture->startCapture();
 
@@ -304,7 +313,7 @@ void TestQmlInteraction::testEventCaptureIgnoresNonVisualObjects() {
   QObject plain;
   int captured = 0;
   auto* capture = EventCapture::instance();
-  const auto conn = connect(capture, &EventCapture::eventCaptured,
+  const auto conn = connect(capture, &EventCapture::eventCaptured, this,
                             [&captured](const QJsonObject&) { ++captured; });
   capture->startCapture();
 
@@ -316,6 +325,103 @@ void TestQmlInteraction::testEventCaptureIgnoresNonVisualObjects() {
   disconnect(conn);
 
   QCOMPARE(captured, 0);
+}
+
+void TestQmlInteraction::testEventCaptureDoesNotDoubleReportQuickInput() {
+  // Qt Quick dispatches each input event to the QQuickWindow *and* the target
+  // item. Reporting both doubles every click and leaves the consumer guessing
+  // which objectId is the real target.
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 150);
+  auto* item = new QQuickItem(window.contentItem());
+  item->setObjectName(QStringLiteral("dedupItem"));
+  item->setSize(QSizeF(50, 50));
+  window.show();
+  QCoreApplication::processEvents();
+
+  int captured = 0;
+  auto* capture = EventCapture::instance();
+  const auto conn = connect(capture, &EventCapture::eventCaptured, this,
+                            [&captured](const QJsonObject&) { ++captured; });
+  capture->startCapture();
+
+  QMouseEvent press(QEvent::MouseButtonPress, QPointF(10, 10), QPointF(10, 10), Qt::LeftButton,
+                    Qt::LeftButton, Qt::NoModifier);
+  QCoreApplication::sendEvent(&window, &press);  // window-level dispatch
+  QCoreApplication::sendEvent(item, &press);     // item-level dispatch
+
+  capture->stopCapture();
+  disconnect(conn);
+
+  // Only the item-level dispatch is reported.
+  QCOMPARE(captured, 1);
+}
+
+void TestQmlInteraction::testHitTestOutsideSceneReportsMiss() {
+  // itemAt used to fall back to the content item, so hitTest could never say
+  // "nothing here" for a QML parent -- any coordinate looked like a hit.
+  QQuickWindow window;
+  window.setObjectName(QStringLiteral("missWindow"));
+  window.setGeometry(0, 0, 200, 200);
+  window.show();
+  QCoreApplication::processEvents();
+
+  const QJsonObject result =
+      call(QStringLiteral("qtpilot.hitTest"),
+           QJsonObject{{QStringLiteral("parentId"), ObjectRegistry::instance()->objectId(&window)},
+                       {QStringLiteral("x"), -5000},
+                       {QStringLiteral("y"), -5000}})[QStringLiteral("result")]
+          .toObject();
+
+  QVERIFY2(
+      result[QStringLiteral("id")].isNull(),
+      qPrintable(
+          QStringLiteral("expected null, got: %1").arg(result[QStringLiteral("id")].toString())));
+}
+
+void TestQmlInteraction::testHitTestRespectsZOrder() {
+  // childItems() is document order; Qt Quick stacks by z. A raised earlier
+  // sibling must win over a later one.
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 200);
+  auto* raised = new QQuickItem(window.contentItem());
+  raised->setObjectName(QStringLiteral("raisedItem"));
+  raised->setPosition(QPointF(0, 0));
+  raised->setSize(QSizeF(100, 100));
+  raised->setZ(10);
+
+  auto* later = new QQuickItem(window.contentItem());
+  later->setObjectName(QStringLiteral("laterItem"));
+  later->setPosition(QPointF(0, 0));
+  later->setSize(QSizeF(100, 100));  // same rect, added after, but z = 0
+  window.show();
+  QCoreApplication::processEvents();
+
+  const QJsonObject result =
+      call(QStringLiteral("qtpilot.hitTest"),
+           QJsonObject{{QStringLiteral("parentId"), ObjectRegistry::instance()->objectId(&window)},
+                       {QStringLiteral("x"), 50},
+                       {QStringLiteral("y"), 50}})[QStringLiteral("result")]
+          .toObject();
+
+  QCOMPARE(result[QStringLiteral("id")].toString(), ObjectRegistry::instance()->objectId(raised));
+}
+
+void TestQmlInteraction::testSendKeysWithoutTextOrSequenceIsRejected() {
+  // A no-op that reports success hides a typo'd parameter name, and on the QML
+  // path it would still move focus as a side effect.
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 150);
+  auto* item = new QQuickItem(window.contentItem());
+  item->setObjectName(QStringLiteral("emptyKeysItem"));
+  item->setSize(QSizeF(50, 50));
+  window.show();
+  QCoreApplication::processEvents();
+
+  const QString message = errorOf(
+      call(QStringLiteral("qtpilot.sendKeys"),
+           QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(item)}}));
+  QVERIFY2(message.contains(QStringLiteral("non-empty")), qPrintable(message));
 }
 
 QTEST_MAIN(TestQmlInteraction)

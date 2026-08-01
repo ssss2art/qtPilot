@@ -7,6 +7,8 @@
 
 #include <QJsonObject>
 #include <QMutex>
+#include <atomic>
+
 #include <QObject>
 #include <QSet>
 
@@ -73,7 +75,7 @@ class QTPILOT_EXPORT EventCapture : public QObject {
   /// Activate).
   QJsonObject buildWindowNotification(QObject* widget, QEvent* event, const QString& typeName);
 
-  bool m_capturing = false;
+  std::atomic<bool> m_capturing = false;
 
   /// @brief Set of QEvent::Type values we capture.
   QSet<int> m_capturedTypes;
