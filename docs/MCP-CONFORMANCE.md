@@ -67,19 +67,33 @@ pip install --pre 'qtpilot[mcp-next]'
 uvx --prerelease=allow --from 'qtpilot[mcp-next]' qtpilot serve
 ```
 
-qtPilot's own test suite passes against all three package sets. One behavioural
-difference is **not** hidden by the compatibility layer:
+qtPilot's own test suite passes against all three package sets, with **no
+behavioural differences** in the tool surface. `qtpilot_set_mode` narrows
+`tools/list` on every generation — see below for how, since the mechanism
+differs.
 
-> **`qtpilot_set_mode` cannot narrow the tool list on FastMCP 4.** FastMCP 4
-> removed `remove_tool`, because a tool surface that mutates per-connection
-> conflicts with the stateless protocol's cacheable, deterministically-ordered
-> `tools/list`. On FastMCP 4 the *active mode still changes* — it governs which
-> probe APIs qtPilot drives — but inactive-mode tools remain listed, and the
-> tool's response says so via `tools_removed: false` and a `note` field.
-
-Tracking work and the planned replacement (a visibility transform over a static
-tool set) are in
+Design notes and the migration record are in
 [`docs/plans/2026-08-01-mcp-2026-07-28-migration.md`](plans/2026-08-01-mcp-2026-07-28-migration.md).
+
+### How mode switching narrows the tool surface
+
+FastMCP 4 removed `remove_tool`, because a tool set that mutates per-connection
+conflicts with the stateless protocol's cacheable, deterministically-ordered
+`tools/list`. qtPilot therefore uses two mechanisms:
+
+| SDK | Mechanism | Registration |
+|---|---|---|
+| FastMCP 2.x | register/unregister tools on switch | only the active mode |
+| FastMCP 3.x, 4.x | **visibility transform** filters `tools/list` per request | all modes, once at startup |
+
+On the transform path, `qtpilot_set_mode` changes a single field — no
+registration is touched. Tools hidden by the active mode are also unresolvable,
+so a client holding a stale tool list gets an error rather than reaching a tool
+that is no longer exposed. Session tools (`qtpilot_*`) and recording tools
+belong to no mode and stay visible in all of them.
+
+This is the spec-aligned shape: registration is static and deterministically
+ordered, and the exposed surface is a pure function of the active mode.
 
 ## Transport & capabilities
 

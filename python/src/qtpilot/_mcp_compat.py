@@ -29,6 +29,7 @@ attribute.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -173,6 +174,94 @@ def remove_tools(mcp: FastMCP, names: list[str]) -> list[str]:
             continue
         removed.append(name)
     return removed
+
+
+def supports_transforms(mcp: FastMCP) -> bool:
+    """True when the SDK can filter the tool surface with a transform.
+
+    FastMCP 3 introduced the provider/transform architecture. It is the
+    sanctioned replacement for mutating the registered tool set: a transform
+    filters each ``tools/list`` at request time, leaving registration itself
+    static and deterministically ordered.
+    """
+    if not callable(getattr(mcp, "add_transform", None)):
+        return False
+    try:
+        import fastmcp.server.transforms  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _build_mode_visibility_transform(
+    get_mode: Callable[[], str],
+    mode_prefixes: Mapping[str, Sequence[str]],
+) -> Any:
+    """Build a transform hiding tools that don't belong to the active mode.
+
+    Defined inside the function because ``fastmcp.server.transforms`` does not
+    exist before FastMCP 3.
+
+    ``get_mode`` is read on every request rather than captured, so switching
+    modes takes effect immediately without re-registering anything.
+    """
+    from fastmcp.server.transforms import Transform
+
+    class ModeVisibility(Transform):
+        """Filters mode-owned tools down to the active mode."""
+
+        def __repr__(self) -> str:
+            return f"ModeVisibility(mode={get_mode()!r})"
+
+        @staticmethod
+        def _owner(name: str) -> str | None:
+            """Return the mode owning ``name``, or None if it is mode-agnostic."""
+            for mode, prefixes in mode_prefixes.items():
+                if any(name.startswith(p) for p in prefixes):
+                    return mode
+            return None
+
+        def _visible(self, name: str) -> bool:
+            owner = self._owner(name)
+            if owner is None:
+                # Session tools (qtpilot_*) and recording tools belong to no
+                # mode and must stay reachable in every mode.
+                return True
+            mode = get_mode()
+            return mode == "all" or mode == owner
+
+        async def list_tools(self, tools):
+            return [t for t in tools if self._visible(t.name)]
+
+        async def get_tool(self, name, call_next, *, version=None):
+            tool = await call_next(name, version=version)
+            if tool is None or not self._visible(name):
+                # Hide from resolution too, so a stale client cannot call a
+                # tool that no longer appears in tools/list.
+                return None
+            return tool
+
+    return ModeVisibility()
+
+
+def install_mode_visibility(
+    mcp: FastMCP,
+    get_mode: Callable[[], str],
+    mode_prefixes: Mapping[str, Sequence[str]],
+) -> bool:
+    """Install mode-based tool filtering on ``mcp``. True if it took effect.
+
+    Returns False on SDK generations without transforms, leaving the caller to
+    fall back to registering and unregistering tools.
+    """
+    if not supports_transforms(mcp):
+        return False
+    try:
+        mcp.add_transform(_build_mode_visibility_transform(get_mode, mode_prefixes))
+    except Exception as exc:  # noqa: BLE001 - never block startup over this
+        logger.warning("Could not install mode visibility transform: %s", exc)
+        return False
+    return True
 
 
 def describe() -> dict[str, Any]:

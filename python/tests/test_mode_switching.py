@@ -7,16 +7,20 @@ import pytest
 from fastmcp import FastMCP
 
 from qtpilot import _mcp_compat as mcp_compat
-from qtpilot.server import ServerState, _MODE_PREFIXES, _register_mode_tools_if_absent
-
-# Tool removal is unavailable from FastMCP 4 on, so a mode switch can no longer
-# narrow the exposed tool list. Assertions about tools *disappearing* only hold
-# on SDK generations that can actually unregister them.
-_CAN_REMOVE = mcp_compat.supports_tool_removal(FastMCP("capability-probe"))
-requires_removal = pytest.mark.skipif(
-    not _CAN_REMOVE,
-    reason=f"FastMCP {mcp_compat.fastmcp_version()} cannot remove tools",
+from qtpilot.server import (
+    _MODE_PREFIXES,
+    _MODE_VISIBILITY,
+    ServerState,
+    _register_mode_tools_if_absent,
 )
+
+# A mode switch narrows the tool surface either by filtering (transforms, the
+# FastMCP 3+ path) or by unregistering tools (FastMCP 2.x). Every supported
+# generation can do one or the other, so narrowing is always expected — the
+# assertions below are unconditional on purpose.
+_CAN_NARROW = mcp_compat.supports_transforms(
+    FastMCP("capability-probe")
+) or mcp_compat.supports_tool_removal(FastMCP("capability-probe"))
 
 
 async def _tool_names(mcp: FastMCP) -> set[str]:
@@ -25,11 +29,25 @@ async def _tool_names(mcp: FastMCP) -> set[str]:
 
 @pytest.fixture
 def state():
-    """Create a ServerState with all three mode tool sets registered."""
+    """Create a ServerState with all three mode tool sets registered.
+
+    Mirrors what ``create_server`` does, including installing the mode
+    visibility transform, so these tests exercise the real narrowing path
+    rather than a raw server that would silently fall back to mutation.
+    """
     mcp = FastMCP("test")
+    state = ServerState(mcp, mode="all")
+    _MODE_VISIBILITY[mcp] = mcp_compat.install_mode_visibility(
+        mcp, lambda: state.mode, _MODE_PREFIXES
+    )
     for mode_key in _MODE_PREFIXES:
         _register_mode_tools_if_absent(mcp, mode_key)
-    return ServerState(mcp, mode="all")
+    return state
+
+
+def test_every_supported_sdk_can_narrow_the_surface():
+    """Guards the assumption the rest of this module is built on."""
+    assert _CAN_NARROW
 
 
 class TestSetMode:
@@ -42,7 +60,6 @@ class TestSetMode:
         names = await _tool_names(state.mcp)
         assert any(n.startswith("qt_") for n in names)
 
-    @requires_removal
     @pytest.mark.asyncio
     async def test_switch_from_all_to_native_hides_others(self, state):
         await state.set_mode("native")
@@ -50,7 +67,6 @@ class TestSetMode:
         assert not any(n.startswith("cu_") for n in names)
         assert not any(n.startswith("chr_") for n in names)
 
-    @requires_removal
     @pytest.mark.asyncio
     async def test_switch_from_all_to_cu(self, state):
         await state.set_mode("cu")
@@ -59,7 +75,6 @@ class TestSetMode:
         assert not any(n.startswith("qt_") for n in names)
         assert not any(n.startswith("chr_") for n in names)
 
-    @requires_removal
     @pytest.mark.asyncio
     async def test_switch_from_all_to_chrome(self, state):
         await state.set_mode("chrome")
@@ -78,7 +93,6 @@ class TestSetMode:
         assert any(n.startswith("cu_") for n in names)
         assert any(n.startswith("chr_") for n in names)
 
-    @requires_removal
     @pytest.mark.asyncio
     async def test_switch_from_native_to_cu(self, state):
         await state.set_mode("native")
@@ -99,16 +113,13 @@ class TestSetMode:
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_mode_still_changes_without_removal(self, state):
-        """The active mode tracks the request even when tools cannot be removed."""
+    async def test_switch_reports_no_removal_caveat(self, state):
+        """Narrowing works on every supported SDK, so no caveat is emitted."""
         result = await state.set_mode("native")
         assert state.mode == "native"
         assert result["mode"] == "native"
-        if not _CAN_REMOVE:
-            # The response must admit the tool list did not narrow, rather than
-            # implying a surface the client can still see was withdrawn.
-            assert result["tools_removed"] is False
-            assert "note" in result
+        assert "tools_removed" not in result
+        assert "note" not in result
 
     @pytest.mark.asyncio
     async def test_no_duplicate_tools_on_roundtrip(self, state):

@@ -61,6 +61,14 @@ class ServerState:
         old_mode = self.mode
         result: dict = {"mode": new_mode, "previous_mode": old_mode, "changed": True}
 
+        if _uses_mode_visibility(self.mcp):
+            # Every mode's tools are registered up front and a transform filters
+            # tools/list per request, so switching is just moving this field.
+            # Registration stays static and deterministically ordered, which is
+            # what MCP 2026-07-28 wants from a cacheable tools/list.
+            self.mode = new_mode
+            return result
+
         if new_mode == "all":
             # Switching to "all": just add any missing mode tool sets
             for mode_key in _MODE_PREFIXES:
@@ -200,6 +208,17 @@ _REGISTERED_MODES: MutableMapping[FastMCP, set[str]] = weakref.WeakKeyDictionary
 def _registered_modes(mcp: FastMCP) -> set[str]:
     """Return the mutable set of mode keys registered on ``mcp``."""
     return _REGISTERED_MODES.setdefault(mcp, set())
+
+
+# Servers whose tool surface is filtered by a mode-visibility transform rather
+# than by registering and unregistering tools. Weak keys for the same reason as
+# _REGISTERED_MODES above.
+_MODE_VISIBILITY: MutableMapping[FastMCP, bool] = weakref.WeakKeyDictionary()
+
+
+def _uses_mode_visibility(mcp: FastMCP) -> bool:
+    """True when ``mcp`` filters tools by transform instead of by mutation."""
+    return _MODE_VISIBILITY.get(mcp, False)
 
 
 async def _remove_tools_by_prefixes(mcp: FastMCP, prefixes: list[str]) -> list[str]:
@@ -399,8 +418,18 @@ def create_server(
     from qtpilot.tools.logging_tools import register_logging_tools
     register_logging_tools(mcp)
 
-    # Register mode-specific tools
-    _register_tools_for_mode(mcp, mode)
+    # Register mode-specific tools.
+    #
+    # Where the SDK supports transforms, register *every* mode up front and let
+    # a transform filter tools/list down to the active mode. That keeps
+    # registration static and deterministically ordered — required for the
+    # cacheable tools/list of MCP 2026-07-28 — and is the only way to narrow the
+    # surface on FastMCP 4, which dropped remove_tool. Older SDKs fall back to
+    # registering just the active mode and mutating on switch.
+    _MODE_VISIBILITY[mcp] = mcp_compat.install_mode_visibility(
+        mcp, lambda: get_state().mode, _MODE_PREFIXES
+    )
+    _register_tools_for_mode(mcp, "all" if _uses_mode_visibility(mcp) else mode)
 
     # Register status resource
     from qtpilot.status import register_status_resource
