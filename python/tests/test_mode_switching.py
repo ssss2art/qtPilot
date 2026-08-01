@@ -6,11 +6,21 @@ import pytest
 
 from fastmcp import FastMCP
 
+from qtpilot import _mcp_compat as mcp_compat
 from qtpilot.server import ServerState, _MODE_PREFIXES, _register_mode_tools_if_absent
 
+# Tool removal is unavailable from FastMCP 4 on, so a mode switch can no longer
+# narrow the exposed tool list. Assertions about tools *disappearing* only hold
+# on SDK generations that can actually unregister them.
+_CAN_REMOVE = mcp_compat.supports_tool_removal(FastMCP("capability-probe"))
+requires_removal = pytest.mark.skipif(
+    not _CAN_REMOVE,
+    reason=f"FastMCP {mcp_compat.fastmcp_version()} cannot remove tools",
+)
 
-def _tool_names(mcp: FastMCP) -> set[str]:
-    return set(mcp._tool_manager._tools.keys())
+
+async def _tool_names(mcp: FastMCP) -> set[str]:
+    return set(await mcp_compat.list_tool_names(mcp))
 
 
 @pytest.fixture
@@ -23,90 +33,122 @@ def state():
 
 
 class TestSetMode:
-    def test_switch_from_all_to_native(self, state):
-        result = state.set_mode("native")
+    @pytest.mark.asyncio
+    async def test_switch_from_all_to_native(self, state):
+        result = await state.set_mode("native")
         assert result["changed"] is True
         assert result["mode"] == "native"
         assert result["previous_mode"] == "all"
-        names = _tool_names(state.mcp)
+        names = await _tool_names(state.mcp)
         assert any(n.startswith("qt_") for n in names)
+
+    @requires_removal
+    @pytest.mark.asyncio
+    async def test_switch_from_all_to_native_hides_others(self, state):
+        await state.set_mode("native")
+        names = await _tool_names(state.mcp)
         assert not any(n.startswith("cu_") for n in names)
         assert not any(n.startswith("chr_") for n in names)
 
-    def test_switch_from_all_to_cu(self, state):
-        state.set_mode("cu")
-        names = _tool_names(state.mcp)
+    @requires_removal
+    @pytest.mark.asyncio
+    async def test_switch_from_all_to_cu(self, state):
+        await state.set_mode("cu")
+        names = await _tool_names(state.mcp)
         assert any(n.startswith("cu_") for n in names)
         assert not any(n.startswith("qt_") for n in names)
         assert not any(n.startswith("chr_") for n in names)
 
-    def test_switch_from_all_to_chrome(self, state):
-        state.set_mode("chrome")
-        names = _tool_names(state.mcp)
+    @requires_removal
+    @pytest.mark.asyncio
+    async def test_switch_from_all_to_chrome(self, state):
+        await state.set_mode("chrome")
+        names = await _tool_names(state.mcp)
         assert any(n.startswith("chr_") for n in names)
         assert not any(n.startswith("qt_") for n in names)
         assert not any(n.startswith("cu_") for n in names)
 
-    def test_switch_from_native_to_all(self, state):
-        state.set_mode("native")
-        result = state.set_mode("all")
+    @pytest.mark.asyncio
+    async def test_switch_from_native_to_all(self, state):
+        await state.set_mode("native")
+        result = await state.set_mode("all")
         assert result["changed"] is True
-        names = _tool_names(state.mcp)
+        names = await _tool_names(state.mcp)
         assert any(n.startswith("qt_") for n in names)
         assert any(n.startswith("cu_") for n in names)
         assert any(n.startswith("chr_") for n in names)
 
-    def test_switch_from_native_to_cu(self, state):
-        state.set_mode("native")
-        state.set_mode("cu")
-        names = _tool_names(state.mcp)
+    @requires_removal
+    @pytest.mark.asyncio
+    async def test_switch_from_native_to_cu(self, state):
+        await state.set_mode("native")
+        await state.set_mode("cu")
+        names = await _tool_names(state.mcp)
         assert any(n.startswith("cu_") for n in names)
         assert not any(n.startswith("qt_") for n in names)
 
-    def test_same_mode_no_change(self, state):
-        result = state.set_mode("all")
+    @pytest.mark.asyncio
+    async def test_same_mode_no_change(self, state):
+        result = await state.set_mode("all")
         assert result["changed"] is False
         assert result["mode"] == "all"
 
-    def test_invalid_mode_returns_error(self, state):
-        result = state.set_mode("invalid")
+    @pytest.mark.asyncio
+    async def test_invalid_mode_returns_error(self, state):
+        result = await state.set_mode("invalid")
         assert "error" in result
 
-    def test_no_duplicate_tools_on_roundtrip(self, state):
+    @pytest.mark.asyncio
+    async def test_mode_still_changes_without_removal(self, state):
+        """The active mode tracks the request even when tools cannot be removed."""
+        result = await state.set_mode("native")
+        assert state.mode == "native"
+        assert result["mode"] == "native"
+        if not _CAN_REMOVE:
+            # The response must admit the tool list did not narrow, rather than
+            # implying a surface the client can still see was withdrawn.
+            assert result["tools_removed"] is False
+            assert "note" in result
+
+    @pytest.mark.asyncio
+    async def test_no_duplicate_tools_on_roundtrip(self, state):
         """Switching away and back should not duplicate tools."""
-        initial = _tool_names(state.mcp)
-        state.set_mode("native")
-        state.set_mode("all")
-        after = _tool_names(state.mcp)
+        initial = await _tool_names(state.mcp)
+        await state.set_mode("native")
+        await state.set_mode("all")
+        after = await _tool_names(state.mcp)
         assert initial == after
 
 
 class TestCreateServerModes:
-    def test_default_mode_is_native(self):
+    @pytest.mark.asyncio
+    async def test_default_mode_is_native(self):
         from qtpilot.server import create_server, get_state
 
         mcp = create_server()
         state = get_state()
         assert state.mode == "native"
-        names = _tool_names(mcp)
+        names = await _tool_names(mcp)
         assert any(n.startswith("qt_") for n in names)
         assert not any(n.startswith("cu_") for n in names)
         assert not any(n.startswith("chr_") for n in names)
 
-    def test_all_mode_registers_everything(self):
+    @pytest.mark.asyncio
+    async def test_all_mode_registers_everything(self):
         from qtpilot.server import create_server
 
         mcp = create_server(mode="all")
-        names = _tool_names(mcp)
+        names = await _tool_names(mcp)
         assert any(n.startswith("qt_") for n in names)
         assert any(n.startswith("cu_") for n in names)
         assert any(n.startswith("chr_") for n in names)
 
-    def test_discovery_tools_always_registered(self):
+    @pytest.mark.asyncio
+    async def test_discovery_tools_always_registered(self):
         from qtpilot.server import create_server
 
         mcp = create_server(mode="native")
-        names = _tool_names(mcp)
+        names = await _tool_names(mcp)
         assert "qtpilot_connect_probe" in names
         assert "qtpilot_set_mode" in names
         assert "qtpilot_status" in names
@@ -119,8 +161,9 @@ class TestQtpilotStatus:
         from qtpilot.server import create_server
 
         mcp = create_server(mode="native")
-        status_fn = mcp._tool_manager._tools["qtpilot_status"].fn
-        result = await status_fn(ctx=None)
+        tool = await mcp_compat.find_tool(mcp, "qtpilot_status")
+        assert tool is not None
+        result = await tool.fn(ctx=None)
 
         assert "mode" in result
         assert result["mode"] == "native"
@@ -134,10 +177,11 @@ class TestQtpilotStatus:
         assert "probes" in result["discovery"]
         assert isinstance(result["discovery"]["probes"], list)
 
-    def test_recording_tools_always_registered(self):
+    @pytest.mark.asyncio
+    async def test_recording_tools_always_registered(self):
         from qtpilot.server import create_server
 
         mcp = create_server(mode="cu")
-        names = _tool_names(mcp)
+        names = await _tool_names(mcp)
         assert "qtpilot_recording_start" in names
         assert "qtpilot_recording_stop" in names

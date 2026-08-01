@@ -50,7 +50,30 @@ qtpilot serve --demo
 
 This downloads everything you need — probe, launcher, and a bundled test app with Qt runtime. Once running, Claude can interact with the test app. Try asking "Show me the widget tree" or "Fill out the form with my name."
 
-### Option 1: pip install (Recommended)
+### Option 1: uvx (no install)
+
+[uv](https://docs.astral.sh/uv/) runs qtPilot in a throwaway, isolated
+environment — nothing lands in your global or project Python.
+
+```bash
+# Run straight from PyPI
+uvx qtpilot download-tools --qt-version 6.8
+uvx qtpilot serve --mode native --target /path/to/your-qt-app
+```
+
+Because each `uvx` invocation resolves its own environment, this is also how you
+pick an MCP protocol revision without disturbing anything else:
+
+```bash
+# MCP 2026-07-28 (stateless). FastMCP 4 is a pre-release, hence --prerelease.
+uvx --prerelease=allow --from 'qtpilot[mcp-next]' qtpilot serve --mode all
+```
+
+To wire it into an MCP client, use [`.mcp.uvx.json`](.mcp.uvx.json) instead of
+`.mcp.json`. See [docs/MCP-CONFORMANCE.md](docs/MCP-CONFORMANCE.md) for what
+each revision changes.
+
+### Option 2: pip install
 
 ```bash
 pip install qtpilot
@@ -64,7 +87,7 @@ qtpilot serve --mode native --target /path/to/your-qt-app
 
 See [python/README.md](python/README.md) for complete CLI documentation.
 
-### Option 2: Build from Source
+### Option 3: Build from Source
 
 ```bash
 git clone https://github.com/ssss2art/qtPilot.git

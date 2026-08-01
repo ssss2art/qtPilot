@@ -207,6 +207,31 @@ jobs:
 
   python:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Default resolve. Whatever pip picks inside fastmcp>=2.9,<5 without
+          # pre-releases -- the install path a user gets today.
+          - name: default
+            extras: "dev"
+            pip_flags: ""
+            expect_revision: ""
+          # MCP 2025-11-25 (FastMCP 2.x/3.x).
+          - name: mcp-stable
+            extras: "dev,mcp-stable"
+            pip_flags: ""
+            expect_revision: "2025-11-25"
+          # MCP 2026-07-28 (FastMCP 4). Pre-release until FastMCP 4 GAs, so this
+          # job is allowed to fail without failing the workflow.
+          - name: mcp-next
+            extras: "dev,mcp-next"
+            pip_flags: "--pre"
+            expect_revision: "2026-07-28"
+    name: python (${{ matrix.name }})
+    # The 2026-07-28 path tracks an upstream beta; a broken pre-release upstream
+    # must not redden the whole workflow. Drop this when FastMCP 4 ships stable.
+    continue-on-error: ${{ matrix.name == 'mcp-next' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -215,8 +240,33 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install and test
+      - name: Install
         working-directory: python
+        run: pip install ${{ matrix.pip_flags }} -e ".[${{ matrix.extras }}]"
+
+      - name: Report resolved MCP stack
+        working-directory: python
+        run: python -c "import qtpilot._mcp_compat as c; print(c.describe())"
+
+      - name: Assert MCP protocol revision
+        if: matrix.expect_revision != ''
+        working-directory: python
+        env:
+          EXPECTED: ${{ matrix.expect_revision }}
         run: |
-          pip install -e ".[dev]"
-          pytest -v
+          python - <<'PY'
+          import os, sys
+          import qtpilot._mcp_compat as c
+          expected = os.environ["EXPECTED"]
+          actual = c.protocol_revision()
+          if actual != expected:
+              sys.exit(
+                  f"Expected MCP revision {expected}, got {actual} "
+                  f"(fastmcp {c.fastmcp_version()})"
+              )
+          print(f"OK: {actual} via fastmcp {c.fastmcp_version()}")
+          PY
+
+      - name: Test
+        working-directory: python
+        run: pytest -v

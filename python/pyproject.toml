@@ -26,13 +26,38 @@ classifiers = [
 ]
 dependencies = [
     # fastmcp.server.middleware (used by logging_middleware) requires >= 2.9.
-    "fastmcp>=2.9,<3",
+    #
+    # The range spans two MCP protocol revisions — FastMCP 2.x/3.x resolve an
+    # `mcp` SDK advertising 2025-11-25, FastMCP 4 advertises the stateless
+    # 2026-07-28. qtPilot supports both (see qtpilot/_mcp_compat.py). Pick one
+    # explicitly with the `mcp-stable` / `mcp-next` extras below rather than
+    # letting the resolver decide. See docs/MCP-CONFORMANCE.md.
+    "fastmcp>=2.9,<5",
     # websockets.asyncio.client (used by connection) requires >= 13.
     "websockets>=13",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
+# Pin the MCP revision explicitly. These two extras are mutually exclusive.
+#
+#   mcp-stable -> MCP 2025-11-25 (FastMCP 2.x/3.x) — the conservative choice
+#   mcp-next   -> MCP 2026-07-28 (FastMCP 4)       — stateless core
+#
+# FastMCP 4 is a pre-release as of 2026-08-01, so mcp-next needs pre-releases
+# enabled:
+#   pip install --pre 'qtpilot[mcp-next]'
+#   uvx --prerelease=allow --from 'qtpilot[mcp-next]' qtpilot serve
+mcp-stable = ["fastmcp<4"]
+mcp-next = ["fastmcp>=4.0.0b1,<5"]
+
+[tool.uv]
+# mcp-stable and mcp-next pin opposite sides of the FastMCP 4 boundary, so they
+# can never resolve together. Declaring the conflict lets uv lock each one
+# separately instead of failing the whole resolution.
+conflicts = [[{ extra = "mcp-stable" }, { extra = "mcp-next" }]]
+# FastMCP 4 is still a beta; without this uv refuses to consider it at all.
+prerelease = "allow"
 
 [project.urls]
 Homepage = "https://github.com/ssss2art/qtPilot"

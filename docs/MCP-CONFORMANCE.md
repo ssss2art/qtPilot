@@ -4,10 +4,12 @@ This document states, explicitly, which revision of the **Model Context Protocol
 (MCP)** the qtPilot MCP server targets and ships, so the moving spec doesn't
 leave the project's conformance ambiguous.
 
-> **TL;DR** — qtPilot's MCP server advertises MCP protocol revision
-> **`2025-11-25`** and negotiates down to any client back to **`2024-11-05`**.
-> The revision is provided by the official MCP Python SDK that FastMCP depends
-> on; qtPilot does not implement the wire protocol itself.
+> **TL;DR** — qtPilot supports **two** MCP revisions from one codebase.
+> A default install advertises **`2025-11-25`**. Installing the `mcp-next`
+> extra advertises **`2026-07-28`** (the stateless revision). Both negotiate
+> down to clients as old as **`2024-11-05`**. The revision is provided by the
+> official MCP Python SDK that FastMCP depends on; qtPilot does not implement
+> the wire protocol itself.
 
 ## Two different "protocols" — don't conflate them
 
@@ -31,31 +33,67 @@ revisions come entirely from the resolved `mcp` SDK.
 Declared dependency (`python/pyproject.toml`):
 
 ```
-fastmcp>=2.9,<3      # -> pulls mcp>=1.24,<2
+fastmcp>=2.9,<5              # spans both revisions
+qtpilot[mcp-stable]          # -> fastmcp<4      -> MCP 2025-11-25
+qtpilot[mcp-next]            # -> fastmcp>=4.0.0b1 -> MCP 2026-07-28
 ```
 
-The MCP revision therefore tracks whatever `mcp` version resolves inside that
-range. As verified on **2026-07-22** (`fastmcp 2.14.7`, `mcp 1.28.1`):
+Verified empirically on **2026-08-01** by installing each set into a clean venv
+and reading `mcp.types.LATEST_PROTOCOL_VERSION`:
 
-| Field (`mcp.shared.version`) | Value |
-|---|---|
-| `LATEST_PROTOCOL_VERSION` (advertised by the server) | **`2025-11-25`** |
-| `SUPPORTED_PROTOCOL_VERSIONS` (negotiable) | `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` |
-| `DEFAULT_NEGOTIATED_VERSION` (fallback if client sends none) | `2025-03-26` |
+| Package set | `LATEST_PROTOCOL_VERSION` | Extra |
+|---|---|---|
+| `fastmcp` 2.14.7 / `mcp` 1.28.1 | `2025-11-25` | `mcp-stable` |
+| `fastmcp` 3.4.5 / `mcp` 1.29.0 | `2025-11-25` | `mcp-stable` (default resolve) |
+| `fastmcp` 4.0.0b1 / `mcp` 2.0.0 | **`2026-07-28`** | `mcp-next` |
 
-**Behavior:** on `initialize`, the server offers `2025-11-25`; if the client
-requests an older supported revision, the SDK negotiates down to it. A client
-older than `2024-11-05` is not supported.
+Note that **FastMCP 3.x does not move the protocol** — it is an architectural
+release (providers/transforms). Only FastMCP 4 reaches `2026-07-28`.
 
-Spec reference for the primary target: <https://modelcontextprotocol.io/specification/2025-11-25>
+`DEFAULT_NEGOTIATED_VERSION` (the fallback when a client sends no version) is
+`2025-03-26` on every set above.
+
+Spec references:
+[`2025-11-25`](https://modelcontextprotocol.io/specification/2025-11-25) ·
+[`2026-07-28`](https://modelcontextprotocol.io/specification/2026-07-28)
+
+## Status of `2026-07-28` support
+
+**FastMCP 4 is a pre-release as of 2026-08-01.** The `mcp-next` extra is
+therefore opt-in and requires pre-releases to be enabled:
+
+```bash
+pip install --pre 'qtpilot[mcp-next]'
+uvx --prerelease=allow --from 'qtpilot[mcp-next]' qtpilot serve
+```
+
+qtPilot's own test suite passes against all three package sets. One behavioural
+difference is **not** hidden by the compatibility layer:
+
+> **`qtpilot_set_mode` cannot narrow the tool list on FastMCP 4.** FastMCP 4
+> removed `remove_tool`, because a tool surface that mutates per-connection
+> conflicts with the stateless protocol's cacheable, deterministically-ordered
+> `tools/list`. On FastMCP 4 the *active mode still changes* — it governs which
+> probe APIs qtPilot drives — but inactive-mode tools remain listed, and the
+> tool's response says so via `tools_removed: false` and a `note` field.
+
+Tracking work and the planned replacement (a visibility transform over a static
+tool set) are in
+[`docs/plans/2026-08-01-mcp-2026-07-28-migration.md`](plans/2026-08-01-mcp-2026-07-28-migration.md).
 
 ## Transport & capabilities
 
 - **Transport:** **stdio** only. The MCP client launches `qtpilot serve` as a
   subprocess (see `.mcp.json`). qtPilot does not expose an HTTP/SSE endpoint
-  (SSE is deprecated in the MCP spec).
-- **Server capabilities:** **tools** only (the `qt_*` / `chr_*` / `cu_*` tool
-  families). qtPilot does not implement MCP `resources` or `prompts`.
+  (HTTP+SSE is deprecated as of `2026-07-28`).
+- **Server capabilities:** **tools** and one **resource**. The tool families are
+  `qt_*` / `chr_*` / `cu_*` plus the `qtpilot_*` session tools; the resource is
+  `qtpilot://status` (live probe connection state, registered by
+  `qtpilot/status.py`). qtPilot does not implement MCP `prompts`.
+- **Unused MCP features:** Roots, Sampling, Logging, and MCP `ping` are not
+  implemented. All four are deprecated or removed as of `2026-07-28`, so this
+  costs qtPilot nothing. In particular, qtPilot's `qtpilot_log_*` tools and
+  `qt_ping` are qtPilot's own — unrelated to MCP Logging and MCP `ping`.
 
 ## Verifying the shipped revision
 
@@ -63,23 +101,31 @@ Because the revision is derived from the installed SDK, confirm it in your
 environment:
 
 ```bash
-python -c "import mcp.shared.version as v; \
-  print('latest:', v.LATEST_PROTOCOL_VERSION); \
-  print('supported:', v.SUPPORTED_PROTOCOL_VERSIONS)"
+python -c "import qtpilot._mcp_compat as c; print(c.describe())"
 ```
 
-## Pinning to a single revision (optional)
+```
+{'fastmcp_version': '4.0.0b1', 'fastmcp_major': 4,
+ 'mcp_protocol_revision': '2026-07-28', 'stateless_protocol': True}
+```
 
-The `fastmcp>=2.9,<3` range lets the MCP revision advance as the `mcp` SDK
-updates. This is intentional (MCP is designed for latest-offered + negotiate-
-down), but it means "the revision qtPilot ships" is a range, not a fixed point.
+The underlying SDK constants can also be read directly:
 
-If a deployment must guarantee one exact revision, **pin the SDK** — e.g. add a
-constraint such as `mcp==<version-that-tops-out-at-the-desired-revision>` (and
-optionally a matching `fastmcp==` pin), then re-verify with the command above.
-qtPilot's runtime does not otherwise depend on a specific revision.
+```bash
+python -c "import mcp.types as t; print(t.LATEST_PROTOCOL_VERSION)"
+```
+
+## Pinning to a single revision
+
+Use the extras — `qtpilot[mcp-stable]` or `qtpilot[mcp-next]` — rather than
+hand-pinning `fastmcp`. They are declared mutually exclusive in
+`[tool.uv].conflicts`, and `python/uv.lock` locks a resolution for each.
+
+If a deployment must guarantee one exact revision beyond the extra's range,
+pin the SDK directly (e.g. `mcp==<version>`) and re-verify with the command
+above. qtPilot's runtime does not otherwise depend on a specific revision.
 
 ---
 
-*Verified against fastmcp 2.14.7 / mcp 1.28.1 on 2026-07-22. Re-run the
-verification command after a dependency bump and update the table above.*
+*Verified against fastmcp 2.14.7 / 3.4.5 / 4.0.0b1 on 2026-08-01. Re-run the
+verification command after a dependency bump and update the tables above.*
