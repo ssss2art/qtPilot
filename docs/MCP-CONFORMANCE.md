@@ -95,6 +95,31 @@ tool set) are in
   costs qtPilot nothing. In particular, qtPilot's `qtpilot_log_*` tools and
   `qt_ping` are qtPilot's own — unrelated to MCP Logging and MCP `ping`.
 
+### Cache policy (`2026-07-28` only)
+
+`2026-07-28` made list and read results cacheable via `ttlMs` / `cacheScope`.
+qtPilot serves everything as **non-cacheable and private**, verified against
+fastmcp 4.0.0b1:
+
+| Result | `ttlMs` | `cacheScope` |
+|---|---|---|
+| `resources/read` (`qtpilot://status`) | `0` | `private` |
+| `resources/list` | `0` | `private` |
+| `tools/list` | `0` | `private` |
+
+This matters most for `qtpilot://status`, which reports live probe connection
+state — caching it would let a client serve a connection status that is no
+longer true. `ttlMs: 0` means "do not cache"; `cacheScope: "private"` keeps
+shared intermediaries out. These are the MCP SDK's own defaults rather than
+qtPilot overrides (`FastMCP.resource()` exposes no ttl parameter), so
+`python/tests/test_status_resource.py` asserts them directly — a future SDK bump
+that introduces a non-zero default TTL fails the suite instead of silently
+going stale.
+
+qtPilot's `tools/list` order is deterministic, as `2026-07-28` asks: tools are
+registered in a fixed sequence, so two servers launched in the same mode list
+them identically.
+
 ## Verifying the shipped revision
 
 Because the revision is derived from the installed SDK, confirm it in your
