@@ -250,6 +250,7 @@ void InputSimulator::mousePress(QWindow* window, MouseButton button, const QPoin
   if (!window) {
     throw std::invalid_argument("mousePress: window cannot be null");
   }
+  QPointer<QWindow> guard(window);
   Qt::MouseButton qtButton = toQtButton(button);
   sendMouseToWindow(window, QEvent::MouseButtonPress, pos, qtButton, qtButton, modifiers);
 }
@@ -259,6 +260,7 @@ void InputSimulator::mouseRelease(QWindow* window, MouseButton button, const QPo
   if (!window) {
     throw std::invalid_argument("mouseRelease: window cannot be null");
   }
+  QPointer<QWindow> guard(window);
   sendMouseToWindow(window, QEvent::MouseButtonRelease, pos, toQtButton(button), Qt::NoButton,
                     modifiers);
 }
@@ -304,6 +306,7 @@ void InputSimulator::mouseMove(QWindow* window, const QPoint& pos, Qt::MouseButt
   if (!window) {
     throw std::invalid_argument("mouseMove: window cannot be null");
   }
+  QPointer<QWindow> guard(window);
   sendMouseToWindow(window, QEvent::MouseMove, pos, Qt::NoButton, buttons, modifiers);
 }
 
@@ -312,6 +315,7 @@ void InputSimulator::scroll(QWindow* window, const QPoint& pos, int dx, int dy,
   if (!window) {
     throw std::invalid_argument("scroll: window cannot be null");
   }
+  QPointer<QWindow> guard(window);
   QPoint localPos = pos;
   QPoint globalPos = window->mapToGlobal(localPos);
 
@@ -322,7 +326,9 @@ void InputSimulator::scroll(QWindow* window, const QPoint& pos, int dx, int dy,
   QWheelEvent event(QPointF(localPos), QPointF(globalPos), pixelDelta, angleDelta, Qt::NoButton,
                     modifiers, Qt::NoScrollPhase, false);
   QCoreApplication::sendEvent(window, &event);
-  QCoreApplication::processEvents();
+  if (guard) {
+    QCoreApplication::processEvents();
+  }
 }
 
 void InputSimulator::mouseDrag(QWindow* window, const QPoint& startPos, const QPoint& endPos,
@@ -350,7 +356,11 @@ void InputSimulator::sendText(QWindow* window, const QString& text) {
   }
   // Deliver each character as a key press+release carrying its text; a
   // QQuickWindow forwards these to its focused item (e.g. a TextInput).
+  // Guard against window destruction mid-loop by a key handler.
+  QPointer<QWindow> guard(window);
   for (const QChar ch : text) {
+    if (!guard)
+      break;
     QString s(ch);
     int key;
     switch (ch.unicode()) {
