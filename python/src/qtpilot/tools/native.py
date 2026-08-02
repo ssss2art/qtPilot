@@ -145,8 +145,10 @@ def register_native_tools(mcp: FastMCP) -> None:
     async def qt_methods_invoke(
         objectId: str, method: str, args: list | None = None, ctx: Context = None
     ) -> dict:
-        """Invoke a method on an object with optional arguments.
-        Example: qt_methods_invoke(objectId="MainWindow", method="close")
+        """Invoke a Qt slot or Q_INVOKABLE method with optional arguments.
+
+        Signals are notifications and cannot be emitted through this tool.
+        Example: qt_methods_invoke(objectId="settingsDialog", method="accept")
         """
         from qtpilot.server import require_probe
 

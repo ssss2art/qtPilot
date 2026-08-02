@@ -638,10 +638,10 @@ void ComputerUseModeApi::registerKeyboardMethods() {
       throw JsonRpcException(
           ErrorCode::kKeyParseError,
           QStringLiteral("Failed to parse key combination: %1").arg(keyStr),
-          QJsonObject{
-              {QStringLiteral("key"), keyStr},
-              {QStringLiteral("hint"),
-               QStringLiteral("Use Chrome-style key names: ctrl+shift+s, Enter, ArrowUp, etc.")}});
+          QJsonObject{{QStringLiteral("key"), keyStr},
+                      {QStringLiteral("hint"),
+                       QStringLiteral("Use named keys and '+' separators: ctrl+shift+s, meta+Plus, "
+                                      "QuestionMark, Enter, ArrowUp, etc.")}});
     }
 
     // Widget apps route to the focused QWidget; pure Qt Quick apps fall back to
