@@ -6,7 +6,7 @@ This guide walks you through setting up qtPilot to enable AI assistants to contr
 
 qtPilot consists of two main components:
 
-1. **The Probe** - A shared library (`qtpilot.dll`/`libqtpilot.so`) that loads into your Qt application and exposes its object tree via WebSocket
+1. **The Probe** - A shared library (`.dll`, `.so`, or `.dylib`) that loads into your Qt application and exposes its object tree via WebSocket
 2. **The MCP Server** - A Python CLI (`qtpilot`) that connects Claude to the probe
 
 ```
@@ -32,13 +32,13 @@ Then download the probe for your Qt version:
 
 ```bash
 # Download probe matching your app's Qt version
-qtpilot download-probe --qt-version 6.8
+qtpilot download-tools --qt-version 6.8
 
 # Other available versions: 5.15, 6.5, 6.8, 6.9
-qtpilot download-probe --qt-version 5.15
+qtpilot download-tools --qt-version 5.15
 
-# Override the default compiler if needed (default: gcc13 on Linux, msvc17 on Windows)
-qtpilot download-probe --qt-version 6.8 --compiler gcc14
+# Extract into a specific directory
+qtpilot download-tools --qt-version 6.8 --output ./tools
 ```
 
 See [python/README.md](../python/README.md) for complete CLI documentation.
@@ -47,12 +47,17 @@ See [python/README.md](../python/README.md) for complete CLI documentation.
 
 Download probe binaries directly from [GitHub Releases](https://github.com/ssss2art/qtPilot/releases).
 
-Each release includes probes for each supported Qt version, for both platforms:
+Release assets vary by platform and Qt version. Use `qtpilot download-tools` to
+select the correct archive and verify its checksum. Typical artifacts include:
 - `qtPilot-probe-qt5.15-linux-gcc13.so` / `qtPilot-probe-qt5.15-windows-msvc17.dll`
 - `qtPilot-probe-qt6.5-linux-gcc13.so` / `qtPilot-probe-qt6.5-windows-msvc17.dll`
 - `qtPilot-probe-qt6.8-linux-gcc13.so` / `qtPilot-probe-qt6.8-windows-msvc17.dll`
 - `qtPilot-probe-qt6.9-linux-gcc13.so` / `qtPilot-probe-qt6.9-windows-msvc17.dll`
 - `qtPilot-launcher-linux` / `qtPilot-launcher-windows.exe`
+
+macOS arm64 is supported when built from source, but it is not included in every
+published release. Check the release assets before relying on `download-tools`,
+and see [MACOS.md](MACOS.md) for build, injection, permissions, and signing details.
 
 ### Option 3: Build from Source
 
@@ -74,6 +79,11 @@ dir "C:\path\to\app" | findstr Qt
 # Check linked libraries
 ldd /path/to/app | grep -i qt
 # libQt6Core.so.6 = Qt 6.x, libQt5Core.so.5 = Qt 5.x
+```
+
+**macOS:**
+```bash
+otool -L /path/to/App.app/Contents/MacOS/App | grep -i Qt
 ```
 
 Available probe versions:
@@ -101,6 +111,9 @@ qtpilot serve --mode native --target "C:\path\to\your-app.exe" --qt-dir "C:\Qt\5
 
 # Linux
 qtpilot serve --mode native --target /path/to/your-app
+
+# macOS (.app bundles and executable paths are both accepted)
+qtpilot serve --mode native --target /path/to/YourApp.app
 ```
 
 This automatically:
@@ -109,7 +122,7 @@ This automatically:
 3. Launches the application with the probe loaded
 4. Starts the MCP server
 
-### Method 2: Using `qtpilot-launch` Directly
+### Method 2: Using `qtPilot-launcher` Directly
 
 For more control, use the launcher directly.
 
@@ -118,13 +131,13 @@ The launcher auto-detects your Qt installation and sets `PATH` and `QT_PLUGIN_PA
 **Windows:**
 ```powershell
 # Auto-detect Qt (works when built from source — uses build-time Qt prefix)
-qtpilot-launch.exe your-app.exe
+qtPilot-launcher.exe your-app.exe
 
 # Explicit Qt path (if auto-detect fails)
-qtpilot-launch.exe --qt-dir C:\Qt\5.15.1\msvc2019_64 your-app.exe
+qtPilot-launcher.exe --qt-dir C:\Qt\5.15.1\msvc2019_64 your-app.exe
 
 # --qt-dir is smart — you can point at bin/, plugins/, or the prefix itself
-qtpilot-launch.exe --qt-dir C:\Qt\5.15.1\msvc2019_64\bin your-app.exe
+qtPilot-launcher.exe --qt-dir C:\Qt\5.15.1\msvc2019_64\bin your-app.exe
 ```
 
 You can also set `QT_PLUGIN_PATH` manually if you prefer — the launcher respects existing env vars and won't override them.
@@ -137,7 +150,7 @@ LD_PRELOAD=/path/to/libqtpilot.so ./your-app arg1 arg2
 
 To automatically inject the probe into child processes spawned by the target:
 ```bash
-qtpilot-launch.exe --port 0 --inject-children your-app.exe
+qtPilot-launcher.exe --port 0 --inject-children your-app.exe
 ```
 
 #### Pre-flight Diagnostics
@@ -173,7 +186,7 @@ This is the recommended approach because:
 **Option B: Using `--run-as-admin` (auto-elevation via UAC)**
 
 ```cmd
-qtpilot-launch.exe --run-as-admin --port 9222 MyAdminApp.exe
+qtPilot-launcher.exe --run-as-admin --port 9222 MyAdminApp.exe
 ```
 
 This triggers a Windows UAC prompt. Once approved, the launcher re-launches itself elevated via `ShellExecuteEx` + `cmd.exe`. The elevated `cmd.exe` window closes when the launcher exits, so **injection logs are not visible**.
@@ -182,7 +195,7 @@ The launcher automatically forwards `PATH`, `QT_PLUGIN_PATH`, and all `QTPILOT_*
 
 On Linux, use `sudo` instead:
 ```bash
-sudo qtpilot-launch --port 9222 /path/to/admin-app
+sudo qtPilot-launcher --port 9222 /path/to/admin-app
 ```
 
 Then start the MCP server separately:
@@ -269,10 +282,10 @@ Example:
 # Linux
 QTPILOT_PORT=9999 QTPILOT_MODE=native LD_PRELOAD=/path/to/libqtpilot.so ./your-app
 
-# Windows (via qtpilot-launch)
+# Windows (via qtPilot-launcher)
 set QTPILOT_PORT=9999
 set QTPILOT_MODE=native
-qtpilot-launch.exe your-app.exe
+qtPilot-launcher.exe your-app.exe
 ```
 
 ## Connecting to Claude
@@ -310,10 +323,11 @@ claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --ws-url
 
 ## Choosing an API Mode
 
-qtPilot supports three API modes, selectable via `--mode`:
+qtPilot supports three focused API modes plus an aggregate `all` mode. Ten
+`qtpilot_*` session, logging, and recording tools are present in every mode.
 
 ### Native Mode (`--mode native`)
-Full Qt object tree introspection. Use this for:
+Exposes 27 `qt_*` tools plus the 10 shared tools (37 total). Use this for:
 - Test automation
 - Deep inspection of widget properties
 - Signal/slot monitoring
@@ -324,7 +338,7 @@ qtpilot serve --mode native --target /path/to/app
 ```
 
 ### Computer Use Mode (`--mode cu`)
-Screenshot-based interaction using pixel coordinates. Use this for:
+Exposes 13 `cu_*` tools plus the 10 shared tools (23 total). Use this for:
 - Visual tasks
 - Custom widgets without accessibility info
 - Games or canvas-based UIs
@@ -334,7 +348,7 @@ qtpilot serve --mode cu --target /path/to/app
 ```
 
 ### Chrome Mode (`--mode chrome`)
-Accessibility tree with element references. Use this for:
+Exposes 8 `chr_*` tools plus the 10 shared tools (18 total). Use this for:
 - Form filling
 - Semantic element selection
 - When you want Claude to "see" the UI like a web page
@@ -344,7 +358,7 @@ qtpilot serve --mode chrome --target /path/to/app
 ```
 
 ### All Modes (`--mode all`)
-Exposes tools from all three modes. Useful for experimentation.
+Exposes all 58 tools. Useful for exploration and mixed workflows.
 
 ```bash
 qtpilot serve --mode all --target /path/to/app
@@ -352,7 +366,7 @@ qtpilot serve --mode all --target /path/to/app
 
 ## Next Steps
 
-- [API Reference](../qtPilot-specification.md) - Complete tool and protocol documentation
+- [MCP Tooling](MCP-TOOLS.md) - Current tool surface and inspection workflow
 - [API Modes Deep Dive](../qtPilot-compatibility-modes.md) - Detailed mode comparisons
 - [Building from Source](BUILDING.md) - Compile qtPilot yourself
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions

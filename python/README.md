@@ -37,7 +37,7 @@ qtpilot serve --mode native --target /path/to/your-qt-app.exe
 ## Features
 
 - **Three API modes**: Native (full Qt access), Computer Use (screenshots + clicks), Chrome (DevTools-compatible)
-- **53 MCP tools** for Qt introspection and automation
+- **58 MCP tools** when using `--mode all` (mode-specific tools plus shared session tools)
 - **Works with Qt 5.15 and Qt 6.x** applications
 - **Zero modification** to target applications required
 
@@ -79,7 +79,7 @@ claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --ws-url
 
 - Python 3.11 or later
 - Qt application with qtPilot probe loaded
-- Windows or Linux (macOS support planned)
+- Windows, Linux, or macOS (macOS may require building the native tools from source; check the current release assets)
 
 ## Links
 
