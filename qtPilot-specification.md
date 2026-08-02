@@ -1,5 +1,11 @@
 # qtPilot Specification v1.0
 
+> **Historical design reference.** This document records the original MVP and
+> probe-protocol design; it is not the authoritative MCP tool reference. The
+> implementation has since added macOS support, compatibility modes, discovery,
+> logging, recording, and additional Qt APIs. See [MCP Tooling](docs/MCP-TOOLS.md)
+> for the current exposed surface and a repeatable schema-inspection workflow.
+
 ## Executive Summary
 
 **qtPilot** is a lightweight, MIT-licensed injection library for Qt application introspection and automation. It enables AI assistants (like Claude), test automation frameworks, and debugging tools to inspect and control Qt applications at runtime.

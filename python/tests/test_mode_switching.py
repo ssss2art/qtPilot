@@ -82,6 +82,17 @@ class TestSetMode:
 
 
 class TestCreateServerModes:
+    @pytest.mark.parametrize(
+        ("mode", "expected_count"),
+        [("native", 37), ("cu", 23), ("chrome", 18), ("all", 58)],
+    )
+    def test_public_tool_counts(self, mode, expected_count):
+        """Keep the documented MCP surface counts in sync with registration."""
+        from qtpilot.server import create_server
+
+        mcp = create_server(mode=mode)
+        assert len(_tool_names(mcp)) == expected_count
+
     def test_default_mode_is_native(self):
         from qtpilot.server import create_server, get_state
 
