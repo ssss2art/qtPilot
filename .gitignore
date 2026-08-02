@@ -53,6 +53,7 @@ install/
 node_modules/
 
 # Python
+.venv/
 __pycache__/
 *.pyc
 _version.py
