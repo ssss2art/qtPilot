@@ -124,7 +124,7 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 Quick app.
 
 The last open row — `qt_models_*` — was blocked on the absence of a target, not
-on a suspected defect: the Luminol gallery builds its grids from `Repeater`s over
+on a suspected defect: the gallery app builds its grids from `Repeater`s over
 JavaScript arrays and contains no `QAbstractItemModel` anywhere. `test_app_qml/`
 was written to close that gap and is now part of this repo; see
 [`test_app_qml/README.md`](../test_app_qml/README.md).
@@ -274,8 +274,8 @@ the behaviour against real QML controls.
 
 ## Findings (live audit, 2026-08-01) — pure Qt Quick target
 
-Target: `LuminolQmlGallery.app` from `common-tech/luminol` @ `experimental-quick-gallery`
-— `QGuiApplication` + `QQmlApplicationEngine`, links QtQuick/QtQml and **no
+Target: a pure Qt Quick gallery app — `QGuiApplication` + `QQmlApplicationEngine`,
+links QtQuick/QtQml and **no
 QtWidgets** (confirmed via `otool -L`). Qt 6.11.1, probe injected via launcher on
 `ws://localhost:9222`. 104-node accessibility tree.
 
@@ -361,7 +361,7 @@ Qt 6.11.1 with `QTPILOT_HAS_QML=ON`.
 
 ## Findings (2026-08-01) — `qt_models_*` closed via a purpose-built target
 
-The last open row could not be closed against the Luminol gallery: it builds its
+The last open row could not be closed against the gallery app: it builds its
 grids from `Repeater`s over JavaScript arrays and contains no
 `QAbstractItemModel` anywhere (`findByClassName` returns empty for both
 `QAbstractItemModel` and `QQmlListModel`). Rather than leave the row guessed at,

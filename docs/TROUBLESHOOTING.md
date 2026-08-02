@@ -27,10 +27,10 @@ Get-ChildItem "C:\path\to\app" | Where-Object { $_.Name -match "Qt.*\.dll" }
 **Download the correct probe:**
 ```bash
 # For Qt 6.8
-qtpilot download-probe --qt-version 6.8
+qtpilot download-tools --qt-version 6.8
 
 # For Qt 5.15
-qtpilot download-probe --qt-version 5.15-patched
+qtpilot download-tools --qt-version 5.15-patched
 ```
 
 #### Windows: DLL Not Found
@@ -184,10 +184,14 @@ Before connecting Claude, confirm the probe works:
 
 If using a specific mode, ensure tools match expectations:
 
-- `--mode native` provides Qt-specific tools like `get_object_tree`
-- `--mode chrome` provides web-like tools like `read_page`
-- `--mode cu` provides Computer Use tools like `screenshot`
-- `--mode all` provides all tools
+- `--mode native` provides 27 Qt-specific tools such as `qt_objects_tree`
+- `--mode chrome` provides 8 accessibility tools such as `chr_readPage`
+- `--mode cu` provides 13 computer-use tools such as `cu_screenshot`
+- `--mode all` provides every mode-specific tool
+
+All modes also provide 10 `qtpilot_*` session, logging, and recording tools.
+Call `qtpilot_status` to confirm the active mode, and use
+`qtpilot_set_mode` to change it at runtime.
 
 ## Qt Version Detection
 
@@ -262,7 +266,7 @@ This gives you full visibility into injection logs and errors.
 
 **Alternative: Use `--run-as-admin` for auto-elevation**
 ```cmd
-qtpilot-launch.exe --run-as-admin your-app.exe
+qtPilot-launcher.exe --run-as-admin your-app.exe
 ```
 
 This triggers a UAC prompt automatically. If you cancel the UAC prompt, the launcher exits with code 1 and prints an error message. Note that the elevated process runs in a transient `cmd.exe` window — injection logs are not visible.
@@ -306,7 +310,7 @@ The launcher automatically forwards `PATH`, `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_P
 ```cmd
 set QT_PLUGIN_PATH=C:\Qt\5.15.1\msvc2019_64\plugins
 set PATH=C:\Qt\5.15.1\msvc2019_64\bin;%PATH%
-qtpilot-launch.exe --run-as-admin your-app.exe
+qtPilot-launcher.exe --run-as-admin your-app.exe
 ```
 
 ### Linux

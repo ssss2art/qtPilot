@@ -102,9 +102,9 @@ See [docs/BUILDING.md](docs/BUILDING.md) for detailed build instructions.
 
 - **Three API modes** for different use cases:
   - **Native** - Full Qt object tree introspection
-  - **Computer Use** - Screenshot-based interaction (Anthropic API compatible)
-  - **Chrome** - Accessibility tree with refs (Claude in Chrome compatible)
-- **53 MCP tools** for Qt introspection and automation
+  - **Computer Use** - Screenshot and coordinate-based interaction
+  - **Chrome** - Browser-style accessibility tree with element references
+- **58 MCP tools** across all modes: 27 native, 13 computer-use, 8 accessibility, and 10 shared session tools
 - **Works with Qt 5.15.1+ and Qt 6.5+** applications
 - **Zero modification** to target applications required
 - **Child process injection** - `--inject-children` automatically injects the probe into child processes (Windows: Detours hook on CreateProcessW; Linux: LD_PRELOAD propagation)
@@ -174,9 +174,9 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 |----------|-------------|
 | [Getting Started](docs/GETTING-STARTED.md) | Installation and first steps |
 | [Building from Source](docs/BUILDING.md) | Compile qtPilot yourself |
-| [API Reference](qtPilot-specification.md) | Complete tool and probe-protocol documentation |
-| [MCP Conformance](docs/MCP-CONFORMANCE.md) | Which MCP protocol revision qtPilot targets/ships |
-| [API Modes](qtPilot-compatibility-modes.md) | Detailed mode comparisons |
+| [MCP Tooling](docs/MCP-TOOLS.md) | Current modes, tool surface, resources, and inspection workflow |
+| [API Modes](qtPilot-compatibility-modes.md) | Mode selection and current tool families |
+| [Probe Protocol Design](qtPilot-specification.md) | Historical design reference for the probe protocol |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
 | [Python CLI](python/README.md) | qtpilot command documentation |
 
@@ -188,6 +188,9 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 | **Windows x86** | ✅ | - | Supported (Qt 5.15 only) |
 | **Linux x64** | ✅ | ✅ | Supported |
 | **macOS arm64** | - | ✅ | Supported (tested against Qt 6.10) |
+
+Published binary assets vary by release. In particular, macOS users may need to
+build the probe and launcher from source; see [docs/MACOS.md](docs/MACOS.md).
 
 ## Requirements
 

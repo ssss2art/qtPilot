@@ -15,7 +15,7 @@ notes why it matters and a rough effort estimate (S/M/L).
 ## Already shipped / in flight
 
 All of the below are implemented on feature branches, unit-tested, **and
-live-validated against the Luminol Gallery app**. Not yet pushed to origin.
+live-validated against a design-system gallery app**. Not yet pushed to origin.
 
 | # | Gap | Where | Status |
 |---|-----|-------|--------|
@@ -92,7 +92,7 @@ NOTIFY-watch (the rest of `feat/sync-and-signals`, not yet implemented).
 |----|-----|----------------|----------|--------|
 | T1 | **No wait-for-condition/signal/property** | racy sleep-poll is the #1 flaky-test cause | no `qt.wait*` registered | L |
 | T2 | **No assertion primitives** (server-side expect) | clients parse free-form gets | n/a | M |
-| T3 | No **modifiers** on click, no **key down/up / chorded sequences** (only first chord sent) | can't Ctrl/Shift-click, hold keys, multi-chord | `input_simulator.cpp` | M |
+| T3 | No **modifiers on mouse actions**; `cu.key` supports modifiers for one combination, but has no **key down/up or multi-chord sequences** | can't Ctrl/Shift-click, hold keys, or send sequences such as `Ctrl+K, Ctrl+C` | `computer_use_mode_api.cpp`, `input_simulator.cpp` | M |
 | T4 | No **hover / tooltip / mouse-enter** | hover-reveal UI & `:hover` styling untestable | `input_simulator.cpp` mouseMove | M |
 | T5 | No **multi-select** / item selection-model access | range/Ctrl selection impossible | `native_mode_api.cpp` clickItem | M |
 | T6 | **Menus / popups / dialogs** not first-class | context-menu/dropdown/modal flows unreachable | active-window anchoring | L |
@@ -128,7 +128,7 @@ Ordered by value × independence. Each row is one PR off `main` unless noted.
 | `fix/transport-robustness` | R1 timeout, R3 auto-reconnect, R4 version handshake, R5 structured errors (+ R7 loopback default) | ⏳ planned — reliability |
 | `feat/model-introspection` *(epic)* | M1 proxy mapping, M2 headerData, M3 setData/selection, M4 change taxonomy | ⏳ planned |
 | `feat/qml-support` *(epic)* | Q1 introspection, Q2 visual tree, Q3 drive Quick items | ⏳ planned — large; scope separately |
-| `feat/interaction-enhancements` *(epic)* | T3 modifiers/keys, T4 hover, T5 multi-select, T6 menus, T7 diff, T8 DPR, T9 focus | ⏳ planned |
+| `feat/interaction-enhancements` *(epic)* | T3 mouse modifiers/held keys/multi-chord sequences, T4 hover, T5 multi-select, T6 menus, T7 diff, T8 DPR, T9 focus | ⏳ planned |
 
 Dependency / push notes:
 - `fix/value-serialization` is **stacked on** `fix/probe-introspection-gaps` —

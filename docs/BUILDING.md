@@ -71,6 +71,10 @@ The project includes predefined presets for common configurations.
 | `release` | Linux | Release | Optimized Linux build |
 | `windows-debug` | Windows | Debug | Development build with tests |
 | `windows-release` | Windows | Release | Optimized Windows build |
+| `windows-x86-debug` | Windows x86 | Debug | 32-bit development build with tests |
+| `windows-x86-release` | Windows x86 | Release | Optimized 32-bit build |
+| `macos-debug` | macOS | Debug | Development build with tests |
+| `macos-release` | macOS | Release | Optimized macOS build |
 | `qt5-release` | Linux | Release | Qt 5.15.x targeted build |
 | `qt5-windows-release` | Windows | Release | Qt 5.15.x targeted build |
 
@@ -149,6 +153,7 @@ After building, find the artifacts in these locations:
 |----------|----------|
 | Windows | `build/lib/Release/qtPilot-probe-qt6.8.dll` |
 | Linux | `build/lib/libqtPilot-probe-qt6.8.so` |
+| macOS | `build/lib/libqtPilot-probe-qt6.8.dylib` |
 
 The probe binary name includes the Qt major.minor version it was built against (e.g. `qt6.8`, `qt5.15`).
 
@@ -158,6 +163,7 @@ The probe binary name includes the Qt major.minor version it was built against (
 |----------|----------|
 | Windows | `build/bin/Release/qtPilot-launcher.exe` |
 | Linux | `build/bin/qtPilot-launcher` |
+| macOS | `build/bin/qtPilot-launcher` |
 
 ### Test App (if enabled)
 
@@ -165,6 +171,7 @@ The probe binary name includes the Qt major.minor version it was built against (
 |----------|----------|
 | Windows | `build/bin/Release/qtPilot-test-app.exe` |
 | Linux | `build/bin/qtPilot-test-app` |
+| macOS | `build/bin/qtPilot-test-app` |
 
 ## Running Tests
 
