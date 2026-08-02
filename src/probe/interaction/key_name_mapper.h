@@ -23,8 +23,9 @@ struct KeyCombo {
 /// Computer Use tool (Chrome-style and xdotool-style names) and translates
 /// them to the corresponding Qt::Key values.
 ///
-/// Also parses modifier combo strings like "ctrl+shift+s" into a KeyCombo
-/// containing the base key and combined modifiers.
+/// Also parses modifier combo strings like "ctrl+shift+s" and "meta+Plus"
+/// into a KeyCombo containing the base key and combined modifiers. Named
+/// punctuation is used when a literal character is part of the grammar.
 ///
 /// Usage:
 /// @code
@@ -40,10 +41,11 @@ class QTPILOT_EXPORT KeyNameMapper {
   static Qt::Key resolve(const QString& name);
 
   /// @brief Parse a key combination string into key + modifiers.
-  /// @param combo Combo string like "ctrl+shift+s", "F5", "Return"
+  /// @param combo Combo string like "ctrl+shift+s", "meta+Plus", "Return"
   /// @return KeyCombo with resolved key and combined modifiers
   ///
-  /// Splits on "+". Last token is the key, preceding tokens are modifiers.
+  /// Splits on "+". Last token is the key, preceding tokens are modifiers;
+  /// use the named key "Plus" rather than a literal trailing separator.
   /// Single character keys (a-z, 0-9) map directly to Qt::Key equivalents.
   static KeyCombo parseKeyCombo(const QString& combo);
 

@@ -6,6 +6,7 @@
 // with "Object is not a widget", leaving pure Qt Quick apps unable to be
 // measured or driven through the native surface.
 
+#include "api/computer_use_mode_api.h"
 #include "core/object_registry.h"
 #include "introspection/event_capture.h"
 #include "transport/jsonrpc_handler.h"
@@ -18,6 +19,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QtTest>
+
+#include <memory>
 
 using namespace qtPilot;
 
@@ -59,6 +62,7 @@ class TestQmlInteraction : public QObject {
   void testSendKeysOnQuickItemIsAccepted();
   void testSendKeysRejectsNonVisualObject();
   void testSendKeysStopsWhenItemIsDestroyedByText();
+  void testComputerUseKeyActivatesQuickShortcuts();
 
   void testEventCaptureSeesQuickTargets();
   void testEventCaptureIgnoresNonVisualObjects();
@@ -317,6 +321,73 @@ void TestQmlInteraction::testSendKeysStopsWhenItemIsDestroyedByText() {
 
   const QString message = errorOf(response);
   QVERIFY2(message.contains(QStringLiteral("destroyed while typing")), qPrintable(message));
+}
+
+void TestQmlInteraction::testComputerUseKeyActivatesQuickShortcuts() {
+  QQmlEngine engine;
+  QQmlComponent component(&engine);
+  component.setData(R"(
+    import QtQuick 2.15
+
+    Item {
+      id: root
+      property int metaPlusCount: 0
+      property int controlMinusCount: 0
+      property int questionMarkCount: 0
+      focus: true
+
+      Shortcut { sequence: "Meta++"; onActivated: root.metaPlusCount++ }
+      Shortcut { sequence: "Ctrl+-"; onActivated: root.controlMinusCount++ }
+      Shortcut { sequence: "?"; onActivated: root.questionMarkCount++ }
+    }
+  )",
+                    QUrl());
+  QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+  std::unique_ptr<QObject> object(component.create());
+  QVERIFY2(object, qPrintable(component.errorString()));
+  auto* item = qobject_cast<QQuickItem*>(object.get());
+  QVERIFY(item);
+
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 150);
+  item->setParentItem(window.contentItem());
+  item->setSize(QSizeF(200, 150));
+  window.show();
+  window.requestActivate();
+  item->forceActiveFocus();
+  QTRY_VERIFY(window.isActive());
+
+  JsonRpcHandler handler;
+  ComputerUseModeApi api(&handler);
+  auto callComputerUseKey = [this, &handler](const QString& key) {
+    const QJsonObject request{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
+                              {QStringLiteral("method"), QStringLiteral("cu.key")},
+                              {QStringLiteral("params"), QJsonObject{{QStringLiteral("key"), key}}},
+                              {QStringLiteral("id"), m_requestId++}};
+    QJsonParseError parseError;
+    const QJsonDocument responseDocument = QJsonDocument::fromJson(
+        handler
+            .HandleMessage(QString::fromUtf8(QJsonDocument(request).toJson(QJsonDocument::Compact)))
+            .toUtf8(),
+        &parseError);
+    if (parseError.error != QJsonParseError::NoError || !responseDocument.isObject()) {
+      QTest::qFail(
+          qPrintable(QStringLiteral("Invalid JSON-RPC response: %1").arg(parseError.errorString())),
+          __FILE__, __LINE__);
+      return QJsonObject{};
+    }
+    return responseDocument.object();
+  };
+
+  QVERIFY(!callComputerUseKey(QStringLiteral("meta+Plus")).contains(QStringLiteral("error")));
+  QTRY_COMPARE(item->property("metaPlusCount").toInt(), 1);
+
+  QVERIFY(!callComputerUseKey(QStringLiteral("ctrl+Minus")).contains(QStringLiteral("error")));
+  QTRY_COMPARE(item->property("controlMinusCount").toInt(), 1);
+
+  QVERIFY(!callComputerUseKey(QStringLiteral("QuestionMark")).contains(QStringLiteral("error")));
+  QTRY_COMPARE(item->property("questionMarkCount").toInt(), 1);
 }
 
 // --- event capture ----------------------------------------------------------

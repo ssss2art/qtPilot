@@ -12,6 +12,7 @@
 #include <QMainWindow>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QShortcut>
 #include <QSignalSpy>
 #include <QVBoxLayout>
 #include <QtTest>
@@ -60,6 +61,7 @@ class TestComputerUseApi : public QObject {
   // CU-09: Key
   void testKey();
   void testKeyChromeNames();
+  void testKeyActivatesNamedPunctuationShortcuts();
 
   // CU-10: Scroll
   void testScroll();
@@ -401,6 +403,31 @@ void TestComputerUseApi::testKeyChromeNames() {
   QJsonValue result3 = callResult("cu.key", QJsonObject{{"key", "ArrowUp"}});
   QVERIFY(result3.isObject());
   QCOMPARE(result3.toObject()["success"].toBool(), true);
+}
+
+void TestComputerUseApi::testKeyActivatesNamedPunctuationShortcuts() {
+  QShortcut metaPlus(
+      QKeySequence(static_cast<int>(Qt::MetaModifier) | static_cast<int>(Qt::Key_Plus)),
+      m_testWindow);
+  QShortcut controlMinus(
+      QKeySequence(static_cast<int>(Qt::ControlModifier) | static_cast<int>(Qt::Key_Minus)),
+      m_testWindow);
+  QShortcut questionMark(QKeySequence(static_cast<int>(Qt::Key_Question)), m_testWindow);
+  QSignalSpy metaPlusSpy(&metaPlus, &QShortcut::activated);
+  QSignalSpy controlMinusSpy(&controlMinus, &QShortcut::activated);
+  QSignalSpy questionMarkSpy(&questionMark, &QShortcut::activated);
+
+  m_testButton->setFocus();
+  QApplication::processEvents();
+
+  QVERIFY(callResult("cu.key", QJsonObject{{"key", "meta+Plus"}}).isObject());
+  QTRY_COMPARE(metaPlusSpy.size(), 1);
+
+  QVERIFY(callResult("cu.key", QJsonObject{{"key", "ctrl+Minus"}}).isObject());
+  QTRY_COMPARE(controlMinusSpy.size(), 1);
+
+  QVERIFY(callResult("cu.key", QJsonObject{{"key", "QuestionMark"}}).isObject());
+  QTRY_COMPARE(questionMarkSpy.size(), 1);
 }
 
 // ========================================================================

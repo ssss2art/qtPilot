@@ -18,6 +18,13 @@ const QHash<QString, Qt::Key>& KeyNameMapper::keyMap() {
       {"delete", Qt::Key_Delete},
       {"space", Qt::Key_Space},
 
+      // Named punctuation. The combo grammar uses '+' as its separator, so
+      // callers need an unambiguous name for the plus key itself.
+      {"plus", Qt::Key_Plus},
+      {"minus", Qt::Key_Minus},
+      {"question", Qt::Key_Question},
+      {"questionmark", Qt::Key_Question},
+
       // Arrow keys (Chrome uses "ArrowUp", xdotool uses "Up")
       {"up", Qt::Key_Up},
       {"arrowup", Qt::Key_Up},
@@ -81,6 +88,7 @@ const QHash<QString, Qt::KeyboardModifier>& KeyNameMapper::modifierMap() {
       {"shift_l", Qt::ShiftModifier},     {"alt", Qt::AltModifier},
       {"alt_l", Qt::AltModifier},         {"super", Qt::MetaModifier},
       {"super_l", Qt::MetaModifier},      {"meta", Qt::MetaModifier},
+      {"cmd", Qt::MetaModifier},          {"command", Qt::MetaModifier},
   };
   return map;
 }

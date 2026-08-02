@@ -24,11 +24,13 @@ class TestKeyNameMapper : public QObject {
   void testResolveCaseInsensitive();
   void testResolveUnknown();
   void testResolveSingleChar();
+  void testResolveNamedPunctuation();
 
   // Combo parsing tests
   void testParseKeyCombo_Simple();
   void testParseKeyCombo_WithModifiers();
   void testParseKeyCombo_ChromeStyle();
+  void testParseKeyCombo_NamedPunctuation();
 };
 
 // ========================================================================
@@ -151,6 +153,13 @@ void TestKeyNameMapper::testResolveSingleChar() {
   QCOMPARE(KeyNameMapper::resolve("9"), Qt::Key_9);
 }
 
+void TestKeyNameMapper::testResolveNamedPunctuation() {
+  QCOMPARE(KeyNameMapper::resolve("Plus"), Qt::Key_Plus);
+  QCOMPARE(KeyNameMapper::resolve("Minus"), Qt::Key_Minus);
+  QCOMPARE(KeyNameMapper::resolve("Question"), Qt::Key_Question);
+  QCOMPARE(KeyNameMapper::resolve("QuestionMark"), Qt::Key_Question);
+}
+
 // ========================================================================
 // Combo Parsing Tests
 // ========================================================================
@@ -197,6 +206,28 @@ void TestKeyNameMapper::testParseKeyCombo_ChromeStyle() {
   KeyCombo combo2 = KeyNameMapper::parseKeyCombo("ctrl+ArrowDown");
   QCOMPARE(combo2.key, Qt::Key_Down);
   QCOMPARE(combo2.modifiers, Qt::KeyboardModifiers(Qt::ControlModifier));
+}
+
+void TestKeyNameMapper::testParseKeyCombo_NamedPunctuation() {
+  const KeyCombo metaPlus = KeyNameMapper::parseKeyCombo("meta+Plus");
+  QCOMPARE(metaPlus.key, Qt::Key_Plus);
+  QCOMPARE(metaPlus.modifiers, Qt::KeyboardModifiers(Qt::MetaModifier));
+
+  const KeyCombo cmdPlus = KeyNameMapper::parseKeyCombo("cmd+Plus");
+  QCOMPARE(cmdPlus.key, Qt::Key_Plus);
+  QCOMPARE(cmdPlus.modifiers, Qt::KeyboardModifiers(Qt::MetaModifier));
+
+  const KeyCombo commandPlus = KeyNameMapper::parseKeyCombo("command+Plus");
+  QCOMPARE(commandPlus.key, Qt::Key_Plus);
+  QCOMPARE(commandPlus.modifiers, Qt::KeyboardModifiers(Qt::MetaModifier));
+
+  const KeyCombo controlMinus = KeyNameMapper::parseKeyCombo("ctrl+Minus");
+  QCOMPARE(controlMinus.key, Qt::Key_Minus);
+  QCOMPARE(controlMinus.modifiers, Qt::KeyboardModifiers(Qt::ControlModifier));
+
+  const KeyCombo questionMark = KeyNameMapper::parseKeyCombo("QuestionMark");
+  QCOMPARE(questionMark.key, Qt::Key_Question);
+  QCOMPARE(questionMark.modifiers, Qt::KeyboardModifiers(Qt::NoModifier));
 }
 
 QTEST_GUILESS_MAIN(TestKeyNameMapper)

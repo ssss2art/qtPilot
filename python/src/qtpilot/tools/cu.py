@@ -174,8 +174,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def cu_key(key: str, ctx: Context = None) -> dict:
-        """Press a key or key combination.
-        Example: cu_key(key="Return")
+        """Press a key or single key combination.
+
+        Use named punctuation when the key is part of the ``+``-separated
+        grammar. Examples: ``meta+Plus``, ``ctrl+Minus``, and
+        ``QuestionMark``.
         """
         from qtpilot.server import require_probe
 
