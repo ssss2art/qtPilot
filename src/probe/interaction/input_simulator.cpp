@@ -24,15 +24,37 @@ void InputSimulator::mouseClick(QWidget* widget, MouseButton button, const QPoin
     throw std::invalid_argument("mouseClick: widget cannot be null");
   }
 
-  // Use widget center if no position specified
-  QPoint clickPos = pos.isNull() ? widget->rect().center() : pos;
+  mouseClickAt(widget, button, pos.isNull() ? widget->rect().center() : pos, modifiers);
+}
+
+void InputSimulator::mouseClickAt(QWidget* widget, MouseButton button, const QPoint& pos,
+                                  Qt::KeyboardModifiers modifiers) {
+  if (!widget) {
+    throw std::invalid_argument("mouseClickAt: widget cannot be null");
+  }
 
   // Ensure widget is visible and ready for input
   widget->activateWindow();
   widget->raise();
   QApplication::processEvents();
 
-  QTest::mouseClick(widget, toQtButton(button), modifiers, clickPos);
+  // QTest::mouseClick() also treats QPoint(0, 0) as its centre sentinel, so
+  // deliver the pair directly to preserve an explicit top-left position.
+  QPointer<QWidget> guard(widget);
+  const Qt::MouseButton qtButton = toQtButton(button);
+  const QPoint globalPos = widget->mapToGlobal(pos);
+  QMouseEvent press(QEvent::MouseButtonPress, QPointF(pos), QPointF(globalPos), qtButton, qtButton,
+                    modifiers);
+  QCoreApplication::sendEvent(widget, &press);
+  QCoreApplication::processEvents();
+  if (!guard) {
+    return;
+  }
+
+  QMouseEvent release(QEvent::MouseButtonRelease, QPointF(pos), QPointF(globalPos), qtButton,
+                      Qt::NoButton, modifiers);
+  QCoreApplication::sendEvent(widget, &release);
+  QCoreApplication::processEvents();
 }
 
 void InputSimulator::mouseDoubleClick(QWidget* widget, MouseButton button, const QPoint& pos,

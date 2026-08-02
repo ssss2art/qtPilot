@@ -391,88 +391,101 @@ void ChromeModeApi::registerClickMethod() {
     }
 
     QAccessibleInterface* iface = resolveRef(ref);
-    QString roleName = RoleMapper::toChromeName(iface->role());
+    const QString roleName = RoleMapper::toChromeName(iface->role());
+    QObject* obj = iface->object();
 
-    // Try accessibility action first.
-    //
-    // Pick the action the control actually implements rather than always
+    auto clickResult = [&](const QString& method, const QString& action) {
+      QJsonObject result;
+      result[QStringLiteral("clicked")] = true;
+      result[QStringLiteral("ref")] = ref;
+      result[QStringLiteral("role")] = roleName;
+      result[QStringLiteral("method")] = method;
+      // Always present so the response shape does not vary by branch; empty on
+      // the synthetic-input paths, which invoke no accessibility action.
+      result[QStringLiteral("action")] = action;
+      return envelopeToString(ResponseEnvelope::wrap(result));
+    };
+
+    // Read the action list exactly once: actionNames() returns by value and is
+    // recomputed per call from the control's live state, so two reads can
+    // legitimately disagree.
+    QAccessibleActionInterface* actionIface = iface->actionInterface();
+    const QStringList actions = actionIface ? actionIface->actionNames() : QStringList();
+
+    // Pick the verb the control actually implements rather than always
     // pressing. A checkable control exposes Toggle *and* Press, and on Qt Quick
-    // Controls the Press is inert -- QAccessibleQuickItem advertises it
+    // Controls that Press is inert -- QAccessibleQuickItem advertises it
     // unconditionally (a bare Item with Accessible.role and no onPressAction
     // still lists "Press"), while only Toggle actuates. Verified against
     // QtQuick.Controls 6.11: a Switch lists ("Toggle","Press"); doAction(Press)
-    // left `checked` unchanged, doAction(Toggle) flipped it. Preferring Toggle
-    // is also the semantically correct verb for a checkbox on the widget side.
-    QAccessibleActionInterface* actionIface = iface->actionInterface();
-    if (actionIface) {
-      const QStringList actions = actionIface->actionNames();
-      QString chosen;
-      if (actions.contains(QAccessibleActionInterface::toggleAction())) {
-        chosen = QAccessibleActionInterface::toggleAction();
-      } else if (actions.contains(QAccessibleActionInterface::pressAction())) {
-        chosen = QAccessibleActionInterface::pressAction();
-      }
-
-      if (!chosen.isEmpty()) {
-        actionIface->doAction(chosen);
-
-        QJsonObject result;
-        result[QStringLiteral("clicked")] = true;
-        result[QStringLiteral("ref")] = ref;
-        result[QStringLiteral("role")] = roleName;
-        result[QStringLiteral("method")] = QStringLiteral("accessibilityAction");
-        result[QStringLiteral("action")] = chosen;
-        return envelopeToString(ResponseEnvelope::wrap(result));
-      }
-    }
-
-    // Fall back to mouse click at widget center
-    QObject* obj = iface->object();
-    QWidget* widget = obj ? qobject_cast<QWidget*>(obj) : nullptr;
-    if (widget) {
-      QRect rect = iface->rect();
-      QPoint center = rect.center();
-      QPoint localPos = widget->mapFromGlobal(center);
-      InputSimulator::mouseClick(widget, InputSimulator::MouseButton::Left, localPos);
-
-      QJsonObject result;
-      result[QStringLiteral("clicked")] = true;
-      result[QStringLiteral("ref")] = ref;
-      result[QStringLiteral("role")] = roleName;
-      result[QStringLiteral("method")] = QStringLiteral("mouseClick");
-      return envelopeToString(ResponseEnvelope::wrap(result));
-    }
-
+    // left `checked` unchanged, doAction(Toggle) flipped it. Toggle is also the
+    // semantically correct verb for a checkbox on the widget side.
+    //
+    // Press is only trusted for a QWidget. Because Qt Quick advertises it
+    // whether or not anything implements it, trusting it there would report
+    // success for a no-op and -- worse -- make the synthetic-click fallback
+    // below unreachable for exactly the QML controls that need it.
+    const bool isQuickItem =
 #ifdef QTPILOT_HAS_QML
-    // Same fallback for Qt Quick, which has no QWidget to click. Events go to
-    // the QQuickWindow in scene coords; iface->rect() is global screen coords.
-    if (auto* item = qobject_cast<QQuickItem*>(obj)) {
-      if (QQuickWindow* window = item->window()) {
-        const QPoint scenePos = window->mapFromGlobal(iface->rect().center());
-        InputSimulator::mouseClick(window, InputSimulator::MouseButton::Left, scenePos);
-
-        QJsonObject result;
-        result[QStringLiteral("clicked")] = true;
-        result[QStringLiteral("ref")] = ref;
-        result[QStringLiteral("role")] = roleName;
-        result[QStringLiteral("method")] = QStringLiteral("mouseClick");
-        return envelopeToString(ResponseEnvelope::wrap(result));
-      }
-    }
+        qobject_cast<QQuickItem*>(obj) != nullptr;
+#else
+        false;
 #endif
 
-    // Nothing else to try: press whatever action exists, even if unrecognised.
-    if (actionIface && !actionIface->actionNames().isEmpty()) {
-      const QString fallbackAction = actionIface->actionNames().constFirst();
-      actionIface->doAction(fallbackAction);
+    QString chosen;
+    if (actions.contains(QAccessibleActionInterface::toggleAction())) {
+      chosen = QAccessibleActionInterface::toggleAction();
+    } else if (!isQuickItem && actions.contains(QAccessibleActionInterface::pressAction())) {
+      chosen = QAccessibleActionInterface::pressAction();
+    }
 
-      QJsonObject result;
-      result[QStringLiteral("clicked")] = true;
-      result[QStringLiteral("ref")] = ref;
-      result[QStringLiteral("role")] = roleName;
-      result[QStringLiteral("method")] = QStringLiteral("accessibilityAction");
-      result[QStringLiteral("action")] = fallbackAction;
-      return envelopeToString(ResponseEnvelope::wrap(result));
+    if (!chosen.isEmpty()) {
+      actionIface->doAction(chosen);
+      return clickResult(QStringLiteral("accessibilityAction"), chosen);
+    }
+
+    // Fall back to synthetic input at the element's centre.
+    //
+    // An interface that is not currently on screen (hidden, zero-sized, inside
+    // a collapsed Loader) reports an invalid rect whose centre is (0,0);
+    // clicking there would land somewhere arbitrary and still be reported as a
+    // success, so refuse instead.
+    const QRect rect = iface->rect();
+    if (rect.isValid()) {
+      if (QWidget* widget = qobject_cast<QWidget*>(obj)) {
+        InputSimulator::mouseClickAt(widget, InputSimulator::MouseButton::Left,
+                                     widget->mapFromGlobal(rect.center()));
+        return clickResult(QStringLiteral("mouseClick"), QString());
+      }
+#ifdef QTPILOT_HAS_QML
+      // Qt Quick has no QWidget: events go to the QQuickWindow in scene coords,
+      // while iface->rect() is global screen coords.
+      if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+        if (QQuickWindow* window = item->window()) {
+          InputSimulator::mouseClick(window, InputSimulator::MouseButton::Left,
+                                     window->mapFromGlobal(rect.center()));
+          return clickResult(QStringLiteral("mouseClick"), QString());
+        }
+      }
+#endif
+    }
+
+    // Last resort: an action we did not recognise. Only fire verbs that mean
+    // "activate" -- actionNames() is ordered by the backend, and blindly taking
+    // the first would fire Increase on a slider (mutating its value) while
+    // reporting a successful click.
+    static const QStringList kActuatingActions{
+        QAccessibleActionInterface::pressAction(),
+        QAccessibleActionInterface::toggleAction(),
+        QAccessibleActionInterface::showMenuAction(),
+    };
+    for (const QString& candidate : kActuatingActions) {
+      const bool isUntrustedQuickPress =
+          isQuickItem && candidate == QAccessibleActionInterface::pressAction();
+      if (!isUntrustedQuickPress && actions.contains(candidate)) {
+        actionIface->doAction(candidate);
+        return clickResult(QStringLiteral("accessibilityAction"), candidate);
+      }
     }
 
     throw JsonRpcException(

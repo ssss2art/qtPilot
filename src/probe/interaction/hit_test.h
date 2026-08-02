@@ -82,19 +82,32 @@ class QTPILOT_EXPORT HitTest {
   static QJsonObject windowGeometry(QWindow* window);
 
 #ifdef QTPILOT_HAS_QML
-  /// @brief Get a QML item's geometry in local and global coordinates.
+  /// @brief Get a QML item's geometry in local, scene and global coordinates.
   ///
-  /// Local is the item's rect within its parent; global maps the item's
-  /// top-left through the scene to screen coordinates. Same JSON shape as
-  /// widgetGeometry(), plus a "scene" rect (window-local), which is the
-  /// coordinate space Qt Quick input events use.
-  /// @param item Item to query (must be on a window)
+  /// Local is the item's rect within its parent; scene is window-local (the
+  /// space Qt Quick input events use); global is screen coordinates.
+  ///
+  /// Two differences from widgetGeometry() that clients must handle:
+  /// - there is an extra "scene" rect;
+  /// - every value is a **double**, not an int, because QML positions are
+  ///   routinely fractional. Read them with toDouble(); toInt() yields 0 for
+  ///   any non-integral value.
+  ///
+  /// An item with no window is not an error: "local" and "scene" are still
+  /// meaningful, but "global" is JSON null and "devicePixelRatio" is 1.0.
+  /// @param item Item to query
   static QJsonObject itemGeometry(QQuickItem* item);
 
   /// @brief Find the deepest visible QML item at a scene position.
+  ///
+  /// Walks children in paint order (z, then document order) and descends
+  /// through non-clipping items even when the point falls outside their own
+  /// bounds, matching Qt Quick's own delivery.
   /// @param window Window to search within
   /// @param scenePos Position in scene (window-local) coordinates
-  /// @return Deepest enabled+visible item at the position, or nullptr
+  /// @return Deepest enabled+visible item at the position, or nullptr when the
+  ///         position is outside the scene. Unlike childAt(), this does NOT
+  ///         fall back to the root -- a miss is reported as a miss.
   static QQuickItem* itemAt(QQuickWindow* window, const QPointF& scenePos);
 
   /// @brief Find a QML item at global coordinates and return its ID.

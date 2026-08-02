@@ -5,7 +5,10 @@
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
 
+#include <atomic>
+
 #include <QJsonObject>
+#include <QList>
 #include <QMutex>
 #include <QObject>
 #include <QSet>
@@ -73,7 +76,23 @@ class QTPILOT_EXPORT EventCapture : public QObject {
   /// Activate).
   QJsonObject buildWindowNotification(QObject* widget, QEvent* event, const QString& typeName);
 
-  bool m_capturing = false;
+#ifdef QTPILOT_HAS_QML
+  struct PendingQuickWindowEvent {
+    quint64 token;
+    int type;
+    quint64 timestamp;
+    QJsonObject notification;
+  };
+
+  void deferQuickWindowEvent(int type, quint64 timestamp, const QJsonObject& notification);
+  void cancelDeferredQuickWindowEvent(int type, quint64 timestamp);
+  void emitDeferredQuickWindowEvent(quint64 token);
+
+  QList<PendingQuickWindowEvent> m_pendingQuickWindowEvents;
+  quint64 m_nextQuickWindowEventToken = 1;
+#endif
+
+  std::atomic<bool> m_capturing = false;
 
   /// @brief Set of QEvent::Type values we capture.
   QSet<int> m_capturedTypes;
