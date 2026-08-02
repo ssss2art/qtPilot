@@ -9,6 +9,12 @@
 #include <QPoint>
 #include <QWidget>
 
+class QWindow;
+#ifdef QTPILOT_HAS_QML
+class QQuickItem;
+class QQuickWindow;
+#endif
+
 namespace qtPilot {
 
 /// @brief Widget geometry and hit testing utilities (UI-04, UI-05).
@@ -61,6 +67,44 @@ class QTPILOT_EXPORT HitTest {
   /// @param globalPos Screen coordinates
   /// @return Object ID of widget at position, or empty string if none
   static QString widgetIdAt(const QPoint& globalPos);
+
+  // --- QWindow / Qt Quick equivalents ---
+  //
+  // A pure Qt Quick app has no QWidget anywhere, so the widget entry points
+  // above return nothing for it. These mirror them for QWindow/QQuickItem
+  // targets and emit the same JSON shape.
+
+  /// @brief Get window geometry in local and global coordinates.
+  ///
+  /// Local is the window's own rect at the origin; global is its position on
+  /// screen. Same JSON shape as widgetGeometry().
+  /// @param window Window to query
+  static QJsonObject windowGeometry(QWindow* window);
+
+#ifdef QTPILOT_HAS_QML
+  /// @brief Get a QML item's geometry in local and global coordinates.
+  ///
+  /// Local is the item's rect within its parent; global maps the item's
+  /// top-left through the scene to screen coordinates. Same JSON shape as
+  /// widgetGeometry(), plus a "scene" rect (window-local), which is the
+  /// coordinate space Qt Quick input events use.
+  /// @param item Item to query (must be on a window)
+  static QJsonObject itemGeometry(QQuickItem* item);
+
+  /// @brief Find the deepest visible QML item at a scene position.
+  /// @param window Window to search within
+  /// @param scenePos Position in scene (window-local) coordinates
+  /// @return Deepest enabled+visible item at the position, or nullptr
+  static QQuickItem* itemAt(QQuickWindow* window, const QPointF& scenePos);
+
+  /// @brief Find a QML item at global coordinates and return its ID.
+  ///
+  /// Scans top-level QQuickWindows; used when no parent is supplied and the
+  /// widget hit test found nothing.
+  /// @param globalPos Screen coordinates
+  /// @return Object ID of the item at that position, or empty string
+  static QString quickItemIdAt(const QPoint& globalPos);
+#endif
 };
 
 }  // namespace qtPilot

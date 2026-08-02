@@ -17,6 +17,11 @@
 #include <QResizeEvent>
 #include <QWidget>
 
+#ifdef QTPILOT_HAS_QML
+#include <QQuickItem>
+#include <QQuickWindow>
+#endif
+
 namespace qtPilot {
 
 Q_GLOBAL_STATIC(EventCapture, s_eventCaptureInstance)
@@ -89,9 +94,16 @@ bool EventCapture::eventFilter(QObject* watched, QEvent* event) {
     return false;
   }
 
-  // Only capture events on QWidget-derived objects
-  QWidget* widget = qobject_cast<QWidget*>(watched);
-  if (!widget) {
+  // Capture events on visual objects only. A pure Qt Quick app has no QWidget
+  // anywhere, so restricting to QWidget captured nothing at all there: input is
+  // delivered to the QQuickWindow and routed to QQuickItems.
+  const bool isVisual = qobject_cast<QWidget*>(watched) != nullptr
+#ifdef QTPILOT_HAS_QML
+                        || qobject_cast<QQuickItem*>(watched) != nullptr ||
+                        qobject_cast<QQuickWindow*>(watched) != nullptr
+#endif
+      ;
+  if (!isVisual) {
     return false;
   }
 

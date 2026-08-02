@@ -7,6 +7,7 @@
 #include "transport/jsonrpc_handler.h"
 
 #include <QAccessible>
+#include <QAccessibleActionInterface>
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -48,6 +49,7 @@ class TestChromeModeApi : public QObject {
 
   // chr.click tests
   void testClick_Button();
+  void testClick_CheckablePrefersToggleAction();
   void testClick_InvalidRef();
 
   // chr.formInput tests
@@ -405,6 +407,26 @@ void TestChromeModeApi::testClick_Button() {
   QString method = obj["method"].toString();
   QVERIFY2(method == "accessibilityAction" || method == "mouseClick",
            qPrintable(QString("Unexpected click method: %1").arg(method)));
+}
+
+void TestChromeModeApi::testClick_CheckablePrefersToggleAction() {
+  // A checkable control exposes both Toggle and Press. chr.click used to always
+  // send Press, which on Qt Quick Controls is advertised but inert -- the click
+  // reported success while nothing actuated. Toggle is the correct verb for a
+  // checkbox on both toolkits, so assert it is the one chosen.
+  QJsonObject tree = readPage()["tree"].toObject();
+  QString ref = findRefByObjectName(tree, "chkTerms");
+  QVERIFY2(!ref.isEmpty(), "Must find checkbox ref to test click");
+
+  const bool before = m_checkBox->isChecked();
+  QJsonObject obj = callResult("chr.click", QJsonObject{{"ref", ref}}).toObject();
+  QApplication::processEvents();
+
+  QCOMPARE(obj["clicked"].toBool(), true);
+  QCOMPARE(m_checkBox->isChecked(), !before);
+  if (obj["method"].toString() == QLatin1String("accessibilityAction")) {
+    QCOMPARE(obj["action"].toString(), QAccessibleActionInterface::toggleAction());
+  }
 }
 
 void TestChromeModeApi::testClick_InvalidRef() {

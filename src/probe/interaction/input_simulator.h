@@ -167,6 +167,11 @@ class QTPILOT_EXPORT InputSimulator {
   static void sendKey(QWindow* window, Qt::Key key,
                       Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
+  /// @brief Send a key sequence (e.g. "Ctrl+S") to the window's focused item.
+  /// @param window Target window
+  /// @param sequence Key sequence string in QKeySequence::PortableText format
+  static void sendKeySequence(QWindow* window, const QString& sequence);
+
  private:
   /// Convert MouseButton enum to Qt::MouseButton
   static Qt::MouseButton toQtButton(MouseButton button);
