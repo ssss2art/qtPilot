@@ -47,6 +47,11 @@ jobs:
           - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
           - { qt: "6.10.0", os: windows-2022, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
           - { qt: "6.10.0", os: macos-14,       preset: macos-release,   platform: macos,   compiler: clang,  modules: "qtwebsockets", arch_label: arm64 }
+          # QML-disabled build. Every other leg resolves Qt Quick, so
+          # QTPILOT_HAS_QML is ON everywhere and the #ifdef'd-out code is never
+          # compiled -- that is how a missing <QWindow> include reached a green
+          # run. Force it off here so the QML-less configuration stays buildable.
+          - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets", extra_cmake: "-DQTPILOT_ENABLE_QML=OFF", arch_label: noqml }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -81,7 +86,7 @@ jobs:
             exit 1
           fi
           echo "Using Qt prefix: $QT_PATH"
-          cmake --preset ${{ matrix.preset }} -DCMAKE_PREFIX_PATH="$QT_PATH"
+          cmake --preset ${{ matrix.preset }} -DCMAKE_PREFIX_PATH="$QT_PATH" ${{ matrix.extra_cmake }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}

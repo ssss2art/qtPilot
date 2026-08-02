@@ -5,14 +5,39 @@
 #include "introspection/event_capture.h"
 
 #include <QApplication>
+#include <QAtomicInteger>
 #include <QCloseEvent>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSignalSpy>
+#include <QThread>
 #include <QtTest>
 
 using namespace qtPilot;
+
+namespace {
+
+class CaptureWorker final : public QThread {
+ public:
+  explicit CaptureWorker(EventCapture* capture) : m_capture(capture) {}
+
+  QAtomicInteger<bool> started = false;
+  QAtomicInteger<bool> stopped = false;
+
+ protected:
+  void run() override {
+    m_capture->startCapture();
+    started = m_capture->isCapturing();
+    m_capture->stopCapture();
+    stopped = !m_capture->isCapturing();
+  }
+
+ private:
+  EventCapture* m_capture;
+};
+
+}  // namespace
 
 /// @brief Unit tests for EventCapture window lifecycle events
 /// (Show, Hide, Close, Resize).
@@ -26,6 +51,7 @@ class TestEventCapture : public QObject {
   void cleanup();
 
   void testStartStopCapture();
+  void testStartStopCaptureFromWorkerThread();
   void testShowEvent();
   void testHideEvent();
   void testResizeEvent();
@@ -69,6 +95,16 @@ void TestEventCapture::testStartStopCapture() {
 
   ec->stopCapture();
   QVERIFY(!ec->isCapturing());
+}
+
+void TestEventCapture::testStartStopCaptureFromWorkerThread() {
+  CaptureWorker worker(EventCapture::instance());
+  worker.start();
+
+  QTRY_VERIFY_WITH_TIMEOUT(worker.isFinished(), 2000);
+  QVERIFY(worker.wait());
+  QVERIFY(worker.started);
+  QVERIFY(worker.stopped);
 }
 
 void TestEventCapture::testShowEvent() {

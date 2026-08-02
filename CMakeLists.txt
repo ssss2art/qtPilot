@@ -26,6 +26,11 @@ endif()
 # Options
 option(QTPILOT_BUILD_TESTS "Build unit tests" ON)
 option(QTPILOT_BUILD_TEST_APP "Build the test Qt application" ON)
+# QML introspection is auto-detected from the Qt installation. This switch
+# forces it off even when Qt Quick is present, so the QML-disabled build stays
+# compilable -- CI otherwise never exercises it, because every Qt install in
+# the matrix ships qtdeclarative.
+option(QTPILOT_ENABLE_QML "Enable QML/Qt Quick introspection when Qt Quick is available" ON)
 
 # Qt path hint - takes precedence over CMAKE_PREFIX_PATH
 set(QTPILOT_QT_DIR "" CACHE PATH "Explicit path to Qt installation (takes precedence over CMAKE_PREFIX_PATH)")
@@ -98,8 +103,13 @@ if(Qt6_FOUND)
     endif()
 
     # Optional: Qt Quick/QML support
-    find_package(Qt6 COMPONENTS Qml Quick QUIET)
-    if(Qt6Qml_FOUND AND Qt6Quick_FOUND)
+    if(QTPILOT_ENABLE_QML)
+        find_package(Qt6 COMPONENTS Qml Quick QUIET)
+    endif()
+    if(NOT QTPILOT_ENABLE_QML)
+        set(QTPILOT_HAS_QML OFF)
+        message(STATUS "QML introspection disabled by QTPILOT_ENABLE_QML=OFF")
+    elseif(Qt6Qml_FOUND AND Qt6Quick_FOUND)
         set(QTPILOT_HAS_QML ON)
         message(STATUS "Found Qt6 Qml/Quick - QML introspection enabled")
     else()
@@ -166,8 +176,13 @@ else()
     endif()
 
     # Optional: Qt Quick/QML support
-    find_package(Qt5 COMPONENTS Qml Quick QUIET)
-    if(Qt5Qml_FOUND AND Qt5Quick_FOUND)
+    if(QTPILOT_ENABLE_QML)
+        find_package(Qt5 COMPONENTS Qml Quick QUIET)
+    endif()
+    if(NOT QTPILOT_ENABLE_QML)
+        set(QTPILOT_HAS_QML OFF)
+        message(STATUS "QML introspection disabled by QTPILOT_ENABLE_QML=OFF")
+    elseif(Qt5Qml_FOUND AND Qt5Quick_FOUND)
         set(QTPILOT_HAS_QML ON)
         message(STATUS "Found Qt5 Qml/Quick - QML introspection enabled")
     else()
@@ -314,6 +329,21 @@ endif()
 if(QTPILOT_BUILD_TEST_APP)
     add_subdirectory(test_app)
     install(TARGETS qtPilot_test_app RUNTIME DESTINATION bin)
+
+    # Pure Qt Quick companion app backing its views with real
+    # QAbstractItemModels, so qt.models.* can be exercised against QML. Qt 6
+    # only -- qt_add_qml_module has no Qt 5 equivalent.
+    if(QTPILOT_HAS_QML AND QT_VERSION_MAJOR EQUAL 6)
+        find_package(Qt6 QUIET COMPONENTS QuickControls2)
+        if(Qt6QuickControls2_FOUND)
+            add_subdirectory(test_app_qml)
+            install(TARGETS qtPilot_test_app_qml
+                RUNTIME DESTINATION bin
+                BUNDLE DESTINATION bin)
+        else()
+            message(STATUS "QtQuickControls2 not found - skipping QML model test app")
+        endif()
+    endif()
 endif()
 
 if(QTPILOT_BUILD_TESTS)

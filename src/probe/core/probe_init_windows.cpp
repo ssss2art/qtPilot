@@ -73,6 +73,8 @@ void ensureInitialized() {
 // linking case. For runtime injection, the launcher calls qtpilotProbeInit()
 // which either inits immediately or registers via qAddPreRoutine().
 #include <QCoreApplication>
+#include <QMetaObject>
+#include <QThread>
 
 static void qtpilotAutoInit() {
   // Check if probe is disabled via environment
@@ -98,9 +100,23 @@ extern "C" __declspec(dllexport) DWORD WINAPI qtpilotProbeInit(LPVOID /*param*/)
   g_dllLoaded = true;
 
   if (QCoreApplication::instance()) {
-    // QApp already exists (attached to running process) — init now
-    OutputDebugStringA("[qtPilot] QCoreApplication exists, initializing immediately\n");
-    qtPilot::ensureInitialized();
+    // Runtime injection arrives on a temporary CreateRemoteThread. Constructing
+    // Probe, its WebSocket server, and the JSON-RPC handlers there gives every
+    // GUI operation the wrong thread affinity and leaves the server owned by a
+    // thread that immediately exits. Queue initialization onto qApp instead.
+    QCoreApplication* app = QCoreApplication::instance();
+    if (QThread::currentThread() == app->thread()) {
+      OutputDebugStringA("[qtPilot] QCoreApplication exists, initializing immediately\n");
+      qtPilot::ensureInitialized();
+    } else {
+      OutputDebugStringA("[qtPilot] QCoreApplication exists, queuing initialization\n");
+      const bool queued = QMetaObject::invokeMethod(
+          app, []() { qtPilot::ensureInitialized(); }, Qt::QueuedConnection);
+      if (!queued) {
+        OutputDebugStringA("[qtPilot] Failed to queue initialization on application thread\n");
+        return ERROR_FUNCTION_FAILED;
+      }
+    }
   } else {
     // QApp doesn't exist yet (suspended process) — register for later.
     // qAddPreRoutine calls the callback immediately if QApp exists,

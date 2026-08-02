@@ -6,6 +6,8 @@
 #include "compat/compat_gui.h"
 #include "core/object_registry.h"
 
+#include <utility>
+
 #include <QCoreApplication>
 #include <QDebug>
 #include <QEvent>
@@ -15,14 +17,29 @@
 #include <QMouseEvent>
 #include <QMutexLocker>
 #include <QResizeEvent>
+#include <QThread>
+#include <QTimer>
 #include <QWidget>
+
+#ifdef QTPILOT_HAS_QML
+#include <QQuickItem>
+#include <QQuickWindow>
+#endif
 
 namespace qtPilot {
 
 Q_GLOBAL_STATIC(EventCapture, s_eventCaptureInstance)
 
 EventCapture* EventCapture::instance() {
-  return s_eventCaptureInstance();
+  EventCapture* capture = s_eventCaptureInstance();
+  QCoreApplication* app = QCoreApplication::instance();
+  if (app && capture->thread() != app->thread() && capture->thread() == QThread::currentThread()) {
+    // Q_GLOBAL_STATIC constructs in the first caller's thread. Event filters
+    // must share affinity with the watched object, so move a first-use worker
+    // construction to the application thread before it can be installed.
+    capture->moveToThread(app->thread());
+  }
+  return capture;
 }
 
 EventCapture::EventCapture() : QObject(nullptr) {
@@ -49,32 +66,68 @@ EventCapture::~EventCapture() {
 }
 
 void EventCapture::startCapture() {
+  QCoreApplication* app = QCoreApplication::instance();
+  if (!app) {
+    qWarning() << "[qtPilot] EventCapture: Cannot start -- no QCoreApplication";
+    return;
+  }
+
+  if (QThread::currentThread() != app->thread()) {
+    const bool invoked =
+        QMetaObject::invokeMethod(app, [this]() { startCapture(); }, Qt::BlockingQueuedConnection);
+    if (!invoked) {
+      qWarning() << "[qtPilot] EventCapture: Cannot marshal start to application thread";
+    }
+    return;
+  }
+
   QMutexLocker lock(&m_mutex);
   if (m_capturing) {
     return;
   }
 
-  if (!QCoreApplication::instance()) {
-    qWarning() << "[qtPilot] EventCapture: Cannot start -- no QCoreApplication";
+  if (thread() != app->thread()) {
+    qWarning() << "[qtPilot] EventCapture: Event filter has wrong thread affinity";
     return;
   }
 
-  QCoreApplication::instance()->installEventFilter(this);
+  app->installEventFilter(this);
   m_capturing = true;
   qDebug() << "[qtPilot] EventCapture started";
 }
 
 void EventCapture::stopCapture() {
+  QCoreApplication* app = QCoreApplication::instance();
+  if (app && QThread::currentThread() != app->thread()) {
+    const bool invoked =
+        QMetaObject::invokeMethod(app, [this]() { stopCapture(); }, Qt::BlockingQueuedConnection);
+    if (!invoked) {
+      qWarning() << "[qtPilot] EventCapture: Cannot marshal stop to application thread";
+    }
+    return;
+  }
+
   QMutexLocker lock(&m_mutex);
   if (!m_capturing) {
     return;
   }
 
-  if (QCoreApplication::instance()) {
-    QCoreApplication::instance()->removeEventFilter(this);
+  if (app) {
+    app->removeEventFilter(this);
   }
 
   m_capturing = false;
+#ifdef QTPILOT_HAS_QML
+  const QList<PendingQuickWindowEvent> pending = std::move(m_pendingQuickWindowEvents);
+  m_pendingQuickWindowEvents.clear();
+#endif
+  lock.unlock();
+
+#ifdef QTPILOT_HAS_QML
+  for (const PendingQuickWindowEvent& event : pending) {
+    Q_EMIT eventCaptured(event.notification);
+  }
+#endif
   qDebug() << "[qtPilot] EventCapture stopped";
 }
 
@@ -89,10 +142,53 @@ bool EventCapture::eventFilter(QObject* watched, QEvent* event) {
     return false;
   }
 
-  // Only capture events on QWidget-derived objects
-  QWidget* widget = qobject_cast<QWidget*>(watched);
-  if (!widget) {
+  // Capture events on visual objects only. A pure Qt Quick app has no QWidget
+  // anywhere, so restricting to QWidget captured nothing at all there: input is
+  // delivered to the QQuickWindow and routed to QQuickItems.
+#ifdef QTPILOT_HAS_QML
+  bool deferQuickWindowInput = false;
+  bool cancelDeferredQuickWindowInput = false;
+#endif
+  if (qobject_cast<QWidget*>(watched) == nullptr) {
+#ifdef QTPILOT_HAS_QML
+    // Qt Quick normally dispatches input first to QQuickWindow and then to the
+    // target QQuickItem. Pointer handlers can grab a sequence, though, leaving
+    // some events (commonly the release) on the window only. Defer window input
+    // by one event-loop turn: an item duplicate cancels it, while a window-only
+    // event is still reported instead of being silently lost.
+    //
+    // The widget path never had this problem: its window-level receiver is a
+    // QWidgetWindow, which is a QWindow and so was already filtered out.
+    const bool isItem = qobject_cast<QQuickItem*>(watched) != nullptr;
+    const bool isQuickWindow = qobject_cast<QQuickWindow*>(watched) != nullptr;
+    bool accept = isItem;
+    if (isQuickWindow) {
+      switch (event->type()) {
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease:
+        case QEvent::MouseButtonDblClick:
+        case QEvent::KeyPress:
+        case QEvent::KeyRelease:
+          accept = true;
+          deferQuickWindowInput = true;
+          break;
+        case QEvent::Show:
+        case QEvent::Hide:
+        case QEvent::Close:
+        case QEvent::Resize:
+          accept = true;
+          break;
+        default:
+          break;
+      }
+    }
+    cancelDeferredQuickWindowInput = isItem;
+    if (!accept) {
+      return false;
+    }
+#else
     return false;
+#endif
   }
 
   QJsonObject notification;
@@ -136,12 +232,64 @@ bool EventCapture::eventFilter(QObject* watched, QEvent* event) {
   }
 
   if (!notification.isEmpty()) {
+#ifdef QTPILOT_HAS_QML
+    quint64 timestamp = 0;
+    switch (event->type()) {
+      case QEvent::MouseButtonPress:
+      case QEvent::MouseButtonRelease:
+      case QEvent::MouseButtonDblClick:
+      case QEvent::KeyPress:
+      case QEvent::KeyRelease:
+        timestamp = static_cast<QInputEvent*>(event)->timestamp();
+        break;
+      default:
+        break;
+    }
+    if (deferQuickWindowInput) {
+      deferQuickWindowEvent(event->type(), timestamp, notification);
+      return false;
+    }
+    if (cancelDeferredQuickWindowInput) {
+      cancelDeferredQuickWindowEvent(event->type(), timestamp);
+    }
+#endif
     Q_EMIT eventCaptured(notification);
   }
 
   // Never consume the event -- we are observe-only
   return false;
 }
+
+#ifdef QTPILOT_HAS_QML
+
+void EventCapture::deferQuickWindowEvent(int type, quint64 timestamp,
+                                         const QJsonObject& notification) {
+  const quint64 token = m_nextQuickWindowEventToken++;
+  m_pendingQuickWindowEvents.append(PendingQuickWindowEvent{token, type, timestamp, notification});
+  QTimer::singleShot(0, this, [this, token]() { emitDeferredQuickWindowEvent(token); });
+}
+
+void EventCapture::cancelDeferredQuickWindowEvent(int type, quint64 timestamp) {
+  for (auto it = m_pendingQuickWindowEvents.begin(); it != m_pendingQuickWindowEvents.end(); ++it) {
+    if (it->type == type && it->timestamp == timestamp) {
+      m_pendingQuickWindowEvents.erase(it);
+      return;
+    }
+  }
+}
+
+void EventCapture::emitDeferredQuickWindowEvent(quint64 token) {
+  for (auto it = m_pendingQuickWindowEvents.begin(); it != m_pendingQuickWindowEvents.end(); ++it) {
+    if (it->token == token) {
+      const QJsonObject notification = it->notification;
+      m_pendingQuickWindowEvents.erase(it);
+      Q_EMIT eventCaptured(notification);
+      return;
+    }
+  }
+}
+
+#endif
 
 static QString mouseButtonName(Qt::MouseButton button) {
   switch (button) {

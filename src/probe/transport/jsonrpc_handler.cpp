@@ -17,7 +17,12 @@
 #include "introspection/object_id.h"
 #include "introspection/signal_monitor.h"
 
+#include <QPointer>
 #include <QWidget>
+// Unconditional: qtpilot.getGeometry casts to QWindow* outside the QML guard,
+// and <QWidget> only reaches qwindowdefs.h, which forward-declares QWindow.
+// qobject_cast needs the complete type.
+#include <QWindow>
 
 #ifdef QTPILOT_HAS_QML
 #include <QQuickItem>
@@ -239,6 +244,68 @@ QString JsonRpcHandler::CreateErrorResponse(const QString& id, int code, const Q
 
   return QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact));
 }
+
+namespace {
+
+/// @brief A visual target resolved from an object id.
+///
+/// Exactly one of the pointers is non-null. Centralising the cast chain keeps
+/// the five handlers that accept visual targets (click, sendKeys, screenshot,
+/// getGeometry, hitTest) from each re-deriving it -- and, importantly, keeps
+/// the #ifdef in one place instead of interleaving it with an if/else chain in
+/// five separate handlers, where a QTPILOT_HAS_QML=OFF build (never exercised
+/// in CI) could silently get a different control-flow graph.
+struct VisualTarget {
+  QWidget* widget = nullptr;
+  QWindow* window = nullptr;  // any QWindow, including a QQuickWindow
+#ifdef QTPILOT_HAS_QML
+  QQuickWindow* quickWindow = nullptr;
+  QQuickItem* item = nullptr;
+#endif
+
+  bool isValid() const {
+    return widget != nullptr || window != nullptr
+#ifdef QTPILOT_HAS_QML
+           || item != nullptr
+#endif
+        ;
+  }
+};
+
+/// @brief Cast @a obj to whichever visual type it is.
+/// @throws std::runtime_error naming every type the caller accepts.
+VisualTarget resolveVisualTarget(QObject* obj, const QString& id) {
+  VisualTarget target;
+  target.widget = qobject_cast<QWidget*>(obj);
+  if (!target.widget) {
+#ifdef QTPILOT_HAS_QML
+    target.quickWindow = qobject_cast<QQuickWindow*>(obj);
+    target.item = target.quickWindow ? nullptr : qobject_cast<QQuickItem*>(obj);
+#endif
+    // A QQuickWindow is a QWindow, so this also covers the Quick case; plain
+    // QWindow targets (QRasterWindow, QOpenGLWindow) land here too.
+    target.window = qobject_cast<QWindow*>(obj);
+  }
+
+  if (!target.isValid()) {
+    throw std::runtime_error("Object is not a widget, window, or QML item: " + id.toStdString());
+  }
+  return target;
+}
+
+#ifdef QTPILOT_HAS_QML
+/// @brief The window a rendered item belongs to.
+/// @throws std::runtime_error if the item is not on a window.
+QQuickWindow* requireItemWindow(QQuickItem* item, const QString& id) {
+  QQuickWindow* window = item->window();
+  if (!window) {
+    throw std::runtime_error("QQuickItem is not on a window (not rendered): " + id.toStdString());
+  }
+  return window;
+}
+#endif
+
+}  // namespace
 
 void JsonRpcHandler::RegisterBuiltinMethods() {
   // ping - basic connectivity test
@@ -503,14 +570,15 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     QString button = doc.object()["button"].toString("left");
     QJsonObject pos = doc.object()["position"].toObject();
 
+    if (doc.object().contains("position") &&
+        (pos.isEmpty() || !pos["x"].isDouble() || !pos["y"].isDouble())) {
+      throw JsonRpcException(JsonRpcError::kInvalidParams,
+                             QStringLiteral("position requires numeric 'x' and 'y'"));
+    }
+
     QObject* obj = ObjectRegistry::instance()->findById(id);
     if (!obj) {
       throw std::runtime_error("Object not found: " + id.toStdString());
-    }
-
-    QWidget* widget = qobject_cast<QWidget*>(obj);
-    if (!widget) {
-      throw std::runtime_error("Object is not a widget: " + id.toStdString());
     }
 
     InputSimulator::MouseButton btn = InputSimulator::MouseButton::Left;
@@ -519,12 +587,36 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     else if (button == "middle")
       btn = InputSimulator::MouseButton::Middle;
 
-    QPoint clickPos;
-    if (!pos.isEmpty()) {
-      clickPos = QPoint(pos["x"].toInt(), pos["y"].toInt());
+    // Distinguish "no position given" from an explicit {0,0}. Testing the
+    // QPoint would conflate them -- QPoint(0,0).isNull() is true -- so an
+    // explicit top-left click would silently become a centre click.
+    const bool hasPos = !pos.isEmpty();
+    const QPoint clickPos = hasPos ? QPoint(pos["x"].toInt(), pos["y"].toInt()) : QPoint();
+
+    const VisualTarget target = resolveVisualTarget(obj, id);
+    if (target.widget) {
+      if (hasPos) {
+        InputSimulator::mouseClickAt(target.widget, btn, clickPos);
+      } else {
+        InputSimulator::mouseClick(target.widget, btn);
+      }
+    }
+#ifdef QTPILOT_HAS_QML
+    else if (target.item) {
+      QQuickWindow* w = requireItemWindow(target.item, id);
+      // An item-relative position (or its centre) has to become scene coords,
+      // since that is the only space a QQuickWindow accepts.
+      const QPointF itemPos =
+          hasPos ? QPointF(clickPos) : QPointF(target.item->width() / 2, target.item->height() / 2);
+      InputSimulator::mouseClick(w, btn, target.item->mapToScene(itemPos).toPoint());
+    }
+#endif
+    else if (target.window) {
+      InputSimulator::mouseClick(
+          target.window, btn,
+          hasPos ? clickPos : QPoint(target.window->width() / 2, target.window->height() / 2));
     }
 
-    InputSimulator::mouseClick(widget, btn, clickPos);
     return QString::fromUtf8(
         QJsonDocument(QJsonObject{{"success", true}}).toJson(QJsonDocument::Compact));
   });
@@ -539,21 +631,75 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     QString text = doc.object()["text"].toString();
     QString sequence = doc.object()["sequence"].toString();
 
+    // Reject a request that would do nothing. Without this a typo'd parameter
+    // name reports success while sending no input at all -- and on the QML path
+    // it would still move focus as a side effect.
+    if (text.isEmpty() && sequence.isEmpty()) {
+      throw JsonRpcException(JsonRpcError::kInvalidParams,
+                             QStringLiteral("sendKeys requires a non-empty 'text' or 'sequence'"));
+    }
+
     QObject* obj = ObjectRegistry::instance()->findById(id);
     if (!obj) {
       throw std::runtime_error("Object not found: " + id.toStdString());
     }
 
-    QWidget* widget = qobject_cast<QWidget*>(obj);
-    if (!widget) {
-      throw std::runtime_error("Object is not a widget: " + id.toStdString());
+    const VisualTarget target = resolveVisualTarget(obj, id);
+    if (target.widget) {
+      if (!text.isEmpty()) {
+        InputSimulator::sendText(target.widget, text);
+      }
+      if (!sequence.isEmpty()) {
+        InputSimulator::sendKeySequence(target.widget, sequence);
+      }
     }
+#ifdef QTPILOT_HAS_QML
+    else if (target.item) {
+      // The QWidget path calls setFocus() before typing; do the same here, or
+      // the text lands on whichever item happened to hold focus already.
+      //
+      // forceActiveFocus() runs QML focus handlers synchronously and each
+      // InputSimulator primitive pumps the event loop, so the item -- and the
+      // window derived from it -- can be destroyed underneath us. Guard both
+      // and re-derive the window after focus, since focus reparenting can even
+      // move an item to a different window.
+      QPointer<QQuickItem> itemGuard(target.item);
+      requireItemWindow(target.item, id);  // fail fast if not rendered
+      target.item->forceActiveFocus();
+      if (!itemGuard) {
+        throw std::runtime_error("Target was destroyed during focus change: " + id.toStdString());
+      }
 
-    if (!text.isEmpty()) {
-      InputSimulator::sendText(widget, text);
+      QPointer<QQuickWindow> windowGuard(requireItemWindow(itemGuard, id));
+      if (!text.isEmpty()) {
+        InputSimulator::sendText(windowGuard, text);
+        if (!itemGuard) {
+          throw std::runtime_error("Target was destroyed while typing: " + id.toStdString());
+        }
+        if (!windowGuard) {
+          throw std::runtime_error("Target window was destroyed while typing: " + id.toStdString());
+        }
+        if (itemGuard->window() != windowGuard.data()) {
+          throw std::runtime_error("Target moved to another window while typing: " +
+                                   id.toStdString());
+        }
+      }
+      if (!sequence.isEmpty()) {
+        InputSimulator::sendKeySequence(windowGuard, sequence);
+      }
     }
-    if (!sequence.isEmpty()) {
-      InputSimulator::sendKeySequence(widget, sequence);
+#endif
+    else if (target.window) {
+      QPointer<QWindow> windowGuard(target.window);
+      if (!text.isEmpty()) {
+        InputSimulator::sendText(windowGuard, text);
+        if (!windowGuard) {
+          throw std::runtime_error("Target window was destroyed while typing: " + id.toStdString());
+        }
+      }
+      if (!sequence.isEmpty()) {
+        InputSimulator::sendKeySequence(windowGuard, sequence);
+      }
     }
 
     return QString::fromUtf8(
@@ -581,40 +727,38 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     };
 
     QByteArray base64;
-    if (QWidget* widget = qobject_cast<QWidget*>(obj)) {
+    const VisualTarget target = resolveVisualTarget(obj, id);
+    if (target.widget) {
       if (fullWindow) {
-        base64 = Screenshot::captureWindow(widget);
+        base64 = Screenshot::captureWindow(target.widget);
       } else if (!region.isEmpty()) {
-        base64 = Screenshot::captureRegion(widget, rectFromRegion());
+        base64 = Screenshot::captureRegion(target.widget, rectFromRegion());
       } else {
-        base64 = Screenshot::captureWidget(widget);
+        base64 = Screenshot::captureWidget(target.widget);
       }
     }
 #ifdef QTPILOT_HAS_QML
     // Qt Quick has no QWidget: grab via the QQuickWindow (QQuickWindow::grabWindow,
-    // offscreen — no screen-recording permission needed), cropping to the item.
-    else if (auto* quickWindow = qobject_cast<QQuickWindow*>(obj)) {
-      base64 = region.isEmpty() ? Screenshot::captureWindow(quickWindow)
-                                : Screenshot::captureRegion(quickWindow, rectFromRegion());
-    } else if (auto* item = qobject_cast<QQuickItem*>(obj)) {
-      QQuickWindow* w = item->window();
-      if (!w) {
-        throw std::runtime_error("QQuickItem is not on a window (not rendered): " +
-                                 id.toStdString());
-      }
+    // offscreen -- no screen-recording permission needed), cropping to the item.
+    else if (target.quickWindow) {
+      base64 = region.isEmpty() ? Screenshot::captureWindow(target.quickWindow)
+                                : Screenshot::captureRegion(target.quickWindow, rectFromRegion());
+    } else if (target.item) {
+      QQuickWindow* w = requireItemWindow(target.item, id);
       if (fullWindow) {
         base64 = Screenshot::captureWindow(w);
       } else if (!region.isEmpty()) {
         base64 = Screenshot::captureRegion(w, rectFromRegion());
       } else {
         // Crop the window grab to the item's bounds (scene coords, logical px).
-        const QRectF sceneRect = item->mapRectToScene(QRectF(0, 0, item->width(), item->height()));
+        const QRectF sceneRect =
+            target.item->mapRectToScene(QRectF(0, 0, target.item->width(), target.item->height()));
         base64 = Screenshot::captureRegion(w, sceneRect.toRect());
       }
     }
 #endif
     else {
-      throw std::runtime_error("Object is not a widget or QML item: " + id.toStdString());
+      throw std::runtime_error("Screenshot target is not capturable: " + id.toStdString());
     }
 
     return QString::fromUtf8(QJsonDocument(QJsonObject{{"image", QString::fromLatin1(base64)}})
@@ -634,12 +778,20 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
       throw std::runtime_error("Object not found: " + id.toStdString());
     }
 
-    QWidget* widget = qobject_cast<QWidget*>(obj);
-    if (!widget) {
-      throw std::runtime_error("Object is not a widget: " + id.toStdString());
+    QJsonObject geo;
+    const VisualTarget target = resolveVisualTarget(obj, id);
+    if (target.widget) {
+      geo = HitTest::widgetGeometry(target.widget);
+    }
+#ifdef QTPILOT_HAS_QML
+    else if (target.item) {
+      geo = HitTest::itemGeometry(target.item);
+    }
+#endif
+    else {
+      geo = HitTest::windowGeometry(target.window);
     }
 
-    QJsonObject geo = HitTest::widgetGeometry(widget);
     return QString::fromUtf8(QJsonDocument(geo).toJson(QJsonDocument::Compact));
   });
 
@@ -657,17 +809,39 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
         throw std::runtime_error("Parent object not found: " + parentId.toStdString());
       }
 
-      QWidget* parent = qobject_cast<QWidget*>(parentObj);
-      if (!parent) {
-        throw std::runtime_error("Parent is not a widget");
+      const VisualTarget parentTarget = resolveVisualTarget(parentObj, parentId);
+      if (parentTarget.widget) {
+        QWidget* child = HitTest::childAt(parentTarget.widget, QPoint(x, y));
+        if (child) {
+          foundId = ObjectRegistry::instance()->objectId(child);
+        }
       }
-
-      QWidget* child = HitTest::childAt(parent, QPoint(x, y));
-      if (child) {
-        foundId = ObjectRegistry::instance()->objectId(child);
+#ifdef QTPILOT_HAS_QML
+      // For QML the position is scene (window-local) coordinates.
+      else if (parentTarget.quickWindow) {
+        if (QQuickItem* hit = HitTest::itemAt(parentTarget.quickWindow, QPointF(x, y))) {
+          foundId = ObjectRegistry::instance()->objectId(hit);
+        }
+      } else if (parentTarget.item) {
+        QQuickWindow* w = requireItemWindow(parentTarget.item, parentId);
+        // Position is relative to the given item, so lift it into scene space.
+        if (QQuickItem* hit = HitTest::itemAt(w, parentTarget.item->mapToScene(QPointF(x, y)))) {
+          foundId = ObjectRegistry::instance()->objectId(hit);
+        }
+      }
+#endif
+      else {
+        throw std::runtime_error("Parent is not hit-testable: " + parentId.toStdString());
       }
     } else {
       foundId = HitTest::widgetIdAt(QPoint(x, y));
+#ifdef QTPILOT_HAS_QML
+      // A pure Qt Quick app has no widget anywhere, so fall back to scanning
+      // top-level QQuickWindows before reporting nothing.
+      if (foundId.isEmpty()) {
+        foundId = HitTest::quickItemIdAt(QPoint(x, y));
+      }
+#endif
     }
 
     if (foundId.isEmpty()) {
