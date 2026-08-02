@@ -13,11 +13,28 @@
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QMouseEvent>
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QtTest>
 
 using namespace qtPilot;
+
+namespace {
+
+class DeleteOnKeyItem final : public QQuickItem {
+ protected:
+  bool event(QEvent* event) override {
+    const bool handled = QQuickItem::event(event);
+    if (event->type() == QEvent::KeyPress) {
+      deleteLater();
+    }
+    return handled;
+  }
+};
+
+}  // namespace
 
 class TestQmlInteraction : public QObject {
   Q_OBJECT
@@ -41,10 +58,12 @@ class TestQmlInteraction : public QObject {
 
   void testSendKeysOnQuickItemIsAccepted();
   void testSendKeysRejectsNonVisualObject();
+  void testSendKeysStopsWhenItemIsDestroyedByText();
 
   void testEventCaptureSeesQuickTargets();
   void testEventCaptureIgnoresNonVisualObjects();
   void testEventCaptureDoesNotDoubleReportQuickInput();
+  void testEventCaptureSeesTapHandlerInput();
 
   void testHitTestOutsideSceneReportsMiss();
   void testSendKeysWithoutTextOrSequenceIsRejected();
@@ -280,6 +299,26 @@ void TestQmlInteraction::testSendKeysRejectsNonVisualObject() {
            qPrintable(message));
 }
 
+void TestQmlInteraction::testSendKeysStopsWhenItemIsDestroyedByText() {
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 150);
+  auto* item = new DeleteOnKeyItem();
+  item->setParentItem(window.contentItem());
+  item->setObjectName(QStringLiteral("deleteOnKeyItem"));
+  item->setSize(QSizeF(50, 50));
+  window.show();
+  QCoreApplication::processEvents();
+
+  const QJsonObject response =
+      call(QStringLiteral("qtpilot.sendKeys"),
+           QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(item)},
+                       {QStringLiteral("text"), QStringLiteral("x")},
+                       {QStringLiteral("sequence"), QStringLiteral("Ctrl+A")}});
+
+  const QString message = errorOf(response);
+  QVERIFY2(message.contains(QStringLiteral("destroyed while typing")), qPrintable(message));
+}
+
 // --- event capture ----------------------------------------------------------
 
 void TestQmlInteraction::testEventCaptureSeesQuickTargets() {
@@ -357,6 +396,64 @@ void TestQmlInteraction::testEventCaptureDoesNotDoubleReportQuickInput() {
   QCOMPARE(captured, 1);
 }
 
+void TestQmlInteraction::testEventCaptureSeesTapHandlerInput() {
+  QQmlEngine engine;
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 150);
+
+  QQmlComponent component(&engine);
+  component.setData(R"(
+    import QtQuick 2.15
+    Item {
+      objectName: "tapHandlerItem"
+      width: 100
+      height: 100
+      TapHandler {}
+    }
+  )",
+                    QUrl());
+  QObject* object = component.create();
+  QVERIFY2(object, qPrintable(component.errorString()));
+  auto* item = qobject_cast<QQuickItem*>(object);
+  QVERIFY(item);
+  item->setParent(window.contentItem());
+  item->setParentItem(window.contentItem());
+
+  window.show();
+  QCoreApplication::processEvents();
+
+  int capturedMouseEvents = 0;
+  int capturedItemPresses = 0;
+  QStringList observedEvents;
+  auto* capture = EventCapture::instance();
+  const auto conn =
+      connect(capture, &EventCapture::eventCaptured, this,
+              [&capturedMouseEvents, &capturedItemPresses,
+               &observedEvents](const QJsonObject& notification) {
+                const QString type = notification[QStringLiteral("type")].toString();
+                observedEvents.append(notification[QStringLiteral("objectName")].toString() +
+                                      QStringLiteral(":") + type);
+                if (type == QStringLiteral("MouseButtonPress") ||
+                    type == QStringLiteral("MouseButtonRelease")) {
+                  ++capturedMouseEvents;
+                }
+                if (notification[QStringLiteral("objectName")].toString() ==
+                        QStringLiteral("tapHandlerItem") &&
+                    type == QStringLiteral("MouseButtonPress")) {
+                  ++capturedItemPresses;
+                }
+              });
+  capture->startCapture();
+
+  QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, QPoint(20, 20));
+
+  capture->stopCapture();
+  disconnect(conn);
+  QVERIFY2(capturedMouseEvents == 2,
+           qPrintable(QStringLiteral("observed: %1").arg(observedEvents.join(", "))));
+  QCOMPARE(capturedItemPresses, 1);
+}
+
 void TestQmlInteraction::testHitTestOutsideSceneReportsMiss() {
   // itemAt used to fall back to the content item, so hitTest could never say
   // "nothing here" for a QML parent -- any coordinate looked like a hit.
@@ -418,9 +515,12 @@ void TestQmlInteraction::testSendKeysWithoutTextOrSequenceIsRejected() {
   window.show();
   QCoreApplication::processEvents();
 
-  const QString message = errorOf(
+  const QJsonObject response =
       call(QStringLiteral("qtpilot.sendKeys"),
-           QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(item)}}));
+           QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(item)}});
+  const QJsonObject error = response[QStringLiteral("error")].toObject();
+  const QString message = error[QStringLiteral("message")].toString();
+  QCOMPARE(error[QStringLiteral("code")].toInt(), JsonRpcError::kInvalidParams);
   QVERIFY2(message.contains(QStringLiteral("non-empty")), qPrintable(message));
 }
 

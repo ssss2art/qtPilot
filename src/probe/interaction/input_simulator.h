@@ -46,6 +46,17 @@ class QTPILOT_EXPORT InputSimulator {
                          const QPoint& pos = QPoint(),
                          Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
+  /// @brief Simulate a mouse click at an explicit widget-local position.
+  ///
+  /// Unlike mouseClick(), QPoint(0, 0) is treated as the top-left corner, not
+  /// as the sentinel for the widget centre.
+  /// @param widget Target widget
+  /// @param button Mouse button to click
+  /// @param pos Explicit position relative to widget
+  /// @param modifiers Keyboard modifiers (Ctrl, Shift, Alt)
+  static void mouseClickAt(QWidget* widget, MouseButton button, const QPoint& pos,
+                           Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+
   /// @brief Simulate mouse double-click.
   /// @param widget Target widget
   /// @param button Mouse button to double-click

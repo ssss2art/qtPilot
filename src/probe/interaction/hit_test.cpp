@@ -208,12 +208,14 @@ QString HitTest::quickItemIdAt(const QPoint& globalPos) {
   // first (the only stacking signal Qt gives us portably here), then fall back
   // to a reverse scan, which approximates "most recently created first".
   QList<QWindow*> candidates;
-  if (QWindow* focus = QGuiApplication::focusWindow()) {
+  QWindow* const focus = QGuiApplication::focusWindow();
+  const QList<QWindow*> all = QGuiApplication::topLevelWindows();
+  candidates.reserve(all.size());
+  if (focus) {
     candidates.append(focus);
   }
-  const QList<QWindow*> all = QGuiApplication::topLevelWindows();
   for (auto it = all.crbegin(); it != all.crend(); ++it) {
-    if (!candidates.contains(*it)) {
+    if (*it != focus) {
       candidates.append(*it);
     }
   }

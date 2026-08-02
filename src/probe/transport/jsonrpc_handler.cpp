@@ -570,6 +570,12 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     QString button = doc.object()["button"].toString("left");
     QJsonObject pos = doc.object()["position"].toObject();
 
+    if (doc.object().contains("position") &&
+        (pos.isEmpty() || !pos["x"].isDouble() || !pos["y"].isDouble())) {
+      throw JsonRpcException(JsonRpcError::kInvalidParams,
+                             QStringLiteral("position requires numeric 'x' and 'y'"));
+    }
+
     QObject* obj = ObjectRegistry::instance()->findById(id);
     if (!obj) {
       throw std::runtime_error("Object not found: " + id.toStdString());
@@ -589,8 +595,11 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
 
     const VisualTarget target = resolveVisualTarget(obj, id);
     if (target.widget) {
-      InputSimulator::mouseClick(target.widget, btn,
-                                 hasPos ? clickPos : target.widget->rect().center());
+      if (hasPos) {
+        InputSimulator::mouseClickAt(target.widget, btn, clickPos);
+      } else {
+        InputSimulator::mouseClick(target.widget, btn);
+      }
     }
 #ifdef QTPILOT_HAS_QML
     else if (target.item) {
@@ -626,7 +635,8 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     // name reports success while sending no input at all -- and on the QML path
     // it would still move focus as a side effect.
     if (text.isEmpty() && sequence.isEmpty()) {
-      throw std::runtime_error("sendKeys requires a non-empty 'text' or 'sequence'");
+      throw JsonRpcException(JsonRpcError::kInvalidParams,
+                             QStringLiteral("sendKeys requires a non-empty 'text' or 'sequence'"));
     }
 
     QObject* obj = ObjectRegistry::instance()->findById(id);
@@ -663,8 +673,15 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
       QPointer<QQuickWindow> windowGuard(requireItemWindow(itemGuard, id));
       if (!text.isEmpty()) {
         InputSimulator::sendText(windowGuard, text);
+        if (!itemGuard) {
+          throw std::runtime_error("Target was destroyed while typing: " + id.toStdString());
+        }
         if (!windowGuard) {
           throw std::runtime_error("Target window was destroyed while typing: " + id.toStdString());
+        }
+        if (itemGuard->window() != windowGuard.data()) {
+          throw std::runtime_error("Target moved to another window while typing: " +
+                                   id.toStdString());
         }
       }
       if (!sequence.isEmpty()) {

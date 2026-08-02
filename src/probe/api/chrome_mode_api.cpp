@@ -453,8 +453,8 @@ void ChromeModeApi::registerClickMethod() {
     const QRect rect = iface->rect();
     if (rect.isValid()) {
       if (QWidget* widget = qobject_cast<QWidget*>(obj)) {
-        InputSimulator::mouseClick(widget, InputSimulator::MouseButton::Left,
-                                   widget->mapFromGlobal(rect.center()));
+        InputSimulator::mouseClickAt(widget, InputSimulator::MouseButton::Left,
+                                     widget->mapFromGlobal(rect.center()));
         return clickResult(QStringLiteral("mouseClick"), QString());
       }
 #ifdef QTPILOT_HAS_QML
@@ -480,7 +480,9 @@ void ChromeModeApi::registerClickMethod() {
         QAccessibleActionInterface::showMenuAction(),
     };
     for (const QString& candidate : kActuatingActions) {
-      if (actions.contains(candidate)) {
+      const bool isUntrustedQuickPress =
+          isQuickItem && candidate == QAccessibleActionInterface::pressAction();
+      if (!isUntrustedQuickPress && actions.contains(candidate)) {
         actionIface->doAction(candidate);
         return clickResult(QStringLiteral("accessibilityAction"), candidate);
       }

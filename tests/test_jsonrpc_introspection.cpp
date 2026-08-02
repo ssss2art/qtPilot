@@ -8,12 +8,30 @@
 #include <QApplication>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QVBoxLayout>
 #include <QtTest>
 
 using namespace qtPilot;
+
+namespace {
+
+class MousePositionRecorder : public QObject {
+ public:
+  QPoint pressPosition;
+
+ protected:
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() == QEvent::MouseButtonPress) {
+      pressPosition = static_cast<QMouseEvent*>(event)->pos();
+    }
+    return QObject::eventFilter(watched, event);
+  }
+};
+
+}  // namespace
 
 /// @brief Integration tests for JSON-RPC introspection API.
 ///
@@ -51,6 +69,8 @@ class TestJsonRpcIntrospection : public QObject {
 
   // UI Interaction
   void testClick();
+  void testClickExplicitTopLeft();
+  void testClickRejectsMalformedPosition();
   void testSendKeys();
   void testScreenshot();
   void testGetGeometry();
@@ -400,6 +420,28 @@ void TestJsonRpcIntrospection::testClick() {
   QCOMPARE(result.toObject()["success"].toBool(), true);
 
   QCOMPARE(spy.count(), 1);
+}
+
+void TestJsonRpcIntrospection::testClickExplicitTopLeft() {
+  const QString id = ObjectRegistry::instance()->objectId(m_testButton);
+  MousePositionRecorder recorder;
+  m_testButton->installEventFilter(&recorder);
+
+  const QString response = callMethod(
+      "qtpilot.click", QJsonObject{{"id", id}, {"position", QJsonObject{{"x", 0}, {"y", 0}}}});
+
+  QVERIFY2(getError(response).isEmpty(), qPrintable(getError(response)["message"].toString()));
+  QCOMPARE(recorder.pressPosition, QPoint(0, 0));
+}
+
+void TestJsonRpcIntrospection::testClickRejectsMalformedPosition() {
+  const QString id = ObjectRegistry::instance()->objectId(m_testButton);
+  const QString response =
+      callMethod("qtpilot.click", QJsonObject{{"id", id}, {"position", QJsonObject{{"x", "bad"}}}});
+
+  const QJsonObject error = getError(response);
+  QCOMPARE(error["code"].toInt(), JsonRpcError::kInvalidParams);
+  QVERIFY(error["message"].toString().contains("numeric"));
 }
 
 void TestJsonRpcIntrospection::testSendKeys() {

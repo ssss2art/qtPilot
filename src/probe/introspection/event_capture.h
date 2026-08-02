@@ -8,6 +8,7 @@
 #include <atomic>
 
 #include <QJsonObject>
+#include <QList>
 #include <QMutex>
 #include <QObject>
 #include <QSet>
@@ -74,6 +75,22 @@ class QTPILOT_EXPORT EventCapture : public QObject {
   /// @brief Build notification JSON for a window lifecycle event (Show, Hide, Close, Resize,
   /// Activate).
   QJsonObject buildWindowNotification(QObject* widget, QEvent* event, const QString& typeName);
+
+#ifdef QTPILOT_HAS_QML
+  struct PendingQuickWindowEvent {
+    quint64 token;
+    int type;
+    quint64 timestamp;
+    QJsonObject notification;
+  };
+
+  void deferQuickWindowEvent(int type, quint64 timestamp, const QJsonObject& notification);
+  void cancelDeferredQuickWindowEvent(int type, quint64 timestamp);
+  void emitDeferredQuickWindowEvent(quint64 token);
+
+  QList<PendingQuickWindowEvent> m_pendingQuickWindowEvents;
+  quint64 m_nextQuickWindowEventToken = 1;
+#endif
 
   std::atomic<bool> m_capturing = false;
 
