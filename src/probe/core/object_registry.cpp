@@ -553,8 +553,17 @@ void ObjectRegistry::scanExistingObjects(QObject* root) {
     }
   }
 
-  // Recursively process children
-  for (QObject* child : root->children()) {
+  // Recursively process children.
+  //
+  // effectiveChildren() rather than children(): objects already built by the
+  // time the probe starts are only ever found by this scan, and QML delegates
+  // hang off a visual parent with no QObject parent. Walking QObject children
+  // alone left every pre-existing delegate untracked, which is worse than
+  // merely absent from the tree -- objectId() hands an untracked object a
+  // TRANSIENT id that it deliberately does not cache, so the id a client got
+  // back from a hit test could never be resolved again.
+  const QList<QObject*> children = effectiveChildren(root);
+  for (QObject* child : children) {
     scanExistingObjects(child);
   }
 }

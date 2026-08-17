@@ -112,6 +112,10 @@ if(QTPILOT_HAS_QML)
     qtPilot_add_test(NAME test_qml_interaction SOURCES test_qml_interaction.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
         ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+    qtPilot_add_test(NAME test_qml_delegate_ids SOURCES test_qml_delegate_ids.cpp
+        LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
+        ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 endif()
 
 qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp

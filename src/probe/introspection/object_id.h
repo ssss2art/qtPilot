@@ -25,6 +25,27 @@ namespace qtPilot {
 /// @return The hierarchical ID string (e.g., "mainWindow/central/submitBtn").
 QTPILOT_EXPORT QString generateObjectId(QObject* obj);
 
+/// @brief The parent an ID path steps up to.
+///
+/// The QObject parent, falling back to the VISUAL parent for a QQuickItem that
+/// has none. QML items created by a Repeater or ListView delegate are owned by
+/// the engine rather than by the item above them, so their QObject parent is
+/// null and a QObject-only walk cannot see them or anything beneath them.
+///
+/// @param obj The object to find the parent of.
+/// @return The parent, or nullptr if this object is a root.
+QTPILOT_EXPORT QObject* effectiveParent(QObject* obj);
+
+/// @brief The children a tree walk descends into. The inverse of
+/// effectiveParent(), so IDs built by walking up match traversals walking down.
+///
+/// Every object is listed exactly once: visual children that already have a
+/// QObject parent are left to that parent rather than being listed twice.
+///
+/// @param obj The object to find the children of.
+/// @return The children, in QObject order followed by parentless visual ones.
+QTPILOT_EXPORT QList<QObject*> effectiveChildren(QObject* obj);
+
 /// @brief Find an object by its hierarchical ID.
 ///
 /// Traverses the object tree to find the object matching the given path.
