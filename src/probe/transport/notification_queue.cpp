@@ -74,8 +74,12 @@ void NotificationQueue::drain() {
 
   // Drain up to batchSize messages
   QMutexLocker lock(&m_mutex);
-  // qMin promotes to the wider type, so name the narrowing explicitly.
-  const int count = static_cast<int>(qMin<qsizetype>(m_batchSize, m_queue.size()));
+  // qMin returns const T&, so an explicit template argument would bind that
+  // reference to temporaries created by converting the arguments. Use same-typed
+  // lvalues instead and narrow once, deliberately.
+  const qsizetype queued = m_queue.size();
+  const qsizetype batch = static_cast<qsizetype>(m_batchSize);
+  const int count = static_cast<int>(qMin(batch, queued));
   for (int i = 0; i < count; ++i) {
     QString msg = m_queue.dequeue();
     lock.unlock();
