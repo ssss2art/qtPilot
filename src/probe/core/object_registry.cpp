@@ -341,7 +341,8 @@ QList<QObject*> ObjectRegistry::allObjects() {
 
 int ObjectRegistry::objectCount() const {
   QMutexLocker lock(&m_mutex);
-  return m_objects.size();
+  // qsizetype -> int, stated explicitly for the stricter iOS warning set.
+  return static_cast<int>(m_objects.size());
 }
 
 bool ObjectRegistry::contains(QObject* obj) const {

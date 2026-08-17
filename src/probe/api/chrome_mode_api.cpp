@@ -672,7 +672,10 @@ void ChromeModeApi::registerFindMethod() {
 
     // Append to existing ref map (preserves refs from prior find/readPage calls)
     QJsonArray matches;
-    int refCounter = s_refToAccessible.size();
+    // qsizetype -> int: a reference counter bounded by the accessible-element
+  // count. Stated explicitly for the stricter warning set Apple applies to
+  // iOS targets.
+  int refCounter = static_cast<int>(s_refToAccessible.size());
     QString queryLower = query.toLower();
 
     findMatchingNodes(rootIface, queryLower, refCounter, matches, 0, 30);

@@ -72,7 +72,7 @@ QList<ConsoleMessage> ConsoleMessageCapture::messages(const QString& pattern, bo
   QList<ConsoleMessage> result;
 
   // Iterate in reverse order (newest first)
-  for (int i = m_messages.size() - 1; i >= 0; --i) {
+  for (qsizetype i = m_messages.size() - 1; i >= 0; --i) {
     const auto& cm = m_messages.at(i);
 
     // Filter by error level

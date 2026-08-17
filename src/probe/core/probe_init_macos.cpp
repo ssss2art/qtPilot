@@ -7,8 +7,14 @@
 // At that point, QCoreApplication may not exist yet, so we must defer
 // initialization until Qt is ready.
 
-#include <QtGlobal>  // for Q_OS_MACOS — must precede the guard
-#if defined(Q_OS_MACOS)
+#include <QtGlobal>  // for Q_OS_MACOS / Q_OS_IOS — must precede the guard
+// iOS is included deliberately. The DYLD_INSERT_LIBRARIES path below is
+// macOS-only -- iOS does not permit inserting libraries into a third-party
+// app -- but the OTHER delivery mode, build-time LINKING, is exactly how a
+// probe reaches a device app. With this file compiled out on iOS the
+// Q_COREAPP_STARTUP_FUNCTION below never registered, so a linked probe sat
+// inert with no way to start.
+#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
 
 #include "probe.h"
 
@@ -78,7 +84,8 @@ static void qtpilotAutoInit() {
 // Register the startup function with Qt
 Q_COREAPP_STARTUP_FUNCTION(qtpilotAutoInit)
 
-// Library constructor - called when loaded via DYLD_INSERT_LIBRARIES or dlopen.
+// Library constructor - called when loaded via DYLD_INSERT_LIBRARIES or dlopen
+// (macOS), or at image load when the probe is linked into the app (iOS).
 // Runs BEFORE main(), so QCoreApplication may not exist.
 __attribute__((constructor)) static void onLibraryLoad() {
   // Check if probe is disabled via environment

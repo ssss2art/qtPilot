@@ -70,16 +70,30 @@ if(WIN32)
         core/child_injector_windows.h
     )
 elseif(APPLE)
+    # Covers macOS AND iOS. The file's internal guard admits both; on iOS only the
+    # Q_COREAPP_STARTUP_FUNCTION path is reachable, which is what a linked probe
+    # needs.
     list(APPEND PROBE_SOURCES core/probe_init_macos.cpp)
 elseif(UNIX)
+    # Covers Linux AND Android -- __linux__ is defined on Android, so the same
+    # init compiles and its startup hook fires when the probe is linked in.
     list(APPEND PROBE_SOURCES core/probe_init_linux.cpp)
 endif()
 
-# Create shared library
-add_library(qtPilot_probe SHARED
-    ${PROBE_SOURCES}
-    ${PROBE_HEADERS}
-)
+# Injection requires a SHARED object to insert. Linking into an app (the only
+# route on mobile) is better served by a STATIC library: no extra dynamic library
+# to embed and code-sign inside an app bundle, and no runtime search path.
+if(QTPILOT_PROBE_STATIC)
+    add_library(qtPilot_probe STATIC
+        ${PROBE_SOURCES}
+        ${PROBE_HEADERS}
+    )
+else()
+    add_library(qtPilot_probe SHARED
+        ${PROBE_SOURCES}
+        ${PROBE_HEADERS}
+    )
+endif()
 
 # Set library properties
 set_target_properties(qtPilot_probe PROPERTIES
