@@ -17,6 +17,7 @@
 #if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
 
 #include "probe.h"
+#include "probe_deferred_init.h"
 
 #include <QCoreApplication>
 
@@ -29,32 +30,7 @@ bool g_needsDeferredInit = false;
 // Flag to prevent multiple initialization attempts.
 bool g_initAttempted = false;
 
-/// @brief Hand initialization to the event loop rather than running it here.
-///
-/// The probe opens a listening socket, and a socket cannot be registered until
-/// the platform event dispatcher is wired up. Both entry points below can run
-/// EARLIER than that, so neither may initialize inline:
-///
-///   - the library constructor runs before main(), so before Qt exists at all;
-///   - Q_COREAPP_STARTUP_FUNCTION runs from qt_call_pre_routines(), which is
-///     called from INSIDE QCoreApplicationPrivate::init() -- the application
-///     object is not finished constructing yet.
-///
-/// Initializing inline from the startup function segfaults on iOS:
-/// QTcpServer::listen -> QCFSocketNotifier::registerSocketNotifier ->
-/// QObject::thread() on a host dispatcher that is still null. Injection never
-/// hit this because it attaches to an already-running app; build-time LINKING
-/// is the first delivery mode that reaches this code path this early.
-///
-/// A queued invocation is used rather than QTimer, because starting a timer
-/// itself needs an event dispatcher. Posting an event only needs the thread's
-/// event queue, which exists, and delivery happens once the loop runs -- by
-/// which point the application object is fully constructed.
-void scheduleInitialize() {
-  QMetaObject::invokeMethod(
-      QCoreApplication::instance(), []() { qtPilot::Probe::instance()->initialize(); },
-      Qt::QueuedConnection);
-}
+using qtPilot::detail::scheduleInitialize;
 
 /// @brief Attempt to initialize the probe if Qt is ready.
 /// @return true if initialization was performed or already done.

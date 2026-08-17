@@ -10,9 +10,9 @@
 #if defined(__linux__) || (defined(__unix__) && !defined(__APPLE__))
 
 #include "probe.h"
+#include "probe_deferred_init.h"
 
 #include <QCoreApplication>
-#include <QTimer>
 
 namespace {
 
@@ -36,10 +36,7 @@ bool tryInitialize() {
   }
 
   g_initAttempted = true;
-
-  // Use QTimer::singleShot to defer to the event loop.
-  // This ensures Qt is fully initialized and the event loop is running.
-  QTimer::singleShot(0, []() { qtPilot::Probe::instance()->initialize(); });
+  qtPilot::detail::scheduleInitialize();
 
   return true;
 }
@@ -69,9 +66,12 @@ static void qtpilotAutoInit() {
   if (enabled == "0") {
     return;  // Probe disabled
   }
-  // QCoreApplication now exists, safe to initialize the probe
+  // QCoreApplication::self is assigned before pre-routines run, so instance()
+  // is non-null here -- but the object it points at is still inside its own
+  // constructor, so this must not initialize inline. Android reaches this path
+  // whenever the probe is linked rather than preloaded.
   g_initAttempted = true;
-  qtPilot::Probe::instance()->initialize();
+  qtPilot::detail::scheduleInitialize();
 }
 
 // Register the startup function with Qt
