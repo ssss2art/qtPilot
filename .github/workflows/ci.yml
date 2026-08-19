@@ -44,6 +44,11 @@ jobs:
         include:
           - { qt: "6.10.0", os: ubuntu-24.04, modules: "qtwebsockets" }
           - { qt: "6.10.0", os: macos-14,     modules: "qtwebsockets" }
+          # Qt 5 too: the static path touches the export macro and the
+          # whole-archive link option, neither of which is Qt6-specific.
+          # (No Windows leg -- QTPILOT_PROBE_STATIC is refused there, see
+          # CMakeLists.txt.)
+          - { qt: "5.15.2", os: ubuntu-24.04, modules: "" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

@@ -39,6 +39,20 @@ endif()
 # embed and code-sign an extra dynamic library inside the app bundle.
 option(QTPILOT_PROBE_STATIC "Build the probe as a static library (linked into the app)" ${QTPILOT_MOBILE})
 
+# Refuse the one configuration that would build and then be unusable. On Windows
+# the probe links qtPilot_shared and Detours PRIVATELY and neither is installed, so
+# a static probe cannot be consumed through the installed package -- the consumer's
+# link dies on unresolved Detours symbols. Failing here beats shipping a package
+# that only fails at the point somebody tries to link against it. Windows has
+# working injection, so a linked probe has no use case there anyway; static
+# delivery exists for Android and iOS (see docs/MOBILE.md).
+if(QTPILOT_PROBE_STATIC AND WIN32)
+    message(FATAL_ERROR
+        "QTPILOT_PROBE_STATIC is not supported on Windows: the probe's Detours and "
+        "qtPilot_shared dependencies are not installed, so the resulting archive "
+        "cannot be linked by a consumer. Use the shared probe with injection.")
+endif()
+
 option(QTPILOT_BUILD_TESTS "Build unit tests" ON)
 option(QTPILOT_BUILD_TEST_APP "Build the test Qt application" ON)
 if(QTPILOT_MOBILE)

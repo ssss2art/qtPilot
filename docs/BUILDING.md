@@ -133,7 +133,7 @@ Configure these options with `-D<OPTION>=<VALUE>`:
 |--------|---------|-------------|
 | `QTPILOT_BUILD_TESTS` | `ON` (forced `OFF` on mobile) | Build unit tests |
 | `QTPILOT_BUILD_TEST_APP` | `ON` (forced `OFF` on mobile) | Build the test Qt application |
-| `QTPILOT_PROBE_STATIC` | `OFF` (`ON` on mobile) | Build the probe as a static library to link into an app, instead of a shared library to inject |
+| `QTPILOT_PROBE_STATIC` | `OFF` (`ON` on mobile) | Build the probe as a static library to link into an app, instead of a shared library to inject. Not supported on Windows — the probe's Detours dependency is not installed, so the archive cannot be linked by a consumer |
 | `QTPILOT_QT_DIR` | - | Explicit path to Qt installation (prepended to `CMAKE_PREFIX_PATH`) |
 
 "Mobile" means an Android or iOS toolchain, detected from CMake's `ANDROID` /
