@@ -54,6 +54,10 @@ if(QTPILOT_PROBE_STATIC AND WIN32)
 endif()
 
 option(QTPILOT_BUILD_TESTS "Build unit tests" ON)
+# Complexity benchmarks. OFF by default: the target fetches google/benchmark over
+# the network at configure time, and it is a diagnostic tool rather than part of the
+# build/test cycle. See benchmarks/bench_object_id.cpp.
+option(QTPILOT_BUILD_BENCHMARKS "Build micro-benchmarks (fetches google/benchmark)" OFF)
 option(QTPILOT_BUILD_TEST_APP "Build the test Qt application" ON)
 if(QTPILOT_MOBILE)
     # Neither the harness app nor the host-side tests deploy to a device.
@@ -414,6 +418,11 @@ if(QTPILOT_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+if(QTPILOT_BUILD_BENCHMARKS)
+    message(STATUS "Building complexity benchmarks (google/benchmark)")
+    add_subdirectory(benchmarks)
+endif()
+
 # Installation
 include(GNUInstallDirs)
 
@@ -468,6 +477,7 @@ message(STATUS "  Architecture:   ${QTPILOT_ARCH_TAG}")
 message(STATUS "  Install prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "  Lib install:    ${QTPILOT_INSTALL_LIBDIR}")
 message(STATUS "  Build tests:    ${QTPILOT_BUILD_TESTS}")
+message(STATUS "  Benchmarks:     ${QTPILOT_BUILD_BENCHMARKS}")
 message(STATUS "  Build test app: ${QTPILOT_BUILD_TEST_APP}")
 message(STATUS "  QML support:    ${QTPILOT_HAS_QML}")
 message(STATUS "")
