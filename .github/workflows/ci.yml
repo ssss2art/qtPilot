@@ -30,6 +30,132 @@ jobs:
           clang-format-version: "18"
           check-path: "src"
 
+  # The static probe is the delivery mode used on Android and iOS: an archive
+  # linked into an app rather than a library injected into one. It has failure modes
+  # the shared build cannot have -- most importantly, the linker silently discarding
+  # the archive member that registers the startup hook, which leaves an app that
+  # builds and runs perfectly and simply has no probe in it. Nothing in the desktop
+  # matrix can catch that, so it is checked here by linking a real consumer against
+  # the INSTALLED package and asserting the probe actually started.
+  static-probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { qt: "6.10.0", os: ubuntu-24.04, modules: "qtwebsockets" }
+          - { qt: "6.10.0", os: macos-14,     modules: "qtwebsockets" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: ${{ matrix.qt }}
+          modules: ${{ matrix.modules }}
+          cache: true
+
+      - name: Install X11 dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxext-dev libxtst-dev libx11-dev
+
+      - name: Build and install the static probe
+        shell: bash
+        run: |
+          cmake -B build/static -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQTPILOT_PROBE_STATIC=ON \
+            -DQTPILOT_BUILD_TESTS=OFF \
+            -DQTPILOT_BUILD_TEST_APP=OFF
+          cmake --build build/static --parallel
+          cmake --install build/static --prefix "$PWD/install/static"
+          # An archive, not a shared library.
+          ls install/static/lib/
+          test -n "$(find install/static/lib -name '*.a' -o -name '*.lib' | head -1)"
+
+      - name: Link a consumer against the installed package
+        shell: bash
+        run: |
+          cmake -B build/consumer -S tests/static_consumer \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/install/static"
+          cmake --build build/consumer --parallel
+
+      - name: The linked probe must actually start
+        shell: bash
+        run: |
+          # The consumer references no qtPilot symbol, so this passes only if the
+          # whole-archive link option on the imported target kept the startup hook
+          # from being discarded, AND the deferred initialization ran to completion.
+          BIN="$(find build/consumer -name static_consumer -type f | head -1)"
+          echo "Running $BIN"
+          QT_QPA_PLATFORM=offscreen QTPILOT_PORT=9411 "$BIN" > probe.log 2>&1 || true
+          cat probe.log
+          if ! grep -q "Object hooks installed" probe.log; then
+            echo "::error::The statically linked probe did not initialize. Its archive"
+            echo "::error::member was most likely dropped by the linker (see"
+            echo "::error::src/probe/CMakeLists.txt) or deferred init failed."
+            exit 1
+          fi
+          echo "Static probe initialized correctly."
+
+  # Cross-compile for the mobile targets. Compile-only: neither platform can run
+  # host tests, and the probe reaches a device by being linked into an app rather
+  # than deployed on its own. Without this, a mobile break is invisible until
+  # somebody builds by hand.
+  mobile:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a }
+          - { name: ios,     os: macos-14,     target: ios,     arch: "" }
+    name: mobile (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.8.0"
+          modules: qtwebsockets
+          cache: true
+          set-env: false
+          dir: ${{ runner.temp }}/qt-host
+
+      - name: Install target Qt
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.8.0"
+          target: ${{ matrix.target }}
+          arch: ${{ matrix.arch }}
+          modules: qtwebsockets
+          cache: true
+
+      - name: Set up JDK (Android)
+        if: matrix.name == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure and build
+        shell: bash
+        run: |
+          HOST_QT="$(find "${{ runner.temp }}/qt-host" -maxdepth 3 -type d -name 'gcc_64' -o -maxdepth 3 -type d -name 'macos' | head -1)"
+          echo "Host Qt: $HOST_QT"
+          # qt-cmake from the TARGET kit selects the cross toolchain; ANDROID/IOS
+          # being set is what switches qtPilot into mobile mode (static probe, no
+          # launcher, no host tests).
+          "$QT_ROOT_DIR/bin/qt-cmake" -B build/mobile -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH="$HOST_QT"
+          cmake --build build/mobile --parallel
+          find build/mobile -name '*.a' -print
+
   build:
     strategy:
       fail-fast: false

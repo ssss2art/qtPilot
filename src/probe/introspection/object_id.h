@@ -11,6 +11,20 @@
 
 namespace qtPilot {
 
+/// @brief Hard ceiling on how deep any walk of the effective hierarchy may go.
+///
+/// The QObject parent axis is acyclic by construction, and
+/// QQuickItem::setParentItem() rejects cycles within the VISUAL axis -- but
+/// nothing checks the UNION of the two, which is what effectiveParent() and
+/// effectiveChildren() traverse. Qt silently accepts an item whose QObject parent
+/// is null, whose visual parent is B, where B is a QObject child of that item;
+/// effectiveParent() then oscillates between the two forever. Real scenes do not
+/// look like that, but a probe must never hang or overflow the stack of the
+/// application it is inspecting, so every walk over this hierarchy is bounded.
+///
+/// Shared by object_id.cpp and ObjectRegistry so the bound cannot drift apart.
+constexpr int kMaxEffectiveDepth = 512;
+
 /// @brief Generate a hierarchical ID for a QObject.
 ///
 /// ID format: "segment/segment/segment" where each segment is:

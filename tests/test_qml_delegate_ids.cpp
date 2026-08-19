@@ -48,6 +48,34 @@ Item {
 }
 )QML";
 
+// The same shape with NOTHING per-instance to key on. This is the common real
+// case -- delegates usually carry no name at all -- and it is what the objectName
+// variant above cannot exercise, because a per-index objectName short-circuits
+// disambiguation before it is ever consulted.
+constexpr const char* kUnnamedDelegateQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Repeater { model: 4; delegate: Rectangle { width: 10; height: 10 } }
+    }
+}
+)QML";
+
+// A QML `id` and a constant objectName are per-DECLARATION, not per-instance:
+// every instance resolves to the same name, so neither disambiguates on its own.
+constexpr const char* kSharedNameDelegateQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Repeater { model: 3; delegate: Rectangle { id: rowRoot; objectName: "row" } }
+    }
+}
+)QML";
+
 std::unique_ptr<QObject> build(QQmlEngine* engine, const char* qml) {
   QQmlComponent component(engine);
   component.setData(QByteArray(qml), QUrl());
@@ -82,6 +110,16 @@ class TestQmlDelegateIds : public QObject {
   Q_OBJECT
 
  private slots:
+  // Track object destruction, as a live probe does. Without the hooks a QML tree
+  // freed at the end of one test function stays in the registry as a dangling
+  // pointer, and the allocator readily hands the same address to the next test's
+  // objects -- which then look already-tracked, so they never get their
+  // objectNameChanged connection. That is a test-isolation artifact, not probe
+  // behaviour, but it makes rename assertions fail depending on test order.
+  void initTestCase() { installObjectHooks(); }
+  void cleanupTestCase() { uninstallObjectHooks(); }
+  void cleanup() { QCoreApplication::processEvents(); }
+
   // A delegate's ID must be a full path under its VISUAL parent, not a rootless
   // segment. The rootless form is what made these unresolvable.
   void delegateIdIsRootedAtVisualParent() {
@@ -178,6 +216,135 @@ class TestQmlDelegateIds : public QObject {
     // rather than transient.
     const QString id = ObjectRegistry::instance()->objectId(tab2);
     QCOMPARE(ObjectRegistry::instance()->findById(id), static_cast<QObject*>(tab2));
+  }
+
+  // The case the objectName-per-index fixture cannot reach: sibling delegates with
+  // nothing per-instance to key on. Every one must still get a distinct id, and
+  // that id must resolve back by PATH -- the registry's `~N` collision suffix is
+  // not a substitute, because generateIdSegment() never emits `~` and so
+  // findByObjectId() can never match it.
+  void unnamedDelegatesGetDistinctResolvableIds() {
+    QQmlEngine engine;
+    auto root = build(&engine, kUnnamedDelegateQml);
+    QVERIFY(root);
+    auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QVERIFY(rootItem);
+    QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
+    QVERIFY(strip);
+
+    const QList<QObject*> children = effectiveChildren(strip);
+    QList<QObject*> delegates;
+    for (QObject* child : children) {
+      // parent() == nullptr is what makes it a delegate; the Repeater itself is
+      // also an unnamed QQuickItem here, but it is a QObject child of `strip`.
+      if (child->parent() == nullptr && qobject_cast<QQuickItem*>(child)) {
+        delegates.append(child);
+      }
+    }
+    QCOMPARE(delegates.size(), 4);
+
+    QSet<QString> ids;
+    for (QObject* delegate : delegates) {
+      const QString id = generateObjectId(delegate);
+      QVERIFY2(!ids.contains(id),
+               qPrintable(QStringLiteral("duplicate id for sibling delegate: %1").arg(id)));
+      ids.insert(id);
+      // Resolvable by path, which is the whole point of handing an id out.
+      QCOMPARE(findByObjectId(id, root.get()), delegate);
+    }
+  }
+
+  // A shared QML `id` (or a constant objectName) must not be mistaken for a
+  // unique segment. Disambiguation keys off the generated SEGMENT, not the class
+  // name, precisely so this case is covered.
+  void delegatesSharingADeclaredNameStillGetDistinctIds() {
+    QQmlEngine engine;
+    auto root = build(&engine, kSharedNameDelegateQml);
+    QVERIFY(root);
+    auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
+    QVERIFY(strip);
+
+    QSet<QString> ids;
+    int delegatesSeen = 0;
+    const QList<QObject*> children = effectiveChildren(strip);
+    for (QObject* child : children) {
+      if (child->parent() != nullptr) {
+        continue;  // not a delegate
+      }
+      ++delegatesSeen;
+      const QString id = generateObjectId(child);
+      QVERIFY2(!ids.contains(id),
+               qPrintable(QStringLiteral("delegates collided on id: %1").arg(id)));
+      ids.insert(id);
+      QCOMPARE(findByObjectId(id, root.get()), child);
+    }
+    QCOMPARE(delegatesSeen, 3);
+  }
+
+  // Renaming a VISUAL ancestor must refresh the ids cached for delegates beneath
+  // it. refreshDescendantIds() walked QObject children only, so a delegate kept a
+  // cached id containing the old segment forever, with no alias to redirect it.
+  void renamingAVisualAncestorRefreshesDelegateIds() {
+    QQmlEngine engine;
+    auto root = build(&engine, kRepeaterQml);
+    QVERIFY(root);
+    auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
+    QVERIFY(strip);
+    QQuickItem* tab0 = childItemNamed(strip, QStringLiteral("tab0"));
+    QVERIFY(tab0);
+
+    auto* registry = ObjectRegistry::instance();
+    registry->scanExistingObjects(root.get());
+    QCOMPARE(registry->objectId(tab0), QStringLiteral("root/strip/tab0"));
+
+    strip->setObjectName(QStringLiteral("navStrip"));
+    // The refresh is wired through a queued connection.
+    QTRY_COMPARE(registry->objectId(tab0), QStringLiteral("root/navStrip/tab0"));
+    QCOMPARE(registry->findById(QStringLiteral("root/navStrip/tab0")), static_cast<QObject*>(tab0));
+  }
+
+  // A root-scoped search has to mean the same thing as "under this root in the
+  // tree". Scoped lookups walked QObject links only, so they returned nothing for
+  // delegates that qt.objects.tree listed under that very root.
+  void rootScopedLookupsReachDelegates() {
+    QQmlEngine engine;
+    auto root = build(&engine, kRepeaterQml);
+    QVERIFY(root);
+    auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
+    QVERIFY(strip);
+    QQuickItem* tab1 = childItemNamed(strip, QStringLiteral("tab1"));
+    QVERIFY(tab1);
+
+    auto* registry = ObjectRegistry::instance();
+    QCOMPARE(registry->findByObjectName(QStringLiteral("tab1"), root.get()),
+             static_cast<QObject*>(tab1));
+
+    const QList<QObject*> found = registry->findAllByClassName(QStringLiteral("QQuickItem"), strip);
+    QVERIFY2(found.contains(tab1), "class-name search scoped to a root missed a delegate");
+  }
+
+  // The effective hierarchy merges two axes that Qt cycle-checks only
+  // independently, so a walk over it must be bounded. Qt accepts this shape
+  // silently; before the bound, generateObjectId() looped until the host process
+  // was out of memory.
+  void interlockedParentAxesDoNotHang() {
+    auto outer = std::make_unique<QQuickItem>();
+    auto* mid = new QQuickItem(outer.get());  // QObject child of outer
+    mid->setParentItem(nullptr);
+    outer->setParentItem(mid);  // ...and outer's VISUAL parent
+
+    // Precondition: this really is the interlocked shape, accepted by Qt.
+    QCOMPARE(effectiveParent(outer.get()), static_cast<QObject*>(mid));
+    QCOMPARE(effectiveParent(mid), static_cast<QObject*>(outer.get()));
+
+    // Must terminate rather than hang. The id is truncated and useless, which is
+    // the correct outcome for a malformed graph -- what matters is that the host
+    // application survives.
+    const QString id = generateObjectId(outer.get());
+    QVERIFY(!id.isEmpty());
   }
 };
 

@@ -16,6 +16,7 @@
 #ifdef _WIN32
 
 #include "probe.h"
+#include "probe_deferred_init.h"
 
 #include <Windows.h>
 #include <synchapi.h>
@@ -61,8 +62,13 @@ namespace qtPilot {
 /// The first call will trigger initialization; subsequent calls are no-ops.
 void ensureInitialized() {
   if (!g_dllLoaded) {
+    // Not an injected DLL. A statically linked probe has no DllMain, so fall
+    // through to the shared deferred path rather than silently doing nothing --
+    // this is the symbol a consuming app references to anchor the archive member.
+    detail::ensureInitializedImpl();
     return;
   }
+  detail::initAttempted() = true;
   InitOnceExecuteOnce(&g_initOnce, InitOnceCallback, nullptr, nullptr);
 }
 
@@ -77,15 +83,29 @@ void ensureInitialized() {
 #include <QThread>
 
 static void qtpilotAutoInit() {
-  // Check if probe is disabled via environment
-  QByteArray enabled = qgetenv("QTPILOT_ENABLED");
-  if (enabled == "0") {
+  if (qtPilot::detail::disabledByEnvironment()) {
     OutputDebugStringA("[qtPilot] Probe disabled via QTPILOT_ENABLED=0\n");
     return;
   }
 
-  OutputDebugStringA("[qtPilot] qtpilotAutoInit — calling ensureInitialized()\n");
-  qtPilot::ensureInitialized();
+  // DEFER, do not call ensureInitialized() here.
+  //
+  // Q_COREAPP_STARTUP_FUNCTION runs from qt_call_pre_routines(), which Qt calls
+  // from inside QCoreApplicationPrivate::init(). Going through ensureInitialized()
+  // reached InitOnceCallback, which ran Probe::initialize() SYNCHRONOUSLY -- so the
+  // build-time-linked Windows path did exactly what the deferral elsewhere exists
+  // to prevent: it scanned an application object whose most-derived constructor
+  // had not run (QGuiApplication windows not yet populated, so the pre-existing
+  // object scan was systematically incomplete) and called QTcpServer::listen before
+  // the event dispatcher was started.
+  //
+  // It also bypassed g_dllLoaded, which is only ever set from DllMain -- so a
+  // statically linked Windows probe, having no DllMain, never started at all.
+  //
+  // The injection path below keeps InitOnce: it arrives on a temporary remote
+  // thread when Qt is already up, which is a genuinely different situation.
+  OutputDebugStringA("[qtPilot] qtpilotAutoInit — deferring initialization\n");
+  qtPilot::detail::startupHook();
 }
 
 // Register the startup function with Qt (fallback for build-time linking)
