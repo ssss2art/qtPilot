@@ -61,6 +61,18 @@ DYLD_FRAMEWORK_PATH="${QT_DIR}/lib" QT_PLUGIN_PATH="${QT_DIR}/plugins" \
   ctest --test-dir build -C Release --output-on-failure
 ```
 
+ctest sets `QT_STYLE_OVERRIDE=Fusion` for you on macOS (see `tests/CMakeLists.txt`).
+The native style draws some controls through NSView, which needs an AppKit
+environment that `QT_QPA_PLATFORM=minimal` does not provide; on Qt 5.15 that
+segfaults the moment a `QPushButton` paints. Add it by hand when running a test
+binary **directly** rather than through ctest:
+
+```bash
+QT_STYLE_OVERRIDE=Fusion DYLD_FRAMEWORK_PATH="${QT_DIR}/lib" \
+  QT_PLUGIN_PATH="${QT_DIR}/plugins" QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 \
+  build/bin/test_native_mode_api
+```
+
 **Windows test caveat:** On Windows, env vars set in bash/git-bash do NOT propagate
 through ctest to child processes. You **must** use one of these approaches:
 1. **From bash/git-bash:** Use `cmd //c` (double-slash — bash converts `//c` to `/c` for cmd.exe).
