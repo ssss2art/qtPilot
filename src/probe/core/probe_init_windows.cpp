@@ -39,8 +39,13 @@ wchar_t g_probeDllPath[MAX_PATH] = {};
 // InitOnce callback - this is called at most once, after DLL load completes.
 // SAFE to call Qt functions here.
 BOOL CALLBACK InitOnceCallback(PINIT_ONCE /*initOnce*/, PVOID /*param*/, PVOID* /*context*/) {
-  // Now safe to use Qt
-  qtPilot::Probe::instance()->initialize();
+  // Now safe to use Qt. Propagate the result: returning FALSE leaves g_initOnce
+  // unconsumed, so a failed attempt can be retried rather than silently disabling
+  // the probe for the life of the process.
+  if (!qtPilot::Probe::instance()->initialize()) {
+    return FALSE;
+  }
+  qtPilot::detail::initAttempted() = true;
   return TRUE;
 }
 
@@ -68,7 +73,12 @@ void ensureInitialized() {
     detail::ensureInitializedImpl();
     return;
   }
-  detail::initAttempted() = true;
+  // Deliberately does NOT pre-latch detail::initAttempted(). Latching before the
+  // attempt consumed BOTH one-shot guards even when initialize() failed (it returns
+  // false and leaves m_initialized clear when there is no QCoreApplication yet), so
+  // a caller who ran ensureInitialized() before constructing their QApplication
+  // permanently disabled the probe: InitOnce was spent, and the startup hook then
+  // saw the latch set. The shared header's contract is "latch only on success".
   InitOnceExecuteOnce(&g_initOnce, InitOnceCallback, nullptr, nullptr);
 }
 

@@ -165,73 +165,34 @@ int getSiblingIndex(QObject* obj, const QString& base) {
     return -1;
   }
 
-  // Fast path for an object reached through the VISUAL axis (obj->parent() is
-  // null): a QML delegate instance. This is the case that must be cheap, because a
-  // Repeater instantiates every row eagerly, so an O(siblings) segment computation
-  // per object would make a full tree walk of a large list quadratic in real time
-  // -- measured at ~2 s for 2000 rows, on the host application's main thread.
-  //
-  // It can be settled without computing a single sibling segment, because of what
-  // a delegate's segment is made of:
-  //
-  //   - With no objectName the segment is the declared QML `id` or the type name.
-  //     Both are per-DECLARATION, so every instance of one component yields the
-  //     same string: a suffix is needed exactly when there is more than one
-  //     same-class instance. Pointer comparisons only.
-  //   - With an objectName the segment is that name (QML `id` loses to it only
-  //     when empty, and an id-bearing delegate with a distinct objectName is
-  //     already distinct), so comparing objectNames settles it. String compares
-  //     only -- and this is what keeps an index-derived `objectName: "row" + index`
-  //     free of a redundant suffix.
-  //
-  // Slightly conservative: two same-class parentless siblings carrying different
-  // declared ids and no objectName both get a suffix they did not strictly need.
-  // They are separate component instances whose ids happen to differ, and neither
-  // had a stable id before this, so the cost is cosmetic.
-  if (obj->parent() == nullptr) {
-    const QMetaObject* meta = obj->metaObject();
-    const QString objectName = obj->objectName();
-    const bool byName = !objectName.isEmpty();
-
-    int sameCount = 0;
-    int indexAmongSame = -1;
-    const QList<QObject*> visualSiblings = effectiveChildren(parent);
-    for (QObject* sibling : visualSiblings) {
-      if (!sibling || sibling->parent() != nullptr || sibling->metaObject() != meta) {
-        continue;
-      }
-      if (byName && sibling->objectName() != objectName) {
-        continue;
-      }
-      if (sibling == obj) {
-        indexAmongSame = sameCount;
-      }
-      ++sameCount;
-    }
-    if (sameCount <= 1) {
-      return -1;
-    }
-    return indexAmongSame + 1;
-  }
-
-  // Computing every sibling's segment is O(siblings) per object, so a large
-  // eagerly-populated Repeater would make a full tree walk quadratic. Most
-  // siblings cannot possibly collide, and that can be established without
-  // computing their segment at all:
-  //
-  //   - same metaObject: they may well collide (this is the delegate case --
-  //     instances of one component share a class AND a declared `id`), so the
-  //     segment has to be computed.
-  //   - objectName equal to our segment: a match regardless of class.
-  //   - our segment came from a `text` property: a differently-classed sibling
-  //     with the same text does collide (a QLabel and a QPushButton both reading
-  //     "OK"), so those need the full comparison.
-  //
-  // Anything else differs in class, in objectName and in origin, so it cannot
-  // produce our segment. A QML `id` cannot be shared across classes because QML
-  // itself requires ids to be unique within a scope.
   int sameSegmentCount = 0;
   int indexAmongSame = -1;
+
+  // One loop, one population, one numbering.
+  //
+  // An earlier version split this into a cheap "fast path" for visual-axis
+  // children and a segment-comparing slow path for the rest. That was wrong three
+  // separate ways, each of which put two objects on one ID:
+  //
+  //   - The two paths counted DIFFERENT populations of the same sibling list (the
+  //     fast path skipped every sibling with a QObject parent), so they issued
+  //     overlapping 1-based suffixes. A static child and a delegate under one
+  //     parent both got `Rectangle#1`.
+  //   - The fast path keyed on objectName while the segment itself comes from the
+  //     QML `id` when one is declared -- `id: row` plus `objectName: "row" + index`
+  //     made every sibling look unique and none got a suffix.
+  //   - It compared class identity before objectName, so two differently-classed
+  //     siblings sharing an objectName or a `text` never got compared at all.
+  //
+  // So the population is now every effective child, and the key is the generated
+  // SEGMENT, which is the thing that actually has to be unique.
+  //
+  // Cost: O(siblings) per object, and baseIdSegment() resolves a QML id, so a
+  // parent with a very large eagerly-instantiated child list (a Repeater over
+  // thousands of rows) makes a full tree walk quadratic. The pre-filter below
+  // removes most of it, and a recycling ListView only ever instantiates its
+  // visible delegates. Correctness first: the previous shortcut bought speed by
+  // handing out duplicate IDs, which is the one thing an ID must never do.
   const QMetaObject* objMeta = obj->metaObject();
   const bool baseFromText = base.startsWith(QLatin1String("text_"));
 
@@ -242,14 +203,24 @@ int getSiblingIndex(QObject* obj, const QString& base) {
     }
     if (sibling == obj) {
       indexAmongSame = sameSegmentCount;
-      sameSegmentCount++;
+      ++sameSegmentCount;
       continue;
     }
-    if (sibling->metaObject() != objMeta && !baseFromText && sibling->objectName() != base) {
+
+    // Skip only what provably cannot produce `base`. A sibling matches if it is
+    // the same class (compared by NAME -- QML installs per-component metaobjects,
+    // so pointer identity is not a class test), or its objectName is the segment,
+    // or our segment came from a `text` property (a QLabel and a QPushButton both
+    // reading "OK" collide across classes), or it is a QQuickItem and so may carry
+    // a declared QML id we cannot see without asking.
+    const bool sameClass = qstrcmp(sibling->metaObject()->className(), objMeta->className()) == 0;
+    const bool mayCarryQmlId = isQmlItem(sibling);
+    if (!sameClass && !baseFromText && !mayCarryQmlId && sibling->objectName() != base) {
       continue;
     }
+
     if (baseIdSegment(sibling) == base) {
-      sameSegmentCount++;
+      ++sameSegmentCount;
     }
   }
 
@@ -320,7 +291,14 @@ bool matchesSegment(QObject* obj, const QString& segment) {
 /// @brief Find object by path segments starting from a list of candidates.
 QObject* findBySegments(const QStringList& segments, int segmentIndex,
                         const QList<QObject*>& candidates) {
-  if (segmentIndex >= segments.size()) {
+  // Bounded like every other walk over the merged parent/child axis. The recursion
+  // depth here is set by the SEGMENT COUNT of a client-supplied id, so without this
+  // an id of "a/a/a/..." repeated tens of thousands of times drives that many stack
+  // frames -- each holding a QList returned by value -- on the host application's
+  // main thread, whose stack is 1 MB on iOS rather than the 8 MB this code used to
+  // be confined to. A path longer than the deepest walkable tree cannot name a
+  // reachable object anyway.
+  if (segmentIndex >= segments.size() || segmentIndex > kMaxEffectiveDepth) {
     return nullptr;
   }
 

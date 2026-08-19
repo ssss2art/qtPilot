@@ -5,6 +5,7 @@
 
 #include "probe.h"
 
+#include <atomic>
 #include <cstdio>
 
 #include <QCoreApplication>
@@ -18,8 +19,8 @@ namespace detail {
 /// A function-local static so the platform init files share exactly one instance
 /// without each declaring its own copy -- the drift between those copies is what
 /// this header exists to prevent.
-inline bool& initAttempted() {
-  static bool attempted = false;
+inline std::atomic<bool>& initAttempted() {
+  static std::atomic<bool> attempted{false};
   return attempted;
 }
 
@@ -106,11 +107,17 @@ inline void startupHook() {
   if (disabledByEnvironment()) {
     return;
   }
-  if (initAttempted()) {
+  // exchange(), not test-then-set: ensureInitialized() is public API that
+  // docs/MOBILE.md tells integrators to call, and on Windows the injector reaches
+  // this from a CreateRemoteThread while the app thread may be in the startup hook.
+  // A single atomic swap makes "exactly one caller schedules" true rather than
+  // merely likely, and the false-on-failure reset preserves the retry this header
+  // promises.
+  if (initAttempted().exchange(true)) {
     return;
   }
-  if (scheduleInitialize()) {
-    initAttempted() = true;
+  if (!scheduleInitialize()) {
+    initAttempted() = false;
   }
 }
 
@@ -125,16 +132,16 @@ inline void ensureInitializedImpl() {
   if (disabledByEnvironment()) {
     return;
   }
-  if (initAttempted()) {
-    return;
-  }
   if (QCoreApplication::instance() == nullptr) {
     // Nothing to post to yet. Deliberately does NOT latch, so the startup hook
     // (or a later call) can still start the probe.
     return;
   }
-  if (scheduleInitialize()) {
-    initAttempted() = true;
+  if (initAttempted().exchange(true)) {
+    return;
+  }
+  if (!scheduleInitialize()) {
+    initAttempted() = false;
   }
 }
 

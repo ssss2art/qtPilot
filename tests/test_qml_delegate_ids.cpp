@@ -76,6 +76,50 @@ Item {
 }
 )QML";
 
+// A declared child and delegates of the SAME class under one parent. This shape --
+// a background rectangle plus a Repeater of rectangles -- is ordinary Qt Quick, and
+// it is what an earlier split-path implementation got wrong: the two paths counted
+// different populations of one sibling list and both handed out "#1".
+constexpr const char* kMixedParentageQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Rectangle { width: 5; height: 5 }
+        Repeater { model: 2; delegate: Rectangle { width: 5; height: 5 } }
+    }
+}
+)QML";
+
+// A declared QML `id` AND a per-instance objectName. The segment comes from the id
+// (priority 0), so disambiguating on objectName -- which differs per instance --
+// concluded every delegate was unique and emitted one shared id for all of them.
+constexpr const char* kIdPlusIndexedNameQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Repeater { model: 3; delegate: Rectangle { id: rowRoot; objectName: "row" + index } }
+    }
+}
+)QML";
+
+// Distinct `text` per row: these are content-addressed (text_Alpha, text_Beta, ...)
+// and must NOT pick up a positional suffix, which would make an id shift when a row
+// is inserted above it.
+constexpr const char* kTextKeyedQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Repeater { model: ["Alpha", "Beta", "Gamma"]; delegate: Text { text: modelData } }
+    }
+}
+)QML";
+
 std::unique_ptr<QObject> build(QQmlEngine* engine, const char* qml) {
   QQmlComponent component(engine);
   component.setData(QByteArray(qml), QUrl());
@@ -94,6 +138,16 @@ QQuickItem* childItemNamed(QQuickItem* parent, const QString& name) {
     }
   }
   return nullptr;
+}
+
+// Walks the effective hierarchy and records what generateObjectId() ACTUALLY emits,
+// deliberately bypassing ObjectRegistry so no deduplication can mask a collision.
+void collectGeneratedIds(QObject* obj, QStringList& out) {
+  out.append(generateObjectId(obj));
+  const QList<QObject*> children = effectiveChildren(obj);
+  for (QObject* child : children) {
+    collectGeneratedIds(child, out);
+  }
 }
 
 void collectIds(const QJsonObject& node, QStringList& out) {
@@ -345,6 +399,63 @@ class TestQmlDelegateIds : public QObject {
     // application survives.
     const QString id = generateObjectId(outer.get());
     QVERIFY(!id.isEmpty());
+  }
+
+  // Every id the GENERATOR produces must already be unique, before the registry's
+  // `~N` collision suffix is applied. Asserting on registry ids instead would be
+  // vacuous -- allocateUniqueIdLocked() uniquifies them by construction, so the
+  // assertion would hold no matter what generateIdSegment() emitted.
+  void generatedIdsAreUniqueBeforeRegistryDeduplication() {
+    struct Fixture {
+      const char* label;
+      const char* qml;
+    };
+    const Fixture fixtures[] = {
+        {"mixed parentage", kMixedParentageQml},
+        {"declared id + per-index objectName", kIdPlusIndexedNameQml},
+        {"unnamed delegates", kUnnamedDelegateQml},
+        {"shared declared name", kSharedNameDelegateQml},
+        {"text-keyed", kTextKeyedQml},
+    };
+
+    for (const Fixture& fixture : fixtures) {
+      QQmlEngine engine;
+      auto root = build(&engine, fixture.qml);
+      QVERIFY2(root, fixture.label);
+
+      QStringList ids;
+      collectGeneratedIds(root.get(), ids);
+      QSet<QString> unique(ids.begin(), ids.end());
+      if (unique.size() != ids.size()) {
+        QStringList sorted = ids;
+        sorted.sort();
+        QFAIL(qPrintable(QStringLiteral("%1: duplicate generated ids: %2")
+                             .arg(QLatin1String(fixture.label), sorted.join(QLatin1String(", ")))));
+      }
+
+      // And no id may depend on the registry suffix, which findByObjectId() cannot
+      // reproduce -- that is the whole reason uniqueness has to hold up here.
+      for (const QString& id : ids) {
+        QVERIFY2(!id.contains(QLatin1Char('~')),
+                 qPrintable(QStringLiteral("%1: id relies on a registry suffix: %2")
+                                .arg(QLatin1String(fixture.label), id)));
+      }
+    }
+  }
+
+  // Content-addressed segments must stay content-addressed: a positional suffix
+  // would silently re-point a client's id when a row is inserted above it.
+  void textKeyedDelegatesKeepContentAddressedIds() {
+    QQmlEngine engine;
+    auto root = build(&engine, kTextKeyedQml);
+    QVERIFY(root);
+
+    QStringList ids;
+    collectGeneratedIds(root.get(), ids);
+    for (const char* label : {"Alpha", "Beta", "Gamma"}) {
+      const QString expected = QStringLiteral("root/strip/text_%1").arg(QLatin1String(label));
+      QVERIFY2(ids.contains(expected), qPrintable(QStringLiteral("missing %1").arg(expected)));
+    }
   }
 };
 

@@ -41,9 +41,17 @@ set(_qtpilot_qt_version_tag "qt${_qtpilot_qt_version_match}")
 set(QTPILOT_PROBE_STATIC @QTPILOT_PROBE_STATIC@)
 set(QTPILOT_HAS_QML @QTPILOT_HAS_QML@)
 
-set(_qtpilot_qt_components Core Network WebSockets Widgets Test)
-if(QTPILOT_HAS_QML)
-    list(APPEND _qtpilot_qt_components Qml Quick)
+# A SHARED probe resolves its own Qt dependencies at load time, so its consumers
+# need only what they link against directly. A STATIC probe cannot: the consumer's
+# link has to satisfy every symbol in the archive. Widening the list unconditionally
+# would force Test/Qml/Quick onto existing shared-probe integrators, failing
+# configuration on a trimmed Qt kit and adding unused modules to their deployment.
+set(_qtpilot_qt_components Core Network WebSockets Widgets)
+if(QTPILOT_PROBE_STATIC)
+    list(APPEND _qtpilot_qt_components Test)
+    if(QTPILOT_HAS_QML)
+        list(APPEND _qtpilot_qt_components Qml Quick)
+    endif()
 endif()
 
 # Find Qt dependencies
@@ -84,8 +92,13 @@ if(NOT TARGET qtPilot::Probe)
     set(_probe_base_name "qtPilot-probe-${_qtpilot_qt_version_tag}")
 
     if(QTPILOT_PROBE_STATIC)
+        # The `d` spellings are not optional: src/probe/CMakeLists.txt sets
+        # DEBUG_POSTFIX "d", and docs/MOBILE.md documents `--config Debug` as THE
+        # iOS build command -- so the documented workflow installs
+        # libqtPilot-probe-qt6.11d.a and nothing else would have found it.
         find_file(_probe_archive
             NAMES "lib${_probe_base_name}.a" "${_probe_base_name}.lib"
+                  "lib${_probe_base_name}d.a" "${_probe_base_name}d.lib"
             PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
         )
@@ -117,9 +130,12 @@ if(NOT TARGET qtPilot::Probe)
                 )
             endif()
         else()
-            message(WARNING
-                "qtPilot: static probe archive lib${_probe_base_name}.a not found in "
-                "${QTPILOT_LIB_DIR}; qtPilot::Probe has no location.")
+            # Fatal, not a warning: find_package(qtPilot REQUIRED) reporting success
+            # while qtPilot::Probe has no IMPORTED_LOCATION only defers the failure
+            # to a confusing generate- or link-time error.
+            message(FATAL_ERROR
+                "qtPilot: static probe archive lib${_probe_base_name}[d].a not found in "
+                "${QTPILOT_LIB_DIR}; the installed package is incomplete.")
         endif()
     elseif(WIN32)
         find_file(_probe_dll
