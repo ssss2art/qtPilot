@@ -25,11 +25,18 @@ inline bool& initAttempted() {
 
 /// @brief Whether the probe was switched off via QTPILOT_ENABLED=0.
 ///
-/// Read with getenv rather than qgetenv because the library constructor calls
-/// this before Qt is necessarily usable.
+/// qgetenv, not getenv: MSVC deprecates getenv, and with -Werror that turned
+/// C4996 into a hard error on every Windows leg the moment this helper moved into
+/// a header Windows compiles. (It was previously inline in the POSIX-only init
+/// files, which MSVC never saw.)
+///
+/// Safe from the pre-main library constructor as well as from the Qt startup
+/// hook: qgetenv needs QtCore loaded, not a QCoreApplication, and the probe links
+/// QtCore -- so the loader has already run QtCore's initializers before it runs
+/// the probe's. The test suite leans on this, since it disables the probe through
+/// exactly this variable.
 inline bool disabledByEnvironment() {
-  const char* enabled = getenv("QTPILOT_ENABLED");
-  return enabled != nullptr && enabled[0] == '0' && enabled[1] == '\0';
+  return qgetenv("QTPILOT_ENABLED") == "0";
 }
 
 /// @brief Hand probe initialization to the event loop instead of running it now.

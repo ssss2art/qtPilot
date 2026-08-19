@@ -21,16 +21,44 @@ _CI = _REPO / ".github" / "workflows" / "ci.yml"
 _RELEASE = _REPO / ".github" / "workflows" / "release.yml"
 
 
+def _require(match: re.Match[str] | None, key: str, line: str) -> str:
+    """First capture group, or a failure that names the offending line.
+
+    The bare `re.search(...).group(1)` this replaces raised
+    `AttributeError: 'NoneType' object has no attribute 'group'` with no clue which
+    key or which line was at fault.
+    """
+    assert match is not None, f"CI build matrix entry has no `{key}:` key: {line}"
+    return match.group(1)
+
+
 def _parse_ci_builds() -> set[tuple[str, str, str]]:
-    """Derive the (qt_minor, platform, arch) set the CI build matrix produces."""
+    """Derive the (qt_minor, platform, arch) set the CI `build` job produces.
+
+    Scoped to the `build` job deliberately. Other jobs carry matrix entries in the
+    same `- { qt: ... }` shape -- `static-probe` pins a Qt version too -- but they
+    publish no download artifacts, so they have no business being compared against
+    BUILD_MATRIX. They also carry no `platform:` key, which is how this first
+    surfaced: an opaque `AttributeError: 'NoneType' object has no attribute
+    'group'` from the unchecked re.search below.
+    """
     builds: set[tuple[str, str, str]] = set()
+    in_build_job = False
     for raw in _CI.read_text().splitlines():
+        # Job names are the only keys indented exactly two spaces (under `jobs:`);
+        # everything inside a job is indented further.
+        job = re.match(r"^ {2}([\w-]+):\s*$", raw)
+        if job:
+            in_build_job = job.group(1) == "build"
+            continue
+        if not in_build_job:
+            continue
         line = raw.strip()
         if not line.startswith("- {") or "qt:" not in line:
             continue
-        qt = re.search(r'qt:\s*"([^"]+)"', line).group(1)
+        qt = _require(re.search(r'qt:\s*"([^"]+)"', line), "qt", line)
         qt_minor = ".".join(qt.split(".")[:2])
-        platform = re.search(r"platform:\s*(\w+)", line).group(1)
+        platform = _require(re.search(r"platform:\s*(\w+)", line), "platform", line)
         preset_m = re.search(r"preset:\s*([\w-]+)", line)
         preset = preset_m.group(1) if preset_m else ""
         if "x86" in preset or "win32" in line:

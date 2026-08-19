@@ -107,6 +107,25 @@ if(Qt6_FOUND)
                 endif()
             endforeach()
         endif()
+        # Fallback: Apple framework layout keeps private headers inside the
+        # framework bundle rather than under include/. Two shapes, both real:
+        # macOS is versioned (lib/QtCore.framework/Versions/A/Headers/<ver>/QtCore)
+        # while an iOS framework is flat (lib/QtCore.framework/Headers/<ver>/QtCore).
+        # The Qt5 branch below has had the macOS half of this for a while; Qt6 never
+        # got it, so the iOS kit could only ever configure when the CorePrivate
+        # component happened to resolve -- which is exactly how CI's Qt 6.8.0 iOS
+        # leg failed while a local 6.11.1 build succeeded.
+        if(NOT _qt6_private_include AND APPLE)
+            file(GLOB _qt6_fw_version_dirs
+                "${Qt6Core_DIR}/../../../lib/QtCore.framework/Headers/6.*"
+                "${Qt6Core_DIR}/../../../lib/QtCore.framework/Versions/*/Headers/6.*")
+            foreach(_vdir ${_qt6_fw_version_dirs})
+                if(EXISTS "${_vdir}/QtCore/private/qhooks_p.h")
+                    set(_qt6_private_include "${_vdir}/QtCore")
+                    break()
+                endif()
+            endforeach()
+        endif()
         if(_qt6_private_include)
             message(STATUS "Found Qt6 private headers at: ${_qt6_private_include}")
             # Create synthetic Qt6::CorePrivate target so downstream targets can link it.
