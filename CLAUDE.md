@@ -74,11 +74,24 @@ child processes that inherit the Windows environment, not the bash-local overrid
 ### C++ Code Style
 
 1. **Naming Conventions**
-   - Classes: `PascalCase` (e.g., `McpServer`, `RequestHandler`)
+   - Classes / structs / enums / type aliases: `PascalCase` (e.g., `McpServer`, `RequestHandler`)
+   - Enum constants: `PascalCase` (e.g., `MatchMode::StartsWith`)
    - Functions/Methods: `camelCase` (e.g., `handleRequest`, `parseMessage`)
-   - Member variables: `m_` prefix with camelCase (e.g., `m_serverPort`)
-   - Constants: `UPPER_SNAKE_CASE` (e.g., `DEFAULT_PORT`)
+   - Locals and parameters: `camelCase` (e.g., `siblingBase`, `objectName`)
+   - Member variables: `m_` prefix with camelCase (e.g., `m_serverPort`). Public
+     fields of plain-data structs take no prefix (e.g., `QmlItemInfo::qmlId`)
+   - Compile-time constants: `k` prefix with PascalCase (e.g., `kMaxEffectiveDepth`,
+     `kBroadcastIntervalMs`). `UPPER_SNAKE_CASE` is for macros only
+   - File- and function-scope statics: `g_` for globals, `s_` for statics
+     (e.g., `g_hooksInstalled`, `s_probeInstance`)
    - Namespaces: camelCase (e.g., `qtPilot`, `qtPilot::server`)
+
+   `.clang-tidy` encodes these rules, so `clang-tidy -p build
+   --checks='-*,readability-identifier-naming' <file>` will tell you when
+   something drifts. It is advisory: CI runs clang-format only. A handful of
+   older identifiers predate these conventions (PascalCase methods on
+   `JsonRpcHandler`, trailing-underscore members on `DiscoveryBroadcaster`) and
+   still report warnings; leave them unless you are already changing that code.
 
 2. **Qt-Specific Conventions**
    - Use Qt's signal/slot mechanism for async communication
