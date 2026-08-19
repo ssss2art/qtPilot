@@ -129,9 +129,14 @@ Configure these options with `-D<OPTION>=<VALUE>`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `QTPILOT_BUILD_TESTS` | `ON` | Build unit tests |
-| `QTPILOT_BUILD_TEST_APP` | `ON` | Build the test Qt application |
+| `QTPILOT_BUILD_TESTS` | `ON` (forced `OFF` on mobile) | Build unit tests |
+| `QTPILOT_BUILD_TEST_APP` | `ON` (forced `OFF` on mobile) | Build the test Qt application |
+| `QTPILOT_PROBE_STATIC` | `OFF` (`ON` on mobile) | Build the probe as a static library to link into an app, instead of a shared library to inject |
 | `QTPILOT_QT_DIR` | - | Explicit path to Qt installation (prepended to `CMAKE_PREFIX_PATH`) |
+
+"Mobile" means an Android or iOS toolchain, detected from CMake's `ANDROID` /
+`IOS` variables. Those builds also skip the launcher entirely — it injects into
+an already-running process, which neither mobile platform permits.
 
 ### Examples
 
@@ -142,6 +147,27 @@ cmake -B build -DQTPILOT_BUILD_TESTS=OFF -DQTPILOT_BUILD_TEST_APP=OFF
 # Specify Qt installation directly
 cmake -B build -DQTPILOT_QT_DIR=/opt/Qt/6.8.0/gcc_64
 ```
+
+## Building for Android or iOS
+
+Mobile builds produce a *static* probe you link into your own development build,
+because neither platform can inject a library into an existing process. Configure
+with the mobile Qt kit's `qt-cmake` wrapper:
+
+```bash
+# Android
+/path/to/Qt/6.11.1/android_arm64_v8a/bin/qt-cmake -B build-android -S . -DCMAKE_BUILD_TYPE=Release
+
+# iOS (device)
+/path/to/Qt/6.11.1/ios/bin/qt-cmake -B build-ios -S . -G Xcode
+cmake --build build-ios --config Debug -- -sdk iphoneos
+```
+
+The installed `qtPilot::Probe` target carries the whole-archive link option a
+static probe needs -- without it the linker discards the object file that registers
+the probe's startup hook and the probe silently never starts. Consumers that link
+the archive by raw path instead have to force-load it themselves. Full instructions,
+including how to reach the probe from a device, are in [MOBILE.md](MOBILE.md).
 
 ## Build Artifacts
 
@@ -154,10 +180,14 @@ After building, find the artifacts in these locations:
 | Windows | `build/lib/Release/qtPilot-probe-qt6.8.dll` |
 | Linux | `build/lib/libqtPilot-probe-qt6.8.so` |
 | macOS | `build/lib/libqtPilot-probe-qt6.8.dylib` |
+| Android / iOS | `build/lib/libqtPilot-probe-qt6.11.a` (static; Xcode adds a per-config subdirectory) |
 
 The probe binary name includes the Qt major.minor version it was built against (e.g. `qt6.8`, `qt5.15`).
+Debug builds append `d` (`libqtPilot-probe-qt6.11d.a`).
 
 ### Launcher Executable
+
+Not built for Android or iOS.
 
 | Platform | Location |
 |----------|----------|

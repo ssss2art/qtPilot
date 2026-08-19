@@ -677,12 +677,12 @@ qtpilot/
 
 | Feature | Status |
 |---------|--------|
-| macOS support | v1.1 |
-| Recording/playback | Future |
+| macOS support | Implemented |
+| Recording/playback | Implemented (recording; playback still future) — `qtpilot_recording_*` tools |
 | Attach to running process | Future |
 | Authentication | Future |
 | Qt 4 support | Never |
-| Mobile (Android/iOS) | Future |
+| Mobile (Android/iOS) | Implemented — as a *linked* probe, not an injected one; see [docs/MOBILE.md](docs/MOBILE.md) |
 | Built-in GUI | Never |
 | Plugin system | Never |
 

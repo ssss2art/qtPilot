@@ -6,7 +6,7 @@
 
 - **License**: MIT
 - **Language**: C++ with Qt Framework
-- **Status**: Active development (v0.3.0)
+- **Status**: Active development (v0.3.1)
 
 ## Build System
 
@@ -244,9 +244,10 @@ qt_ping()                                 # verify connectivity
 
 ## Important Files
 
-- `/home/user/qtPilot/README.md` - Project description
-- `/home/user/qtPilot/LICENSE` - MIT License terms
-- `/home/user/qtPilot/.gitignore` - Build artifacts exclusion
+- `README.md` - Project description and platform support
+- `docs/BUILDING.md` - Build options and artifact layout
+- `docs/MOBILE.md` - Android/iOS: the probe is linked into a dev build, not injected
+- `LICENSE` - MIT License terms
 
 ---
 
