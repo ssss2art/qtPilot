@@ -111,6 +111,57 @@ QString baseIdSegment(QObject* obj) {
   return QString::fromLatin1(obj->metaObject()->className());
 }
 
+/// @brief Per-parent sibling-suffix memo, live only inside an IdGenerationScope.
+///
+/// Nesting is reference-counted so an inner scope shares the outer cache; only the
+/// outermost release clears it. thread_local because ID generation belongs to the
+/// thread that owns the objects, and a scope must never leak across threads.
+struct SiblingIndexCache {
+  int depth = 0;
+  // parent -> (child -> suffix, where -1 means "segment already unique")
+  QHash<QObject*, QHash<QObject*, int>> byParent;
+};
+
+thread_local SiblingIndexCache* g_siblingCache = nullptr;
+
+/// @brief Bucket a parent's effective children by segment and assign every one its
+/// suffix, in a single pass.
+///
+/// This is where the quadratic goes away: the sibling question is answered once per
+/// parent rather than once per child. Enumeration order and equality match the
+/// direct scan exactly, so the suffixes are the same ones the unscoped path would
+/// hand out.
+QHash<QObject*, int> buildSiblingIndices(QObject* parent) {
+  const QList<QObject*> children = effectiveChildren(parent);
+
+  QHash<QString, QList<QObject*>> bySegment;
+  bySegment.reserve(children.size());
+  for (QObject* child : children) {
+    if (!child) {
+      continue;
+    }
+    bySegment[baseIdSegment(child)].append(child);
+  }
+
+  QHash<QObject*, int> indices;
+  indices.reserve(children.size());
+  for (auto it = bySegment.constBegin(); it != bySegment.constEnd(); ++it) {
+    const QList<QObject*>& group = it.value();
+    if (group.size() <= 1) {
+      // Unique segment: no suffix, so ids for unambiguous objects are unchanged.
+      for (QObject* member : group) {
+        indices.insert(member, -1);
+      }
+      continue;
+    }
+    int position = 0;
+    for (QObject* member : group) {
+      indices.insert(member, ++position);  // 1-based, for human readability
+    }
+  }
+  return indices;
+}
+
 /// @brief Position of this object among the effective siblings that would emit
 /// the same base segment. Returns -1 when the base segment is already unique.
 ///
@@ -163,6 +214,21 @@ int getSiblingIndex(QObject* obj, const QString& base) {
     }
     // Other parentless objects: no disambiguation context.
     return -1;
+  }
+
+  // Inside a traversal scope, the whole group was (or can be) settled in one pass.
+  // A miss falls through to the direct scan below rather than guessing -- an object
+  // created after its parent's group was cached (QQmlContext::nameForObject can
+  // construct one) is simply not in the map, and must still get a correct answer.
+  if (g_siblingCache != nullptr) {
+    auto parentIt = g_siblingCache->byParent.constFind(parent);
+    if (parentIt == g_siblingCache->byParent.constEnd()) {
+      parentIt = g_siblingCache->byParent.insert(parent, buildSiblingIndices(parent));
+    }
+    const auto childIt = parentIt->constFind(obj);
+    if (childIt != parentIt->constEnd()) {
+      return childIt.value();
+    }
   }
 
   int sameSegmentCount = 0;
@@ -412,6 +478,23 @@ QList<QObject*> effectiveChildren(QObject* obj) {
   return children;
 }
 
+IdGenerationScope::IdGenerationScope() {
+  static thread_local SiblingIndexCache cache;
+  if (cache.depth++ == 0) {
+    cache.byParent.clear();
+    g_siblingCache = &cache;
+  }
+}
+
+IdGenerationScope::~IdGenerationScope() {
+  if (g_siblingCache != nullptr && --g_siblingCache->depth == 0) {
+    // Drop the memo with the traversal. Holding it any longer would mean trusting
+    // that the tree has not changed, which is only true within one walk.
+    g_siblingCache->byParent.clear();
+    g_siblingCache = nullptr;
+  }
+}
+
 QString generateObjectId(QObject* obj) {
   if (!obj) {
     return QString();
@@ -444,6 +527,11 @@ QObject* findByObjectId(const QString& id, QObject* root) {
   if (id.isEmpty()) {
     return nullptr;
   }
+
+  // Resolution regenerates a segment for every candidate at every level, so it pays
+  // the sibling scan just as often as generation does. One scope over the whole
+  // lookup collapses that too.
+  IdGenerationScope idScope;
 
   QStringList segments = id.split(QLatin1Char('/'), Qt::SkipEmptyParts);
   if (segments.isEmpty()) {
@@ -514,6 +602,8 @@ QJsonObject serializeObjectInfo(QObject* obj) {
 }
 
 QJsonObject serializeObjectTree(QObject* root, int maxDepth) {
+  IdGenerationScope idScope;
+
   if (!root) {
     // Serialize all top-level objects
     QJsonObject result;

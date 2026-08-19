@@ -172,6 +172,27 @@ the probe's startup hook and the probe silently never starts. Consumers that lin
 the archive by raw path instead have to force-load it themselves. Full instructions,
 including how to reach the probe from a device, are in [MOBILE.md](MOBILE.md).
 
+## Benchmarks
+
+The probe ships complexity benchmarks for its hot paths — object-ID generation, tree
+serialization and ID resolution. They exist to answer "did this change make a hot
+path more complex than it was?" mechanically: each case reports an empirically fitted
+Big-O rather than a timing.
+
+```bash
+cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON
+cmake --build build --target qtPilot_bench_object_id
+./build/bin/qtPilot_bench_object_id
+```
+
+Off by default, because the target fetches [google/benchmark](https://github.com/google/benchmark)
+at configure time — a normal build never touches the network for it, and no CI leg
+builds it. Read the `_BigO` and `_RMS` rows; an RMS above ~10% means the fit is not
+trustworthy on that machine.
+
+The recorded baseline, what each case covers, and what a future optimization should
+make the numbers do are in [benchmarks/README.md](../benchmarks/README.md).
+
 ## Build Artifacts
 
 After building, find the artifacts in these locations:

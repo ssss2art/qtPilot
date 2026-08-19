@@ -25,6 +25,39 @@ namespace qtPilot {
 /// Shared by object_id.cpp and ObjectRegistry so the bound cannot drift apart.
 constexpr int kMaxEffectiveDepth = 512;
 
+/// @brief Makes ID generation linear in group size for one traversal.
+///
+/// Generating a segment requires knowing whether it is unique among the object's
+/// effective siblings, and answering that per object is a scan of the sibling list --
+/// O(N) each, so O(N^2) to walk a group of N. That is the dominant cost of
+/// qt.objects.tree and of the startup scan on a Repeater over many rows.
+///
+/// While a scope is alive, the answer is computed once per PARENT instead: one pass
+/// over its effective children buckets them by segment and assigns every child its
+/// suffix, so each lookup afterwards is a hash hit. The group becomes O(N) and a
+/// tree walk linear in node count.
+///
+/// The results are identical to the unscoped path by construction -- same
+/// enumeration order, same equality, and an object the cached pass did not see falls
+/// back to the direct scan. It is purely a memo, never a different answer.
+///
+/// Scope it to a single synchronous traversal and nothing longer. The cache assumes
+/// the tree does not change underneath it, which holds inside one walk on the thread
+/// that owns the objects, and does not hold across client requests. Nesting is fine:
+/// an inner scope shares the outer cache and only the outermost release clears it.
+///
+/// Thread-local, so a scope on one thread never affects another.
+class QTPILOT_EXPORT IdGenerationScope {
+ public:
+  IdGenerationScope();
+  ~IdGenerationScope();
+
+  IdGenerationScope(const IdGenerationScope&) = delete;
+  IdGenerationScope& operator=(const IdGenerationScope&) = delete;
+  IdGenerationScope(IdGenerationScope&&) = delete;
+  IdGenerationScope& operator=(IdGenerationScope&&) = delete;
+};
+
 /// @brief Generate a hierarchical ID for a QObject.
 ///
 /// ID format: "segment/segment/segment" where each segment is:

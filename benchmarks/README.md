@@ -31,42 +31,44 @@ Constants are meaningless across machines; the exponents are the point.
 
 | Benchmark | Big-O | What it covers |
 |---|---|---|
-| `BM_GenerateOneId_WithNSiblings` | **O(N)** | One `generateObjectId()` with N siblings present — the per-call cost |
-| `BM_GenerateAllIds_ForGroup` | **O(N²)** | IDs for every sibling in the group — what a full tree walk costs |
-| `BM_SerializeTree_NDelegates` | **O(N²)** | `serializeObjectTree()`, i.e. `qt.objects.tree` |
-| `BM_ResolveId_LastOfNSiblings` | **O(N²)** | `findByObjectId()` resolving a single ID |
+| `BM_GenerateOneId_WithNSiblings` | O(N) | One `generateObjectId()` with N siblings present |
+| `BM_GenerateAllIds_ForGroup` | **O(N²)** | Ids for the whole group with **no** scope — the raw per-call API |
+| `BM_GenerateAllIds_ForGroup_Scoped` | **O(N)** | The same loop inside an `IdGenerationScope` |
+| `BM_SerializeTree_NDelegates` | O(N) | `serializeObjectTree()`, i.e. `qt.objects.tree` |
+| `BM_ResolveId_LastOfNSiblings` | O(N) | `findByObjectId()` resolving a single id |
 
 N is the number of eagerly instantiated sibling delegates under one container.
 
-## Why these are quadratic, and what would fix it
+## Where the complexity comes from, and how it was removed
 
-Both quadratics come from the same place. `generateIdSegment()` has to know whether
-an object's segment is unique among its siblings, and `getSiblingIndex()` answers
-that by scanning the sibling list — O(N) per object. Do that for every object in the
-group and the walk is O(N²).
+Generating a segment requires knowing whether it is unique among the object's
+effective siblings. Answered per object, that is a scan of the sibling list — O(N)
+each, so O(N²) to walk a group of N. Resolution inherited it twice over, because
+`matchesSegment()` compares against a freshly generated segment, so resolving one
+path scanned N candidates and paid the O(N) sibling scan inside each.
 
-Resolution inherits it for a second reason: `matchesSegment()` compares against a
-freshly generated segment, so resolving one path scans N candidates and pays the
-O(N) sibling scan at each — hence `BM_ResolveId_LastOfNSiblings` being quadratic
-rather than linear.
+`IdGenerationScope` (see `introspection/object_id.h`) answers the question **once per
+parent** instead: one pass over a parent's effective children buckets them by segment
+and assigns every child its suffix, so later lookups are hash hits. The results are
+identical to the unscoped path by construction — same enumeration order, same
+equality, and an object the cached pass did not see falls back to the direct scan.
 
-The known fix for both is to stop asking the question per object: compute every
-sibling's segment **once per parent**, bucket them, and assign suffixes in one
-sweep. That makes the group O(N) and the tree walk linear in node count. It has not
-been done because correctness came first — an earlier attempt to shortcut the
-sibling scan produced duplicate IDs, which is the one thing an ID may not do.
+`serializeObjectTree()`, `findByObjectId()`, `ObjectRegistry::scanExistingObjects()`
+and `refreshDescendantIds()` each open one for the duration of their walk. That took
+tree serialization and id resolution from O(N²) to O(N).
 
-If you take that on, these benchmarks are how you show it worked:
-`BM_GenerateAllIds_ForGroup` and `BM_SerializeTree_NDelegates` should report `N`
-rather than `N^2`.
+The two `ForGroup` rows are kept as a pair on purpose. The unscoped one is still
+quadratic and *should* be: it measures the raw per-call API. It is also the row that
+would regress if a traversal ever stopped taking a scope. If you add a batch caller,
+give it a scope and the linear row is what you should see.
 
 ## Practical impact
 
 A recycling `ListView` only ever instantiates its visible delegates, so N is small
-(tens) and the quadratic is invisible. The shape that bites is a `Repeater` over
+(tens) and none of this is visible. The shape that bites is a `Repeater` over
 thousands of eager rows, where the cost lands on the host application's main thread
-during `ObjectRegistry::scanExistingObjects()` at probe startup — and again on every
-`qt.objects.tree`.
+during `ObjectRegistry::scanExistingObjects()` at probe startup — and, before the
+scope, again on every `qt.objects.tree` and every id-addressed operation.
 
 ## Adding a case
 

@@ -124,9 +124,10 @@ BENCHMARK(BM_GenerateOneId_WithNSiblings)->RangeMultiplier(2)->Range(8, 2048)->C
 ///
 /// What a full tree walk costs, and the number that matters: this is the shape
 /// ObjectRegistry::scanExistingObjects() hits at probe startup, on the host
-/// application's main thread. Expected O(N^2) today. If a future change collapses
-/// the per-object sibling scan into one grouping pass per parent, this row should
-/// drop to O(N) -- that is the whole point of measuring it.
+/// application's main thread. O(N^2), because this loop owns no IdGenerationScope --
+/// which is exactly what the _Scoped variant below exists to contrast. Kept
+/// deliberately: it measures the cost of the raw per-call API, and it is the row that
+/// would regress if the scope were ever bypassed.
 static void BM_GenerateAllIds_ForGroup(benchmark::State& state) {
   const int n = static_cast<int>(state.range(0));
   DelegateScene scene(n, kUnnamedDelegate);
@@ -149,12 +150,42 @@ static void BM_GenerateAllIds_ForGroup(benchmark::State& state) {
 }
 BENCHMARK(BM_GenerateAllIds_ForGroup)->RangeMultiplier(2)->Range(8, 1024)->Complexity();
 
+/// @brief The same group, inside an IdGenerationScope.
+///
+/// The contrast with the row above is the point of this pair. Unscoped, each call
+/// re-answers "is my segment unique among my siblings?" with a fresh scan, so a loop
+/// over the group is quadratic. A scope answers it once per parent, so the same loop
+/// is linear. Any caller that generates ids for more than one object in a batch
+/// should own a scope; the probe's own traversals do.
+static void BM_GenerateAllIds_ForGroup_Scoped(benchmark::State& state) {
+  const int n = static_cast<int>(state.range(0));
+  DelegateScene scene(n, kUnnamedDelegate);
+  if (!scene.valid()) {
+    state.SkipWithError("QML scene failed to build");
+    return;
+  }
+  const QList<QObject*> delegates = scene.delegates();
+  if (delegates.isEmpty()) {
+    state.SkipWithError("no delegates instantiated");
+    return;
+  }
+
+  for (auto _ : state) {
+    IdGenerationScope idScope;
+    for (QObject* delegate : delegates) {
+      benchmark::DoNotOptimize(generateObjectId(delegate));
+    }
+  }
+  state.SetComplexityN(n);
+}
+BENCHMARK(BM_GenerateAllIds_ForGroup_Scoped)->RangeMultiplier(2)->Range(8, 1024)->Complexity();
+
 /// @brief serializeObjectTree() over a scene of N delegates.
 ///
-/// The client-facing cost of qt.objects.tree. Inherits whatever complexity ID
-/// generation has, so it tracks the row above; measured separately because it also
-/// carries the per-node QJsonObject construction, which is the part a reader would
-/// otherwise blame.
+/// The client-facing cost of qt.objects.tree. Linear: serializeObjectTree() opens an
+/// IdGenerationScope for the whole walk. Measured separately from generation because
+/// it also carries per-node QJsonObject construction, which is the part a reader
+/// would otherwise blame for the constant.
 static void BM_SerializeTree_NDelegates(benchmark::State& state) {
   const int n = static_cast<int>(state.range(0));
   DelegateScene scene(n, kUnnamedDelegate);
@@ -175,11 +206,11 @@ BENCHMARK(BM_SerializeTree_NDelegates)->RangeMultiplier(2)->Range(8, 512)->Compl
 /// The resolution side of the same contract. Worst case on purpose: findBySegments
 /// scans candidates in order, so the last sibling walks the whole list.
 ///
-/// Measures O(N^2), not the O(N) a single scan would suggest -- and that is the
-/// value of measuring rather than reasoning. matchesSegment() compares against a
-/// FRESHLY GENERATED segment, so resolving one path scans N candidates and pays an
-/// O(N) sibling scan inside each. Every id-addressed operation on a large list
-/// (qt_ui_click, qt_properties_get) carries this.
+/// This one measured O(N^2) before findByObjectId() took a scope -- and finding that
+/// out is what the benchmark was for. matchesSegment() compares against a FRESHLY
+/// GENERATED segment, so resolving one path scans N candidates and paid an O(N)
+/// sibling scan inside each. Every id-addressed operation on a large list
+/// (qt_ui_click, qt_properties_get) carried it. Now linear.
 static void BM_ResolveId_LastOfNSiblings(benchmark::State& state) {
   const int n = static_cast<int>(state.range(0));
   DelegateScene scene(n, kUnnamedDelegate);

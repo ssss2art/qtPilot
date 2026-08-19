@@ -527,6 +527,7 @@ void ObjectRegistry::refreshObjectId(QObject* obj) {
 }
 
 void ObjectRegistry::refreshDescendantIds(QObject* obj) {
+  IdGenerationScope idScope;
   refreshDescendantIdsImpl(obj, 0);
 }
 
@@ -547,6 +548,10 @@ void ObjectRegistry::refreshDescendantIdsImpl(QObject* obj, int depth) {
 }
 
 void ObjectRegistry::scanExistingObjects(QObject* root) {
+  // One scope for the whole scan: this runs on the application's main thread during
+  // Probe::initialize() and generates an id for every pre-existing object, which is
+  // the single largest sibling-scan workload in the probe.
+  IdGenerationScope idScope;
   QSet<QObject*> visited;
   scanExistingObjectsImpl(root, visited, 0);
 }

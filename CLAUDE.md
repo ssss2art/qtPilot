@@ -22,6 +22,24 @@ cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64
 cmake --build build --config Release
 ```
 
+### Running Benchmarks
+
+Complexity benchmarks for ID generation, tree serialization and ID resolution. They
+report an empirically fitted Big-O, so they answer "did this change the complexity of
+a hot path" without arguing about timings. Off by default (fetches google/benchmark
+at configure time; no CI leg builds it).
+
+```bash
+cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON
+cmake --build build --target qtPilot_bench_object_id
+./build/bin/qtPilot_bench_object_id --benchmark_min_time=0.05s
+```
+
+Read the `_BigO` / `_RMS` rows, not the per-N times. Baseline and interpretation:
+`benchmarks/README.md`. **If you touch `getSiblingIndex()`, `baseIdSegment()`,
+`effectiveChildren()` or any tree walker, run these** — that code has already had one
+optimization regress it, and these are how the exponent stays honest.
+
 ### Running Tests (Windows)
 
 The Qt directory used during the build is stored in `build/CMakeCache.txt` as `QTPILOT_QT_DIR`.
@@ -231,6 +249,7 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 | Test (bash) | Extract `QT_DIR` from cache, then `cmd //c "set PATH=...&& ctest ..."` (see Build System section) |
 | Test (cmd.exe) | Set `PATH` and `QT_PLUGIN_PATH` from `QTPILOT_QT_DIR` in cache, then `ctest --test-dir build -C Release` |
 | Launch | `build/bin/Release/qtPilot-launcher.exe [--qt-dir <path>] app.exe` |
+| Benchmarks | `cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON && cmake --build build --target qtPilot_bench_object_id` |
 | Source | `src/` directory |
 | Tests | `tests/` directory |
 
