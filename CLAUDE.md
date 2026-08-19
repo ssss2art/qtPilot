@@ -50,7 +50,9 @@ QT_PLUGIN_PATH="${QT_DIR}/plugins" LD_LIBRARY_PATH="${QT_DIR}/lib" ctest --test-
 ```
 
 ### Running Tests (macOS)
-Qt on macOS uses framework bundles; point `DYLD_FRAMEWORK_PATH` at the Qt `lib/`
+macOS is supported on **Qt 6.5+ only**; Qt 5.15 on macOS is not a supported
+configuration and is not covered by CI (see `docs/MACOS.md`). Qt on macOS uses
+framework bundles; point `DYLD_FRAMEWORK_PATH` at the Qt `lib/`
 directory (where the `.framework` bundles live). `QTPILOT_ENABLED=0` prevents the
 probe from auto-loading during tests on arm64 where permission prompts can hang
 headless runs.
@@ -63,9 +65,9 @@ DYLD_FRAMEWORK_PATH="${QT_DIR}/lib" QT_PLUGIN_PATH="${QT_DIR}/plugins" \
 
 ctest sets `QT_STYLE_OVERRIDE=Fusion` for you on macOS (see `tests/CMakeLists.txt`).
 The native style draws some controls through NSView, which needs an AppKit
-environment that `QT_QPA_PLATFORM=minimal` does not provide; on Qt 5.15 that
-segfaults the moment a `QPushButton` paints. Add it by hand when running a test
-binary **directly** rather than through ctest:
+environment that `QT_QPA_PLATFORM=minimal` does not provide. Qt 6 tolerates it;
+Qt 5.15 segfaults the moment a `QPushButton` paints. Add it by hand when running a
+test binary **directly** rather than through ctest:
 
 ```bash
 QT_STYLE_OVERRIDE=Fusion DYLD_FRAMEWORK_PATH="${QT_DIR}/lib" \

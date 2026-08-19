@@ -86,7 +86,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for detailed build instructions.
   - **Computer Use** - Screenshot and coordinate-based interaction
   - **Chrome** - Browser-style accessibility tree with element references
 - **58 MCP tools** across all modes: 27 native, 13 computer-use, 8 accessibility, and 10 shared session tools
-- **Works with Qt 5.15.1+ and Qt 6.5+** applications
+- **Works with Qt 5.15.1+ and Qt 6.5+** applications (Qt 5.15 on Windows and Linux; macOS needs Qt 6.5+)
 - **Zero modification** to target applications on desktop (the probe is injected); on mobile it is linked into your own development build
 - **Child process injection** - `--inject-children` automatically injects the probe into child processes (Windows: Detours hook on CreateProcessW; Linux: LD_PRELOAD propagation)
 - **Admin elevation** - `--run-as-admin` launches target apps with administrator privileges on Windows (auto-elevates via UAC)
@@ -173,6 +173,15 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 | **Android** | - | ✅ | Linked into your build | Supported (CI cross-compiles; device runs verified by hand) |
 | **iOS (device)** | - | ✅ | Linked into your build | Supported (CI cross-compiles; device runs verified by hand) |
 
+✅ = supported and exercised by CI. `-` = not a supported combination.
+
+**Qt 5.15 on macOS is not supported.** It is not covered by CI and cannot
+practically be: open-source Qt 5 ended at 5.15.2, whose macOS build is
+x86_64-only, so covering it would need a retired x86_64 runner image or a
+commercial Qt licence. The code is not deliberately incompatible and a local
+build may well work, but nothing verifies it and regressions will not be caught.
+Use Qt 6.5+ on macOS.
+
 Published binary assets vary by release. In particular, macOS users may need to
 build the probe and launcher from source; see [docs/MACOS.md](docs/MACOS.md).
 
@@ -184,7 +193,7 @@ development build, and it must never be enabled in a build you distribute. See
 ## Requirements
 
 - **Runtime:** Python 3.11+ (for MCP server)
-- **Target apps:** Qt 5.15+ or Qt 6.5+
+- **Target apps:** Qt 5.15+ or Qt 6.5+ (on macOS, Qt 6.5+ only — see Platform Support)
 - **Build:** CMake 3.16+, C++17 compiler
 
 ## License

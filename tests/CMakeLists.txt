@@ -72,8 +72,10 @@ function(qtPilot_add_test)
     # painted, taking 173 assertions with them that had therefore never run on this
     # configuration. Fusion is pure QPainter and safe headless.
     #
-    # Applied for Qt 6 as well, which does not crash but has no reason to exercise a
-    # different style than Qt 5 does. Not applied off macOS: the default styles
+    # Kept even though Qt 5.15 on macOS is not a supported configuration (see
+    # docs/MACOS.md): the pin is the right thing for macOS regardless of Qt version,
+    # since it removes an AppKit dependency from headless rendering and makes both
+    # Qt versions exercise the same style. Not applied off macOS: the default styles
     # there are already QPainter-based, and changing them would alter the widget
     # metrics that the geometry and hit-test assertions are written against.
     set(_test_env "")

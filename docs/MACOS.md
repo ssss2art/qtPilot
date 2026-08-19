@@ -4,6 +4,22 @@ Status of macOS platform support, implementation notes, and known issues.
 
 > **Heads-up:** Screenshot tools (`qt_ui_screenshot` with `fullWindow=true`, `cu_screenshot`) require **Screen Recording** permission for the terminal/launcher process — grant it in System Settings → Privacy & Security → Screen Recording, then restart the terminal. See [Screen Recording Permission](#screen-recording-permission) for details. Widget-only screenshots don't need it.
 
+## Qt version support
+
+**macOS requires Qt 6.5 or newer.** Qt 5.15 on macOS is not a supported
+configuration.
+
+It is not covered by CI and cannot practically be: open-source Qt 5 ended at
+5.15.2, whose macOS build is x86_64-only, so a CI leg would need either a retired
+x86_64 runner image or the commercial 5.15.x releases. Nothing is deliberately
+incompatible -- the tree builds and, as of this writing, the test suite passes
+locally against a commercial Qt 5.15.19 universal build -- but that is a
+hand-verified snapshot, not a supported configuration, and regressions there will
+not be caught.
+
+Qt 5.15 remains supported on Windows and Linux, both exercised by CI.
+
+
 ## Implementation Summary
 
 macOS support was added by creating platform-specific files for probe initialization and launcher injection, and updating CMake, Python, and C++ code to handle macOS framework layouts and environment variables.
@@ -40,7 +56,7 @@ cmake --build build --config Release
 QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 ctest --test-dir build --output-on-failure
 ```
 
-All 16 tests pass on macOS ARM64 with Qt 6.10.0.
+The full suite passes on macOS arm64 (20 tests as of this writing; originally 16).
 
 ## Injection Mechanism
 

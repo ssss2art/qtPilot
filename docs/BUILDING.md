@@ -7,7 +7,9 @@ This guide covers building the qtPilot probe and launcher from source code.
 ### Required
 
 - **CMake 3.16+**
-- **Qt 5.15.1+ or Qt 6.5+** with development headers (including private headers)
+- **Qt 5.15.1+ or Qt 6.5+** with development headers (including private headers).
+  On macOS, Qt 6.5+ only — Qt 5.15 is not a supported configuration there, see
+  [MACOS.md](MACOS.md)
 - **C++17 compiler:**
   - GCC 8+ (Linux)
   - Clang 7+ (Linux/macOS)
@@ -291,6 +293,11 @@ cmake --build build-qt5
 ```
 
 ### Building for Qt 5.15.1
+
+Qt 5.15 is supported on **Windows and Linux**. It is not supported on macOS: that
+combination is not covered by CI and cannot practically be, since open-source
+Qt 5 ended at 5.15.2 and its macOS build is x86_64-only. See
+[MACOS.md](MACOS.md#qt-version-support).
 
 Use the dedicated Qt 5 presets to build against Qt 5.15.1 locally:
 
