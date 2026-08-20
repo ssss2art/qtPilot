@@ -23,6 +23,7 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: jidicula/clang-format-action@654a770daa28443dd111d133e4083e21c1075674 # v4.18.0
@@ -50,10 +51,27 @@ jobs:
           # CMakeLists.txt.)
           - { qt: "5.15.2", os: ubuntu-24.04, modules: "" }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # One retry, because the Qt mirrors intermittently stall mid-download. The
+      # step timeout is what turns a stall into a failure the retry can act on -- a
+      # hang is not a failure, so without it `if: failure()` never fires and the job
+      # sits until the job timeout.
       - name: Install Qt
+        id: qt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: ${{ matrix.qt }}
+          modules: ${{ matrix.modules }}
+          cache: true
+
+      - name: Install Qt (retry)
+        if: steps.qt.outcome == 'failure'
+        timeout-minutes: 15
         uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
         with:
           version: ${{ matrix.qt }}
@@ -119,22 +137,55 @@ jobs:
           - { name: ios,     os: macos-14,     target: ios,     arch: "" }
     name: mobile (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # 6.10.0 rather than 6.8.0 so the HOST install shares a cache entry with the
+      # build matrix's 6.10.0 legs instead of adding another multi-hundred-MB Qt to a
+      # repo cache that is already over budget. Fewer distinct installs is the only
+      # lever here that reduces mirror traffic rather than just surviving it.
       - name: Install host Qt
+        id: hostqt
+        continue-on-error: true
+        timeout-minutes: 15
         uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
         with:
-          version: "6.8.0"
+          version: "6.10.0"
+          modules: qtwebsockets
+          cache: true
+          set-env: false
+          dir: ${{ runner.temp }}/qt-host
+
+      - name: Install host Qt (retry)
+        if: steps.hostqt.outcome == 'failure'
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
           modules: qtwebsockets
           cache: true
           set-env: false
           dir: ${{ runner.temp }}/qt-host
 
       - name: Install target Qt
+        id: targetqt
+        continue-on-error: true
+        timeout-minutes: 15
         uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
         with:
-          version: "6.8.0"
+          version: "6.10.0"
+          target: ${{ matrix.target }}
+          arch: ${{ matrix.arch }}
+          modules: qtwebsockets
+          cache: true
+
+      - name: Install target Qt (retry)
+        if: steps.targetqt.outcome == 'failure'
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
           modules: qtwebsockets
@@ -161,6 +212,72 @@ jobs:
           cmake --build build/mobile --parallel
           find build/mobile -name '*.a' -print
 
+  # Records the fitted complexity of the probe's hot paths in the run log, so a
+  # change of exponent is visible in review instead of being discovered later.
+  #
+  # NON-BLOCKING on purpose (continue-on-error). The numbers are timing-derived and a
+  # shared runner is noisy, so a hard assertion would teach people to re-run until
+  # green -- which is worse than no check. What this gives you is a reviewable record:
+  # the _BigO column lands in the step summary, and a jump from N to N^2 is obvious.
+  benchmarks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Qt
+        id: qt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          modules: qtwebsockets
+          cache: true
+
+      - name: Install Qt (retry)
+        if: steps.qt.outcome == 'failure'
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          modules: qtwebsockets
+          cache: true
+
+      - name: Install X11 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxext-dev libxtst-dev libx11-dev
+
+      - name: Build benchmarks
+        run: |
+          cmake -B build/bench -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQTPILOT_BUILD_BENCHMARKS=ON \
+            -DQTPILOT_BUILD_TESTS=OFF \
+            -DQTPILOT_BUILD_TEST_APP=OFF
+          cmake --build build/bench --target qtPilot_bench_object_id --parallel
+
+      - name: Measure complexity
+        run: |
+          BIN="$(find build/bench -name qtPilot_bench_object_id -type f | head -1)"
+          # Short min-time: we want the fitted exponent, not a precise constant.
+          QT_QPA_PLATFORM=minimal "$BIN" --benchmark_min_time=0.05s | tee bench.txt
+
+          {
+            echo "## Complexity (fitted Big-O)"
+            echo
+            echo "Read the exponent, not the constant. RMS above ~10% means the fit is"
+            echo "untrustworthy on this runner -- treat it as no signal rather than a result."
+            echo
+            echo '```'
+            grep -E "_BigO|_RMS" bench.txt || echo "(no complexity rows -- did a benchmark fail to run?)"
+            echo '```'
+            echo
+            echo "Baseline and interpretation: \`benchmarks/README.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
     strategy:
       fail-fast: false
@@ -184,10 +301,24 @@ jobs:
           # run. Force it off here so the QML-less configuration stays buildable.
           - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets", extra_cmake: "-DQTPILOT_ENABLE_QML=OFF", arch_label: noqml }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install Qt
+        id: qt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: ${{ matrix.qt }}
+          modules: ${{ matrix.modules }}
+          arch: ${{ matrix.arch || '' }}
+          cache: true
+
+      - name: Install Qt (retry)
+        if: steps.qt.outcome == 'failure'
+        timeout-minutes: 15
         uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
         with:
           version: ${{ matrix.qt }}
@@ -343,6 +474,7 @@ jobs:
 
   python:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 

@@ -70,6 +70,18 @@ thousands of eager rows, where the cost lands on the host application's main thr
 during `ObjectRegistry::scanExistingObjects()` at probe startup — and, before the
 scope, again on every `qt.objects.tree` and every id-addressed operation.
 
+## In CI
+
+The `benchmarks` job runs these on every CI run and writes the `_BigO` / `_RMS` rows
+into the run's step summary, so a change of exponent is visible in review without
+anyone remembering to run them.
+
+It is **non-blocking** (`continue-on-error: true`). The numbers are timing-derived
+and a shared runner is noisy — a hard assertion would teach people to re-run until
+green, which is worse than no check at all. Expect RMS values a few points higher
+there than on a quiet local machine; treat anything above ~10% as no signal rather
+than as a result.
+
 ## Adding a case
 
 Give it a `SetComplexityN(n)` and a `->Complexity()`, build the fixture **outside**

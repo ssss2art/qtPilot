@@ -193,6 +193,10 @@ trustworthy on that machine.
 The recorded baseline, what each case covers, and what a future optimization should
 make the numbers do are in [benchmarks/README.md](../benchmarks/README.md).
 
+CI runs them too, in a non-blocking `benchmarks` job that writes the fitted Big-O
+into the run's step summary. It never fails the workflow — the point is a reviewable
+record of the exponent, not a timing gate.
+
 ## Build Artifacts
 
 After building, find the artifacts in these locations:
