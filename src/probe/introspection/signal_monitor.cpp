@@ -281,7 +281,10 @@ bool SignalMonitor::lifecycleNotificationsEnabled() const {
 
 int SignalMonitor::subscriptionCount() const {
   QMutexLocker lock(&m_mutex);
-  return m_subscriptions.size();
+  // size() is qsizetype (64-bit). The narrowing is harmless for a subscription
+  // count, but it is an error under the stricter warning set Apple applies to
+  // iOS targets, so state the conversion rather than letting it be implicit.
+  return static_cast<int>(m_subscriptions.size());
 }
 
 void SignalMonitor::onObjectAdded(QObject* obj) {

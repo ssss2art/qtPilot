@@ -13,6 +13,10 @@
 #include <QWidget>
 #include <QWindow>
 
+#ifdef QTPILOT_HAS_QML
+#include <QQuickItem>
+#endif
+
 namespace qtPilot {
 
 namespace {
@@ -63,72 +67,237 @@ QString getTextProperty(QObject* obj) {
   return QString();
 }
 
-/// @brief Count siblings of the same class that come before this object.
-/// Returns -1 if this object is uniquely identifiable (only one of its class).
-int getSiblingIndex(QObject* obj) {
+/// @brief The ID segment for an object BEFORE sibling disambiguation.
+///
+/// Split out from generateIdSegment() so that the disambiguator can compare the
+/// thing that actually has to be unique. Comparing class names instead was the
+/// bug: sibling delegates share a class, but they also share a QML `id` and can
+/// share a constant objectName, so a class-name comparison both missed real
+/// collisions and could not see that two differently-classed objects had landed
+/// on the same segment.
+QString baseIdSegment(QObject* obj) {
   if (!obj) {
+    return QString();
+  }
+
+#ifdef QTPILOT_HAS_QML
+  // Priority 0 (QML only): QML id takes highest priority. The segment-only variant
+  // skips resolving the context's base URL, which nothing here reads and which
+  // sibling disambiguation would otherwise pay for once per sibling.
+  QmlItemInfo qmlInfo = inspectQmlItemForSegment(obj);
+  if (qmlInfo.isQmlItem && !qmlInfo.qmlId.isEmpty()) {
+    return qmlInfo.qmlId;
+  }
+#endif
+
+  // Priority 1: objectName (if set and non-empty)
+  QString name = obj->objectName();
+  if (!name.isEmpty()) {
+    return name;
+  }
+
+  // Priority 2: text property (if exists and non-empty)
+  QString text = getTextProperty(obj);
+  if (!text.isEmpty()) {
+    return QStringLiteral("text_") + sanitizeForId(text);
+  }
+
+  // Priority 3: short QML type name, else class name.
+#ifdef QTPILOT_HAS_QML
+  if (qmlInfo.isQmlItem) {
+    return qmlInfo.shortTypeName;
+  }
+#endif
+  return QString::fromLatin1(obj->metaObject()->className());
+}
+
+/// @brief Per-parent sibling-suffix memo, live only inside an IdGenerationScope.
+///
+/// Nesting is reference-counted so an inner scope shares the outer cache; only the
+/// outermost release clears it. thread_local because ID generation belongs to the
+/// thread that owns the objects, and a scope must never leak across threads.
+struct SiblingIndexCache {
+  int depth = 0;
+  // parent -> (child -> suffix, where -1 means "segment already unique")
+  QHash<QObject*, QHash<QObject*, int>> byParent;
+};
+
+thread_local SiblingIndexCache* g_siblingCache = nullptr;
+
+/// @brief Bucket a parent's effective children by segment and assign every one its
+/// suffix, in a single pass.
+///
+/// This is where the quadratic goes away: the sibling question is answered once per
+/// parent rather than once per child. Enumeration order and equality match the
+/// direct scan exactly, so the suffixes are the same ones the unscoped path would
+/// hand out.
+QHash<QObject*, int> buildSiblingIndices(QObject* parent) {
+  const QList<QObject*> children = effectiveChildren(parent);
+
+  QHash<QString, QList<QObject*>> bySegment;
+  bySegment.reserve(children.size());
+  for (QObject* child : children) {
+    if (!child) {
+      continue;
+    }
+    bySegment[baseIdSegment(child)].append(child);
+  }
+
+  QHash<QObject*, int> indices;
+  indices.reserve(children.size());
+  for (auto it = bySegment.constBegin(); it != bySegment.constEnd(); ++it) {
+    const QList<QObject*>& group = it.value();
+    if (group.size() <= 1) {
+      // Unique segment: no suffix, so ids for unambiguous objects are unchanged.
+      for (QObject* member : group) {
+        indices.insert(member, -1);
+      }
+      continue;
+    }
+    int position = 0;
+    for (QObject* member : group) {
+      indices.insert(member, ++position);  // 1-based, for human readability
+    }
+  }
+  return indices;
+}
+
+/// @brief Position of this object among the effective siblings that would emit
+/// the same base segment. Returns -1 when the base segment is already unique.
+///
+/// Two things matter here, and both were previously wrong for QML delegates:
+///
+///   - The hierarchy. This walks effectiveParent()/effectiveChildren(), the same
+///     axis generateObjectId() and the tree walkers use. Asking obj->parent()
+///     meant every delegate -- whose QObject parent is null by definition --
+///     fell into the "no disambiguation context" branch and got no suffix, so
+///     all N siblings emitted one identical segment.
+///   - The key. Comparing base segments rather than class names, because a QML
+///     `id` and a constant objectName are per-DECLARATION, not per-instance:
+///     every instance of `delegate: Rectangle { id: row }` yields "row".
+///
+/// The suffix must stay a form matchesSegment() can reproduce (`#N`), so an ID
+/// resolves by path. The registry's `~N` collision suffix cannot be reproduced
+/// that way, which is why it must remain a last resort rather than the mechanism
+/// delegates rely on.
+int getSiblingIndex(QObject* obj, const QString& base) {
+  if (!obj || base.isEmpty()) {
     return -1;
   }
 
-  QObject* parent = obj->parent();
+  QObject* parent = effectiveParent(obj);
   if (!parent) {
-    // Top-level objects aren't QObject children of anything. For top-level
-    // QWindows (now first-class tree roots), disambiguate among same-class
-    // top-level windows so multiple windows get unique ids (Foo#1, Foo#2)
-    // instead of colliding on a single bare "Foo".
+    // Top-level objects aren't children of anything. For top-level QWindows
+    // (first-class tree roots) disambiguate among same-segment top-level windows
+    // so multiple windows get unique ids (Foo#1, Foo#2) instead of colliding on
+    // a single bare "Foo".
     if (qobject_cast<QWindow*>(obj)) {
       auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
       if (!guiApp) {
         return -1;
       }
-      const char* targetClass = obj->metaObject()->className();
+      int sameSegmentCount = 0;
+      int indexAmongSame = -1;
       const auto windows = guiApp->topLevelWindows();
-      int sameClassCount = 0;
-      int indexAmongSameClass = -1;
       for (QWindow* w : windows) {
-        if (qstrcmp(w->metaObject()->className(), targetClass) == 0) {
+        if (baseIdSegment(w) == base) {
           if (w == obj) {
-            indexAmongSameClass = sameClassCount;
+            indexAmongSame = sameSegmentCount;
           }
-          sameClassCount++;
+          sameSegmentCount++;
         }
       }
-      if (sameClassCount <= 1) {
+      if (sameSegmentCount <= 1) {
         return -1;
       }
-      return indexAmongSameClass + 1;
+      return indexAmongSame + 1;
     }
     // Other parentless objects: no disambiguation context.
     return -1;
   }
 
-  const char* targetClass = obj->metaObject()->className();
-  QList<QObject*> children = parent->children();
-
-  // Count siblings of the same exact class
-  int sameClassCount = 0;
-  int indexAmongSameClass = -1;
-
-  for (int i = 0; i < children.size(); ++i) {
-    QObject* child = children.at(i);
-    const char* childClass = child->metaObject()->className();
-
-    // Only count exact class matches (not subclasses)
-    if (qstrcmp(childClass, targetClass) == 0) {
-      if (child == obj) {
-        indexAmongSameClass = sameClassCount;
-      }
-      sameClassCount++;
+  // Inside a traversal scope, the whole group was (or can be) settled in one pass.
+  // A miss falls through to the direct scan below rather than guessing -- an object
+  // created after its parent's group was cached (QQmlContext::nameForObject can
+  // construct one) is simply not in the map, and must still get a correct answer.
+  if (g_siblingCache != nullptr) {
+    auto parentIt = g_siblingCache->byParent.constFind(parent);
+    if (parentIt == g_siblingCache->byParent.constEnd()) {
+      parentIt = g_siblingCache->byParent.insert(parent, buildSiblingIndices(parent));
+    }
+    const auto childIt = parentIt->constFind(obj);
+    if (childIt != parentIt->constEnd()) {
+      return childIt.value();
     }
   }
 
-  // If there's only one object of this class, no disambiguation needed
-  if (sameClassCount <= 1) {
+  int sameSegmentCount = 0;
+  int indexAmongSame = -1;
+
+  // One loop, one population, one numbering.
+  //
+  // An earlier version split this into a cheap "fast path" for visual-axis
+  // children and a segment-comparing slow path for the rest. That was wrong three
+  // separate ways, each of which put two objects on one ID:
+  //
+  //   - The two paths counted DIFFERENT populations of the same sibling list (the
+  //     fast path skipped every sibling with a QObject parent), so they issued
+  //     overlapping 1-based suffixes. A static child and a delegate under one
+  //     parent both got `Rectangle#1`.
+  //   - The fast path keyed on objectName while the segment itself comes from the
+  //     QML `id` when one is declared -- `id: row` plus `objectName: "row" + index`
+  //     made every sibling look unique and none got a suffix.
+  //   - It compared class identity before objectName, so two differently-classed
+  //     siblings sharing an objectName or a `text` never got compared at all.
+  //
+  // So the population is now every effective child, and the key is the generated
+  // SEGMENT, which is the thing that actually has to be unique.
+  //
+  // Cost: O(siblings) per object, and baseIdSegment() resolves a QML id, so a
+  // parent with a very large eagerly-instantiated child list (a Repeater over
+  // thousands of rows) makes a full tree walk quadratic. The pre-filter below
+  // removes most of it, and a recycling ListView only ever instantiates its
+  // visible delegates. Correctness first: the previous shortcut bought speed by
+  // handing out duplicate IDs, which is the one thing an ID must never do.
+  const QMetaObject* objMeta = obj->metaObject();
+  const bool baseFromText = base.startsWith(QLatin1String("text_"));
+
+  const QList<QObject*> siblings = effectiveChildren(parent);
+  for (QObject* sibling : siblings) {
+    if (!sibling) {
+      continue;
+    }
+    if (sibling == obj) {
+      indexAmongSame = sameSegmentCount;
+      ++sameSegmentCount;
+      continue;
+    }
+
+    // Skip only what provably cannot produce `base`. A sibling matches if it is
+    // the same class (compared by NAME -- QML installs per-component metaobjects,
+    // so pointer identity is not a class test), or its objectName is the segment,
+    // or our segment came from a `text` property (a QLabel and a QPushButton both
+    // reading "OK" collide across classes), or it is a QQuickItem and so may carry
+    // a declared QML id we cannot see without asking.
+    const bool sameClass = qstrcmp(sibling->metaObject()->className(), objMeta->className()) == 0;
+    const bool mayCarryQmlId = isQmlItem(sibling);
+    if (!sameClass && !baseFromText && !mayCarryQmlId && sibling->objectName() != base) {
+      continue;
+    }
+
+    if (baseIdSegment(sibling) == base) {
+      ++sameSegmentCount;
+    }
+  }
+
+  // Unique already: no suffix, so existing IDs for unambiguous objects are
+  // unchanged.
+  if (sameSegmentCount <= 1) {
     return -1;
   }
 
-  // Return 1-based index for human readability
-  return indexAmongSameClass + 1;
+  // 1-based for human readability.
+  return indexAmongSame + 1;
 }
 
 /// @brief Get all top-level objects (those without parents).
@@ -188,7 +357,14 @@ bool matchesSegment(QObject* obj, const QString& segment) {
 /// @brief Find object by path segments starting from a list of candidates.
 QObject* findBySegments(const QStringList& segments, int segmentIndex,
                         const QList<QObject*>& candidates) {
-  if (segmentIndex >= segments.size()) {
+  // Bounded like every other walk over the merged parent/child axis. The recursion
+  // depth here is set by the SEGMENT COUNT of a client-supplied id, so without this
+  // an id of "a/a/a/..." repeated tens of thousands of times drives that many stack
+  // frames -- each holding a QList returned by value -- on the host application's
+  // main thread, whose stack is 1 MB on iOS rather than the 8 MB this code used to
+  // be confined to. A path longer than the deepest walkable tree cannot name a
+  // reachable object anyway.
+  if (segmentIndex >= segments.size() || segmentIndex > kMaxEffectiveDepth) {
     return nullptr;
   }
 
@@ -201,7 +377,7 @@ QObject* findBySegments(const QStringList& segments, int segmentIndex,
         return obj;
       }
       // Continue searching in children
-      QObject* found = findBySegments(segments, segmentIndex + 1, obj->children());
+      QObject* found = findBySegments(segments, segmentIndex + 1, effectiveChildren(obj));
       if (found) {
         return found;
       }
@@ -215,13 +391,19 @@ QObject* findBySegments(const QStringList& segments, int segmentIndex,
 QJsonObject serializeTreeRecursive(QObject* obj, int maxDepth, int currentDepth) {
   QJsonObject result = serializeObjectInfo(obj);
 
-  // Check depth limit
+  // Check depth limit. A negative maxDepth means "no client-imposed limit", NOT
+  // "unbounded" -- kMaxEffectiveDepth still applies, because the effective
+  // hierarchy is not guaranteed acyclic and this recursion runs on the host
+  // application's stack.
+  if (currentDepth >= kMaxEffectiveDepth) {
+    return result;
+  }
   if (maxDepth >= 0 && currentDepth >= maxDepth) {
     return result;
   }
 
   // Add children
-  QList<QObject*> children = obj->children();
+  QList<QObject*> children = effectiveChildren(obj);
   if (!children.isEmpty()) {
     QJsonArray childArray;
     for (QObject* child : children) {
@@ -240,43 +422,77 @@ QString generateIdSegment(QObject* obj) {
     return QString();
   }
 
-#ifdef QTPILOT_HAS_QML
-  // Priority 0 (QML only): QML id takes highest priority
-  QmlItemInfo qmlInfo = inspectQmlItem(obj);
-  if (qmlInfo.isQmlItem && !qmlInfo.qmlId.isEmpty()) {
-    return qmlInfo.qmlId;
-  }
-#endif
-
-  // Priority 1: objectName (if set and non-empty)
-  QString name = obj->objectName();
-  if (!name.isEmpty()) {
-    return name;
-  }
-
-  // Priority 2: text property (if exists and non-empty)
-  QString text = getTextProperty(obj);
-  if (!text.isEmpty()) {
-    return QStringLiteral("text_") + sanitizeForId(text);
-  }
-
-  // Priority 3: ClassName (or short QML type name) with optional disambiguation suffix
-#ifdef QTPILOT_HAS_QML
-  // For QML items without a QML id or objectName, use short type name
-  // (e.g., "Rectangle" instead of "QQuickRectangle")
-  QString typeName = qmlInfo.isQmlItem ? qmlInfo.shortTypeName
-                                       : QString::fromLatin1(obj->metaObject()->className());
-#else
-  QString typeName = QString::fromLatin1(obj->metaObject()->className());
-#endif
-
-  int siblingIndex = getSiblingIndex(obj);
+  const QString base = baseIdSegment(obj);
+  const int siblingIndex = getSiblingIndex(obj, base);
 
   if (siblingIndex > 0) {
-    return typeName + QLatin1Char('#') + QString::number(siblingIndex);
+    return base + QLatin1Char('#') + QString::number(siblingIndex);
   }
 
-  return typeName;
+  return base;
+}
+
+QObject* effectiveParent(QObject* obj) {
+  if (!obj) {
+    return nullptr;
+  }
+  if (QObject* parent = obj->parent()) {
+    return parent;
+  }
+#ifdef QTPILOT_HAS_QML
+  // A QML item created by a Repeater or ListView delegate has a VISUAL parent
+  // but no QObject parent -- the engine owns it, not the item above it. Walking
+  // QObject parents alone therefore stops dead at every delegate, so the whole
+  // subtree under one is unreachable: no ID path, no tree entry, and nothing
+  // for findByObjectId() to match. In a Qt Quick app that is usually the
+  // navigation, the tab strips and the list rows -- the controls most worth
+  // driving. Falling back to the visual parent puts them back on the path.
+  if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+    return item->parentItem();
+  }
+#endif
+  return nullptr;
+}
+
+QList<QObject*> effectiveChildren(QObject* obj) {
+  if (!obj) {
+    return {};
+  }
+  QList<QObject*> children = obj->children();
+#ifdef QTPILOT_HAS_QML
+  // The exact inverse of effectiveParent(), and it has to stay that way: a
+  // child is listed here by whichever object effectiveParent() names as its
+  // parent, so an ID generated by walking up always matches a traversal
+  // walking down. Visual children that DO have a QObject parent are skipped --
+  // they are already listed under that parent, and listing them twice would
+  // put one object at two different paths.
+  if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+    const QList<QQuickItem*> visualChildren = item->childItems();
+    for (QQuickItem* child : visualChildren) {
+      if (child && child->parent() == nullptr) {
+        children.append(child);
+      }
+    }
+  }
+#endif
+  return children;
+}
+
+IdGenerationScope::IdGenerationScope() {
+  static thread_local SiblingIndexCache cache;
+  if (cache.depth++ == 0) {
+    cache.byParent.clear();
+    g_siblingCache = &cache;
+  }
+}
+
+IdGenerationScope::~IdGenerationScope() {
+  if (g_siblingCache != nullptr && --g_siblingCache->depth == 0) {
+    // Drop the memo with the traversal. Holding it any longer would mean trusting
+    // that the tree has not changed, which is only true within one walk.
+    g_siblingCache->byParent.clear();
+    g_siblingCache = nullptr;
+  }
 }
 
 QString generateObjectId(QObject* obj) {
@@ -288,9 +504,20 @@ QString generateObjectId(QObject* obj) {
   QStringList segments;
   QObject* current = obj;
 
+  int depth = 0;
   while (current) {
+    if (++depth > kMaxEffectiveDepth) {
+      // Only reachable on a parent graph with a cycle across the two axes (see
+      // kMaxEffectiveDepth). Warn once per call and return the truncated path
+      // rather than looping until the host app is out of memory.
+      qWarning(
+          "[qtPilot] object id path exceeded %d levels for a %s; the parent "
+          "hierarchy is cyclic. Returning a truncated id.",
+          kMaxEffectiveDepth, obj->metaObject()->className());
+      break;
+    }
     segments.prepend(generateIdSegment(current));
-    current = current->parent();
+    current = effectiveParent(current);
   }
 
   return segments.join(QLatin1Char('/'));
@@ -300,6 +527,11 @@ QObject* findByObjectId(const QString& id, QObject* root) {
   if (id.isEmpty()) {
     return nullptr;
   }
+
+  // Resolution regenerates a segment for every candidate at every level, so it pays
+  // the sibling scan just as often as generation does. One scope over the whole
+  // lookup collapses that too.
+  IdGenerationScope idScope;
 
   QStringList segments = id.split(QLatin1Char('/'), Qt::SkipEmptyParts);
   if (segments.isEmpty()) {
@@ -370,6 +602,8 @@ QJsonObject serializeObjectInfo(QObject* obj) {
 }
 
 QJsonObject serializeObjectTree(QObject* root, int maxDepth) {
+  IdGenerationScope idScope;
+
   if (!root) {
     // Serialize all top-level objects
     QJsonObject result;

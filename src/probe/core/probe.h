@@ -3,23 +3,10 @@
 
 #pragma once
 
+#include "core/qtpilot_export.h"
+
 #include <QGlobalStatic>
 #include <QObject>
-
-// Export macro for Windows DLL
-#if defined(QTPILOT_PROBE_LIBRARY)
-#if defined(_WIN32)
-#define QTPILOT_EXPORT __declspec(dllexport)
-#else
-#define QTPILOT_EXPORT __attribute__((visibility("default")))
-#endif
-#else
-#if defined(_WIN32)
-#define QTPILOT_EXPORT __declspec(dllimport)
-#else
-#define QTPILOT_EXPORT
-#endif
-#endif
 
 namespace qtPilot {
 

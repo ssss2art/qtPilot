@@ -16,6 +16,7 @@
 #ifdef _WIN32
 
 #include "probe.h"
+#include "probe_deferred_init.h"
 
 #include <Windows.h>
 #include <synchapi.h>
@@ -38,8 +39,13 @@ wchar_t g_probeDllPath[MAX_PATH] = {};
 // InitOnce callback - this is called at most once, after DLL load completes.
 // SAFE to call Qt functions here.
 BOOL CALLBACK InitOnceCallback(PINIT_ONCE /*initOnce*/, PVOID /*param*/, PVOID* /*context*/) {
-  // Now safe to use Qt
-  qtPilot::Probe::instance()->initialize();
+  // Now safe to use Qt. Propagate the result: returning FALSE leaves g_initOnce
+  // unconsumed, so a failed attempt can be retried rather than silently disabling
+  // the probe for the life of the process.
+  if (!qtPilot::Probe::instance()->initialize()) {
+    return FALSE;
+  }
+  qtPilot::detail::initAttempted() = true;
   return TRUE;
 }
 
@@ -61,8 +67,18 @@ namespace qtPilot {
 /// The first call will trigger initialization; subsequent calls are no-ops.
 void ensureInitialized() {
   if (!g_dllLoaded) {
+    // Not an injected DLL. A statically linked probe has no DllMain, so fall
+    // through to the shared deferred path rather than silently doing nothing --
+    // this is the symbol a consuming app references to anchor the archive member.
+    detail::ensureInitializedImpl();
     return;
   }
+  // Deliberately does NOT pre-latch detail::initAttempted(). Latching before the
+  // attempt consumed BOTH one-shot guards even when initialize() failed (it returns
+  // false and leaves m_initialized clear when there is no QCoreApplication yet), so
+  // a caller who ran ensureInitialized() before constructing their QApplication
+  // permanently disabled the probe: InitOnce was spent, and the startup hook then
+  // saw the latch set. The shared header's contract is "latch only on success".
   InitOnceExecuteOnce(&g_initOnce, InitOnceCallback, nullptr, nullptr);
 }
 
@@ -77,15 +93,29 @@ void ensureInitialized() {
 #include <QThread>
 
 static void qtpilotAutoInit() {
-  // Check if probe is disabled via environment
-  QByteArray enabled = qgetenv("QTPILOT_ENABLED");
-  if (enabled == "0") {
+  if (qtPilot::detail::disabledByEnvironment()) {
     OutputDebugStringA("[qtPilot] Probe disabled via QTPILOT_ENABLED=0\n");
     return;
   }
 
-  OutputDebugStringA("[qtPilot] qtpilotAutoInit — calling ensureInitialized()\n");
-  qtPilot::ensureInitialized();
+  // DEFER, do not call ensureInitialized() here.
+  //
+  // Q_COREAPP_STARTUP_FUNCTION runs from qt_call_pre_routines(), which Qt calls
+  // from inside QCoreApplicationPrivate::init(). Going through ensureInitialized()
+  // reached InitOnceCallback, which ran Probe::initialize() SYNCHRONOUSLY -- so the
+  // build-time-linked Windows path did exactly what the deferral elsewhere exists
+  // to prevent: it scanned an application object whose most-derived constructor
+  // had not run (QGuiApplication windows not yet populated, so the pre-existing
+  // object scan was systematically incomplete) and called QTcpServer::listen before
+  // the event dispatcher was started.
+  //
+  // It also bypassed g_dllLoaded, which is only ever set from DllMain -- so a
+  // statically linked Windows probe, having no DllMain, never started at all.
+  //
+  // The injection path below keeps InitOnce: it arrives on a temporary remote
+  // thread when Qt is already up, which is a genuinely different situation.
+  OutputDebugStringA("[qtPilot] qtpilotAutoInit — deferring initialization\n");
+  qtPilot::detail::startupHook();
 }
 
 // Register the startup function with Qt (fallback for build-time linking)

@@ -33,11 +33,32 @@ endif()
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" _qtpilot_qt_version_match "${_qt_version}")
 set(_qtpilot_qt_version_tag "qt${_qtpilot_qt_version_match}")
 
+# What the probe was actually built with. A SHARED probe resolves its own Qt
+# dependencies at load time, so an incomplete list here went unnoticed. A STATIC
+# probe cannot: the consumer's link has to satisfy every symbol the archive
+# references, so Qml/Quick (when QML introspection was compiled in) and Test are
+# required rather than optional.
+set(QTPILOT_PROBE_STATIC @QTPILOT_PROBE_STATIC@)
+set(QTPILOT_HAS_QML @QTPILOT_HAS_QML@)
+
+# A SHARED probe resolves its own Qt dependencies at load time, so its consumers
+# need only what they link against directly. A STATIC probe cannot: the consumer's
+# link has to satisfy every symbol in the archive. Widening the list unconditionally
+# would force Test/Qml/Quick onto existing shared-probe integrators, failing
+# configuration on a trimmed Qt kit and adding unused modules to their deployment.
+set(_qtpilot_qt_components Core Network WebSockets Widgets)
+if(QTPILOT_PROBE_STATIC)
+    list(APPEND _qtpilot_qt_components Test)
+    if(QTPILOT_HAS_QML)
+        list(APPEND _qtpilot_qt_components Qml Quick)
+    endif()
+endif()
+
 # Find Qt dependencies
 if(_qtpilot_qt_major EQUAL 6)
-    find_dependency(Qt6 COMPONENTS Core Network WebSockets Widgets)
+    find_dependency(Qt6 COMPONENTS ${_qtpilot_qt_components})
 else()
-    find_dependency(Qt5 5.15 COMPONENTS Core Network WebSockets Widgets)
+    find_dependency(Qt5 5.15 COMPONENTS ${_qtpilot_qt_components})
 endif()
 
 # Compute paths relative to this config file location.
@@ -52,8 +73,16 @@ set(QTPILOT_INCLUDE_DIR "${QTPILOT_PREFIX}/include/qtpilot")
 # ---------------------------------------------------------------------------
 # Create imported target: qtPilot::Probe
 # ---------------------------------------------------------------------------
+# The probe can be built as a shared library (injected into an already-built app)
+# or a static archive (linked into a development build -- the only route on
+# Android and iOS). The two need different imported-target shapes, so the build
+# records which one was produced rather than letting this file assume.
 if(NOT TARGET qtPilot::Probe)
-    add_library(qtPilot::Probe SHARED IMPORTED)
+    if(QTPILOT_PROBE_STATIC)
+        add_library(qtPilot::Probe STATIC IMPORTED)
+    else()
+        add_library(qtPilot::Probe SHARED IMPORTED)
+    endif()
 
     set_target_properties(qtPilot::Probe PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${QTPILOT_INCLUDE_DIR}"
@@ -62,7 +91,53 @@ if(NOT TARGET qtPilot::Probe)
     # Library base name matches the build output: qtPilot-probe-qt{M}.{m}
     set(_probe_base_name "qtPilot-probe-${_qtpilot_qt_version_tag}")
 
-    if(WIN32)
+    if(QTPILOT_PROBE_STATIC)
+        # The `d` spellings are not optional: src/probe/CMakeLists.txt sets
+        # DEBUG_POSTFIX "d", and docs/MOBILE.md documents `--config Debug` as THE
+        # iOS build command -- so the documented workflow installs
+        # libqtPilot-probe-qt6.11d.a and nothing else would have found it.
+        find_file(_probe_archive
+            NAMES "lib${_probe_base_name}.a" "${_probe_base_name}.lib"
+                  "lib${_probe_base_name}d.a" "${_probe_base_name}d.lib"
+            PATHS "${QTPILOT_LIB_DIR}"
+            NO_DEFAULT_PATH
+        )
+        if(_probe_archive)
+            set_target_properties(qtPilot::Probe PROPERTIES
+                IMPORTED_LOCATION "${_probe_archive}"
+            )
+            # Consumers of a static probe must see this, or QTPILOT_EXPORT expands
+            # to __declspec(dllimport) against an archive.
+            set_target_properties(qtPilot::Probe PROPERTIES
+                INTERFACE_COMPILE_DEFINITIONS "QTPILOT_PROBE_STATIC_BUILD"
+            )
+            # Force the whole archive in. The probe starts from a file-scope
+            # Q_COREAPP_STARTUP_FUNCTION registration that nothing in the consuming
+            # app references by name, so a plain link drops that archive member and
+            # the probe silently never starts.
+            if(APPLE)
+                set_target_properties(qtPilot::Probe PROPERTIES
+                    INTERFACE_LINK_OPTIONS "LINKER:-force_load,${_probe_archive}"
+                )
+            elseif(MSVC)
+                set_target_properties(qtPilot::Probe PROPERTIES
+                    INTERFACE_LINK_OPTIONS "/WHOLEARCHIVE:${_probe_archive}"
+                )
+            else()
+                set_target_properties(qtPilot::Probe PROPERTIES
+                    INTERFACE_LINK_OPTIONS
+                        "LINKER:--whole-archive;${_probe_archive};LINKER:--no-whole-archive"
+                )
+            endif()
+        else()
+            # Fatal, not a warning: find_package(qtPilot REQUIRED) reporting success
+            # while qtPilot::Probe has no IMPORTED_LOCATION only defers the failure
+            # to a confusing generate- or link-time error.
+            message(FATAL_ERROR
+                "qtPilot: static probe archive lib${_probe_base_name}[d].a not found in "
+                "${QTPILOT_LIB_DIR}; the installed package is incomplete.")
+        endif()
+    elseif(WIN32)
         find_file(_probe_dll
             NAMES "${_probe_base_name}.dll"
             PATHS "${QTPILOT_LIB_DIR}"
@@ -84,8 +159,10 @@ if(NOT TARGET qtPilot::Probe)
             endif()
         endif()
     else()
+        # .dylib as well as .so -- macOS builds a framework-style dylib and was
+        # previously left without an IMPORTED_LOCATION entirely.
         find_file(_probe_so
-            NAMES "lib${_probe_base_name}.so"
+            NAMES "lib${_probe_base_name}.dylib" "lib${_probe_base_name}.so"
             PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
         )
@@ -96,16 +173,23 @@ if(NOT TARGET qtPilot::Probe)
         endif()
     endif()
 
-    # Link Qt dependencies on the imported target
-    if(_qtpilot_qt_major EQUAL 6)
-        set_target_properties(qtPilot::Probe PROPERTIES
-            INTERFACE_LINK_LIBRARIES "Qt6::Core;Qt6::Network;Qt6::WebSockets;Qt6::Widgets"
-        )
-    else()
-        set_target_properties(qtPilot::Probe PROPERTIES
-            INTERFACE_LINK_LIBRARIES "Qt5::Core;Qt5::Network;Qt5::WebSockets;Qt5::Widgets"
-        )
+    # Link Qt dependencies on the imported target, from the same component list
+    # resolved above so the two cannot drift apart.
+    set(_qtpilot_qt_link "")
+    foreach(_component IN LISTS _qtpilot_qt_components)
+        list(APPEND _qtpilot_qt_link "Qt${_qtpilot_qt_major}::${_component}")
+    endforeach()
+    # Non-Qt libraries the archive itself references (CoreGraphics on Apple, X11/
+    # XTest on Linux). Recorded by the build rather than guessed, and needed only
+    # for a static probe.
+    if(QTPILOT_PROBE_STATIC)
+        list(APPEND _qtpilot_qt_link @QTPILOT_PROBE_STATIC_EXTRA_LIBS@)
     endif()
+    set_target_properties(qtPilot::Probe PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${_qtpilot_qt_link}"
+    )
+    unset(_component)
+    unset(_qtpilot_qt_link)
 endif()
 
 # Include helper functions
@@ -120,5 +204,7 @@ unset(_probe_base_name)
 unset(_probe_dll CACHE)
 unset(_probe_implib CACHE)
 unset(_probe_so CACHE)
+unset(_probe_archive CACHE)
+unset(_qtpilot_qt_components)
 
 check_required_components(qtPilot)

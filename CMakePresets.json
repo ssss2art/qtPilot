@@ -165,8 +165,8 @@
     },
     {
       "name": "qt5-release",
-      "displayName": "Qt 5 Linux/Mac Release",
-      "description": "Release build targeting Qt 5.15.x",
+      "displayName": "Qt 5 Linux Release",
+      "description": "Release build targeting Qt 5.15.x (Linux; Qt 5.15 is not supported on macOS)",
       "inherits": "release",
       "cacheVariables": {
         "QTPILOT_QT_DIR": {

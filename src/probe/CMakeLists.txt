@@ -30,7 +30,9 @@ set(PROBE_SOURCES
 )
 
 set(PROBE_HEADERS
+    core/qtpilot_export.h
     core/probe.h
+    core/probe_deferred_init.h
     core/injector.h
     core/object_registry.h
     core/object_resolver.h
@@ -70,16 +72,30 @@ if(WIN32)
         core/child_injector_windows.h
     )
 elseif(APPLE)
+    # Covers macOS AND iOS. The file's internal guard admits both; on iOS only the
+    # Q_COREAPP_STARTUP_FUNCTION path is reachable, which is what a linked probe
+    # needs.
     list(APPEND PROBE_SOURCES core/probe_init_macos.cpp)
 elseif(UNIX)
+    # Covers Linux AND Android -- __linux__ is defined on Android, so the same
+    # init compiles and its startup hook fires when the probe is linked in.
     list(APPEND PROBE_SOURCES core/probe_init_linux.cpp)
 endif()
 
-# Create shared library
-add_library(qtPilot_probe SHARED
-    ${PROBE_SOURCES}
-    ${PROBE_HEADERS}
-)
+# Injection requires a SHARED object to insert. Linking into an app (the only
+# route on mobile) is better served by a STATIC library: no extra dynamic library
+# to embed and code-sign inside an app bundle, and no runtime search path.
+if(QTPILOT_PROBE_STATIC)
+    add_library(qtPilot_probe STATIC
+        ${PROBE_SOURCES}
+        ${PROBE_HEADERS}
+    )
+else()
+    add_library(qtPilot_probe SHARED
+        ${PROBE_SOURCES}
+        ${PROBE_HEADERS}
+    )
+endif()
 
 # Set library properties
 set_target_properties(qtPilot_probe PROPERTIES
@@ -94,6 +110,42 @@ set_target_properties(qtPilot_probe PROPERTIES
 target_compile_definitions(qtPilot_probe PRIVATE
     QTPILOT_PROBE_LIBRARY
 )
+
+if(QTPILOT_PROBE_STATIC)
+    # PUBLIC: consumers must see this too, or QTPILOT_EXPORT expands to
+    # __declspec(dllimport) against an archive and every exported symbol fails to
+    # resolve. See the macro in core/probe.h.
+    target_compile_definitions(qtPilot_probe PUBLIC QTPILOT_PROBE_STATIC_BUILD)
+
+    # Force the whole archive into any consumer.
+    #
+    # This is load-bearing, not an optimization. The probe starts from a file-scope
+    # Q_COREAPP_STARTUP_FUNCTION registration in core/probe_init_*.cpp, and a linker
+    # pulls a member out of an archive only to resolve an undefined symbol that
+    # something actually references. Nothing in a consuming app names that
+    # registration, so a plain link drops the member: the app builds and runs
+    # cleanly and the probe simply never starts -- exactly the symptom that
+    # compiling this file out on iOS used to produce, moved from the preprocessor to
+    # the link step. Putting it on the target's INTERFACE means a consumer cannot
+    # get it wrong by writing an ordinary target_link_libraries().
+    # Raw linker flags rather than $<LINK_LIBRARY:WHOLE_ARCHIVE,...>: that generator
+    # expression is only valid in target_link_libraries(), so a library cannot use
+    # it to describe itself. Naming the archive by path in INTERFACE_LINK_OPTIONS is
+    # the form that works from this side. The archive ends up on the link line twice
+    # (once here, once via the target), which is harmless -- the forced load
+    # resolves every member, so the ordinary reference finds nothing left to pull.
+    if(APPLE)
+        target_link_options(qtPilot_probe INTERFACE
+            "LINKER:-force_load,$<TARGET_FILE:qtPilot_probe>")
+    elseif(MSVC)
+        target_link_options(qtPilot_probe INTERFACE
+            "/WHOLEARCHIVE:$<TARGET_FILE:qtPilot_probe>")
+    else()
+        target_link_options(qtPilot_probe INTERFACE
+            "LINKER:--whole-archive" "$<TARGET_FILE:qtPilot_probe>"
+            "LINKER:--no-whole-archive")
+    endif()
+endif()
 
 # Include directories
 target_include_directories(qtPilot_probe
@@ -144,18 +196,47 @@ if(WIN32)
 endif()
 
 # macOS: link CoreGraphics for CGPreflightScreenCaptureAccess (screenshot permission check)
+#
+# PUBLIC for a static probe: a consumer of an archive has to satisfy the archive's
+# own undefined symbols, so a PRIVATE dependency here left the consumer's link
+# short. For the shared probe PRIVATE is still right -- the dylib resolves its own.
 if(APPLE)
-    target_link_libraries(qtPilot_probe PRIVATE "-framework CoreGraphics")
+    if(QTPILOT_PROBE_STATIC)
+        # Resolve to the framework PATH rather than passing "-framework CoreGraphics".
+        # That two-word flag survives target_link_libraries() fine, but it does not
+        # survive a round trip through a semicolon list into the installed package
+        # config: the space splits it, and CMake then reads "CoreGraphics" as a
+        # library name and emits -lCoreGraphics, which does not exist.
+        # No REQUIRED on find_library: that keyword needs CMake 3.18 and this
+        # project supports 3.16.
+        find_library(QTPILOT_COREGRAPHICS_FRAMEWORK CoreGraphics)
+        if(NOT QTPILOT_COREGRAPHICS_FRAMEWORK)
+            message(FATAL_ERROR "qtPilot: CoreGraphics framework not found")
+        endif()
+        target_link_libraries(qtPilot_probe PUBLIC ${QTPILOT_COREGRAPHICS_FRAMEWORK})
+        list(APPEND _probe_static_extra_libs ${QTPILOT_COREGRAPHICS_FRAMEWORK})
+    else()
+        target_link_libraries(qtPilot_probe PRIVATE "-framework CoreGraphics")
+    endif()
 endif()
 
 # Platform-specific configurations
 if(UNIX AND NOT APPLE)
     find_package(X11)
     if(X11_FOUND AND X11_XTest_FOUND)
-        target_link_libraries(qtPilot_probe PRIVATE ${X11_LIBRARIES} ${X11_XTest_LIB})
+        if(QTPILOT_PROBE_STATIC)
+            target_link_libraries(qtPilot_probe PUBLIC ${X11_LIBRARIES} ${X11_XTest_LIB})
+            list(APPEND _probe_static_extra_libs ${X11_LIBRARIES} ${X11_XTest_LIB})
+        else()
+            target_link_libraries(qtPilot_probe PRIVATE ${X11_LIBRARIES} ${X11_XTest_LIB})
+        endif()
         target_compile_definitions(qtPilot_probe PRIVATE QTPILOT_HAS_XTEST)
     endif()
 endif()
+
+# Non-Qt libraries a consumer of the STATIC probe must also link. Empty for a
+# shared probe, which resolves these itself.
+set(QTPILOT_PROBE_STATIC_EXTRA_LIBS "${_probe_static_extra_libs}" PARENT_SCOPE)
 
 # Alias for use in parent project
 add_library(qtPilot::Probe ALIAS qtPilot_probe)
