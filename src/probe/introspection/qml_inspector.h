@@ -27,6 +27,17 @@ struct QmlItemInfo {
 /// @return QmlItemInfo with isQmlItem=true and metadata if QQuickItem, defaults otherwise.
 QmlItemInfo inspectQmlItem(QObject* obj);
 
+/// @brief Just the parts of QmlItemInfo an ID segment needs.
+///
+/// inspectQmlItem() additionally resolves the context's base URL and converts it
+/// to a string. That is real work (QUrl::toString allocates) and an ID segment
+/// never looks at it -- which matters because sibling disambiguation calls this
+/// once per sibling, so a large Repeater multiplies the cost by its row count.
+///
+/// isQmlItem and shortTypeName are populated as in inspectQmlItem(); qmlFile is
+/// always empty.
+QmlItemInfo inspectQmlItemForSegment(QObject* obj);
+
 /// @brief Strip the "QQuick" prefix from a Qt Quick class name.
 ///
 /// For example, "QQuickRectangle" becomes "Rectangle".
@@ -48,6 +59,11 @@ bool isQmlItem(QObject* obj);
 
 /// @brief Stub: always returns default QmlItemInfo (isQmlItem=false).
 inline QmlItemInfo inspectQmlItem(QObject* /*obj*/) {
+  return QmlItemInfo{};
+}
+
+/// @brief Stub: always returns default QmlItemInfo (isQmlItem=false).
+inline QmlItemInfo inspectQmlItemForSegment(QObject* /*obj*/) {
   return QmlItemInfo{};
 }
 

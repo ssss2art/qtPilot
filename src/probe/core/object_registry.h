@@ -143,6 +143,18 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// Needed because child IDs include parent path segments.
   void refreshDescendantIds(QObject* obj);
 
+  /// @brief Bounded, cycle-safe body of refreshDescendantIds().
+  void refreshDescendantIdsImpl(QObject* obj, int depth);
+
+  /// @brief Bounded, cycle-safe body of scanExistingObjects().
+  void scanExistingObjectsImpl(QObject* root, QSet<QObject*>& visited, int depth);
+
+  /// @brief Make an ID unique against m_idToObject, appending `~N` if needed.
+  ///
+  /// Caller must hold m_mutex. The suffix counter is monotonic per base ID, so a
+  /// suffix freed by a destroyed object is never handed to a different object.
+  QString allocateUniqueIdLocked(const QString& baseId, QObject* obj);
+
   /// @brief Lazily wire objectName-change auto-refresh for an object and its ancestors.
   /// Called from objectId() the first time an object is introspected, so never-queried
   /// objects cost nothing. Caller must hold m_mutex. Idempotent via m_nameTracked.

@@ -1,5 +1,8 @@
-# QtMCP Clang-Tidy Configuration
-# Based on Google C++ Style Guide
+# qtPilot Clang-Tidy Configuration
+#
+# Checks are Google-style; NAMING follows CLAUDE.md and this codebase (see the
+# CheckOptions block). Not currently run in CI -- the lint job runs clang-format
+# only -- so treat its output as advisory.
 
 Checks: >
   -*,
@@ -35,36 +38,106 @@ WarningsAsErrors: ''
 HeaderFilterRegex: 'src/.*\.h$'
 
 CheckOptions:
+  # Naming rules follow CLAUDE.md "C++ Code Style", which in turn describes what
+  # the code actually does. This block was previously Google-style boilerplate from
+  # the project-scaffolding commit and had never been reconciled with either: it
+  # asked for CamelCase functions, lower_case locals and `_`-suffixed private
+  # members, so it flagged essentially every identifier in the codebase. Nothing in
+  # CI ran it, so the noise went unnoticed until an editor surfaced it.
+  #
+  # Types: PascalCase (CamelCase in clang-tidy's vocabulary).
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
   - key: readability-identifier-naming.StructCase
     value: CamelCase
   - key: readability-identifier-naming.EnumCase
     value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
+
+  # Functions and methods: camelCase.
   - key: readability-identifier-naming.FunctionCase
-    value: CamelCase
+    value: camelBack
   - key: readability-identifier-naming.MethodCase
-    value: CamelCase
+    value: camelBack
+
+  # Variables and parameters: camelCase.
   - key: readability-identifier-naming.VariableCase
-    value: lower_case
+    value: camelBack
+  - key: readability-identifier-naming.LocalVariableCase
+    value: camelBack
   - key: readability-identifier-naming.ParameterCase
-    value: lower_case
-  - key: readability-identifier-naming.MemberCase
-    value: lower_case
-  - key: readability-identifier-naming.PrivateMemberSuffix
-    value: '_'
-  - key: readability-identifier-naming.ConstantCase
-    value: CamelCase
-  - key: readability-identifier-naming.ConstantPrefix
-    value: k
+    value: camelBack
+
+  # Members: m_ prefix on non-public data members, plain camelCase on the public
+  # fields of the plain-data structs (QmlItemInfo and friends).
+  - key: readability-identifier-naming.PublicMemberCase
+    value: camelBack
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: camelBack
+  - key: readability-identifier-naming.PrivateMemberPrefix
+    value: 'm_'
+  - key: readability-identifier-naming.ProtectedMemberCase
+    value: camelBack
+  - key: readability-identifier-naming.ProtectedMemberPrefix
+    value: 'm_'
+
+  # Compile-time constants: k-prefixed CamelCase (kMaxEffectiveDepth,
+  # kBroadcastIntervalMs). Set on the SPECIFIC constant categories rather than the
+  # blanket ConstantCase/ConstantPrefix the old config used -- that fallback also
+  # covers `const` locals and const parameters, so it demanded kFoo for every
+  # `const QString foo = ...` in the codebase and was a large share of the noise.
+  #
+  # Note this is where CLAUDE.md was itself out of date: it said constants are
+  # UPPER_SNAKE_CASE, which describes exactly one constant in src/ against fifty
+  # k-prefixed ones. CLAUDE.md has been corrected to match; UPPER_SNAKE_CASE is for
+  # macros.
   - key: readability-identifier-naming.GlobalConstantCase
     value: CamelCase
   - key: readability-identifier-naming.GlobalConstantPrefix
     value: k
+  - key: readability-identifier-naming.ClassConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.ClassConstantPrefix
+    value: k
+  - key: readability-identifier-naming.StaticConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.StaticConstantPrefix
+    value: k
+  # ...but a const local or const parameter is just a variable.
+  - key: readability-identifier-naming.LocalConstantCase
+    value: camelBack
+  - key: readability-identifier-naming.ConstantParameterCase
+    value: camelBack
+  - key: readability-identifier-naming.ConstantMemberCase
+    value: camelBack
+
+  # Namespaces: camelCase. `qtPilot` is the whole point; lower_case rejected it.
   - key: readability-identifier-naming.NamespaceCase
-    value: lower_case
+    value: camelBack
+
   - key: readability-identifier-naming.MacroDefinitionCase
     value: UPPER_CASE
+
+  # File-scope and function-scope statics carry a g_ (global) or s_ (static)
+  # prefix. clang-tidy allows only one prefix per category, so the convention is
+  # expressed as an ignore pattern instead; camelBack alone would reject both for
+  # the underscore.
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: camelBack
+  - key: readability-identifier-naming.GlobalVariableIgnoredRegexp
+    value: '[gs]_[a-z][a-zA-Z0-9]*'
+  - key: readability-identifier-naming.StaticVariableCase
+    value: camelBack
+  - key: readability-identifier-naming.StaticVariableIgnoredRegexp
+    value: '[gs]_[a-z][a-zA-Z0-9]*'
+  - key: readability-identifier-naming.VariableIgnoredRegexp
+    value: '[gs]_[a-z][a-zA-Z0-9]*'
+
   - key: modernize-loop-convert.MinConfidence
     value: reasonable
   - key: modernize-pass-by-value.IncludeStyle

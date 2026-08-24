@@ -54,16 +54,45 @@ bool metaInheritsClassName(const QMetaObject* meta, const QByteArray& className)
 
 // Helper to recursively search subtree for objects matching className (subclass-aware)
 // Accumulates matches into the reference parameter to avoid temporary QList allocations.
-void findAllByClassNameHelper(const QByteArray& className, QObject* root, QList<QObject*>& result) {
-  if (!root) {
+void findAllByClassNameHelper(const QByteArray& className, QObject* root, QList<QObject*>& result,
+                              int depth = 0) {
+  if (!root || depth > qtPilot::kMaxEffectiveDepth) {
     return;
   }
   if (metaInheritsClassName(root->metaObject(), className)) {
     result.append(root);
   }
-  for (QObject* child : root->children()) {
-    findAllByClassNameHelper(className, child, result);
+  // effectiveChildren(), not children(): a root-scoped search has to mean the
+  // same thing as "under this root in the tree". Walking QObject children alone
+  // stopped dead at every QML delegate, so a scoped search returned nothing for
+  // objects qt.objects.tree happily listed under that very root.
+  const QList<QObject*> children = qtPilot::effectiveChildren(root);
+  for (QObject* child : children) {
+    findAllByClassNameHelper(className, child, result, depth + 1);
   }
+}
+
+/// @brief Recursive objectName search over the effective hierarchy.
+///
+/// Replaces QObject::findChildren(), which cannot be taught about visual
+/// parentage and therefore could not see a named QML delegate.
+QObject* findByObjectNameHelper(QObject* root, const QString& name, int depth = 0) {
+  if (!root || depth > qtPilot::kMaxEffectiveDepth) {
+    return nullptr;
+  }
+  const QList<QObject*> children = qtPilot::effectiveChildren(root);
+  for (QObject* child : children) {
+    if (!child) {
+      continue;
+    }
+    if (child->objectName() == name) {
+      return child;
+    }
+    if (QObject* found = findByObjectNameHelper(child, name, depth + 1)) {
+      return found;
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace
@@ -271,9 +300,7 @@ QObject* ObjectRegistry::findByObjectName(const QString& name, QObject* root) {
     if (root->objectName() == name) {
       return root;
     }
-    // Use Qt's built-in recursive search
-    QList<QObject*> matches = root->findChildren<QObject*>(name, Qt::FindChildrenRecursively);
-    return matches.isEmpty() ? nullptr : matches.first();
+    return findByObjectNameHelper(root, name);
   }
 
   // Search all tracked objects
@@ -309,7 +336,12 @@ void ObjectRegistry::ensureNameTrackingLocked(QObject* obj) {
   // refresh on each ancestor not yet tracked. The full walk (rather than breaking at the
   // first tracked ancestor) keeps tracking correct across reparenting; depth is small, so
   // the cost is negligible and paid only once per object across its lifetime.
-  for (QObject* node = obj; node != nullptr; node = node->parent()) {
+  // effectiveParent(), not parent(): a delegate's cached ID embeds its VISUAL
+  // ancestors' segments, so those are the ancestors whose renames must trigger a
+  // refresh. The QObject-only walk terminated immediately at any delegate.
+  int depth = 0;
+  for (QObject* node = obj; node != nullptr && depth <= kMaxEffectiveDepth;
+       node = effectiveParent(node), ++depth) {
     if (m_nameTracked.contains(node)) {
       continue;
     }
@@ -341,12 +373,39 @@ QList<QObject*> ObjectRegistry::allObjects() {
 
 int ObjectRegistry::objectCount() const {
   QMutexLocker lock(&m_mutex);
-  return m_objects.size();
+  // qsizetype -> int, stated explicitly for the stricter iOS warning set.
+  return static_cast<int>(m_objects.size());
 }
 
 bool ObjectRegistry::contains(QObject* obj) const {
   QMutexLocker lock(&m_mutex);
   return m_objects.contains(obj);
+}
+
+QString ObjectRegistry::allocateUniqueIdLocked(const QString& baseId, QObject* obj) {
+  // Caller holds m_mutex.
+  //
+  // One definition, because the three copies this replaces had drifted into two
+  // different algorithms: one used the persistent counter below, the other two
+  // restarted at 1 and probed upward. Restarting is wrong twice over -- it is
+  // O(N) per collision (so O(N^2) to register N colliding siblings, paid on the
+  // startup scan), and it REUSES a suffix once the previous holder is destroyed,
+  // so a stale id a client is still holding silently starts resolving to a
+  // different object. The counter is monotonic per base id and never reused.
+  if (baseId.isEmpty()) {
+    return baseId;
+  }
+  const QObject* existing = m_idToObject.value(baseId).data();
+  if (!m_idToObject.contains(baseId) || !existing || existing == obj) {
+    return baseId;
+  }
+
+  int& next = m_idCollisionCounter[baseId];
+  QString uniqueId;
+  do {
+    uniqueId = baseId + QStringLiteral("~") + QString::number(++next);
+  } while (m_idToObject.contains(uniqueId));
+  return uniqueId;
 }
 
 QString ObjectRegistry::objectId(QObject* obj) {
@@ -373,18 +432,7 @@ QString ObjectRegistry::objectId(QObject* obj) {
     return id;
   }
 
-  // Resolve collisions the same way registerObject does (O(1) amortized counter).
-  if (m_idToObject.contains(id)) {
-    QObject* existing = m_idToObject.value(id).data();
-    if (existing && existing != obj) {
-      int& next = m_idCollisionCounter[id];
-      QString uniqueId;
-      do {
-        uniqueId = id + QStringLiteral("~") + QString::number(++next);
-      } while (m_idToObject.contains(uniqueId));
-      id = uniqueId;
-    }
-  }
+  id = allocateUniqueIdLocked(id, obj);
 
   m_objectToId.insert(obj, id);
   m_idToObject.insert(id, QPointer<QObject>(obj));
@@ -453,18 +501,7 @@ void ObjectRegistry::refreshObjectId(QObject* obj) {
       return;  // No change
     }
 
-    // Handle collision on the new ID
-    if (m_idToObject.contains(newId)) {
-      QObject* existing = m_idToObject.value(newId).data();
-      if (existing && existing != obj) {
-        int suffix = 1;
-        QString uniqueId;
-        do {
-          uniqueId = newId + QStringLiteral("~") + QString::number(suffix++);
-        } while (m_idToObject.contains(uniqueId));
-        newId = uniqueId;
-      }
-    }
+    newId = allocateUniqueIdLocked(newId, obj);
 
     // Update maps
     m_idToObject.remove(oldId);
@@ -490,20 +527,48 @@ void ObjectRegistry::refreshObjectId(QObject* obj) {
 }
 
 void ObjectRegistry::refreshDescendantIds(QObject* obj) {
-  if (!obj) {
+  IdGenerationScope idScope;
+  refreshDescendantIdsImpl(obj, 0);
+}
+
+void ObjectRegistry::refreshDescendantIdsImpl(QObject* obj, int depth) {
+  if (!obj || depth > kMaxEffectiveDepth) {
     return;
   }
 
-  for (QObject* child : obj->children()) {
+  // effectiveChildren() to match scanExistingObjects() and generateObjectId().
+  // The invariant worth stating: any walk that PRODUCES ids and any walk that
+  // INVALIDATES them must enumerate children the same way, or a rename leaves
+  // permanently stale cached ids behind with no alias to redirect them.
+  const QList<QObject*> children = effectiveChildren(obj);
+  for (QObject* child : children) {
     refreshObjectId(child);
-    refreshDescendantIds(child);
+    refreshDescendantIdsImpl(child, depth + 1);
   }
 }
 
 void ObjectRegistry::scanExistingObjects(QObject* root) {
-  if (!root) {
+  // One scope for the whole scan: this runs on the application's main thread during
+  // Probe::initialize() and generates an id for every pre-existing object, which is
+  // the single largest sibling-scan workload in the probe.
+  IdGenerationScope idScope;
+  QSet<QObject*> visited;
+  scanExistingObjectsImpl(root, visited, 0);
+}
+
+void ObjectRegistry::scanExistingObjectsImpl(QObject* root, QSet<QObject*>& visited, int depth) {
+  if (!root || depth > kMaxEffectiveDepth) {
     return;
   }
+  // The visited set is what makes this terminate. The effective hierarchy is not
+  // guaranteed acyclic (see kMaxEffectiveDepth), and the tracked-object check
+  // below only skips REGISTRATION -- it never stopped the descent, so a cycle
+  // would recurse until the host application's stack overflowed. It also stops a
+  // diamond from being walked twice.
+  if (visited.contains(root)) {
+    return;
+  }
+  visited.insert(root);
 
   // Register this object if not already tracked
   {
@@ -514,18 +579,7 @@ void ObjectRegistry::scanExistingObjects(QObject* root) {
       // Generate and cache ID for scanned object
       QString id = generateObjectId(root);
 
-      // Handle potential collision (same logic as registerObject)
-      if (m_idToObject.contains(id)) {
-        QObject* existing = m_idToObject.value(id).data();
-        if (existing && existing != root) {
-          int suffix = 1;
-          QString uniqueId;
-          do {
-            uniqueId = id + QStringLiteral("~") + QString::number(suffix++);
-          } while (m_idToObject.contains(uniqueId));
-          id = uniqueId;
-        }
-      }
+      id = allocateUniqueIdLocked(id, root);
 
       m_objectToId.insert(root, id);
       m_idToObject.insert(id, QPointer<QObject>(root));
@@ -552,9 +606,18 @@ void ObjectRegistry::scanExistingObjects(QObject* root) {
     }
   }
 
-  // Recursively process children
-  for (QObject* child : root->children()) {
-    scanExistingObjects(child);
+  // Recursively process children.
+  //
+  // effectiveChildren() rather than children(): objects already built by the
+  // time the probe starts are only ever found by this scan, and QML delegates
+  // hang off a visual parent with no QObject parent. Walking QObject children
+  // alone left every pre-existing delegate untracked, which is worse than
+  // merely absent from the tree -- objectId() hands an untracked object a
+  // TRANSIENT id that it deliberately does not cache, so the id a client got
+  // back from a hit test could never be resolved again.
+  const QList<QObject*> children = effectiveChildren(root);
+  for (QObject* child : children) {
+    scanExistingObjectsImpl(child, visited, depth + 1);
   }
 }
 

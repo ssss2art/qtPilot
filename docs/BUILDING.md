@@ -7,7 +7,9 @@ This guide covers building the qtPilot probe and launcher from source code.
 ### Required
 
 - **CMake 3.16+**
-- **Qt 5.15.1+ or Qt 6.5+** with development headers (including private headers)
+- **Qt 5.15.1+ or Qt 6.5+** with development headers (including private headers).
+  On macOS, Qt 6.5+ only — Qt 5.15 is not a supported configuration there, see
+  [MACOS.md](MACOS.md)
 - **C++17 compiler:**
   - GCC 8+ (Linux)
   - Clang 7+ (Linux/macOS)
@@ -129,9 +131,15 @@ Configure these options with `-D<OPTION>=<VALUE>`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `QTPILOT_BUILD_TESTS` | `ON` | Build unit tests |
-| `QTPILOT_BUILD_TEST_APP` | `ON` | Build the test Qt application |
+| `QTPILOT_BUILD_TESTS` | `ON` (forced `OFF` on mobile) | Build unit tests |
+| `QTPILOT_BUILD_TEST_APP` | `ON` (forced `OFF` on mobile) | Build the test Qt application |
+| `QTPILOT_PROBE_STATIC` | `OFF` (`ON` on mobile) | Build the probe as a static library to link into an app, instead of a shared library to inject. Not supported on Windows — the probe's Detours dependency is not installed, so the archive cannot be linked by a consumer |
+| `QTPILOT_BUILD_BENCHMARKS` | `OFF` | Build complexity micro-benchmarks. Fetches google/benchmark at configure time; see [benchmarks/README.md](../benchmarks/README.md) |
 | `QTPILOT_QT_DIR` | - | Explicit path to Qt installation (prepended to `CMAKE_PREFIX_PATH`) |
+
+"Mobile" means an Android or iOS toolchain, detected from CMake's `ANDROID` /
+`IOS` variables. Those builds also skip the launcher entirely — it injects into
+an already-running process, which neither mobile platform permits.
 
 ### Examples
 
@@ -142,6 +150,52 @@ cmake -B build -DQTPILOT_BUILD_TESTS=OFF -DQTPILOT_BUILD_TEST_APP=OFF
 # Specify Qt installation directly
 cmake -B build -DQTPILOT_QT_DIR=/opt/Qt/6.8.0/gcc_64
 ```
+
+## Building for Android or iOS
+
+Mobile builds produce a *static* probe you link into your own development build,
+because neither platform can inject a library into an existing process. Configure
+with the mobile Qt kit's `qt-cmake` wrapper:
+
+```bash
+# Android
+/path/to/Qt/6.11.1/android_arm64_v8a/bin/qt-cmake -B build-android -S . -DCMAKE_BUILD_TYPE=Release
+
+# iOS (device)
+/path/to/Qt/6.11.1/ios/bin/qt-cmake -B build-ios -S . -G Xcode
+cmake --build build-ios --config Debug -- -sdk iphoneos
+```
+
+The installed `qtPilot::Probe` target carries the whole-archive link option a
+static probe needs -- without it the linker discards the object file that registers
+the probe's startup hook and the probe silently never starts. Consumers that link
+the archive by raw path instead have to force-load it themselves. Full instructions,
+including how to reach the probe from a device, are in [MOBILE.md](MOBILE.md).
+
+## Benchmarks
+
+The probe ships complexity benchmarks for its hot paths — object-ID generation, tree
+serialization and ID resolution. They exist to answer "did this change make a hot
+path more complex than it was?" mechanically: each case reports an empirically fitted
+Big-O rather than a timing.
+
+```bash
+cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON
+cmake --build build --target qtPilot_bench_object_id
+./build/bin/qtPilot_bench_object_id
+```
+
+Off by default, because the target fetches [google/benchmark](https://github.com/google/benchmark)
+at configure time — a normal build never touches the network for it, and no CI leg
+builds it. Read the `_BigO` and `_RMS` rows; an RMS above ~10% means the fit is not
+trustworthy on that machine.
+
+The recorded baseline, what each case covers, and what a future optimization should
+make the numbers do are in [benchmarks/README.md](../benchmarks/README.md).
+
+CI runs them too, in a non-blocking `benchmarks` job that writes the fitted Big-O
+into the run's step summary. It never fails the workflow — the point is a reviewable
+record of the exponent, not a timing gate.
 
 ## Build Artifacts
 
@@ -154,10 +208,14 @@ After building, find the artifacts in these locations:
 | Windows | `build/lib/Release/qtPilot-probe-qt6.8.dll` |
 | Linux | `build/lib/libqtPilot-probe-qt6.8.so` |
 | macOS | `build/lib/libqtPilot-probe-qt6.8.dylib` |
+| Android / iOS | `build/lib/libqtPilot-probe-qt6.11.a` (static; Xcode adds a per-config subdirectory) |
 
 The probe binary name includes the Qt major.minor version it was built against (e.g. `qt6.8`, `qt5.15`).
+Debug builds append `d` (`libqtPilot-probe-qt6.11d.a`).
 
 ### Launcher Executable
+
+Not built for Android or iOS.
 
 | Platform | Location |
 |----------|----------|
@@ -261,6 +319,11 @@ cmake --build build-qt5
 ```
 
 ### Building for Qt 5.15.1
+
+Qt 5.15 is supported on **Windows and Linux**. It is not supported on macOS: that
+combination is not covered by CI and cannot practically be, since open-source
+Qt 5 ended at 5.15.2 and its macOS build is x86_64-only. See
+[MACOS.md](MACOS.md#qt-version-support).
 
 Use the dedicated Qt 5 presets to build against Qt 5.15.1 locally:
 

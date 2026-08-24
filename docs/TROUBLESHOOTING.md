@@ -339,6 +339,80 @@ QT_QPA_PLATFORM=xcb ./your-app  # Force X11
 QT_QPA_PLATFORM=wayland ./your-app  # Force Wayland
 ```
 
+### Android / iOS (linked probe)
+
+On mobile the probe is linked into a development build rather than injected, so
+the failure modes are different. See [MOBILE.md](MOBILE.md) for the full setup.
+
+#### Linked probe never starts (no output, no listening port)
+
+Almost always the linker discarding it. A static archive contributes an object file
+only when something references a symbol in it, and nothing in your app references
+the probe's `Q_COREAPP_STARTUP_FUNCTION` registration by name -- so the member
+holding it is dropped, the app builds and runs normally, and the probe is absent.
+
+Linking through the package handles this for you:
+
+```cmake
+find_package(qtPilot REQUIRED)
+qtPilot_inject_probe(myapp)   # or target_link_libraries(myapp PRIVATE qtPilot::Probe)
+```
+
+If you link the archive by raw path instead, force-load it yourself
+(`$<LINK_LIBRARY:WHOLE_ARCHIVE,...>`, `-force_load` on Apple, or
+`-Wl,--whole-archive ... -Wl,--no-whole-archive` with the NDK), or call
+`qtPilot::ensureInitialized()` from `main()` -- referencing that symbol anchors the
+member and starts the probe.
+
+#### Crash on launch when linked
+
+Fixed in `feat/mobile-linked-probe` and later. Earlier probes initialized inline
+from `qt_call_pre_routines()`, which Qt calls from inside
+`QCoreApplicationPrivate::init()` — before an event dispatcher exists to register
+a socket with. `QTcpServer::listen` then dereferenced a null dispatcher. If you
+see a crash in `QCFSocketNotifier::registerSocketNotifier` at startup, you are on
+an older probe.
+
+#### Cannot reach the probe from the host
+
+The probe binds every interface on port 9222, so either route works:
+
+```bash
+# Over the network
+qtpilot serve --mode native --ws-url ws://<device-ip>:9222
+
+# Over USB
+adb forward tcp:9222 tcp:9222        # Android
+iproxy 9222 9222                     # iOS
+qtpilot serve --mode native --ws-url ws://localhost:9222
+```
+
+`iproxy` drops devices while `devicectl` still lists them; `Connection reset by
+peer` against a healthy device usually means replug, or use the device IP.
+
+#### QML delegates or context objects are missing from the tree
+
+Delegates created by a `Repeater` or `ListView` appear in the tree on current
+probes -- they have a visual parent but no `QObject` parent, and the probe falls
+back to the visual parent. Siblings that would generate the same path are
+disambiguated with a `#N` suffix, which resolves by path like any other segment.
+
+Because `#N` is positional it shifts if rows are restacked, so an index-derived
+`objectName: "row" + index` is worth setting on delegates you address repeatedly. A
+QML `id:` or a constant `objectName` does not help on its own -- both are
+per-declaration, so every row yields the same segment.
+
+Parentless plain `QObject`s are a different case: a C++ object exposed as a QML
+context property typically has no parent and is not a `QQuickItem`, so it gets no
+ID path and its invokables cannot be called. Reach its state through a QML item
+bound to it.
+
+#### Environment variables have no effect
+
+`QTPILOT_ENABLED`, `QTPILOT_PORT` and the rest are read at startup, but a device
+app launch gives you nowhere to set them. Gate the probe with the compile-time
+flag on your link line instead.
+
 ## Runtime Errors
 
 ### "QCoreApplication not created yet"

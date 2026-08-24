@@ -36,7 +36,7 @@ bool isQmlItem(QObject* obj) {
   return qobject_cast<QQuickItem*>(obj) != nullptr;
 }
 
-QmlItemInfo inspectQmlItem(QObject* obj) {
+static QmlItemInfo inspectQmlItemImpl(QObject* obj, bool wantFile) {
   QmlItemInfo info;
 
   if (!obj) {
@@ -77,13 +77,23 @@ QmlItemInfo inspectQmlItem(QObject* obj) {
       info.qmlId = context->nameForObject(obj);
     }
 
-    QUrl baseUrl = context->baseUrl();
-    if (baseUrl.isValid()) {
-      info.qmlFile = baseUrl.toString();
+    if (wantFile) {
+      QUrl baseUrl = context->baseUrl();
+      if (baseUrl.isValid()) {
+        info.qmlFile = baseUrl.toString();
+      }
     }
   }
 
   return info;
+}
+
+QmlItemInfo inspectQmlItem(QObject* obj) {
+  return inspectQmlItemImpl(obj, /*wantFile=*/true);
+}
+
+QmlItemInfo inspectQmlItemForSegment(QObject* obj) {
+  return inspectQmlItemImpl(obj, /*wantFile=*/false);
 }
 
 }  // namespace qtPilot

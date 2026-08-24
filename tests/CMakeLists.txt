@@ -62,8 +62,31 @@ function(qtPilot_add_test)
     add_test(NAME ${ARG_NAME} COMMAND ${ARG_NAME}
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:${ARG_NAME}>")
 
+    # Pin the widget style on macOS.
+    #
+    # These tests create real widgets, and macOS's native style (QMacStyle) renders
+    # several controls by drawing through NSView -- i.e. through AppKit. Under
+    # QT_QPA_PLATFORM=minimal there is no AppKit environment for it to draw into,
+    # and on Qt 5.15 that path dereferences garbage: six tests died with SIGSEGV
+    # inside QMacStylePrivate::drawNSViewInRect the first time a QPushButton
+    # painted, taking 173 assertions with them that had therefore never run on this
+    # configuration. Fusion is pure QPainter and safe headless.
+    #
+    # Kept even though Qt 5.15 on macOS is not a supported configuration (see
+    # docs/MACOS.md): the pin is the right thing for macOS regardless of Qt version,
+    # since it removes an AppKit dependency from headless rendering and makes both
+    # Qt versions exercise the same style. Not applied off macOS: the default styles
+    # there are already QPainter-based, and changing them would alter the widget
+    # metrics that the geometry and hit-test assertions are written against.
+    set(_test_env "")
+    if(APPLE)
+        list(APPEND _test_env "QT_STYLE_OVERRIDE=Fusion")
+    endif()
     if(ARG_ENV)
-        set_tests_properties(${ARG_NAME} PROPERTIES ENVIRONMENT "${ARG_ENV}")
+        list(APPEND _test_env ${ARG_ENV})
+    endif()
+    if(_test_env)
+        set_tests_properties(${ARG_NAME} PROPERTIES ENVIRONMENT "${_test_env}")
     endif()
 
     # Copy Qt Test DLL on Windows
@@ -110,6 +133,10 @@ if(QTPILOT_HAS_QML)
         ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
     qtPilot_add_test(NAME test_qml_interaction SOURCES test_qml_interaction.cpp
+        LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
+        ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+    qtPilot_add_test(NAME test_qml_delegate_ids SOURCES test_qml_delegate_ids.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
         ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 endif()

@@ -72,7 +72,9 @@ QList<ConsoleMessage> ConsoleMessageCapture::messages(const QString& pattern, bo
   QList<ConsoleMessage> result;
 
   // Iterate in reverse order (newest first)
-  for (int i = m_messages.size() - 1; i >= 0; --i) {
+  // Narrow the bound once rather than the index: QList::at takes int on Qt5,
+  // so a qsizetype index would narrow at every call instead.
+  for (int i = static_cast<int>(m_messages.size()) - 1; i >= 0; --i) {
     const auto& cm = m_messages.at(i);
 
     // Filter by error level

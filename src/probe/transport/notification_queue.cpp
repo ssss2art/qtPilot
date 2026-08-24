@@ -45,7 +45,9 @@ int NotificationQueue::dropCount() const {
 
 int NotificationQueue::queueSize() const {
   QMutexLocker lock(&m_mutex);
-  return m_queue.size();
+  // qsizetype -> int: bounded by m_capacity, but state the conversion so the
+  // stricter iOS warning set does not reject it.
+  return static_cast<int>(m_queue.size());
 }
 
 int NotificationQueue::capacity() const {
@@ -72,7 +74,12 @@ void NotificationQueue::drain() {
 
   // Drain up to batchSize messages
   QMutexLocker lock(&m_mutex);
-  int count = qMin(m_batchSize, m_queue.size());
+  // qMin returns const T&, so an explicit template argument would bind that
+  // reference to temporaries created by converting the arguments. Use same-typed
+  // lvalues instead and narrow once, deliberately.
+  const qsizetype queued = m_queue.size();
+  const qsizetype batch = static_cast<qsizetype>(m_batchSize);
+  const int count = static_cast<int>(qMin(batch, queued));
   for (int i = 0; i < count; ++i) {
     QString msg = m_queue.dequeue();
     lock.unlock();

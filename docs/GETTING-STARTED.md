@@ -6,14 +6,18 @@ This guide walks you through setting up qtPilot to enable AI assistants to contr
 
 qtPilot consists of two main components:
 
-1. **The Probe** - A shared library (`.dll`, `.so`, or `.dylib`) that loads into your Qt application and exposes its object tree via WebSocket
+1. **The Probe** - A library that runs inside your Qt application and exposes its object
+   tree via WebSocket. On desktop it is a shared library (`.dll`, `.so`, `.dylib`) injected
+   into an already-built app; on Android and iOS it is a static library (`.a`) linked into a
+   development build of your own app (see [MOBILE.md](MOBILE.md))
 2. **The MCP Server** - A Python CLI (`qtpilot`) that connects Claude to the probe
 
 ```
 ┌────────────────────────────┐     ┌──────────────────┐     ┌─────────────┐
-│  Qt Application            │     │  qtpilot serve     │     │  Claude     │
+│  Qt Application            │     │  qtpilot serve   │     │  Claude     │
 │  ┌──────────────────────┐  │ WS  │  (MCP Server)    │ MCP │             │
-│  │  qtPilot Probe         │◄─┼─────┤                  │◄────┤             │
+│  │  qtPilot Probe       │◄─┼─────┤                  │◄────┤             │
+│  │  injected or linked  │  │     │                  │     │             │
 │  └──────────────────────┘  │     │                  │     │             │
 └────────────────────────────┘     └──────────────────┘     └─────────────┘
 ```

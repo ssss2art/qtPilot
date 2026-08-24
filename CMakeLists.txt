@@ -24,8 +24,46 @@ if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
 endif()
 
 # Options
+# Android and iOS are both UNIX (and iOS is also APPLE) as far as CMake is
+# concerned, so every desktop-only branch below must exclude them explicitly or
+# it silently applies to mobile too.
+if(ANDROID OR IOS)
+    set(QTPILOT_MOBILE ON)
+else()
+    set(QTPILOT_MOBILE OFF)
+endif()
+
+# On mobile the probe cannot be INJECTED -- neither platform lets you insert a
+# library into a third-party app. It is instead LINKED into a development build,
+# where Q_COREAPP_STARTUP_FUNCTION starts it. A static probe avoids having to
+# embed and code-sign an extra dynamic library inside the app bundle.
+option(QTPILOT_PROBE_STATIC "Build the probe as a static library (linked into the app)" ${QTPILOT_MOBILE})
+
+# Refuse the one configuration that would build and then be unusable. On Windows
+# the probe links qtPilot_shared and Detours PRIVATELY and neither is installed, so
+# a static probe cannot be consumed through the installed package -- the consumer's
+# link dies on unresolved Detours symbols. Failing here beats shipping a package
+# that only fails at the point somebody tries to link against it. Windows has
+# working injection, so a linked probe has no use case there anyway; static
+# delivery exists for Android and iOS (see docs/MOBILE.md).
+if(QTPILOT_PROBE_STATIC AND WIN32)
+    message(FATAL_ERROR
+        "QTPILOT_PROBE_STATIC is not supported on Windows: the probe's Detours and "
+        "qtPilot_shared dependencies are not installed, so the resulting archive "
+        "cannot be linked by a consumer. Use the shared probe with injection.")
+endif()
+
 option(QTPILOT_BUILD_TESTS "Build unit tests" ON)
+# Complexity benchmarks. OFF by default: the target fetches google/benchmark over
+# the network at configure time, and it is a diagnostic tool rather than part of the
+# build/test cycle. See benchmarks/bench_object_id.cpp.
+option(QTPILOT_BUILD_BENCHMARKS "Build micro-benchmarks (fetches google/benchmark)" OFF)
 option(QTPILOT_BUILD_TEST_APP "Build the test Qt application" ON)
+if(QTPILOT_MOBILE)
+    # Neither the harness app nor the host-side tests deploy to a device.
+    set(QTPILOT_BUILD_TESTS OFF)
+    set(QTPILOT_BUILD_TEST_APP OFF)
+endif()
 # QML introspection is auto-detected from the Qt installation. This switch
 # forces it off even when Qt Quick is present, so the QML-disabled build stays
 # compilable -- CI otherwise never exercises it, because every Qt install in
@@ -81,6 +119,25 @@ if(Qt6_FOUND)
         if(NOT _qt6_private_include)
             file(GLOB _qt6_private_version_dirs "${Qt6Core_DIR}/../../../include/QtCore/6.*")
             foreach(_vdir ${_qt6_private_version_dirs})
+                if(EXISTS "${_vdir}/QtCore/private/qhooks_p.h")
+                    set(_qt6_private_include "${_vdir}/QtCore")
+                    break()
+                endif()
+            endforeach()
+        endif()
+        # Fallback: Apple framework layout keeps private headers inside the
+        # framework bundle rather than under include/. Two shapes, both real:
+        # macOS is versioned (lib/QtCore.framework/Versions/A/Headers/<ver>/QtCore)
+        # while an iOS framework is flat (lib/QtCore.framework/Headers/<ver>/QtCore).
+        # The Qt5 branch below has had the macOS half of this for a while; Qt6 never
+        # got it, so the iOS kit could only ever configure when the CorePrivate
+        # component happened to resolve -- which is exactly how CI's Qt 6.8.0 iOS
+        # leg failed while a local 6.11.1 build succeeded.
+        if(NOT _qt6_private_include AND APPLE)
+            file(GLOB _qt6_fw_version_dirs
+                "${Qt6Core_DIR}/../../../lib/QtCore.framework/Headers/6.*"
+                "${Qt6Core_DIR}/../../../lib/QtCore.framework/Versions/*/Headers/6.*")
+            foreach(_vdir ${_qt6_fw_version_dirs})
                 if(EXISTS "${_vdir}/QtCore/private/qhooks_p.h")
                     set(_qt6_private_include "${_vdir}/QtCore")
                     break()
@@ -258,10 +315,17 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Wno-unused-parameter
         -Wcast-align
         -Wformat=2
-        -Wmissing-include-dirs
         -Wswitch-default
         -Wunused
     )
+    # -Wmissing-include-dirs is useful but incompatible with the Xcode generator,
+    # which puts DerivedSources paths on the command line before they exist. With
+    # -Werror that turns every iOS/Xcode compile into a failure that has nothing
+    # to do with the code. Keep it where the generator populates its own include
+    # dirs up front.
+    if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
+        add_compile_options(-Wmissing-include-dirs)
+    endif()
     # Qt 6.10+ Q_GLOBAL_STATIC uses variadic macros with omitted/zero args.
     # These are Clang extensions not recognised by all compiler versions,
     # so probe before enabling to avoid -Werror,-Wunknown-warning-option.
@@ -322,7 +386,9 @@ if(WIN32)
     add_subdirectory(src/shared)
 endif()
 
-if(WIN32 OR UNIX)
+# The launcher injects the probe into an already-built process. Mobile has no
+# such mechanism, so it is not merely unused there -- it does not apply.
+if((WIN32 OR UNIX) AND NOT QTPILOT_MOBILE)
     add_subdirectory(src/launcher)
 endif()
 
@@ -350,6 +416,11 @@ if(QTPILOT_BUILD_TESTS)
     enable_testing()
     message(STATUS "Building unit tests with Qt Test framework")
     add_subdirectory(tests)
+endif()
+
+if(QTPILOT_BUILD_BENCHMARKS)
+    message(STATUS "Building complexity benchmarks (google/benchmark)")
+    add_subdirectory(benchmarks)
 endif()
 
 # Installation
@@ -406,6 +477,7 @@ message(STATUS "  Architecture:   ${QTPILOT_ARCH_TAG}")
 message(STATUS "  Install prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "  Lib install:    ${QTPILOT_INSTALL_LIBDIR}")
 message(STATUS "  Build tests:    ${QTPILOT_BUILD_TESTS}")
+message(STATUS "  Benchmarks:     ${QTPILOT_BUILD_BENCHMARKS}")
 message(STATUS "  Build test app: ${QTPILOT_BUILD_TEST_APP}")
 message(STATUS "  QML support:    ${QTPILOT_HAS_QML}")
 message(STATUS "")

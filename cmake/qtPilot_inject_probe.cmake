@@ -13,8 +13,12 @@
 #
 # What it does:
 #   - Links qtPilot::Probe to the target (PRIVATE)
-#   - On Windows: copies the probe DLL next to the target executable
-#   - On Linux: generates a helper script for LD_PRELOAD injection
+#   - Shared probe, Windows: copies the probe DLL next to the target executable
+#   - Shared probe, Linux: generates a helper script for LD_PRELOAD injection
+#   - Static probe (Android/iOS, or QTPILOT_PROBE_STATIC): links only. The probe is
+#     compiled into the executable, so there is nothing to copy and nothing to
+#     preload; the imported target already carries the whole-archive link option
+#     that keeps its startup hook from being dropped.
 # ---------------------------------------------------------------------------
 
 function(qtPilot_inject_probe TARGET_NAME)
@@ -31,6 +35,12 @@ function(qtPilot_inject_probe TARGET_NAME)
 
     # Link the probe library
     target_link_libraries(${TARGET_NAME} PRIVATE qtPilot::Probe)
+
+    # A static probe is inside the executable already: no DLL to place beside it,
+    # and an LD_PRELOAD script naming an archive would be meaningless.
+    if(QTPILOT_PROBE_STATIC)
+        return()
+    endif()
 
     # On Windows, copy the probe DLL next to the target executable
     if(WIN32)

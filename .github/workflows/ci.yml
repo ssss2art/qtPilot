@@ -23,12 +23,268 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: jidicula/clang-format-action@654a770daa28443dd111d133e4083e21c1075674 # v4.18.0
         with:
           clang-format-version: "18"
           check-path: "src"
+
+  # The static probe is the delivery mode used on Android and iOS: an archive
+  # linked into an app rather than a library injected into one. It has failure modes
+  # the shared build cannot have -- most importantly, the linker silently discarding
+  # the archive member that registers the startup hook, which leaves an app that
+  # builds and runs perfectly and simply has no probe in it. Nothing in the desktop
+  # matrix can catch that, so it is checked here by linking a real consumer against
+  # the INSTALLED package and asserting the probe actually started.
+  static-probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { qt: "6.10.0", os: ubuntu-24.04, modules: "qtwebsockets" }
+          - { qt: "6.10.0", os: macos-14,     modules: "qtwebsockets" }
+          # Qt 5 too: the static path touches the export macro and the
+          # whole-archive link option, neither of which is Qt6-specific.
+          # (No Windows leg -- QTPILOT_PROBE_STATIC is refused there, see
+          # CMakeLists.txt.)
+          - { qt: "5.15.2", os: ubuntu-24.04, modules: "" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # One retry, because the Qt mirrors intermittently stall mid-download. The
+      # step timeout is what turns a stall into a failure the retry can act on -- a
+      # hang is not a failure, so without it `if: failure()` never fires and the job
+      # sits until the job timeout.
+      - name: Install Qt
+        id: qt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: ${{ matrix.qt }}
+          modules: ${{ matrix.modules }}
+          cache: true
+
+      - name: Install Qt (retry)
+        if: steps.qt.outcome == 'failure'
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: ${{ matrix.qt }}
+          modules: ${{ matrix.modules }}
+          cache: true
+
+      - name: Install X11 dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxext-dev libxtst-dev libx11-dev
+
+      - name: Build and install the static probe
+        shell: bash
+        run: |
+          cmake -B build/static -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQTPILOT_PROBE_STATIC=ON \
+            -DQTPILOT_BUILD_TESTS=OFF \
+            -DQTPILOT_BUILD_TEST_APP=OFF
+          cmake --build build/static --parallel
+          cmake --install build/static --prefix "$PWD/install/static"
+          # An archive, not a shared library.
+          ls install/static/lib/
+          test -n "$(find install/static/lib -name '*.a' -o -name '*.lib' | head -1)"
+
+      - name: Link a consumer against the installed package
+        shell: bash
+        run: |
+          cmake -B build/consumer -S tests/static_consumer \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/install/static"
+          cmake --build build/consumer --parallel
+
+      - name: The linked probe must actually start
+        shell: bash
+        run: |
+          # The consumer references no qtPilot symbol, so this passes only if the
+          # whole-archive link option on the imported target kept the startup hook
+          # from being discarded, AND the deferred initialization ran to completion.
+          BIN="$(find build/consumer -name static_consumer -type f | head -1)"
+          echo "Running $BIN"
+          # Let the OS choose an unused port. A fixed port made this check depend
+          # on unrelated processes on the runner, and `|| true` then hid a real
+          # consumer failure.
+          QT_QPA_PLATFORM=offscreen QTPILOT_PORT=0 "$BIN" > probe.log 2>&1
+          cat probe.log
+          # Object hooks are installed before WebSocketServer::start().  Treating
+          # that earlier message as success allowed a probe whose socket failed to
+          # bind to pass CI. The listening banner is emitted only after `listen()`
+          # succeeds, so it proves both whole-archive retention and completed
+          # deferred initialization.
+          if ! grep -q "qtPilot listening on ws://" probe.log; then
+            echo "::error::The statically linked probe did not reach its listening state."
+            echo "::error::Its archive member may have been dropped, deferred init may"
+            echo "::error::have failed, or WebSocketServer::start() could not bind."
+            exit 1
+          fi
+          echo "Static probe initialized and listening correctly."
+
+  # Cross-compile for the mobile targets. Compile-only: neither platform can run
+  # host tests, and the probe reaches a device by being linked into an app rather
+  # than deployed on its own. Without this, a mobile break is invisible until
+  # somebody builds by hand.
+  mobile:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a }
+          - { name: ios,     os: macos-14,     target: ios,     arch: "" }
+    name: mobile (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # 6.10.0 rather than 6.8.0 so the HOST install shares a cache entry with the
+      # build matrix's 6.10.0 legs instead of adding another multi-hundred-MB Qt to a
+      # repo cache that is already over budget. Fewer distinct installs is the only
+      # lever here that reduces mirror traffic rather than just surviving it.
+      - name: Install host Qt
+        id: hostqt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          modules: qtwebsockets
+          cache: true
+          set-env: false
+          dir: ${{ runner.temp }}/qt-host
+
+      - name: Install host Qt (retry)
+        if: steps.hostqt.outcome == 'failure'
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          modules: qtwebsockets
+          cache: true
+          set-env: false
+          dir: ${{ runner.temp }}/qt-host
+
+      - name: Install target Qt
+        id: targetqt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          target: ${{ matrix.target }}
+          arch: ${{ matrix.arch }}
+          modules: qtwebsockets
+          cache: true
+
+      - name: Install target Qt (retry)
+        if: steps.targetqt.outcome == 'failure'
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          target: ${{ matrix.target }}
+          arch: ${{ matrix.arch }}
+          modules: qtwebsockets
+          cache: true
+
+      - name: Set up JDK (Android)
+        if: matrix.name == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure and build
+        shell: bash
+        run: |
+          HOST_QT="$(find "${{ runner.temp }}/qt-host" -maxdepth 3 -type d -name 'gcc_64' -o -maxdepth 3 -type d -name 'macos' | head -1)"
+          echo "Host Qt: $HOST_QT"
+          # qt-cmake from the TARGET kit selects the cross toolchain; ANDROID/IOS
+          # being set is what switches qtPilot into mobile mode (static probe, no
+          # launcher, no host tests).
+          "$QT_ROOT_DIR/bin/qt-cmake" -B build/mobile -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH="$HOST_QT"
+          cmake --build build/mobile --parallel
+          find build/mobile -name '*.a' -print
+
+  # Records the fitted complexity of the probe's hot paths in the run log, so a
+  # change of exponent is visible in review instead of being discovered later.
+  #
+  # NON-BLOCKING on purpose (continue-on-error). The numbers are timing-derived and a
+  # shared runner is noisy, so a hard assertion would teach people to re-run until
+  # green -- which is worse than no check. What this gives you is a reviewable record:
+  # the _BigO column lands in the step summary, and a jump from N to N^2 is obvious.
+  benchmarks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Qt
+        id: qt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          modules: qtwebsockets
+          cache: true
+
+      - name: Install Qt (retry)
+        if: steps.qt.outcome == 'failure'
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: "6.10.0"
+          modules: qtwebsockets
+          cache: true
+
+      - name: Install X11 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxext-dev libxtst-dev libx11-dev
+
+      - name: Build benchmarks
+        run: |
+          cmake -B build/bench -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQTPILOT_BUILD_BENCHMARKS=ON \
+            -DQTPILOT_BUILD_TESTS=OFF \
+            -DQTPILOT_BUILD_TEST_APP=OFF
+          cmake --build build/bench --target qtPilot_bench_object_id --parallel
+
+      - name: Measure complexity
+        run: |
+          BIN="$(find build/bench -name qtPilot_bench_object_id -type f | head -1)"
+          # Short min-time: we want the fitted exponent, not a precise constant.
+          QT_QPA_PLATFORM=minimal "$BIN" --benchmark_min_time=0.05s | tee bench.txt
+
+          {
+            echo "## Complexity (fitted Big-O)"
+            echo
+            echo "Read the exponent, not the constant. RMS above ~10% means the fit is"
+            echo "untrustworthy on this runner -- treat it as no signal rather than a result."
+            echo
+            echo '```'
+            grep -E "_BigO|_RMS" bench.txt || echo "(no complexity rows -- did a benchmark fail to run?)"
+            echo '```'
+            echo
+            echo "Baseline and interpretation: \`benchmarks/README.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     strategy:
@@ -53,10 +309,24 @@ jobs:
           # run. Force it off here so the QML-less configuration stays buildable.
           - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets", extra_cmake: "-DQTPILOT_ENABLE_QML=OFF", arch_label: noqml }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install Qt
+        id: qt
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: ${{ matrix.qt }}
+          modules: ${{ matrix.modules }}
+          arch: ${{ matrix.arch || '' }}
+          cache: true
+
+      - name: Install Qt (retry)
+        if: steps.qt.outcome == 'failure'
+        timeout-minutes: 15
         uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
         with:
           version: ${{ matrix.qt }}
@@ -212,6 +482,7 @@ jobs:
 
   python:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

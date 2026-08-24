@@ -6,7 +6,7 @@
 
 - **License**: MIT
 - **Language**: C++ with Qt Framework
-- **Status**: Active development (v0.3.0)
+- **Status**: Active development (v0.3.1)
 
 ## Build System
 
@@ -21,6 +21,24 @@
 cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64
 cmake --build build --config Release
 ```
+
+### Running Benchmarks
+
+Complexity benchmarks for ID generation, tree serialization and ID resolution. They
+report an empirically fitted Big-O, so they answer "did this change the complexity of
+a hot path" without arguing about timings. Off by default (fetches google/benchmark
+at configure time; no CI leg builds it).
+
+```bash
+cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON
+cmake --build build --target qtPilot_bench_object_id
+./build/bin/qtPilot_bench_object_id --benchmark_min_time=0.05s
+```
+
+Read the `_BigO` / `_RMS` rows, not the per-N times. Baseline and interpretation:
+`benchmarks/README.md`. **If you touch `getSiblingIndex()`, `baseIdSegment()`,
+`effectiveChildren()` or any tree walker, run these** — that code has already had one
+optimization regress it, and these are how the exponent stays honest.
 
 ### Running Tests (Windows)
 
@@ -50,7 +68,9 @@ QT_PLUGIN_PATH="${QT_DIR}/plugins" LD_LIBRARY_PATH="${QT_DIR}/lib" ctest --test-
 ```
 
 ### Running Tests (macOS)
-Qt on macOS uses framework bundles; point `DYLD_FRAMEWORK_PATH` at the Qt `lib/`
+macOS is supported on **Qt 6.5+ only**; Qt 5.15 on macOS is not a supported
+configuration and is not covered by CI (see `docs/MACOS.md`). Qt on macOS uses
+framework bundles; point `DYLD_FRAMEWORK_PATH` at the Qt `lib/`
 directory (where the `.framework` bundles live). `QTPILOT_ENABLED=0` prevents the
 probe from auto-loading during tests on arm64 where permission prompts can hang
 headless runs.
@@ -59,6 +79,18 @@ QT_DIR=$(grep "QTPILOT_QT_DIR:PATH=" build/CMakeCache.txt | cut -d= -f2)
 DYLD_FRAMEWORK_PATH="${QT_DIR}/lib" QT_PLUGIN_PATH="${QT_DIR}/plugins" \
   QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 \
   ctest --test-dir build -C Release --output-on-failure
+```
+
+ctest sets `QT_STYLE_OVERRIDE=Fusion` for you on macOS (see `tests/CMakeLists.txt`).
+The native style draws some controls through NSView, which needs an AppKit
+environment that `QT_QPA_PLATFORM=minimal` does not provide. Qt 6 tolerates it;
+Qt 5.15 segfaults the moment a `QPushButton` paints. Add it by hand when running a
+test binary **directly** rather than through ctest:
+
+```bash
+QT_STYLE_OVERRIDE=Fusion DYLD_FRAMEWORK_PATH="${QT_DIR}/lib" \
+  QT_PLUGIN_PATH="${QT_DIR}/plugins" QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 \
+  build/bin/test_native_mode_api
 ```
 
 **Windows test caveat:** On Windows, env vars set in bash/git-bash do NOT propagate
@@ -74,11 +106,24 @@ child processes that inherit the Windows environment, not the bash-local overrid
 ### C++ Code Style
 
 1. **Naming Conventions**
-   - Classes: `PascalCase` (e.g., `McpServer`, `RequestHandler`)
+   - Classes / structs / enums / type aliases: `PascalCase` (e.g., `McpServer`, `RequestHandler`)
+   - Enum constants: `PascalCase` (e.g., `MatchMode::StartsWith`)
    - Functions/Methods: `camelCase` (e.g., `handleRequest`, `parseMessage`)
-   - Member variables: `m_` prefix with camelCase (e.g., `m_serverPort`)
-   - Constants: `UPPER_SNAKE_CASE` (e.g., `DEFAULT_PORT`)
+   - Locals and parameters: `camelCase` (e.g., `siblingBase`, `objectName`)
+   - Member variables: `m_` prefix with camelCase (e.g., `m_serverPort`). Public
+     fields of plain-data structs take no prefix (e.g., `QmlItemInfo::qmlId`)
+   - Compile-time constants: `k` prefix with PascalCase (e.g., `kMaxEffectiveDepth`,
+     `kBroadcastIntervalMs`). `UPPER_SNAKE_CASE` is for macros only
+   - File- and function-scope statics: `g_` for globals, `s_` for statics
+     (e.g., `g_hooksInstalled`, `s_probeInstance`)
    - Namespaces: camelCase (e.g., `qtPilot`, `qtPilot::server`)
+
+   `.clang-tidy` encodes these rules, so `clang-tidy -p build
+   --checks='-*,readability-identifier-naming' <file>` will tell you when
+   something drifts. It is advisory: CI runs clang-format only. A handful of
+   older identifiers predate these conventions (PascalCase methods on
+   `JsonRpcHandler`, trailing-underscore members on `DiscoveryBroadcaster`) and
+   still report warnings; leave them unless you are already changing that code.
 
 2. **Qt-Specific Conventions**
    - Use Qt's signal/slot mechanism for async communication
@@ -204,6 +249,7 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 | Test (bash) | Extract `QT_DIR` from cache, then `cmd //c "set PATH=...&& ctest ..."` (see Build System section) |
 | Test (cmd.exe) | Set `PATH` and `QT_PLUGIN_PATH` from `QTPILOT_QT_DIR` in cache, then `ctest --test-dir build -C Release` |
 | Launch | `build/bin/Release/qtPilot-launcher.exe [--qt-dir <path>] app.exe` |
+| Benchmarks | `cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON && cmake --build build --target qtPilot_bench_object_id` |
 | Source | `src/` directory |
 | Tests | `tests/` directory |
 
@@ -244,9 +290,10 @@ qt_ping()                                 # verify connectivity
 
 ## Important Files
 
-- `/home/user/qtPilot/README.md` - Project description
-- `/home/user/qtPilot/LICENSE` - MIT License terms
-- `/home/user/qtPilot/.gitignore` - Build artifacts exclusion
+- `README.md` - Project description and platform support
+- `docs/BUILDING.md` - Build options and artifact layout
+- `docs/MOBILE.md` - Android/iOS: the probe is linked into a dev build, not injected
+- `LICENSE` - MIT License terms
 
 ---
 
