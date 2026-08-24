@@ -172,6 +172,55 @@ the probe's startup hook and the probe silently never starts. Consumers that lin
 the archive by raw path instead have to force-load it themselves. Full instructions,
 including how to reach the probe from a device, are in [MOBILE.md](MOBILE.md).
 
+## Sanitizer builds
+
+Two presets, because AddressSanitizer and ThreadSanitizer cannot be linked together:
+
+```bash
+cmake --preset asan-ubsan && cmake --build --preset asan-ubsan && ctest --preset asan-ubsan
+cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset tsan
+```
+
+Linux and macOS only — MSVC has ASan but no UBSan. Or set `QTPILOT_SANITIZE` directly
+to any `-fsanitize=` list (`address,undefined`, `thread`, …). The test presets carry
+the runtime options, so a first run is not buried in noise.
+
+UBSan is configured with `-fno-sanitize-recover=undefined`, i.e. a finding aborts. A
+sanitizer that only prints is one a green test run hides.
+
+### What they currently report
+
+**`asan-ubsan`: clean, 20/20.** Instrumentation was verified rather than assumed — the
+ASan runtime is linked into the test binaries, and a deliberate use-after-free trips
+it — so this is a real result, not a build that silently omitted the flags.
+
+**`tsan`: one failing test, and it looks like a genuine bug.**
+`uninstallObjectHooks()` writes `g_previousAddCallback`, `g_previousRemoveCallback`
+and `g_hooksInstalled` — plain non-atomic globals — while the hooks that read them are
+invoked by Qt on whatever thread constructs or destroys a `QObject`. It is left
+unsuppressed on purpose.
+
+Two other TSan reports **were** suppressed, in
+[`cmake/tsan-suppressions.txt`](../cmake/tsan-suppressions.txt), because they are a
+tool limitation rather than a bug: TSan cannot see the happens-before edge of
+`QRecursiveMutex`, which is what `ObjectRegistry::m_mutex` is. That was established by
+experiment, not assumed:
+
+| Primitive | TSan sees it? |
+|---|---|
+| `QMutex` | yes |
+| `QThread::wait()` | yes |
+| `QRecursiveMutex` | **no** — false positives |
+| `std::recursive_mutex` | yes |
+
+So changing that one member to `std::recursive_mutex` would let the suppressions file
+be deleted. It is one declaration plus 15 lock sites, and not purely mechanical
+(some use `QMutexLocker::unlock()`/`relock()`, which needs `std::unique_lock`).
+
+Note also that leak detection is off in the presets: LSan is unavailable on macOS, and
+on Linux it would report allocations inside an uninstrumented Qt. Turn it on
+deliberately with `ASAN_OPTIONS=detect_leaks=1` when hunting leaks in probe code.
+
 ## Benchmarks
 
 The probe ships complexity benchmarks for its hot paths — object-ID generation, tree

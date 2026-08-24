@@ -34,6 +34,20 @@ cmake -B build-static -DQTPILOT_PROBE_STATIC=ON -DCMAKE_PREFIX_PATH=/path/to/Qt
 cmake --build build-static
 ```
 
+### Sanitizer Builds
+
+```bash
+cmake --preset asan-ubsan && cmake --build --preset asan-ubsan && ctest --preset asan-ubsan
+cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset tsan
+```
+
+Linux/macOS only. `asan-ubsan` is clean (20/20). `tsan` reports one real race —
+`uninstallObjectHooks()` versus the object hooks, on non-atomic globals — left
+unsuppressed on purpose. TSan cannot see `QRecursiveMutex`, so
+`cmake/tsan-suppressions.txt` silences `ObjectRegistry` races; see `docs/BUILDING.md`
+for the evidence and the fix. On macOS remember `DYLD_FRAMEWORK_PATH`/`QT_PLUGIN_PATH`
+as with any test run.
+
 ### Running Benchmarks
 
 Complexity benchmarks for ID generation, tree serialization and ID resolution. They
@@ -266,6 +280,7 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 | Launch (Desktop) | `build/bin/Release/qtPilot-launcher.exe [--qt-dir <path>] app.exe` |
 | Port Forward (Android) | `adb forward tcp:9222 tcp:9222` |
 | Port Forward (iOS) | `iproxy 9222 9222` |
+| Sanitizers | `cmake --preset asan-ubsan` / `--preset tsan`, then `ctest --preset ...` |
 | Benchmarks | `cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON && cmake --build build --target qtPilot_bench_object_id` |
 | Source | `src/` directory |
 | Tests | `tests/` directory |

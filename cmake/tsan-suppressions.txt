@@ -1,0 +1,44 @@
+# ThreadSanitizer suppressions.
+#
+# One entry, and it is a workaround for a TOOL limitation rather than a known bug.
+#
+# ObjectRegistry::m_mutex is a QRecursiveMutex, and TSan cannot see the
+# happens-before edge it establishes. That was verified directly rather than
+# assumed -- a counter incremented 80000 times from four threads under a lock
+# reports a race and still comes out at exactly 80000, i.e. the mutual exclusion
+# worked and only TSan's view of it is wrong:
+#
+#   QMutex               -> understood, no report
+#   QRecursiveMutex      -> NOT understood, false report
+#   std::recursive_mutex -> understood, no report
+#
+# So every access to a registry container looks unsynchronized to TSan, and three
+# tests fail with races that do not exist.
+#
+# This is a blunt instrument: it will also hide a REAL race in ObjectRegistry. It is
+# here so that `ctest --preset tsan` is usable at all, not because the registry is
+# above suspicion.
+#
+# The proper fix is to change that one member to std::recursive_mutex, which TSan
+# understands. It is one declaration plus 15 QMutexLocker sites in
+# object_registry.cpp -- not mechanical, because some of those use
+# QMutexLocker::unlock()/relock() and would need std::unique_lock. That belongs in
+# its own reviewed change; when it lands, delete this file and the
+# suppressions= entry in CMakePresets.json.
+#
+# Every other mutex in the probe is a plain QMutex, so nothing else needs an entry.
+race:qtPilot::ObjectRegistry::
+
+# DELIBERATELY NOT SUPPRESSED
+#
+# test_object_registry still reports a race between uninstallObjectHooks() and
+# qtpilotAddObjectHook(), and that one looks real. g_previousAddCallback,
+# g_previousRemoveCallback and g_hooksInstalled are plain non-atomic globals, written
+# by uninstallObjectHooks() (reached from Probe::shutdown()) and read by the hooks --
+# which Qt invokes on whatever thread happens to construct or destroy a QObject. Note
+# g_singletonCreating, declared three lines below them, is already std::atomic<bool>
+# with a comment about precisely this hazard; the hook globals were not given the same
+# treatment.
+#
+# Narrow: it needs a QObject created or destroyed on another thread during install or
+# shutdown. But that is the sanitizer doing its job, so it stays visible.
