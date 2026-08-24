@@ -43,10 +43,13 @@ cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset
 
 Linux/macOS only. `asan-ubsan` is clean (20/20). `tsan` reports one real race —
 `uninstallObjectHooks()` versus the object hooks, on non-atomic globals — left
-unsuppressed on purpose. TSan cannot see `QRecursiveMutex`, so
-`cmake/tsan-suppressions.txt` silences `ObjectRegistry` races; see `docs/BUILDING.md`
-for the evidence and the fix. On macOS remember `DYLD_FRAMEWORK_PATH`/`QT_PLUGIN_PATH`
-as with any test run.
+unsuppressed on purpose; `cmake/tsan-suppressions.txt` silences the `QRecursiveMutex`
+artifacts. Neither runs in CI yet. On macOS remember
+`DYLD_FRAMEWORK_PATH`/`QT_PLUGIN_PATH` as with any test run.
+
+macOS leak checking is a **runtime** tool and deliberately not a preset — and without
+a `get-task-allow` entitlement `leaks` prints a misleading "0 leaks". Full findings,
+evidence and next steps: `docs/SANITIZERS.md`.
 
 ### Running Benchmarks
 
