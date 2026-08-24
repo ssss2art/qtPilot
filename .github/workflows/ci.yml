@@ -114,15 +114,23 @@ jobs:
           # from being discarded, AND the deferred initialization ran to completion.
           BIN="$(find build/consumer -name static_consumer -type f | head -1)"
           echo "Running $BIN"
-          QT_QPA_PLATFORM=offscreen QTPILOT_PORT=9411 "$BIN" > probe.log 2>&1 || true
+          # Let the OS choose an unused port. A fixed port made this check depend
+          # on unrelated processes on the runner, and `|| true` then hid a real
+          # consumer failure.
+          QT_QPA_PLATFORM=offscreen QTPILOT_PORT=0 "$BIN" > probe.log 2>&1
           cat probe.log
-          if ! grep -q "Object hooks installed" probe.log; then
-            echo "::error::The statically linked probe did not initialize. Its archive"
-            echo "::error::member was most likely dropped by the linker (see"
-            echo "::error::src/probe/CMakeLists.txt) or deferred init failed."
+          # Object hooks are installed before WebSocketServer::start().  Treating
+          # that earlier message as success allowed a probe whose socket failed to
+          # bind to pass CI. The listening banner is emitted only after `listen()`
+          # succeeds, so it proves both whole-archive retention and completed
+          # deferred initialization.
+          if ! grep -q "qtPilot listening on ws://" probe.log; then
+            echo "::error::The statically linked probe did not reach its listening state."
+            echo "::error::Its archive member may have been dropped, deferred init may"
+            echo "::error::have failed, or WebSocketServer::start() could not bind."
             exit 1
           fi
-          echo "Static probe initialized correctly."
+          echo "Static probe initialized and listening correctly."
 
   # Cross-compile for the mobile targets. Compile-only: neither platform can run
   # host tests, and the probe reaches a device by being linked into an app rather
