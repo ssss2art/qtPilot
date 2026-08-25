@@ -96,8 +96,8 @@ int main(int argc, char** argv) {
 }
 ```
 
-Requires qtPilot at `feat/mobile-linked-probe` or later. Earlier probes segfault
-on launch when linked -- they initialized from inside
+Requires qtPilot with static probe support (PR #30 / v0.3.2 or later). Earlier
+probes segfault on launch when linked -- they initialized from inside
 `QCoreApplicationPrivate::init()`, before an event dispatcher existed to register
 a socket with -- and could not see `Repeater` or `ListView` delegates at all.
 

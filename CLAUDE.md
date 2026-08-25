@@ -29,7 +29,7 @@ cmake --build build-android
 /path/to/Qt/6.11.1/ios/bin/qt-cmake -B build-ios -S . -G Xcode
 cmake --build build-ios --config Debug -- -sdk iphoneos
 
-# Static probe on desktop (for linking into development builds)
+# Static probe on desktop (Linux/macOS only — Windows static probe is not supported)
 cmake -B build-static -DQTPILOT_PROBE_STATIC=ON -DCMAKE_PREFIX_PATH=/path/to/Qt
 cmake --build build-static
 ```
