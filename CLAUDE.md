@@ -20,6 +20,18 @@
 # CMake configure + build (set QTPILOT_QT_DIR to your local Qt installation)
 cmake -B build -DQTPILOT_QT_DIR=/path/to/Qt/5.15.x/msvc2019_64
 cmake --build build --config Release
+
+# Android (cross-compile static probe using Qt's qt-cmake wrapper)
+/path/to/Qt/6.11.1/android_arm64_v8a/bin/qt-cmake -B build-android -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build-android
+
+# iOS device (cross-compile static probe using Xcode generator)
+/path/to/Qt/6.11.1/ios/bin/qt-cmake -B build-ios -S . -G Xcode
+cmake --build build-ios --config Debug -- -sdk iphoneos
+
+# Static probe on desktop (for linking into development builds)
+cmake -B build-static -DQTPILOT_PROBE_STATIC=ON -DCMAKE_PREFIX_PATH=/path/to/Qt
+cmake --build build-static
 ```
 
 ### Running Benchmarks
@@ -246,9 +258,14 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 | Task | Command/Location |
 |------|------------------|
 | Build | `cmake --build build --config Release` |
+| Build (Android) | `qt-cmake -B build-android -S . -DCMAKE_BUILD_TYPE=Release && cmake --build build-android` |
+| Build (iOS) | `qt-cmake -B build-ios -S . -G Xcode && cmake --build build-ios --config Debug -- -sdk iphoneos` |
+| Build (Static Probe) | `cmake -B build-static -DQTPILOT_PROBE_STATIC=ON && cmake --build build-static` |
 | Test (bash) | Extract `QT_DIR` from cache, then `cmd //c "set PATH=...&& ctest ..."` (see Build System section) |
 | Test (cmd.exe) | Set `PATH` and `QT_PLUGIN_PATH` from `QTPILOT_QT_DIR` in cache, then `ctest --test-dir build -C Release` |
-| Launch | `build/bin/Release/qtPilot-launcher.exe [--qt-dir <path>] app.exe` |
+| Launch (Desktop) | `build/bin/Release/qtPilot-launcher.exe [--qt-dir <path>] app.exe` |
+| Port Forward (Android) | `adb forward tcp:9222 tcp:9222` |
+| Port Forward (iOS) | `iproxy 9222 9222` |
 | Benchmarks | `cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON && cmake --build build --target qtPilot_bench_object_id` |
 | Source | `src/` directory |
 | Tests | `tests/` directory |
@@ -258,9 +275,9 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 When qtPilot is configured as an MCP server (see `.mcp.json`), you can interact with
 live Qt applications using the `mcp__qtpilot__*` tools. Follow these steps:
 
-### 1. Launch the Test App
+### 1. Launch the Target App
 
-Use `qtPilot-launcher.exe` to launch any Qt app with the probe auto-injected:
+- **Desktop (injected):** Use `qtPilot-launcher` (or `qtpilot serve --target <app>`) to launch any Qt app with the probe auto-injected:
 
 ```bash
 build/bin/Release/qtPilot-launcher.exe build/bin/Release/qtPilot-test-app.exe
@@ -270,11 +287,21 @@ Run this in the background (`run_in_background: true`) so the app stays alive.
 The launcher handles Qt DLL paths and probe injection automatically — no need to
 manually set `PATH` or `QT_PLUGIN_PATH`.
 
+- **Mobile (linked into dev build):** Run your app with the linked static probe on device/emulator. Forward the WebSocket port over USB:
+
+```bash
+# Android
+adb forward tcp:9222 tcp:9222
+
+# iOS
+iproxy 9222 9222
+```
+
 ### 2. Discover and Connect
 
 ```
 qtpilot_status()                          # session snapshot (mode, connection, discovered probes)
-qtpilot_connect_probe(ws_url="ws://...")  # connect using a ws_url from discovery.probes
+qtpilot_connect_probe(ws_url="ws://...")  # connect using a ws_url (or ws://localhost:9222 / ws://<device-ip>:9222)
 qt_ping()                                 # verify connectivity
 ```
 
