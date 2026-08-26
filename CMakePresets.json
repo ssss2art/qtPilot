@@ -367,7 +367,7 @@
         "outputOnFailure": true
       },
       "environment": {
-        "TSAN_OPTIONS": "halt_on_error=0:second_deadlock_stack=1:suppressions=${sourceDir}/cmake/tsan-suppressions.txt"
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
       }
     }
   ]

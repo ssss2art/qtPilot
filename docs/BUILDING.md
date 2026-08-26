@@ -179,19 +179,17 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan && ctest --preset
 cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset tsan
 ```
 
-Linux and macOS only (MSVC has ASan but no UBSan); `QTPILOT_SANITIZE` takes any
+Linux and macOS only (MSVC lacks UBSan/TSan support); `QTPILOT_SANITIZE` takes any
 `-fsanitize=` list directly. Default builds are unaffected — the option is empty and
 the configure summary reports it.
 
-ASan + UBSan is clean. TSan reports one real race, left unsuppressed on purpose, plus
-two artifacts of TSan being unable to see `QRecursiveMutex`, which are suppressed.
-Neither runs in CI yet.
+Both `asan-ubsan` and `tsan` pass cleanly with no suppressions needed, and run in
+Linux CI.
 
-For the findings, the evidence behind them, macOS leak checking (a runtime tool, so
-deliberately **not** a preset), and the sequencing for adding CI, see
-[SANITIZERS.md](SANITIZERS.md).
+For full findings, macOS leak checking (a runtime tool, so deliberately **not** a preset),
+and developer instructions, see [SANITIZERS.md](SANITIZERS.md).
 
-## Benchmarks## Benchmarks
+## Benchmarks
 
 The probe ships complexity benchmarks for its hot paths — object-ID generation, tree
 serialization and ID resolution. They exist to answer "did this change make a hot

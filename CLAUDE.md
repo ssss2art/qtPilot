@@ -41,11 +41,8 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan && ctest --preset
 cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset tsan
 ```
 
-Linux/macOS only. `asan-ubsan` is clean (20/20). `tsan` reports one real race —
-`uninstallObjectHooks()` versus the object hooks, on non-atomic globals — left
-unsuppressed on purpose; `cmake/tsan-suppressions.txt` silences the `QRecursiveMutex`
-artifacts. Neither runs in CI yet. On macOS remember
-`DYLD_FRAMEWORK_PATH`/`QT_PLUGIN_PATH` as with any test run.
+Linux/macOS only. Both `asan-ubsan` and `tsan` pass cleanly and run in Linux CI.
+On macOS remember `DYLD_FRAMEWORK_PATH`/`QT_PLUGIN_PATH` as with any test run.
 
 macOS leak checking is a **runtime** tool and deliberately not a preset — and without
 a `get-task-allow` entitlement `leaks` prints a misleading "0 leaks". Full findings,
@@ -338,6 +335,7 @@ qt_ping()                                 # verify connectivity
 - `README.md` - Project description and platform support
 - `docs/BUILDING.md` - Build options and artifact layout
 - `docs/MOBILE.md` - Android/iOS: the probe is linked into a dev build, not injected
+- `docs/SANITIZERS.md` - Sanitizer builds (ASan/UBSan, TSan), findings, and leak checking
 - `LICENSE` - MIT License terms
 
 ---

@@ -1,9 +1,9 @@
 # Sanitizers and leak checking
 
-What has been run against the probe, what it found, and what is worth doing next.
+What has been run against the probe, what it found, and how it is tested.
 
-Nothing here runs in CI yet — that is a deliberate pause, not an oversight. See
-[Wiring this into CI](#wiring-this-into-ci).
+Both `asan-ubsan` and `tsan` are wired into GitHub Actions CI on Linux (see
+[Continuous integration](#continuous-integration)).
 
 ## Presets
 
@@ -12,64 +12,55 @@ cmake --preset asan-ubsan && cmake --build --preset asan-ubsan && ctest --preset
 cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset tsan
 ```
 
-Linux and macOS only — MSVC has ASan but no UBSan. `QTPILOT_SANITIZE` takes any
+Linux and macOS only — MSVC has ASan but lacks UBSan/TSan support. `QTPILOT_SANITIZE` takes any
 `-fsanitize=` list directly if you want a combination the presets do not cover. Two
 presets rather than one because ASan and TSan cannot be linked together.
 
 The test presets carry the runtime options, so a first run is not buried in noise:
 container-overflow off (Qt is not instrumented), leak detection off (see
-[leaks](#leak-checking-on-macos)), UBSan set to halt on error. Compilation uses
+[leaks](#leak-checking-on-macos)), UBSan set to halt on error (`halt_on_error=1`), and TSan
+configured with `halt_on_error=1` to fail immediately upon detecting a race. Compilation uses
 `-fno-sanitize-recover=undefined` for the same reason — a sanitizer that only prints
 is one a green test run hides.
 
 ## ASan + UBSan: clean
 
-20/20 with no findings.
+All unit tests pass with no findings.
 
-That was checked for the failure mode a clean sanitizer run usually has, which is
-that the flags never made it into the build. The ASan runtime is linked into the test
-binaries (`otool -L` shows `libclang_rt.asan_osx_dynamic.dylib`), the probe carries
-52 undefined `__asan`/`__ubsan` symbols, and a deliberate heap-use-after-free trips
-the toolchain. The result is real.
+Verified to ensure sanitizer instrumentation is active: the ASan runtime is linked
+into test binaries (`otool -L` on macOS shows the clang ASan dylib), undefined
+sanitizer symbols are present in the probe, and an intentional heap use-after-free
+correctly trips the toolchain.
 
-## TSan: one real race, two tool artifacts
+## TSan: findings and resolved fixes
 
-### The real one, left unsuppressed
+Initial TSan exploration uncovered one real product race and one Qt synchronization artifact:
 
-`uninstallObjectHooks()` writes `g_previousAddCallback`, `g_previousRemoveCallback`
-and `g_hooksInstalled` — plain non-atomic globals in `object_registry.cpp` — while the
-hooks that read them are invoked by Qt on whatever thread happens to construct or
-destroy a `QObject`. `uninstallObjectHooks()` is reached from `Probe::shutdown()`.
+### 1. Hook globals data race (Resolved)
 
-It needs a `QObject` created or destroyed on another thread during install or
-shutdown, so it is narrow. It is still a data race on a function pointer that is then
-called. Worth noting that `g_singletonCreating`, declared three lines below those
-globals, is already `std::atomic<bool>` with a comment about precisely this hazard;
-the hook globals were not given the same treatment.
+`uninstallObjectHooks()` previously wrote `g_previousAddCallback`, `g_previousRemoveCallback`,
+and `g_hooksInstalled` as plain non-atomic globals, while the hook callbacks (`qtpilotAddObjectHook`)
+read and invoked them from whatever thread happened to construct or destroy a `QObject`.
 
-### The artifacts, suppressed
+**Fix:** `g_previousAddCallback` and `g_previousRemoveCallback` are now `std::atomic<AddQObjectCallback>`
+/ `std::atomic<RemoveQObjectCallback>`, and `g_hooksInstalled` is `std::atomic<bool>`. Hook install,
+invocation, and uninstall use acquire-release semantics, preventing data races during probe teardown.
 
-Two reports pointed at `m_objects` accesses that are plainly inside a `QMutexLocker`
-block. That was suspicious enough to test rather than argue about. A counter
-incremented 80000 times from four threads under a lock, with Qt uninstrumented:
+### 2. `QRecursiveMutex` synchronization artifact (Resolved)
+
+TSan does not track happens-before edges across `QRecursiveMutex`, causing false race reports
+for container accesses in `ObjectRegistry` that were properly guarded.
 
 | Primitive | TSan sees the happens-before edge? |
 |---|---|
 | `QMutex` | yes |
 | `QThread::wait()` | yes |
-| **`QRecursiveMutex`** | **no** — reports a race; counter still exactly 80000 |
-| `std::recursive_mutex` | yes |
+| **`QRecursiveMutex`** | **no** — reports false race |
+| `std::recursive_mutex` | **yes** |
 
-`ObjectRegistry::m_mutex` is the only `QRecursiveMutex` in the codebase, so every
-registry container access looks unsynchronized to TSan. Suppressed in
-[`cmake/tsan-suppressions.txt`](../cmake/tsan-suppressions.txt).
-
-Two hypotheses were wrong before that table existed — "uninstrumented Qt breaks TSan
-generally" (no: `QMutex` is fine) and "`QThread::wait()` is opaque" (no: also fine).
-The experiment is what settled it, and it is cheap to repeat if the picture changes.
-
-The suppression is blunt (`race:qtPilot::ObjectRegistry::`) and will hide a real
-registry race too. It exists so `ctest --preset tsan` is usable at all.
+**Fix:** `ObjectRegistry::m_mutex` was migrated from `QRecursiveMutex` to `std::recursive_mutex`
+(using `std::unique_lock<std::recursive_mutex>`). This eliminated the false reports completely without
+needing a suppression file, giving real TSan coverage across all registry operations.
 
 ## Leak checking on macOS
 
@@ -113,10 +104,9 @@ DYLD_FRAMEWORK_PATH=$QT/lib QT_PLUGIN_PATH=$QT/plugins QT_QPA_PLATFORM=minimal \
   leaks --atExit -- build/plain/bin/test_object_id
 ```
 
-**2. Verify the tool before trusting a zero.** A binary that deliberately drops a
-`QObject` and a 4 KB buffer reports `1 leak for 5120 total leaked bytes`, so the
-detector is live. With that established, `test_object_id` reporting **0 leaks** is a
-genuine result.
+**2. Verify the tool before trusting a zero.** Confirm the detector is live by
+testing an intentional leak in a dummy binary. With detection verified, `test_object_id`
+reporting no leaks is a genuine result.
 
 Also worth knowing: `leaks` reports at-exit *reachability*, not lifetime correctness.
 An object parked on `deleteLater` or owned by a singleton counts as leaked and is
@@ -126,44 +116,23 @@ which is why an absolute count is meaningful here and would not be elsewhere. If
 baseline ever appears, the useful question stops being "how many" and becomes "does
 any leak stack name code I changed".
 
-## Wiring this into CI
+## Continuous integration
 
-Not done yet, on purpose. What each option costs:
-
-| Option | Cost | Blocker |
-|---|---|---|
-| `asan-ubsan` on one Linux leg | ASan roughly triples test time | None. This is the obvious first step. |
-| `tsan` | Same order of slowdown | Currently red by design — the hook-globals race must be fixed first, or the job starts life failing and gets ignored. |
-| `leaks` on macOS | Cheap | Needs the entitlement step above, and a runner where ad-hoc signing works. |
-
-The sequencing that avoids a permanently-red job: fix the hook-globals race, then add
-`asan-ubsan`, then `tsan`.
+Both `asan-ubsan` and `tsan` run on Linux (Ubuntu 24.04, Qt 6.10.0) in the `sanitizers` matrix
+job in `.github/workflows/ci.yml`. Tests execute with `halt_on_error=1` so any memory safety or
+data race regression fails the build immediately.
 
 ## Worth doing next
 
-1. **Fix the hook-globals race.** Make the three globals atomic, or guard
-   install/uninstall with the registry mutex. This is the only finding here that is a
-   product bug.
-2. **Swap `ObjectRegistry::m_mutex` to `std::recursive_mutex`** and delete the
-   suppressions file. One declaration plus 15 lock sites in `object_registry.cpp` —
-   not purely mechanical, because some use `QMutexLocker::unlock()`/`relock()` and
-   would need `std::unique_lock`. This buys real TSan coverage of the registry, which
-   is currently the least-covered concurrent code in the probe.
-3. **A leak-check script** rather than a preset: run a filtered `leaks` against a
-   plain build, handle the entitlement, and report leak stacks naming probe symbols.
-   That is the shape this tool wants.
-4. **Enable LSan on Linux.** Unlike macOS, Linux ASan has a leak detector. It is off
-   in the preset because it also reports uninstrumented-Qt allocations; a suppressions
-   file scoped to Qt frames would make it usable and would cover leaks on the platform
-   where most CI runs.
-5. **An instrumented Qt** would remove the `QRecursiveMutex` blind spot entirely and
-   let TSan see Qt's own internals. Expensive to build and cache, so only worth it if
-   concurrency bugs keep landing.
+1. **A leak-check script** for macOS: run a filtered `leaks` against a plain build, handle the
+   entitlement, and report leak stacks naming probe symbols.
+2. **Enable LSan on Linux.** Unlike macOS, Linux ASan has a leak detector. A suppressions file
+   scoped to Qt runtime frames would make LSan usable on Linux CI without false positives from
+   uninstrumented Qt allocations.
+3. **An instrumented Qt build** would let TSan inspect Qt internals directly (e.g. event dispatcher
+   and object hierarchy locking).
 
 ## See also
 
-- [`cmake/tsan-suppressions.txt`](../cmake/tsan-suppressions.txt) — what is
-  suppressed, why, and what is deliberately not
 - [`docs/BUILDING.md`](BUILDING.md) — build options and presets
-- [`benchmarks/README.md`](../benchmarks/README.md) — the complexity benchmarks, which
-  are the other "measure it rather than argue" tool in this repo
+- [`benchmarks/README.md`](../benchmarks/README.md) — the complexity benchmarks

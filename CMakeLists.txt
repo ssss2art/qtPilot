@@ -359,6 +359,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         add_compile_options(-Wno-gnu-zero-variadic-macro-arguments)
     endif()
 elseif(MSVC)
+    if(QTPILOT_SANITIZE)
+        message(FATAL_ERROR
+            "QTPILOT_SANITIZE is not supported on MSVC: UndefinedBehaviorSanitizer and ThreadSanitizer "
+            "are unavailable on MSVC. Use Linux or macOS with GCC/Clang.")
+    endif()
     add_compile_options(
         /W4
         /WX
