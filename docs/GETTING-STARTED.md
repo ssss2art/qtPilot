@@ -252,23 +252,29 @@ cmake --build build
 ```
 
 `qtPilot_inject_probe()` handles the platform details automatically:
-- **Windows:** Copies the probe DLL next to your executable after each build
-- **Linux:** Generates a helper script (`qtpilot-preload-myapp.sh`) that launches your app with `LD_PRELOAD` set
+- **Windows (shared):** Copies the probe DLL next to your executable after each build
+- **Linux (shared):** Generates a helper script (`qtpilot-preload-myapp.sh`) that launches your app with `LD_PRELOAD` set
+- **Mobile / Static (`QTPILOT_PROBE_STATIC`):** Links the static archive (`libqtPilot-probe.a`) with whole-archive force loading automatically into the target executable (see [MOBILE.md](MOBILE.md))
 
-To run with the probe on Linux, use the generated script:
+To run with the probe on Linux (shared), use the generated script:
 ```bash
 ./build/qtpilot-preload-myapp.sh
 ```
 
-On Windows, the probe DLL is already next to your exe, so just run your app normally.
+On Windows (shared), the probe DLL is already next to your exe, so just run your app normally.
+On mobile or static builds, run your app normally on the device or emulator.
 
 **4. Start the MCP server separately:**
 
 ```bash
+# Desktop
+qtpilot serve --mode native --ws-url ws://localhost:9222
+
+# Mobile (forward port over USB first: adb forward tcp:9222 tcp:9222 or iproxy 9222 9222)
 qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
 
-The `qtPilotConfig.cmake` package auto-detects your project's Qt version (Qt5 or Qt6) and resolves to the matching probe binary, so the same qtPilot install can work with either.
+The `qtPilotConfig.cmake` package auto-detects your project's Qt version (Qt5 or Qt6) and static/shared configuration, resolving to the matching probe binary.
 
 ### Environment Variables
 
@@ -312,9 +318,26 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
+For a mobile or remote device:
+
+```json
+{
+  "mcpServers": {
+    "qtpilot": {
+      "command": "qtpilot",
+      "args": ["serve", "--mode", "native", "--ws-url", "ws://localhost:9222"]
+    }
+  }
+}
+```
+
 ### Claude Code
 
 ```bash
+# Desktop (auto-launch)
+claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --target /path/to/your-app
+
+# Mobile / Remote probe (connect to forwarded port or device IP)
 claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
 

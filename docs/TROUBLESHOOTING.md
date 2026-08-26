@@ -366,7 +366,7 @@ member and starts the probe.
 
 #### Crash on launch when linked
 
-Fixed in `feat/mobile-linked-probe` and later. Earlier probes initialized inline
+Fixed in PR #30 / v0.3.2 and later. Earlier probes initialized inline
 from `qt_call_pre_routines()`, which Qt calls from inside
 `QCoreApplicationPrivate::init()` — before an event dispatcher exists to register
 a socket with. `QTcpServer::listen` then dereferenced a null dispatcher. If you
