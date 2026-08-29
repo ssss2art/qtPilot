@@ -102,6 +102,21 @@ cmake --build build
 
 See [docs/BUILDING.md](docs/BUILDING.md) for detailed build instructions.
 
+### Option 3: Mobile (Android & iOS)
+
+Cross-compile the static probe using Qt's `qt-cmake` wrapper and link it into a development build of your app (see [docs/MOBILE.md](docs/MOBILE.md)). Once running on device or emulator, forward the port over USB and connect:
+
+```bash
+# Android
+adb forward tcp:9222 tcp:9222
+
+# iOS
+iproxy 9222 9222
+
+# Start the MCP server connected to the device probe
+qtpilot serve --mode native --ws-url ws://localhost:9222
+```
+
 ## Features
 
 - **Three API modes** for different use cases:
@@ -132,9 +147,26 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
+Or for a mobile/remote device:
+
+```json
+{
+  "mcpServers": {
+    "qtpilot": {
+      "command": "qtpilot",
+      "args": ["serve", "--mode", "native", "--ws-url", "ws://localhost:9222"]
+    }
+  }
+}
+```
+
 ### Claude Code
 
 ```bash
+# Desktop (auto-launch)
+claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --target /path/to/your/qt-app
+
+# Mobile / Remote probe
 claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
 

@@ -607,13 +607,22 @@ void ComputerUseModeApi::registerKeyboardMethods() {
       t.widget = focusWidget->window();
     } else {
       t = getActiveTarget();
-      if (!t.isWindow()) {
+      // getActiveTarget() resolves EITHER a QWidget (Widgets app) or a QWindow.
+      // Testing only isWindow() discarded a perfectly good widget target and
+      // failed the call — the state every app is in before anything is clicked.
+      if (t.widget) {
+        InputSimulator::sendText(t.widget, text);
+      } else if (t.isWindow()) {
+        InputSimulator::sendText(t.window, text);
+      } else {
         throw JsonRpcException(
-            ErrorCode::kNoFocusedWidget, QStringLiteral("No widget has keyboard focus"),
+            ErrorCode::kNoFocusedWidget,
+            QStringLiteral("No focusable target: the application has no active window and no "
+                           "visible top-level widget"),
             QJsonObject{{QStringLiteral("hint"),
-                         QStringLiteral("Click on a widget first to give it focus")}});
+                         QStringLiteral("Show a window first, or give a specific widget focus "
+                                        "with qt.methods.invoke {method: \"setFocus\"}")}});
       }
-      InputSimulator::sendText(t.window, text);
     }
 
     QJsonObject result;
@@ -653,13 +662,22 @@ void ComputerUseModeApi::registerKeyboardMethods() {
       t.widget = focusWidget->window();
     } else {
       t = getActiveTarget();
-      if (!t.isWindow()) {
+      // Same as cu.type above: a resolved QWidget target is valid, and rejecting
+      // it made every key-driven assertion fail until the caller happened to
+      // click something first.
+      if (t.widget) {
+        InputSimulator::sendKey(t.widget, combo.key, combo.modifiers);
+      } else if (t.isWindow()) {
+        InputSimulator::sendKey(t.window, combo.key, combo.modifiers);
+      } else {
         throw JsonRpcException(
-            ErrorCode::kNoFocusedWidget, QStringLiteral("No widget has keyboard focus"),
+            ErrorCode::kNoFocusedWidget,
+            QStringLiteral("No focusable target: the application has no active window and no "
+                           "visible top-level widget"),
             QJsonObject{{QStringLiteral("hint"),
-                         QStringLiteral("Click on a widget first to give it focus")}});
+                         QStringLiteral("Show a window first, or give a specific widget focus "
+                                        "with qt.methods.invoke {method: \"setFocus\"}")}});
       }
-      InputSimulator::sendKey(t.window, combo.key, combo.modifiers);
     }
 
     QJsonObject result;

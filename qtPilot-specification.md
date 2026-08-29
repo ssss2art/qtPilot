@@ -2,13 +2,14 @@
 
 > **Historical design reference.** This document records the original MVP and
 > probe-protocol design; it is not the authoritative MCP tool reference. The
-> implementation has since added macOS support, compatibility modes, discovery,
-> logging, recording, and additional Qt APIs. See [MCP Tooling](docs/MCP-TOOLS.md)
-> for the current exposed surface and a repeatable schema-inspection workflow.
+> implementation has since added macOS support, mobile support (Android and iOS
+> via linked static probe), compatibility modes, discovery, logging, recording,
+> and additional Qt APIs. See [MCP Tooling](docs/MCP-TOOLS.md) for the current
+> exposed surface and [MOBILE.md](docs/MOBILE.md) for mobile integration.
 
 ## Executive Summary
 
-**qtPilot** is a lightweight, MIT-licensed injection library for Qt application introspection and automation. It enables AI assistants (like Claude), test automation frameworks, and debugging tools to inspect and control Qt applications at runtime.
+**qtPilot** is a lightweight, MIT-licensed probe and tooling library for Qt application introspection and automation. It enables AI assistants (like Claude), test automation frameworks, and debugging tools to inspect and control Qt applications at runtime (via injection on desktop, and static library linking on Android/iOS).
 
 ---
 
@@ -18,7 +19,7 @@
 |-----------|-------|
 | **Name** | qtPilot |
 | **License** | MIT |
-| **Repository** | TBD |
+| **Repository** | https://github.com/ssss2art/qtPilot |
 | **Version** | 1.0.0 (MVP) |
 
 ---
@@ -34,27 +35,29 @@
 ### Target Applications
 
 - Applications you control (own source code)
-- Third-party applications (closed source)
+- Third-party applications (closed source, desktop only)
 - Both Widgets and QML/QtQuick hybrid applications
 
 ---
 
 ## Platform Support
 
-### MVP (v1.0)
+### MVP & Current Platform Matrix
 
-| Platform | Status | Priority |
-|----------|--------|----------|
-| **Windows** | ✅ Supported | Primary |
-| **Linux** | ✅ Supported | Primary |
-| **macOS** | ❌ Deferred | v1.1 |
+| Platform | Probe Delivery | Status | Priority |
+|----------|----------------|--------|----------|
+| **Windows** | Injected (`.dll`) | ✅ Supported | Primary |
+| **Linux** | Injected (`.so`) | ✅ Supported | Primary |
+| **macOS (Qt 6.5+)** | Injected (`.dylib`) | ✅ Supported | v1.1 |
+| **Android** | Linked static (`.a`) | ✅ Supported | Mobile expansion |
+| **iOS (device)** | Linked static (`.a`) | ✅ Supported | Mobile expansion |
 
 ### Qt Version Support
 
 | Version | Status |
 |---------|--------|
-| **Qt 5.15 LTS** | ✅ Primary target |
-| **Qt 6.x** | ✅ Secondary (after 5.15 works) |
+| **Qt 5.15 LTS** | ✅ Supported (Windows and Linux) |
+| **Qt 6.5+** | ✅ Supported (Windows, Linux, macOS, Android, iOS) |
 | **Qt 5.12 and earlier** | ❌ Not supported |
 
 ---

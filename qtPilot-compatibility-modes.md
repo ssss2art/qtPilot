@@ -77,10 +77,15 @@ where Qt accessibility data accurately describes the UI.
 The active mode can be selected at launch:
 
 ```bash
+# Desktop (auto-launch with injection)
 qtpilot serve --mode native --target /path/to/app
 qtpilot serve --mode cu --target /path/to/app
 qtpilot serve --mode chrome --target /path/to/app
 qtpilot serve --mode all --target /path/to/app
+
+# Remote / Mobile (connecting to a running or USB-forwarded probe)
+qtpilot serve --mode native --ws-url ws://localhost:9222
+qtpilot serve --mode native --ws-url ws://<device-ip>:9222
 ```
 
 It can also change during a session. Call `qtpilot_status` to read the active

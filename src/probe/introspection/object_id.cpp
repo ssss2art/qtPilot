@@ -6,6 +6,7 @@
 #include "core/object_registry.h"
 #include "introspection/qml_inspector.h"
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QJsonArray>
@@ -332,6 +333,26 @@ QList<QObject*> getTopLevelObjects() {
       if (w->inherits("QWidgetWindow"))
         continue;
       result.append(w);
+    }
+  }
+
+  // Top-level WIDGETS need the same treatment, and for the same reason. A
+  // parentless QWidget — the ordinary shape of a main window — is not a QObject
+  // child of the application either, so the app-rooted walk never reaches it or
+  // anything beneath it. The QWidgetWindow skip above assumes those widgets are
+  // reachable "through the Widgets object graph", but nothing ever roots that
+  // graph, so in practice a widgets application exposes almost nothing to
+  // qt.objects.search: its window, menus and actions are all invisible while a
+  // QML scene in the same process is fully visible.
+  //
+  // Unlike the window loop this does not filter on visibility: a hidden dialog
+  // is still a legitimate search target, and there is no offscreen-duplicate
+  // problem here of the kind QQuickWidget creates.
+  if (qobject_cast<QApplication*>(app)) {
+    const auto topWidgets = QApplication::topLevelWidgets();
+    for (QWidget* w : topWidgets) {
+      if (!result.contains(w))
+        result.append(w);
     }
   }
 

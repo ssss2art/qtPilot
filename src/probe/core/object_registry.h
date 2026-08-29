@@ -6,11 +6,11 @@
 #include "probe.h"  // For QTPILOT_EXPORT
 
 #include <atomic>
+#include <mutex>
 
 #include <QHash>
 #include <QObject>
 #include <QPointer>
-#include <QRecursiveMutex>
 #include <QSet>
 
 // Forward declarations for hook callbacks (global functions)
@@ -26,7 +26,7 @@ namespace qtPilot {
 /// KDAB's GammaRay, ensuring compatibility and proven reliability.
 ///
 /// Thread Safety: All public methods are thread-safe. Hook callbacks may be
-/// called from any thread, so the registry uses QRecursiveMutex for protection.
+/// called from any thread, so the registry uses std::recursive_mutex for protection.
 ///
 /// Usage: Call installObjectHooks() after QCoreApplication is created to
 /// start tracking objects. Call uninstallObjectHooks() before shutdown.
@@ -103,6 +103,16 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// Call this after installObjectHooks() on each top-level object.
   /// @param root The root object to scan recursively.
   void scanExistingObjects(QObject* root);
+
+  /// @brief Seed the registry from every root the object graph actually has.
+  ///
+  /// The creation hook only sees objects built after the probe attaches, so a
+  /// host application's pre-existing graph must be walked once at startup. The
+  /// roots are not just the application: a parentless top-level QWindow is not a
+  /// QObject child of the app, and neither is a parentless top-level QWidget --
+  /// which is the ordinary shape of a main window. Kept here rather than inline
+  /// in Probe::initialize() so the root set is one definition and can be tested.
+  void scanAllExistingObjects();
 
  signals:
   /// @brief Emitted when a new object is registered.
@@ -193,7 +203,7 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
 
   /// @brief Mutex for thread-safe access.
   /// Must be recursive because hook callbacks may nest.
-  mutable QRecursiveMutex m_mutex;
+  mutable std::recursive_mutex m_mutex;
 
  public:
   // Constructor/destructor are public for Q_GLOBAL_STATIC compatibility
