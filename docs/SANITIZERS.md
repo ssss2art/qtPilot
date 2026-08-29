@@ -78,11 +78,15 @@ This is the same class as finding 2 — TSan blind to synchronization it cannot
 instrument. That one was fixable because the primitive was ours (`QRecursiveMutex`
 → `std::recursive_mutex`); this one is inside Qt, so it is suppressed instead.
 
-**Fix:** `tsan.supp` carries `called_from_lib:libQt6Core.so.6`, wired in through
-`TSAN_OPTIONS` on the `tsan` test preset.
+**Fix:** `tsan.supp` carries `race:libQt6Core`, wired in through `TSAN_OPTIONS` on
+the `tsan` test preset. `race:` matches a frame's function, file or module name;
+Qt's frames are unsymbolized here, so the module name is what matches.
+`called_from_lib:libQt6Core.so.6` was tried first and does **not** match — it
+suppresses code called *from* the named library, whereas these tests call *into*
+Qt.
 
-**Trade-off:** `called_from_lib` is broad, and will also mask a genuine qtPilot
-race whose stack passes through Qt Core. The narrower alternative is building Qt
+**Trade-off:** this is broad, and will also mask a genuine qtPilot race whose
+stack has a Qt Core frame in it. The narrower alternative is building Qt
 with TSan, which is not practical in CI. When a race is suspected in code Qt calls
 into, re-run with the suppression removed.
 

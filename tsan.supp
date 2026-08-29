@@ -19,8 +19,13 @@
 # TSan blind to a synchronization primitive it cannot instrument. That one was
 # fixable because the primitive was ours; this one is inside Qt.
 #
-# TRADE-OFF, stated plainly: called_from_lib is broad. It will also mask a
-# genuine qtPilot race whose stack passes through Qt Core. The narrower
-# alternative is to build Qt with TSan, which is not practical in CI. If a race
-# is suspected in code that Qt calls into, re-run with this suppression removed.
-called_from_lib:libQt6Core.so.6
+# TRADE-OFF, stated plainly: this is broad. It will also mask a genuine qtPilot
+# race whose stack has a Qt Core frame in it. The narrower alternative is to
+# build Qt with TSan, which is not practical in CI. If a race is suspected in
+# code reached through Qt, re-run with this file removed.
+#
+# `race:` matches a suppression string against a frame's function, file OR module
+# name. Qt's frames here are unsymbolized, so the module name is what matches.
+# `called_from_lib` was tried first and does NOT match: it suppresses code called
+# FROM the named library, whereas these tests call INTO Qt.
+race:libQt6Core
