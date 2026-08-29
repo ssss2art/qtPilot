@@ -6,11 +6,11 @@
 #include "probe.h"  // For QTPILOT_EXPORT
 
 #include <atomic>
+#include <mutex>
 
 #include <QHash>
 #include <QObject>
 #include <QPointer>
-#include <QRecursiveMutex>
 #include <QSet>
 
 // Forward declarations for hook callbacks (global functions)
@@ -26,7 +26,7 @@ namespace qtPilot {
 /// KDAB's GammaRay, ensuring compatibility and proven reliability.
 ///
 /// Thread Safety: All public methods are thread-safe. Hook callbacks may be
-/// called from any thread, so the registry uses QRecursiveMutex for protection.
+/// called from any thread, so the registry uses std::recursive_mutex for protection.
 ///
 /// Usage: Call installObjectHooks() after QCoreApplication is created to
 /// start tracking objects. Call uninstallObjectHooks() before shutdown.
@@ -203,7 +203,7 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
 
   /// @brief Mutex for thread-safe access.
   /// Must be recursive because hook callbacks may nest.
-  mutable QRecursiveMutex m_mutex;
+  mutable std::recursive_mutex m_mutex;
 
  public:
   // Constructor/destructor are public for Q_GLOBAL_STATIC compatibility

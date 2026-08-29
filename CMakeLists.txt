@@ -58,6 +58,11 @@ option(QTPILOT_BUILD_TESTS "Build unit tests" ON)
 # the network at configure time, and it is a diagnostic tool rather than part of the
 # build/test cycle. See benchmarks/bench_object_id.cpp.
 option(QTPILOT_BUILD_BENCHMARKS "Build micro-benchmarks (fetches google/benchmark)" OFF)
+
+# Sanitizers. A comma-separated -fsanitize= list, empty for off, e.g.
+# "address,undefined" or "thread". Not a boolean because the useful combinations are
+# mutually exclusive: ASan and TSan cannot be linked together.
+set(QTPILOT_SANITIZE "" CACHE STRING "Sanitizers to enable (e.g. address,undefined or thread)")
 option(QTPILOT_BUILD_TEST_APP "Build the test Qt application" ON)
 if(QTPILOT_MOBILE)
     # Neither the harness app nor the host-side tests deploy to a device.
@@ -326,6 +331,19 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
         add_compile_options(-Wmissing-include-dirs)
     endif()
+    if(QTPILOT_SANITIZE)
+        message(STATUS "Sanitizers: ${QTPILOT_SANITIZE}")
+        # -fno-omit-frame-pointer so reports carry a usable stack.
+        # -fno-sanitize-recover=undefined makes UBSan abort rather than log and
+        # continue: a finding that only prints is a finding a green test run hides.
+        add_compile_options(
+            -fsanitize=${QTPILOT_SANITIZE}
+            -fno-omit-frame-pointer
+            -fno-sanitize-recover=undefined
+        )
+        add_link_options(-fsanitize=${QTPILOT_SANITIZE})
+    endif()
+
     # Qt 6.10+ Q_GLOBAL_STATIC uses variadic macros with omitted/zero args.
     # These are Clang extensions not recognised by all compiler versions,
     # so probe before enabling to avoid -Werror,-Wunknown-warning-option.
@@ -341,6 +359,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         add_compile_options(-Wno-gnu-zero-variadic-macro-arguments)
     endif()
 elseif(MSVC)
+    if(QTPILOT_SANITIZE)
+        message(FATAL_ERROR
+            "QTPILOT_SANITIZE is not supported on MSVC: UndefinedBehaviorSanitizer and ThreadSanitizer "
+            "are unavailable on MSVC. Use Linux or macOS with GCC/Clang.")
+    endif()
     add_compile_options(
         /W4
         /WX
@@ -478,6 +501,7 @@ message(STATUS "  Install prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "  Lib install:    ${QTPILOT_INSTALL_LIBDIR}")
 message(STATUS "  Build tests:    ${QTPILOT_BUILD_TESTS}")
 message(STATUS "  Benchmarks:     ${QTPILOT_BUILD_BENCHMARKS}")
+message(STATUS "  Sanitizers:     ${QTPILOT_SANITIZE}")
 message(STATUS "  Build test app: ${QTPILOT_BUILD_TEST_APP}")
 message(STATUS "  QML support:    ${QTPILOT_HAS_QML}")
 message(STATUS "")

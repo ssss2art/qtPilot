@@ -186,6 +186,36 @@
           "value": ""
         }
       }
+    },
+    {
+      "name": "asan-ubsan",
+      "displayName": "ASan + UBSan (Debug)",
+      "description": "Debug build with AddressSanitizer and UndefinedBehaviorSanitizer. Linux/macOS: MSVC has no UBSan.",
+      "inherits": "base",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "QTPILOT_SANITIZE": "address,undefined"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "ThreadSanitizer (Debug)",
+      "description": "Debug build with ThreadSanitizer. Separate from asan-ubsan because ASan and TSan cannot be linked together.",
+      "inherits": "base",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "QTPILOT_SANITIZE": "thread"
+      }
     }
   ],
   "buildPresets": [
@@ -233,6 +263,14 @@
       "name": "qt5-windows-release",
       "configurePreset": "qt5-windows-release",
       "configuration": "Release"
+    },
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan"
     }
   ],
   "testPresets": [
@@ -309,6 +347,27 @@
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_container_overflow=0:detect_leaks=0",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1:suppressions=${sourceDir}/tsan.supp"
       }
     }
   ]

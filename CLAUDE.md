@@ -34,6 +34,20 @@ cmake -B build-static -DQTPILOT_PROBE_STATIC=ON -DCMAKE_PREFIX_PATH=/path/to/Qt
 cmake --build build-static
 ```
 
+### Sanitizer Builds
+
+```bash
+cmake --preset asan-ubsan && cmake --build --preset asan-ubsan && ctest --preset asan-ubsan
+cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset tsan
+```
+
+Linux/macOS only. Both `asan-ubsan` and `tsan` pass cleanly and run in Linux CI.
+On macOS remember `DYLD_FRAMEWORK_PATH`/`QT_PLUGIN_PATH` as with any test run.
+
+macOS leak checking is a **runtime** tool and deliberately not a preset — and without
+a `get-task-allow` entitlement `leaks` prints a misleading "0 leaks". Full findings,
+evidence and next steps: `docs/SANITIZERS.md`.
+
 ### Running Benchmarks
 
 Complexity benchmarks for ID generation, tree serialization and ID resolution. They
@@ -266,6 +280,7 @@ The server should provide compatibility with Claude Code's Chrome extension API,
 | Launch (Desktop) | `build/bin/Release/qtPilot-launcher.exe [--qt-dir <path>] app.exe` |
 | Port Forward (Android) | `adb forward tcp:9222 tcp:9222` |
 | Port Forward (iOS) | `iproxy 9222 9222` |
+| Sanitizers | `cmake --preset asan-ubsan` / `--preset tsan`, then `ctest --preset ...` |
 | Benchmarks | `cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON && cmake --build build --target qtPilot_bench_object_id` |
 | Source | `src/` directory |
 | Tests | `tests/` directory |
@@ -320,6 +335,7 @@ qt_ping()                                 # verify connectivity
 - `README.md` - Project description and platform support
 - `docs/BUILDING.md` - Build options and artifact layout
 - `docs/MOBILE.md` - Android/iOS: the probe is linked into a dev build, not injected
+- `docs/SANITIZERS.md` - Sanitizer builds (ASan/UBSan, TSan), findings, and leak checking
 - `LICENSE` - MIT License terms
 
 ---

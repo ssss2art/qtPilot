@@ -172,6 +172,23 @@ the probe's startup hook and the probe silently never starts. Consumers that lin
 the archive by raw path instead have to force-load it themselves. Full instructions,
 including how to reach the probe from a device, are in [MOBILE.md](MOBILE.md).
 
+## Sanitizer builds
+
+```bash
+cmake --preset asan-ubsan && cmake --build --preset asan-ubsan && ctest --preset asan-ubsan
+cmake --preset tsan       && cmake --build --preset tsan       && ctest --preset tsan
+```
+
+Linux and macOS only (MSVC lacks UBSan/TSan support); `QTPILOT_SANITIZE` takes any
+`-fsanitize=` list directly. Default builds are unaffected — the option is empty and
+the configure summary reports it.
+
+Both `asan-ubsan` and `tsan` pass cleanly with no suppressions needed, and run in
+Linux CI.
+
+For full findings, macOS leak checking (a runtime tool, so deliberately **not** a preset),
+and developer instructions, see [SANITIZERS.md](SANITIZERS.md).
+
 ## Benchmarks
 
 The probe ships complexity benchmarks for its hot paths — object-ID generation, tree

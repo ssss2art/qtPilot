@@ -7,13 +7,13 @@
 
 #include <atomic>
 #include <cstring>  // std::strcmp (not transitively included on Qt5/gcc)
+#include <mutex>
 
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QGlobalStatic>
 #include <QGuiApplication>
-#include <QMutexLocker>
 #include <QWidget>
 #include <QWindow>
 
@@ -23,11 +23,11 @@
 namespace {
 
 // Store previous callbacks for daisy-chaining (preserve GammaRay coexistence)
-QHooks::AddQObjectCallback g_previousAddCallback = nullptr;
-QHooks::RemoveQObjectCallback g_previousRemoveCallback = nullptr;
+std::atomic<QHooks::AddQObjectCallback> g_previousAddCallback{nullptr};
+std::atomic<QHooks::RemoveQObjectCallback> g_previousRemoveCallback{nullptr};
 
 // Flag to track if hooks are installed
-bool g_hooksInstalled = false;
+std::atomic<bool> g_hooksInstalled{false};
 
 // Flag to indicate singleton is being created (guards against re-entry)
 // Using std::atomic instead of thread_local to avoid TLS issues with injected DLLs
@@ -106,12 +106,13 @@ QObject* findByObjectNameHelper(QObject* root, const QString& name, int depth = 
 
 void qtpilotAddObjectHook(QObject* obj) {
   try {
+    auto prevAdd = g_previousAddCallback.load(std::memory_order_acquire);
     // Guard against re-entry during ObjectRegistry singleton creation
     // When the singleton is being created, skip registration to avoid recursion
     if (g_singletonCreating.load(std::memory_order_acquire)) {
       // Chain to previous callback only
-      if (g_previousAddCallback) {
-        g_previousAddCallback(obj);
+      if (prevAdd) {
+        prevAdd(obj);
       }
       return;
     }
@@ -120,8 +121,8 @@ void qtpilotAddObjectHook(QObject* obj) {
     qtPilot::ObjectRegistry::instance()->registerObject(obj);
 
     // Chain to previous callback (e.g., GammaRay)
-    if (g_previousAddCallback) {
-      g_previousAddCallback(obj);
+    if (prevAdd) {
+      prevAdd(obj);
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "[qtPilot] Exception caught in qtpilotAddObjectHook: %s\n", e.what());
@@ -132,10 +133,11 @@ void qtpilotAddObjectHook(QObject* obj) {
 
 void qtpilotRemoveObjectHook(QObject* obj) {
   try {
+    auto prevRemove = g_previousRemoveCallback.load(std::memory_order_acquire);
     // Guard against re-entry during singleton creation
     if (g_singletonCreating.load(std::memory_order_acquire)) {
-      if (g_previousRemoveCallback) {
-        g_previousRemoveCallback(obj);
+      if (prevRemove) {
+        prevRemove(obj);
       }
       return;
     }
@@ -144,8 +146,8 @@ void qtpilotRemoveObjectHook(QObject* obj) {
     qtPilot::ObjectRegistry::instance()->unregisterObject(obj);
 
     // Chain to previous callback
-    if (g_previousRemoveCallback) {
-      g_previousRemoveCallback(obj);
+    if (prevRemove) {
+      prevRemove(obj);
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "[qtPilot] Exception caught in qtpilotRemoveObjectHook: %s\n", e.what());
@@ -214,7 +216,7 @@ void ObjectRegistry::registerObject(QObject* obj) {
   }
 
   {
-    QMutexLocker lock(&m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     m_objects.insert(obj);
   }
 
@@ -245,7 +247,7 @@ void ObjectRegistry::registerObject(QObject* obj) {
             return;  // Object was destroyed before this lambda ran
           }
           {
-            QMutexLocker lock(&m_mutex);
+            std::unique_lock<std::recursive_mutex> lock(m_mutex);
             if (!m_objects.contains(obj)) {
               return;
             }
@@ -268,7 +270,7 @@ void ObjectRegistry::unregisterObject(QObject* obj) {
   }
 
   {
-    QMutexLocker lock(&m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     m_objects.remove(obj);
     m_nameTracked.remove(obj);
 
@@ -297,7 +299,7 @@ void ObjectRegistry::unregisterObject(QObject* obj) {
 }
 
 QObject* ObjectRegistry::findByObjectName(const QString& name, QObject* root) {
-  QMutexLocker lock(&m_mutex);
+  std::unique_lock<std::recursive_mutex> lock(m_mutex);
 
   if (root) {
     // Search within root's subtree
@@ -317,7 +319,7 @@ QObject* ObjectRegistry::findByObjectName(const QString& name, QObject* root) {
 }
 
 QList<QObject*> ObjectRegistry::findAllByClassName(const QString& className, QObject* root) {
-  QMutexLocker lock(&m_mutex);
+  std::unique_lock<std::recursive_mutex> lock(m_mutex);
   QList<QObject*> result;
   const QByteArray classNameBytes = className.toLatin1();
 
@@ -358,7 +360,7 @@ void ObjectRegistry::ensureNameTrackingLocked(QObject* obj) {
         target, &QObject::objectNameChanged, this,
         [this, target]() {
           {
-            QMutexLocker lock(&m_mutex);
+            std::unique_lock<std::recursive_mutex> lock(m_mutex);
             if (!m_objects.contains(target)) {
               return;
             }
@@ -371,18 +373,18 @@ void ObjectRegistry::ensureNameTrackingLocked(QObject* obj) {
 }
 
 QList<QObject*> ObjectRegistry::allObjects() {
-  QMutexLocker lock(&m_mutex);
+  std::unique_lock<std::recursive_mutex> lock(m_mutex);
   return m_objects.values();
 }
 
 int ObjectRegistry::objectCount() const {
-  QMutexLocker lock(&m_mutex);
+  std::unique_lock<std::recursive_mutex> lock(m_mutex);
   // qsizetype -> int, stated explicitly for the stricter iOS warning set.
   return static_cast<int>(m_objects.size());
 }
 
 bool ObjectRegistry::contains(QObject* obj) const {
-  QMutexLocker lock(&m_mutex);
+  std::unique_lock<std::recursive_mutex> lock(m_mutex);
   return m_objects.contains(obj);
 }
 
@@ -417,7 +419,7 @@ QString ObjectRegistry::objectId(QObject* obj) {
     return QString();
   }
 
-  QMutexLocker lock(&m_mutex);
+  std::unique_lock<std::recursive_mutex> lock(m_mutex);
 
   // Return cached ID if available
   auto it = m_objectToId.constFind(obj);
@@ -454,7 +456,7 @@ QObject* ObjectRegistry::findById(const QString& id) {
     return nullptr;
   }
 
-  QMutexLocker lock(&m_mutex);
+  std::unique_lock<std::recursive_mutex> lock(m_mutex);
 
   // Look up in cached map first
   auto it = m_idToObject.constFind(id);
@@ -493,7 +495,7 @@ void ObjectRegistry::refreshObjectId(QObject* obj) {
   QString newId;
 
   {
-    QMutexLocker lock(&m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     if (!m_objects.contains(obj)) {
       return;
     }
@@ -606,7 +608,7 @@ void ObjectRegistry::scanExistingObjectsImpl(QObject* root, QSet<QObject*>& visi
 
   // Register this object if not already tracked
   {
-    QMutexLocker lock(&m_mutex);
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
     if (!m_objects.contains(root)) {
       m_objects.insert(root);
 
@@ -625,7 +627,7 @@ void ObjectRegistry::scanExistingObjectsImpl(QObject* root, QSet<QObject*>& visi
       connect(
           root, &QObject::objectNameChanged, this,
           [this, root]() {
-            QMutexLocker lk(&m_mutex);
+            std::unique_lock<std::recursive_mutex> lk(m_mutex);
             if (!m_objects.contains(root)) {
               return;
             }
@@ -656,7 +658,7 @@ void ObjectRegistry::scanExistingObjectsImpl(QObject* root, QSet<QObject*>& visi
 }
 
 void installObjectHooks() {
-  if (g_hooksInstalled) {
+  if (g_hooksInstalled.load(std::memory_order_acquire)) {
     qWarning() << "[qtPilot] Object hooks already installed";
     return;
   }
@@ -672,15 +674,17 @@ void installObjectHooks() {
   qDebug() << "[qtPilot] Installing object hooks (qtHookData version:" << hookVersion << ")";
 
   // Save existing callbacks for daisy-chaining
-  g_previousAddCallback =
-      reinterpret_cast<QHooks::AddQObjectCallback>(qtHookData[QHooks::AddQObject]);
-  g_previousRemoveCallback =
+  auto prevAdd = reinterpret_cast<QHooks::AddQObjectCallback>(qtHookData[QHooks::AddQObject]);
+  auto prevRemove =
       reinterpret_cast<QHooks::RemoveQObjectCallback>(qtHookData[QHooks::RemoveQObject]);
 
-  if (g_previousAddCallback) {
+  g_previousAddCallback.store(prevAdd, std::memory_order_release);
+  g_previousRemoveCallback.store(prevRemove, std::memory_order_release);
+
+  if (prevAdd) {
     qDebug() << "[qtPilot] Daisy-chaining to existing AddQObject hook";
   }
-  if (g_previousRemoveCallback) {
+  if (prevRemove) {
     qDebug() << "[qtPilot] Daisy-chaining to existing RemoveQObject hook";
   }
 
@@ -688,24 +692,23 @@ void installObjectHooks() {
   qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(&qtpilotAddObjectHook);
   qtHookData[QHooks::RemoveQObject] = reinterpret_cast<quintptr>(&qtpilotRemoveObjectHook);
 
-  g_hooksInstalled = true;
+  g_hooksInstalled.store(true, std::memory_order_release);
   qDebug() << "[qtPilot] Object hooks installed successfully";
 }
 
 void uninstallObjectHooks() {
-  if (!g_hooksInstalled) {
+  if (!g_hooksInstalled.exchange(false, std::memory_order_acq_rel)) {
     return;
   }
 
   qDebug() << "[qtPilot] Uninstalling object hooks";
 
   // Restore previous callbacks (or nullptr)
-  qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(g_previousAddCallback);
-  qtHookData[QHooks::RemoveQObject] = reinterpret_cast<quintptr>(g_previousRemoveCallback);
+  auto prevAdd = g_previousAddCallback.exchange(nullptr, std::memory_order_acq_rel);
+  auto prevRemove = g_previousRemoveCallback.exchange(nullptr, std::memory_order_acq_rel);
 
-  g_previousAddCallback = nullptr;
-  g_previousRemoveCallback = nullptr;
-  g_hooksInstalled = false;
+  qtHookData[QHooks::AddQObject] = reinterpret_cast<quintptr>(prevAdd);
+  qtHookData[QHooks::RemoveQObject] = reinterpret_cast<quintptr>(prevRemove);
 
   qDebug() << "[qtPilot] Object hooks uninstalled";
 }
