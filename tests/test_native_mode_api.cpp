@@ -30,6 +30,7 @@ class TestNativeModeApi : public QObject {
   Q_OBJECT
 
  private slots:
+  void treeIncludesTopLevelWidgets();
   void searchFindsPreExistingTopLevelWidget();
   void initTestCase();
   void cleanupTestCase();
@@ -807,6 +808,32 @@ void TestNativeModeApi::searchFindsPreExistingTopLevelWidget() {
   // pointers that crash a later test -- which is exactly what happened when this
   // test first ran inside the full suite rather than on its own.
   installObjectHooks();
+}
+
+// qt.objects.tree walks from a root set that includes the application and every
+// visible top-level QWindow -- but not top-level QWidgets, which are parentless
+// too and therefore just as unreachable from the application. The result is a
+// tree that shows a handful of application-owned objects while the entire widget
+// hierarchy is missing: on qtPilot's own test_app the tree reported 5 objects
+// where the (registry-backed) search reported 178.
+//
+// This is the same blind spot fixed for search in #33, in the other traversal.
+void TestNativeModeApi::treeIncludesTopLevelWidgets() {
+  QWidget topLevel;
+  topLevel.setObjectName(QStringLiteral("treeRootWidget"));
+  auto* child = new QWidget(&topLevel);
+  child->setObjectName(QStringLiteral("treeChildWidget"));
+  topLevel.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+
+  const QJsonObject envelope =
+      callEnvelope(QStringLiteral("qt.objects.tree"), QJsonObject{{"maxDepth", 6}});
+  const QString dumped = QString::fromUtf8(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
+
+  QVERIFY2(dumped.contains(QStringLiteral("treeRootWidget")),
+           "top-level widget missing from qt.objects.tree");
+  QVERIFY2(dumped.contains(QStringLiteral("treeChildWidget")),
+           "children beneath a top-level widget missing from qt.objects.tree");
 }
 
 QTEST_MAIN(TestNativeModeApi)
