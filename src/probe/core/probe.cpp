@@ -121,18 +121,10 @@ bool Probe::initialize() {
   // This includes QCoreApplication and any widgets created early
   ObjectRegistry* registry = ObjectRegistry::instance();
 
-  // Scan QCoreApplication (and all its children)
-  if (QCoreApplication::instance()) {
-    registry->scanExistingObjects(QCoreApplication::instance());
-  }
-
-  // For GUI apps, also scan top-level windows/widgets
-  // QGuiApplication::allWindows() returns QWindow*, which are QObjects
-  if (auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
-    for (QWindow* window : guiApp->allWindows()) {
-      registry->scanExistingObjects(window);
-    }
-  }
+  // Every root the graph actually has: the application, top-level windows, and
+  // top-level widgets. The root set lives in ObjectRegistry so it is one
+  // definition with a test, rather than being spelled out here.
+  registry->scanAllExistingObjects();
 
   LOG_INFO("[qtPilot] Object hooks installed, tracking " +
            QString::number(registry->objectCount()) + " existing objects");
