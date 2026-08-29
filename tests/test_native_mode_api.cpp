@@ -15,6 +15,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QVBoxLayout>
+#include <QWidget>
 #include <QtTest>
 
 using namespace qtPilot;
@@ -29,6 +30,8 @@ class TestNativeModeApi : public QObject {
   Q_OBJECT
 
  private slots:
+  void treeIncludesTopLevelWidgets();
+  void searchFindsPreExistingTopLevelWidget();
   void initTestCase();
   void cleanupTestCase();
   void init();
@@ -283,7 +286,8 @@ void TestNativeModeApi::testObjectsInspect() {
   QVERIFY(!objectId.isEmpty());
 
   // Inspect
-  QJsonValue result = callResult("qt.objects.inspect", QJsonObject{{"objectId", objectId}, {"parts", "all"}});
+  QJsonValue result =
+      callResult("qt.objects.inspect", QJsonObject{{"objectId", objectId}, {"parts", "all"}});
   QVERIFY(result.isObject());
 
   QJsonObject inspected = result.toObject();
@@ -773,6 +777,63 @@ void TestNativeModeApi::testStructuredErrorObjectNotFound() {
   QJsonObject data = error["data"].toObject();
   QVERIFY(data.contains("objectId"));
   QVERIFY(data.contains("hint"));
+}
+
+// A top-level QWidget is parentless, so it is NOT a QObject child of the
+// application -- exactly like a top-level QWindow. The startup scan already
+// treats windows as extra roots (Probe::initialize), but never walked
+// QApplication::topLevelWidgets(), so anything built before the probe attached
+// stayed invisible to qt.objects.search. That is the ordinary shape of a main
+// window built in main(), and it reproduced on qtPilot's own test_app: neither
+// MainWindow nor its actions could be found, while a QML scene in the same
+// process was fully visible.
+void TestNativeModeApi::searchFindsPreExistingTopLevelWidget() {
+  uninstallObjectHooks();  // stand in for "created before the probe attached"
+
+  QWidget preExisting;
+  preExisting.setObjectName(QStringLiteral("preExistingTopLevelWidget"));
+  auto* child = new QWidget(&preExisting);
+  child->setObjectName(QStringLiteral("preExistingChildWidget"));
+
+  ObjectRegistry::instance()->scanAllExistingObjects();
+
+  QVERIFY2(
+      ObjectRegistry::instance()->findByObjectName(QStringLiteral("preExistingTopLevelWidget")),
+      "top-level widget was not seeded into the registry");
+  QVERIFY2(ObjectRegistry::instance()->findByObjectName(QStringLiteral("preExistingChildWidget")),
+           "children beneath a top-level widget were not seeded either");
+
+  // Restore the hooks BEFORE these widgets leave scope. Without the remove hook
+  // live, their destruction is never reported and the registry keeps dangling
+  // pointers that crash a later test -- which is exactly what happened when this
+  // test first ran inside the full suite rather than on its own.
+  installObjectHooks();
+}
+
+// qt.objects.tree walks from a root set that includes the application and every
+// visible top-level QWindow -- but not top-level QWidgets, which are parentless
+// too and therefore just as unreachable from the application. The result is a
+// tree that shows a handful of application-owned objects while the entire widget
+// hierarchy is missing: on qtPilot's own test_app the tree reported 5 objects
+// where the (registry-backed) search reported 178.
+//
+// This is the same blind spot fixed for search in #33, in the other traversal.
+void TestNativeModeApi::treeIncludesTopLevelWidgets() {
+  QWidget topLevel;
+  topLevel.setObjectName(QStringLiteral("treeRootWidget"));
+  auto* child = new QWidget(&topLevel);
+  child->setObjectName(QStringLiteral("treeChildWidget"));
+  topLevel.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+
+  const QJsonObject envelope =
+      callEnvelope(QStringLiteral("qt.objects.tree"), QJsonObject{{"maxDepth", 6}});
+  const QString dumped = QString::fromUtf8(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
+
+  QVERIFY2(dumped.contains(QStringLiteral("treeRootWidget")),
+           "top-level widget missing from qt.objects.tree");
+  QVERIFY2(dumped.contains(QStringLiteral("treeChildWidget")),
+           "children beneath a top-level widget missing from qt.objects.tree");
 }
 
 QTEST_MAIN(TestNativeModeApi)

@@ -9,9 +9,13 @@
 #include <cstring>  // std::strcmp (not transitively included on Qt5/gcc)
 #include <mutex>
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QGlobalStatic>
+#include <QGuiApplication>
+#include <QWidget>
+#include <QWindow>
 
 // Qt private header for hook access
 #include <private/qhooks_p.h>
@@ -556,6 +560,36 @@ void ObjectRegistry::scanExistingObjects(QObject* root) {
   IdGenerationScope idScope;
   QSet<QObject*> visited;
   scanExistingObjectsImpl(root, visited, 0);
+}
+
+void ObjectRegistry::scanAllExistingObjects() {
+  QCoreApplication* app = QCoreApplication::instance();
+  if (!app) {
+    return;
+  }
+  scanExistingObjects(app);
+
+  if (auto* guiApp = qobject_cast<QGuiApplication*>(app)) {
+    for (QWindow* window : guiApp->allWindows()) {
+      scanExistingObjects(window);
+    }
+  }
+
+  // Top-level WIDGETS are roots for the same reason top-level windows are: a
+  // parentless QWidget is not a QObject child of the application, so walking the
+  // app reaches neither it nor anything beneath it. Without this a widgets
+  // application exposes almost nothing to search, because its window is built in
+  // main() before the probe attaches and the creation hook never sees it.
+  //
+  // Not filtered on visibility: a hidden dialog is still a legitimate search
+  // target, and scanExistingObjects() is idempotent -- already-tracked objects
+  // are skipped, so overlapping roots cost a walk, not a duplicate.
+  if (qobject_cast<QApplication*>(app)) {
+    const auto topLevelWidgets = QApplication::topLevelWidgets();
+    for (QWidget* widget : topLevelWidgets) {
+      scanExistingObjects(widget);
+    }
+  }
 }
 
 void ObjectRegistry::scanExistingObjectsImpl(QObject* root, QSet<QObject*>& visited, int depth) {
