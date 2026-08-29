@@ -31,6 +31,7 @@ class TestComputerUseApi : public QObject {
   Q_OBJECT
 
  private slots:
+  void keyReachesWidgetAppWithoutExplicitFocus();
   void initTestCase();
   void cleanupTestCase();
   void init();
@@ -520,6 +521,31 @@ void TestComputerUseApi::testIncludeScreenshot() {
   QCOMPARE(obj["success"].toBool(), true);
   // On minimal platform, screenshot may be empty string. Verify key exists.
   QVERIFY(obj.contains("screenshot"));
+}
+
+// cu.key on a Widgets app where nothing has been clicked yet.
+//
+// getActiveTarget() already resolves this case: with no focused QWindow it falls
+// back to QApplication::activeWindow(), then to the first visible top-level
+// QWidget. But the caller tested t.isWindow(), which is true only for the QWindow
+// branch — so a perfectly good QWidget target was resolved and then discarded,
+// and the call failed with "No widget has keyboard focus".
+//
+// That is the state every harness-launched application starts in: nothing has
+// been clicked, so no widget holds focus.
+void TestComputerUseApi::keyReachesWidgetAppWithoutExplicitFocus() {
+  if (QWidget* focused = QApplication::focusWidget()) {
+    focused->clearFocus();
+  }
+  QApplication::processEvents();
+  QVERIFY2(!QApplication::focusWidget(), "precondition: no widget should hold focus");
+
+  QJsonObject response = callRaw(QStringLiteral("cu.key"), QJsonObject{{"key", "ctrl+a"}});
+  QVERIFY2(!response.contains(QStringLiteral("error")),
+           qPrintable(QStringLiteral("cu.key failed with no widget focused: %1")
+                          .arg(QString::fromUtf8(
+                              QJsonDocument(response[QStringLiteral("error")].toObject())
+                                  .toJson(QJsonDocument::Compact)))));
 }
 
 QTEST_MAIN(TestComputerUseApi)
