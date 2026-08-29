@@ -1,0 +1,26 @@
+# ThreadSanitizer suppressions.
+#
+# Every entry here must name a report that TSan CANNOT reason about correctly,
+# not one we would rather not fix. Anything with a qtPilot frame in its stack is
+# a real finding and does not belong in this file.
+
+# Qt is linked as a release, non-instrumented shared library. TSan cannot see
+# happens-before edges established inside uninstrumented code, so any
+# synchronization Qt performs internally is invisible to it: a QObject allocated
+# on the main thread and released on a QThread Qt itself started is reported as a
+# race even though Qt ordered the two.
+#
+# Observed as: "data race ... in operator delete", with both stacks entirely
+# inside libQt6Core (every Qt frame unsymbolized) and no qtPilot symbol in
+# either. Reproduced in test_qml_interaction and test_qml_delegate_ids on
+# Linux/GCC; not reported by clang's TSan on macOS.
+#
+# This is the same class as the QRecursiveMutex finding in docs/SANITIZERS.md —
+# TSan blind to a synchronization primitive it cannot instrument. That one was
+# fixable because the primitive was ours; this one is inside Qt.
+#
+# TRADE-OFF, stated plainly: called_from_lib is broad. It will also mask a
+# genuine qtPilot race whose stack passes through Qt Core. The narrower
+# alternative is to build Qt with TSan, which is not practical in CI. If a race
+# is suspected in code that Qt calls into, re-run with this suppression removed.
+called_from_lib:libQt6Core.so.6

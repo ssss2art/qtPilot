@@ -62,6 +62,33 @@ for container accesses in `ObjectRegistry` that were properly guarded.
 (using `std::unique_lock<std::recursive_mutex>`). This eliminated the false reports completely without
 needing a suppression file, giving real TSan coverage across all registry operations.
 
+### 3. Uninstrumented Qt synchronization (Suppressed)
+
+Qt links as a release, non-instrumented shared library, so TSan cannot see
+happens-before edges established inside it. A QObject allocated on the main thread
+and released on a QThread that Qt itself started is therefore reported as a data
+race, even though Qt ordered the two operations.
+
+Observed as `data race ... in operator delete`, with **both** stacks entirely
+inside `libQt6Core` (every Qt frame unsymbolized) and no qtPilot symbol in either.
+Reproduced in `test_qml_interaction` and `test_qml_delegate_ids` on Linux/GCC; not
+reported by clang's TSan on macOS.
+
+This is the same class as finding 2 — TSan blind to synchronization it cannot
+instrument. That one was fixable because the primitive was ours (`QRecursiveMutex`
+→ `std::recursive_mutex`); this one is inside Qt, so it is suppressed instead.
+
+**Fix:** `tsan.supp` carries `called_from_lib:libQt6Core.so.6`, wired in through
+`TSAN_OPTIONS` on the `tsan` test preset.
+
+**Trade-off:** `called_from_lib` is broad, and will also mask a genuine qtPilot
+race whose stack passes through Qt Core. The narrower alternative is building Qt
+with TSan, which is not practical in CI. When a race is suspected in code Qt calls
+into, re-run with the suppression removed.
+
+A report with a qtPilot frame in its stack is a real finding and must not be added
+to `tsan.supp`.
+
 ## Leak checking on macOS
 
 **A CMake preset does not make sense here, and this is the reasoning rather than a
