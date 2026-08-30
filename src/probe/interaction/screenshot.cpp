@@ -57,7 +57,9 @@ QByteArray encodePixmap(const QPixmap& pixmap, const char* context) {
 
   QByteArray bytes;
   QBuffer buffer(&bytes);
-  buffer.open(QIODevice::WriteOnly);
+  if (!buffer.open(QIODevice::WriteOnly)) {
+    throw std::runtime_error(std::string(context) + ": failed to open buffer for PNG encoding");
+  }
   if (!pixmap.save(&buffer, "PNG")) {
     throw std::runtime_error(std::string(context) + ": failed to encode screenshot as PNG");
   }

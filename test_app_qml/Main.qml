@@ -47,12 +47,12 @@ Window {
                     clip: true
                     model: taskModel
                     delegate: Item {
-                        width: ListView.view.width
-                        height: 34
                         required property string title
                         required property string owner
                         required property int priority
                         required property bool done
+                        width: ListView.view.width
+                        height: 34
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: (parent.done ? "✓ " : "• ")
@@ -81,11 +81,11 @@ Window {
                     clip: true
                     model: treeModel
                     delegate: Item {
-                        implicitWidth: 200
-                        implicitHeight: 26
                         required property string name
                         required property int size
                         required property int depth
+                        implicitWidth: 200
+                        implicitHeight: 26
                         Text {
                             x: parent.depth * 14
                             anchors.verticalCenter: parent.verticalCenter
