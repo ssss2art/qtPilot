@@ -51,7 +51,11 @@ void clearRefsInternal() {
 
 /// @brief Parse JSON params string into QJsonObject.
 QJsonObject parseParams(const QString& params) {
-  return QJsonDocument::fromJson(params.toUtf8()).object();
+  if (params.isEmpty()) {
+    return QJsonObject();
+  }
+  const QJsonDocument doc = QJsonDocument::fromJson(params.toUtf8());
+  return doc.isObject() ? doc.object() : QJsonObject();
 }
 
 /// @brief Serialize a response envelope to compact JSON string.
