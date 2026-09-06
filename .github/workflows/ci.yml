@@ -201,7 +201,7 @@ jobs:
 
       - name: Set up JDK (Android)
         if: matrix.name == 'android'
-        uses: actions/setup-java@8df1039502a5a056e84e4b8688287af8d2b7c411 # v4.3.0
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
         with:
           distribution: temurin
           java-version: "17"
