@@ -469,6 +469,13 @@ install(DIRECTORY src/probe/
     FILES_MATCHING PATTERN "*.h"
 )
 
+# version.h is generated into the build tree, so the source-directory glob above
+# does not pick it up.
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/src/probe/core/version.h"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtpilot/core
+)
+
 # Package configuration
 include(CMakePackageConfigHelpers)
 

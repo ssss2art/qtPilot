@@ -8,6 +8,7 @@
 #include "api/symbolic_name_map.h"
 #include "core/object_registry.h"
 #include "core/object_resolver.h"
+#include "core/version.h"
 #include "interaction/hit_test.h"
 #include "interaction/input_simulator.h"
 #include "interaction/screenshot.h"
@@ -130,7 +131,8 @@ void NativeModeApi::registerSystemMethods() {
     deprecated.append(QStringLiteral("qtpilot.*"));
 
     QJsonObject result;
-    result[QStringLiteral("version")] = QStringLiteral("0.1.0");
+    result[QStringLiteral("version")] = QString::fromUtf8(kVersion);
+    result[QStringLiteral("protocolVersion")] = kProtocolVersion;
     result[QStringLiteral("protocol")] = QStringLiteral("jsonrpc-2.0");
     result[QStringLiteral("name")] = QStringLiteral("qtPilot");
     result[QStringLiteral("mode")] = QStringLiteral("native");

@@ -104,6 +104,11 @@ endfunction()
 
 qtPilot_add_test(NAME test_jsonrpc SOURCES test_jsonrpc.cpp)
 
+# Lets the getVersion tests assert the reported version against the project's,
+# rather than merely asserting the key exists.
+target_compile_definitions(test_jsonrpc PRIVATE
+    QTPILOT_EXPECTED_VERSION="${PROJECT_VERSION}")
+
 qtPilot_add_test(NAME test_object_registry SOURCES test_object_registry.cpp
     ENV "QTPILOT_ENABLED=0")
 
@@ -156,6 +161,14 @@ qtPilot_add_test(NAME test_native_mode_api SOURCES test_native_mode_api.cpp
 qtPilot_add_test(NAME test_key_name_mapper SOURCES test_key_name_mapper.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+qtPilot_add_test(NAME test_probe_version SOURCES test_probe_version.cpp
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+# PROJECT_VERSION reaches the test so it can assert the generated header still
+# tracks the project rather than just asserting the header equals itself.
+target_compile_definitions(test_probe_version PRIVATE
+    QTPILOT_EXPECTED_VERSION="${PROJECT_VERSION}")
 
 qtPilot_add_test(NAME test_computer_use_api SOURCES test_computer_use_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets

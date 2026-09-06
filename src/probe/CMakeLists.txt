@@ -147,10 +147,19 @@ if(QTPILOT_PROBE_STATIC)
     endif()
 endif()
 
+# Version header, configured from PROJECT_VERSION so the two handlers that report
+# a version cannot drift from the project or from each other again.
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/core/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/core/version.h"
+    @ONLY
+)
+
 # Include directories
 target_include_directories(qtPilot_probe
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
         $<INSTALL_INTERFACE:include/qtpilot>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
