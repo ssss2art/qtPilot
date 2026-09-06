@@ -106,3 +106,37 @@ async def test_notify_swallows_a_failing_send():
     ctx = _RaisingContext()
     assert await mcp_compat.notify_tool_list_changed(ctx) is False
     assert ctx.called
+
+
+# ---------------------------------------------------------------------------
+# The "unknown" revision sentinel
+# ---------------------------------------------------------------------------
+# Revisions are ISO dates compared as strings, which sorts correctly -- except
+# the sentinel, where "u" > "2" made an unidentifiable SDK compare as newer than
+# every real revision and report itself as stateless.
+
+
+def test_unknown_revision_is_not_treated_as_stateless(monkeypatch):
+    monkeypatch.setattr(mcp_compat, "protocol_revision", lambda: mcp_compat.REVISION_UNKNOWN)
+    assert mcp_compat.is_stateless_protocol() is False
+    assert mcp_compat.describe()["stateless_protocol"] is False
+
+
+def test_the_raw_string_comparison_really_is_the_trap():
+    """Pins the reason the guard exists, so removing it fails loudly."""
+    assert mcp_compat.REVISION_UNKNOWN >= mcp_compat.REVISION_STATELESS
+
+
+def test_legacy_revision_is_not_stateless(monkeypatch):
+    monkeypatch.setattr(mcp_compat, "protocol_revision", lambda: mcp_compat.REVISION_LEGACY)
+    assert mcp_compat.is_stateless_protocol() is False
+
+
+def test_stateless_revision_is_stateless(monkeypatch):
+    monkeypatch.setattr(mcp_compat, "protocol_revision", lambda: mcp_compat.REVISION_STATELESS)
+    assert mcp_compat.is_stateless_protocol() is True
+
+
+def test_describe_agrees_with_is_stateless_protocol():
+    """describe() re-implemented the comparison and so duplicated its bug."""
+    assert mcp_compat.describe()["stateless_protocol"] is mcp_compat.is_stateless_protocol()

@@ -7,7 +7,7 @@ SDK generation          MCP revision        Notes
 ======================  ==================  ===================================
 ``fastmcp>=2.9,<3``     ``2025-11-25``      legacy; the default resolve today
 ``fastmcp>=3,<4``       ``2025-11-25``      3.x does not move the protocol
-``fastmcp>=4``          ``2026-07-28``      stateless core; beta as of 2026-08
+``fastmcp>=4``          ``2026-07-28``      stateless core; stable since 4.0.1
 ======================  ==================  ===================================
 
 The APIs qtPilot depends on shifted underneath it across those generations:
@@ -79,12 +79,23 @@ def protocol_revision() -> str:
         if value:
             return str(value)
     logger.debug("Could not determine MCP protocol revision from the mcp SDK")
-    return "unknown"
+    return REVISION_UNKNOWN
+
+
+REVISION_UNKNOWN = "unknown"
 
 
 def is_stateless_protocol() -> bool:
-    """True when the resolved SDK speaks the stateless (2026-07-28+) protocol."""
-    return protocol_revision() >= REVISION_STATELESS
+    """True when the resolved SDK speaks the stateless (2026-07-28+) protocol.
+
+    The sentinel is excluded explicitly. Revisions are compared as strings
+    because they are ISO dates and sort correctly that way -- but "unknown"
+    sorts AFTER every real date ("u" > "2"), so an SDK the shim cannot identify
+    would otherwise be reported as the newest protocol in existence. Failing
+    that comparison closed keeps an unrecognised SDK on the conservative path.
+    """
+    revision = protocol_revision()
+    return revision != REVISION_UNKNOWN and revision >= REVISION_STATELESS
 
 
 async def notify_tool_list_changed(ctx: Any) -> bool:
@@ -311,10 +322,12 @@ def describe() -> dict[str, Any]:
     Surfaced through ``qtpilot_status`` so a bug report states which SDK
     generation and protocol revision produced it.
     """
-    revision = protocol_revision()
     return {
         "fastmcp_version": fastmcp_version(),
         "fastmcp_major": fastmcp_major(),
-        "mcp_protocol_revision": revision,
-        "stateless_protocol": revision >= REVISION_STATELESS,
+        "mcp_protocol_revision": protocol_revision(),
+        # Delegated rather than recomputed: this duplicated the comparison and
+        # so duplicated its sentinel bug, putting stateless_protocol=true into
+        # the bug reports of anyone running an SDK the shim could not identify.
+        "stateless_protocol": is_stateless_protocol(),
     }
