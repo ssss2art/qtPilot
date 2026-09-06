@@ -540,65 +540,90 @@ jobs:
           # package advertised 3.11-3.14.
           - name: py3.11
             python: "3.11"
-            extras: "dev"
-            pip_flags: ""
+            uv_extras: "--extra dev"
             expect_revision: ""
           - name: py3.12
             python: "3.12"
-            extras: "dev"
-            pip_flags: ""
+            uv_extras: "--extra dev"
             expect_revision: ""
           - name: py3.13
             python: "3.13"
-            extras: "dev"
-            pip_flags: ""
+            uv_extras: "--extra dev"
             expect_revision: ""
           - name: py3.14
             python: "3.14"
-            extras: "dev"
-            pip_flags: ""
+            uv_extras: "--extra dev"
             expect_revision: ""
           # --- MCP revision coverage ---------------------------------------
           # Pinned to the floor interpreter: the SDK legs are about protocol
           # revision, and the version axis is already covered above.
+          # FastMCP 2.x -- the declared floor. Selects the register/unregister
+          # mode-switch path and the private-manager fallback in
+          # list_tool_names, neither of which any other leg reaches.
+          #
+          # Resolved into a clean venv rather than pinned by an extra: a locked
+          # `mcp-legacy` extra forced the DEFAULT resolve down from FastMCP 4 to
+          # 2.x, because extras are additive and the base resolution has to stay
+          # extendable by `fastmcp<3`. This leg is therefore the one place not
+          # pinned by uv.lock -- deliberate, and the reason `floor_sdk` exists.
+          - name: mcp-legacy
+            python: "3.11"
+            uv_extras: "--extra dev"
+            floor_sdk: "fastmcp>=2.9,<3"
+            expect_revision: "2025-11-25"
           - name: mcp-stable
             python: "3.11"
-            extras: "dev,mcp-stable"
-            pip_flags: ""
+            uv_extras: "--extra dev --extra mcp-stable"
             expect_revision: "2025-11-25"
-          # MCP 2026-07-28 (FastMCP 4). Pre-release until FastMCP 4 GAs, so
-          # these legs are allowed to fail without failing the workflow.
-          # Run on both the oldest and newest interpreter -- this is the path
-          # being proven out, so it gets the widest check.
+          # MCP 2026-07-28 (FastMCP 4), now a stable release -- no --pre, and
+          # these legs block like any other. Run on both the oldest and newest
+          # interpreter: this is the path being proven out, so it gets the
+          # widest check.
           - name: mcp-next
             python: "3.11"
-            extras: "dev,mcp-next"
-            pip_flags: "--pre"
+            uv_extras: "--extra dev --extra mcp-next"
             expect_revision: "2026-07-28"
           - name: mcp-next-py3.14
             python: "3.14"
-            extras: "dev,mcp-next"
-            pip_flags: "--pre"
+            uv_extras: "--extra dev --extra mcp-next"
             expect_revision: "2026-07-28"
     name: python (${{ matrix.name }})
-    # The 2026-07-28 path tracks an upstream beta; a broken pre-release upstream
-    # must not redden the whole workflow. Drop this when FastMCP 4 ships stable.
-    continue-on-error: ${{ startsWith(matrix.name, 'mcp-next') }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      # uv, not pip. `pip install -e .` re-resolves the dependency ranges on
+      # every run, so a leg could pass against versions nobody had ever run.
+      # --locked installs exactly what uv.lock pins -- including the sha256 of
+      # every artifact -- and fails if the lock has drifted from pyproject.toml.
+      # This matrix previously used pip, which would have silently reverted the
+      # supply-chain enforcement already on main when this branch merged.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          python-version: ${{ matrix.python }}
+          version: "0.12.1"
+          enable-cache: true
+          cache-dependency-glob: "python/uv.lock"
 
-      - name: Install
+      - name: Install from the lockfile
+        if: matrix.floor_sdk == ''
         working-directory: python
-        run: pip install ${{ matrix.pip_flags }} -e ".[${{ matrix.extras }}]"
+        run: uv sync --locked ${{ matrix.uv_extras }} --python ${{ matrix.python }}
+
+      # The floor leg only. A fresh venv with everything resolved together, not
+      # a downgrade of a synced one: dropping fastmcp across a major boundary
+      # in place leaves the newer package's files behind, and the stale tree
+      # then imports symbols the older `mcp` does not export. This leg is the
+      # one place not pinned by uv.lock -- see the matrix comment above.
+      - name: Install the floor SDK in a clean environment
+        if: matrix.floor_sdk != ''
+        working-directory: python
+        run: |
+          uv venv --python ${{ matrix.python }}
+          uv pip install -e ".[dev]" "${{ matrix.floor_sdk }}"
 
       - name: Report resolved MCP stack
         working-directory: python
-        run: python -c "import qtpilot._mcp_compat as c; print(c.describe())"
+        run: uv run --no-sync python -c "import qtpilot._mcp_compat as c; print(c.describe())"
 
       - name: Assert MCP protocol revision
         if: matrix.expect_revision != ''
@@ -606,7 +631,7 @@ jobs:
         env:
           EXPECTED: ${{ matrix.expect_revision }}
         run: |
-          python - <<'PY'
+          uv run --no-sync python - <<'PY'
           import os, sys
           import qtpilot._mcp_compat as c
           expected = os.environ["EXPECTED"]
@@ -621,4 +646,4 @@ jobs:
 
       - name: Test
         working-directory: python
-        run: pytest -v
+        run: uv run --no-sync pytest -v
