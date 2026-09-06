@@ -43,6 +43,7 @@
 # Build directories
 build/
 build_*/
+build-*/
 dist/
 install/
 
@@ -57,6 +58,8 @@ node_modules/
 __pycache__/
 *.pyc
 _version.py
+.venv/
+venv/
 dist/
 *.egg-info/
 
@@ -75,6 +78,9 @@ stderr.txt
 stdout.txt
 test_*.txt
 *.png
+# Message-logger output (qtpilot_log_start / test runs)
+qtPilot-log-*.jsonl
+qtmcp-log-*.jsonl
 
 # Windows artifacts
 nul

@@ -1,0 +1,28 @@
+{
+  "_comment": [
+    "Zero-install qtPilot MCP server via uvx. Copy over .mcp.json (or merge the",
+    "'qtpilot' entry into your own) to use this instead of a pre-installed",
+    "'qtpilot' console script.",
+    "",
+    "This variant pins MCP revision 2026-07-28 via the 'mcp-next' extra. FastMCP 4",
+    "shipped stable, so no --prerelease flag is needed. To stay on 2025-11-25,",
+    "swap the extra:",
+    "",
+    "  \"args\": [\"--from\", \"qtpilot[mcp-stable]\", \"qtpilot\", \"serve\", \"--mode\", \"all\"]",
+    "",
+    "See docs/MCP-CONFORMANCE.md."
+  ],
+  "mcpServers": {
+    "qtpilot": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "qtpilot[mcp-next]",
+        "qtpilot",
+        "serve",
+        "--mode",
+        "all"
+      ]
+    }
+  }
+}

@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import weakref
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from collections.abc import AsyncIterator, MutableMapping
 
 from fastmcp import FastMCP
 
+from qtpilot import _mcp_compat as mcp_compat
 from qtpilot.connection import ProbeConnection, ProbeError
 from qtpilot.discovery import DiscoveryListener
 from qtpilot.event_recorder import EventRecorder
@@ -43,8 +45,12 @@ class ServerState:
 
     # -- mode switching -----------------------------------------------------
 
-    def set_mode(self, new_mode: str) -> dict:
-        """Switch the active tool set. Returns previous and new mode."""
+    async def set_mode(self, new_mode: str) -> dict:
+        """Switch the active tool set. Returns previous and new mode.
+
+        Async because tool enumeration is async on every FastMCP generation
+        after 2.x.
+        """
         valid = {"native", "cu", "chrome", "all"}
         if new_mode not in valid:
             return {"error": f"Invalid mode '{new_mode}'. Choose from: {', '.join(sorted(valid))}"}
@@ -53,6 +59,15 @@ class ServerState:
             return {"mode": new_mode, "changed": False}
 
         old_mode = self.mode
+        result: dict = {"mode": new_mode, "previous_mode": old_mode, "changed": True}
+
+        if _uses_mode_visibility(self.mcp):
+            # Every mode's tools are registered up front and a transform filters
+            # tools/list per request, so switching is just moving this field.
+            # Registration stays static and deterministically ordered, which is
+            # what MCP 2026-07-28 wants from a cacheable tools/list.
+            self.mode = new_mode
+            return result
 
         if new_mode == "all":
             # Switching to "all": just add any missing mode tool sets
@@ -61,14 +76,28 @@ class ServerState:
         else:
             # Switching to a single mode: remove everything except target
             prefixes_to_remove: list[str] = []
-            for mode_key, pfx in _MODE_PREFIXES.items():
-                if mode_key != new_mode:
-                    prefixes_to_remove.extend(pfx)
-            _remove_tools_by_prefixes(self.mcp, prefixes_to_remove)
+            modes_to_drop = [k for k in _MODE_PREFIXES if k != new_mode]
+            for mode_key in modes_to_drop:
+                prefixes_to_remove.extend(_MODE_PREFIXES[mode_key])
+
+            removed = await _remove_tools_by_prefixes(self.mcp, prefixes_to_remove)
+            if removed:
+                _registered_modes(self.mcp).difference_update(modes_to_drop)
+            elif prefixes_to_remove:
+                # FastMCP 4 cannot unregister tools. The mode still changes —
+                # it governs which probe APIs qtPilot drives — but the exposed
+                # tool list stays as-is. Say so rather than implying a narrowed
+                # surface the client can still see.
+                result["tools_removed"] = False
+                result["note"] = (
+                    "Tool surface unchanged: FastMCP "
+                    f"{mcp_compat.fastmcp_version()} does not support tool removal. "
+                    "Inactive-mode tools remain listed."
+                )
             _register_mode_tools_if_absent(self.mcp, new_mode)
 
         self.mode = new_mode
-        return {"mode": new_mode, "previous_mode": old_mode, "changed": True}
+        return result
 
 
 _state: ServerState | None = None
@@ -173,28 +202,47 @@ async def disconnect_probe() -> None:
 # Tool registration helpers
 # ---------------------------------------------------------------------------
 
-def _has_tools_with_prefix(mcp: FastMCP, prefixes: list[str]) -> bool:
-    """Check if any tools with the given prefixes are already registered."""
-    for name in mcp._tool_manager._tools:
-        if any(name.startswith(p) for p in prefixes):
-            return True
-    return False
+# Which mode tool sets have been registered on a given server instance.
+#
+# Tracking this ourselves replaces scanning the server's private tool manager,
+# which does not exist after FastMCP 2.x. Weak keys so a discarded server (every
+# test builds one) drops its entry instead of pinning it for the process
+# lifetime — and so a recycled id() can never inherit a stale entry.
+_REGISTERED_MODES: MutableMapping[FastMCP, set[str]] = weakref.WeakKeyDictionary()
 
 
-def _remove_tools_by_prefixes(mcp: FastMCP, prefixes: list[str]) -> None:
-    """Remove all tools whose names match any of the given prefixes."""
-    to_remove = [
-        name for name in list(mcp._tool_manager._tools)
-        if any(name.startswith(p) for p in prefixes)
-    ]
-    for name in to_remove:
-        mcp.remove_tool(name)
+def _registered_modes(mcp: FastMCP) -> set[str]:
+    """Return the mutable set of mode keys registered on ``mcp``."""
+    return _REGISTERED_MODES.setdefault(mcp, set())
+
+
+# Servers whose tool surface is filtered by a mode-visibility transform rather
+# than by registering and unregistering tools. Weak keys for the same reason as
+# _REGISTERED_MODES above.
+_MODE_VISIBILITY: MutableMapping[FastMCP, bool] = weakref.WeakKeyDictionary()
+
+
+def _uses_mode_visibility(mcp: FastMCP) -> bool:
+    """True when ``mcp`` filters tools by transform instead of by mutation."""
+    return _MODE_VISIBILITY.get(mcp, False)
+
+
+async def _remove_tools_by_prefixes(mcp: FastMCP, prefixes: list[str]) -> list[str]:
+    """Remove every tool whose name matches any prefix; return what was removed.
+
+    Returns an empty list on FastMCP 4, which dropped ``remove_tool`` — see
+    ``docs/plans/2026-08-01-mcp-2026-07-28-migration.md`` §3. Callers must treat
+    a short return as "the tool surface did not change" rather than an error.
+    """
+    names = await mcp_compat.list_tool_names(mcp)
+    to_remove = [n for n in names if any(n.startswith(p) for p in prefixes)]
+    return mcp_compat.remove_tools(mcp, to_remove)
 
 
 def _register_mode_tools_if_absent(mcp: FastMCP, mode: str) -> None:
-    """Register tools for a mode, skipping if tools with that prefix already exist."""
-    prefixes = _MODE_PREFIXES.get(mode, [])
-    if _has_tools_with_prefix(mcp, prefixes):
+    """Register tools for a mode, skipping if that mode is already registered."""
+    registered = _registered_modes(mcp)
+    if mode in registered:
         return
     if mode == "native":
         from qtpilot.tools.native import register_native_tools
@@ -205,6 +253,11 @@ def _register_mode_tools_if_absent(mcp: FastMCP, mode: str) -> None:
     elif mode == "chrome":
         from qtpilot.tools.chrome import register_chrome_tools
         register_chrome_tools(mcp)
+    # Recorded only after registration succeeds. Marking it first meant a raising
+    # registration (an import error, a duplicate tool name) permanently latched
+    # the mode as present, so every later switch into it returned early and the
+    # mode ended up exposing no tools and no error.
+    registered.add(mode)
 
 
 def _register_tools_for_mode(mcp: FastMCP, mode: str) -> None:
@@ -360,8 +413,13 @@ def create_server(
     mode_label = mode.title() if mode != "all" else "All"
     mcp = FastMCP(f"qtPilot {mode_label}", lifespan=lifespan)
 
-    # Initialise server state
-    _state = ServerState(mcp, mode=mode)
+    # Initialise server state. Bound to a local as well as the module global:
+    # the visibility transform below closes over `server_state`, not over
+    # get_state(). Reading the global made an already-built server retarget to
+    # whichever server was constructed most recently, so create_server(mode=...)
+    # silently rewrote the tool surface of every server built before it.
+    server_state = ServerState(mcp, mode=mode)
+    _state = server_state
 
     # Register logging middleware (before tool registration)
     from qtpilot.logging_middleware import LoggingMiddleware
@@ -375,8 +433,18 @@ def create_server(
     from qtpilot.tools.logging_tools import register_logging_tools
     register_logging_tools(mcp)
 
-    # Register mode-specific tools
-    _register_tools_for_mode(mcp, mode)
+    # Register mode-specific tools.
+    #
+    # Where the SDK supports transforms, register *every* mode up front and let
+    # a transform filter tools/list down to the active mode. That keeps
+    # registration static and deterministically ordered — required for the
+    # cacheable tools/list of MCP 2026-07-28 — and is the only way to narrow the
+    # surface on FastMCP 4, which dropped remove_tool. Older SDKs fall back to
+    # registering just the active mode and mutating on switch.
+    _MODE_VISIBILITY[mcp] = mcp_compat.install_mode_visibility(
+        mcp, lambda: server_state.mode, _MODE_PREFIXES
+    )
+    _register_tools_for_mode(mcp, "all" if _uses_mode_visibility(mcp) else mode)
 
     # Register status resource
     from qtpilot.status import register_status_resource
