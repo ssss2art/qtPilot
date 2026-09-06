@@ -3,6 +3,8 @@
 
 #include "transport/jsonrpc_handler.h"
 
+#include "core/version.h"
+
 #include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -314,7 +316,8 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
   // getVersion - return qtPilot version info
   RegisterMethod("getVersion", [](const QString& /*params*/) -> QString {
     QJsonObject result;
-    result["version"] = "0.1.0";
+    result["version"] = kVersion;
+    result["protocolVersion"] = kProtocolVersion;
     result["protocol"] = "jsonrpc-2.0";
     result["name"] = "qtPilot";
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));

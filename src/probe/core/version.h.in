@@ -1,0 +1,31 @@
+// Copyright (c) 2024 qtPilot Contributors
+// SPDX-License-Identifier: MIT
+//
+// GENERATED FILE -- do not edit. Source template: src/probe/core/version.h.in
+//
+// The probe used to report a hardcoded "0.1.0" from two separate handlers while
+// the project was at 0.3.1, so every version a client saw was wrong and the two
+// sites could drift from each other independently. Both now read this header,
+// which is configured from PROJECT_VERSION at build time.
+
+#pragma once
+
+namespace qtPilot {
+
+/// @brief The probe's build version, from the project's CMake VERSION.
+constexpr const char* kVersion = "@PROJECT_VERSION@";
+
+/// @brief The wire-protocol revision the probe implements.
+///
+/// Deliberately NOT derived from kVersion. The package version moves for
+/// changes that do not touch the wire (a build fix, a doc release), and the
+/// Python client is versioned independently by vcs-versioning -- comparing the
+/// two package versions would report skew that does not exist and miss skew
+/// that does. This integer changes only when a client that understood the
+/// previous value would misread the new one.
+///
+/// History:
+///   1 -- initial; the wire contract as of 0.3.1.
+constexpr int kProtocolVersion = 1;
+
+}  // namespace qtPilot
