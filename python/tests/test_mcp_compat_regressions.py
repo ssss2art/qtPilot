@@ -140,3 +140,44 @@ def test_stateless_revision_is_stateless(monkeypatch):
 def test_describe_agrees_with_is_stateless_protocol():
     """describe() re-implemented the comparison and so duplicated its bug."""
     assert mcp_compat.describe()["stateless_protocol"] is mcp_compat.is_stateless_protocol()
+
+
+# ---------------------------------------------------------------------------
+# Per-server isolation
+# ---------------------------------------------------------------------------
+# The visibility transform closed over the process-global state, which
+# create_server() reassigns. Because the transform is evaluated per request, an
+# already-built server retargeted to a later server's mode.
+
+
+@pytest.mark.asyncio
+async def test_building_a_second_server_does_not_retarget_the_first():
+    async def tool_names(server) -> set[str]:
+        async with Client(server) as client:
+            return {t.name for t in await client.list_tools()}
+
+    first = create_server(mode="native")
+    before = await tool_names(first)
+
+    create_server(mode="chrome")
+    after = await tool_names(first)
+
+    assert before == after, "constructing a second server rewrote the first server's tools"
+    assert any(n.startswith("qt_") for n in after)
+
+
+@pytest.mark.asyncio
+async def test_two_servers_keep_independent_surfaces():
+    async def tool_names(server) -> set[str]:
+        async with Client(server) as client:
+            return {t.name for t in await client.list_tools()}
+
+    native = create_server(mode="native")
+    chrome = create_server(mode="chrome")
+
+    native_names = await tool_names(native)
+    chrome_names = await tool_names(chrome)
+
+    assert any(n.startswith("qt_") for n in native_names)
+    assert any(n.startswith("chr_") for n in chrome_names)
+    assert not any(n.startswith("chr_") for n in native_names)

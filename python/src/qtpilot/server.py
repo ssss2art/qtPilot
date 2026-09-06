@@ -244,7 +244,6 @@ def _register_mode_tools_if_absent(mcp: FastMCP, mode: str) -> None:
     registered = _registered_modes(mcp)
     if mode in registered:
         return
-    registered.add(mode)
     if mode == "native":
         from qtpilot.tools.native import register_native_tools
         register_native_tools(mcp)
@@ -254,6 +253,11 @@ def _register_mode_tools_if_absent(mcp: FastMCP, mode: str) -> None:
     elif mode == "chrome":
         from qtpilot.tools.chrome import register_chrome_tools
         register_chrome_tools(mcp)
+    # Recorded only after registration succeeds. Marking it first meant a raising
+    # registration (an import error, a duplicate tool name) permanently latched
+    # the mode as present, so every later switch into it returned early and the
+    # mode ended up exposing no tools and no error.
+    registered.add(mode)
 
 
 def _register_tools_for_mode(mcp: FastMCP, mode: str) -> None:
@@ -409,8 +413,13 @@ def create_server(
     mode_label = mode.title() if mode != "all" else "All"
     mcp = FastMCP(f"qtPilot {mode_label}", lifespan=lifespan)
 
-    # Initialise server state
-    _state = ServerState(mcp, mode=mode)
+    # Initialise server state. Bound to a local as well as the module global:
+    # the visibility transform below closes over `server_state`, not over
+    # get_state(). Reading the global made an already-built server retarget to
+    # whichever server was constructed most recently, so create_server(mode=...)
+    # silently rewrote the tool surface of every server built before it.
+    server_state = ServerState(mcp, mode=mode)
+    _state = server_state
 
     # Register logging middleware (before tool registration)
     from qtpilot.logging_middleware import LoggingMiddleware
@@ -433,7 +442,7 @@ def create_server(
     # surface on FastMCP 4, which dropped remove_tool. Older SDKs fall back to
     # registering just the active mode and mutating on switch.
     _MODE_VISIBILITY[mcp] = mcp_compat.install_mode_visibility(
-        mcp, lambda: get_state().mode, _MODE_PREFIXES
+        mcp, lambda: server_state.mode, _MODE_PREFIXES
     )
     _register_tools_for_mode(mcp, "all" if _uses_mode_visibility(mcp) else mode)
 
