@@ -45,20 +45,29 @@ dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
 #   mcp-stable -> MCP 2025-11-25 (FastMCP 2.x/3.x) — the conservative choice
 #   mcp-next   -> MCP 2026-07-28 (FastMCP 4)       — stateless core
 #
-# FastMCP 4 is a pre-release as of 2026-08-01, so mcp-next needs pre-releases
-# enabled:
-#   pip install --pre 'qtpilot[mcp-next]'
-#   uvx --prerelease=allow --from 'qtpilot[mcp-next]' qtpilot serve
+# Both extras resolve to stable releases; neither needs pre-releases enabled:
+#   pip install 'qtpilot[mcp-next]'
+#   uvx --from 'qtpilot[mcp-next]' qtpilot serve
+#
+# The floor is 4.0.1, the first stable 4.x -- deliberately not 4.0.0b1. Leaving
+# a beta as the floor would let a resolver pick one over a shipped release.
 mcp-stable = ["fastmcp<4"]
-mcp-next = ["fastmcp>=4.0.0b1,<5"]
+mcp-next = ["fastmcp>=4.0.1,<5"]
 
 [tool.uv]
 # mcp-stable and mcp-next pin opposite sides of the FastMCP 4 boundary, so they
 # can never resolve together. Declaring the conflict lets uv lock each one
 # separately instead of failing the whole resolution.
-conflicts = [[{ extra = "mcp-stable" }, { extra = "mcp-next" }]]
-# FastMCP 4 is still a beta; without this uv refuses to consider it at all.
-prerelease = "allow"
+#
+# There is deliberately no `mcp-legacy` extra for the 2.x floor. Adding one
+# dragged the DEFAULT resolve down from FastMCP 4 to 2.14.7 and collapsed
+# mcp-stable from 3.x to 2.x as well: extras are additive, so the base
+# resolution must stay extendable by `fastmcp<3`, and declaring the conflict did
+# not lift that. CI covers the 2.x floor by downgrading inside a synced env
+# instead -- see the mcp-legacy leg in ci.yml.
+conflicts = [
+    [{ extra = "mcp-stable" }, { extra = "mcp-next" }],
+]
 
 [project.urls]
 Homepage = "https://github.com/ssss2art/qtPilot"

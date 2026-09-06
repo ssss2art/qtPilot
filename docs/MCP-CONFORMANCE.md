@@ -34,9 +34,18 @@ Declared dependency (`python/pyproject.toml`):
 
 ```
 fastmcp>=2.9,<5              # spans both revisions
-qtpilot[mcp-stable]          # -> fastmcp<4      -> MCP 2025-11-25
-qtpilot[mcp-next]            # -> fastmcp>=4.0.0b1 -> MCP 2026-07-28
+qtpilot[mcp-stable]          # -> fastmcp<4       -> MCP 2025-11-25
+qtpilot[mcp-next]            # -> fastmcp>=4.0.1  -> MCP 2026-07-28
 ```
+
+**A plain `pip install qtpilot` now resolves FastMCP 4 and therefore
+`2026-07-28`.** That changed when FastMCP 4 left pre-release: the base range
+spans both majors, so the newest satisfying release wins. Pin `mcp-stable` to
+stay on `2025-11-25`.
+
+The base range cannot simply be capped at `<4` to keep the old default —
+extras are *additive*, so `fastmcp<4` from the base plus `fastmcp>=4.0.1` from
+`mcp-next` is unsatisfiable and the extra would stop resolving at all.
 
 Verified empirically on **2026-08-01** by installing each set into a clean venv
 and reading `mcp.types.LATEST_PROTOCOL_VERSION`:
@@ -44,8 +53,8 @@ and reading `mcp.types.LATEST_PROTOCOL_VERSION`:
 | Package set | `LATEST_PROTOCOL_VERSION` | Extra |
 |---|---|---|
 | `fastmcp` 2.14.7 / `mcp` 1.28.1 | `2025-11-25` | `mcp-stable` |
-| `fastmcp` 3.4.5 / `mcp` 1.29.0 | `2025-11-25` | `mcp-stable` (default resolve) |
-| `fastmcp` 4.0.0b1 / `mcp` 2.0.0 | **`2026-07-28`** | `mcp-next` |
+| `fastmcp` 3.4.7 / `mcp` 1.29.1 | `2025-11-25` | `mcp-stable` |
+| `fastmcp` 4.0.3 / `mcp` 2.1.1 | **`2026-07-28`** | `mcp-next` (default resolve) |
 
 Note that **FastMCP 3.x does not move the protocol** — it is an architectural
 release (providers/transforms). Only FastMCP 4 reaches `2026-07-28`.
@@ -59,13 +68,19 @@ Spec references:
 
 ## Status of `2026-07-28` support
 
-**FastMCP 4 is a pre-release as of 2026-08-01.** The `mcp-next` extra is
-therefore opt-in and requires pre-releases to be enabled:
+**FastMCP 4 shipped stable (4.0.1, 2026-09).** No pre-release flags are needed,
+and the `mcp-next` extra floors at `4.0.1` rather than a beta:
 
 ```bash
-pip install --pre 'qtpilot[mcp-next]'
-uvx --prerelease=allow --from 'qtpilot[mcp-next]' qtpilot serve
+pip install 'qtpilot[mcp-next]'          # explicit 2026-07-28
+uvx --from 'qtpilot[mcp-next]' qtpilot serve
+
+pip install 'qtpilot[mcp-stable]'        # stay on 2025-11-25
 ```
+
+Both revisions are exercised by blocking CI legs (`mcp-stable`, `mcp-next`,
+`mcp-next-py3.14`). They were `continue-on-error` while FastMCP 4 was a beta;
+that allowance is gone.
 
 qtPilot's own test suite passes against all three package sets, with **no
 behavioural differences** in the tool surface. `qtpilot_set_mode` narrows
@@ -113,7 +128,7 @@ ordered, and the exposed surface is a pure function of the active mode.
 
 `2026-07-28` made list and read results cacheable via `ttlMs` / `cacheScope`.
 qtPilot serves everything as **non-cacheable and private**, verified against
-fastmcp 4.0.0b1:
+fastmcp 4.0.3:
 
 | Result | `ttlMs` | `cacheScope` |
 |---|---|---|
@@ -144,7 +159,7 @@ python -c "import qtpilot._mcp_compat as c; print(c.describe())"
 ```
 
 ```
-{'fastmcp_version': '4.0.0b1', 'fastmcp_major': 4,
+{'fastmcp_version': '4.0.3', 'fastmcp_major': 4,
  'mcp_protocol_revision': '2026-07-28', 'stateless_protocol': True}
 ```
 
@@ -166,5 +181,5 @@ above. qtPilot's runtime does not otherwise depend on a specific revision.
 
 ---
 
-*Verified against fastmcp 2.14.7 / 3.4.5 / 4.0.0b1 on 2026-08-01. Re-run the
+*Verified against fastmcp 3.4.7 / 4.0.3 on 2026-09-06 (and 2.14.7 / 3.4.5 / 4.0.0b1 on 2026-08-01). Re-run the
 verification command after a dependency bump and update the tables above.*

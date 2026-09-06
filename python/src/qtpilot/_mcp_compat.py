@@ -13,7 +13,7 @@ SDK generation          MCP revision        Notes
 The APIs qtPilot depends on shifted underneath it across those generations:
 
 ======================  =======  =======  =========
-API                     2.14.7   3.4.5    4.0.0b1
+API                     2.14.7   3.4.5    4.0.3
 ======================  =======  =======  =========
 ``_tool_manager``       present  gone     gone
 ``remove_tool()``       present  present  gone

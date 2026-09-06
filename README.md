@@ -69,8 +69,8 @@ Because each `uvx` invocation resolves its own environment, this is also how you
 pick an MCP protocol revision without disturbing anything else:
 
 ```bash
-# MCP 2026-07-28 (stateless). FastMCP 4 is a pre-release, hence --prerelease.
-uvx --prerelease=allow --from 'qtpilot[mcp-next]' qtpilot serve --mode all
+# MCP 2026-07-28 (stateless), the default resolve since FastMCP 4 shipped stable.
+uvx --from 'qtpilot[mcp-next]' qtpilot serve --mode all
 ```
 
 To wire it into an MCP client, use [`.mcp.uvx.json`](.mcp.uvx.json) instead of
