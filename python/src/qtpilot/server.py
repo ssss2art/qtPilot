@@ -173,7 +173,13 @@ async def connect_to_probe(ws_url: str) -> ProbeConnection:
     conn = ProbeConnection(ws_url)
     await conn.connect()
     state.probe = conn
-    logger.info("Connected to probe at %s", ws_url)
+    # Never fatal: handshake() logs and degrades rather than raising, so a probe
+    # that predates protocol negotiation is still usable.
+    await conn.handshake()
+    logger.info(
+        "Connected to probe at %s (version=%s protocol=%s)",
+        ws_url, conn.probe_version, conn.probe_protocol_version,
+    )
 
     # Attach logger if active
     if state.message_logger.is_active:

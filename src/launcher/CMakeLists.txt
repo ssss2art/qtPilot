@@ -50,9 +50,13 @@ set_target_properties(qtPilot_launcher PROPERTIES
     DEBUG_POSTFIX "d"
 )
 
-# Include the launcher source directory for injector.h
+# Include the launcher source directory for injector.h, plus the probe's
+# generated header dir for core/version.h. configure_file() writes that at
+# configure time, so it exists regardless of target build order, and the header
+# is constexpr-only -- no link dependency on the probe is implied.
 target_include_directories(qtPilot_launcher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/src/probe
 )
 
 # Embed build-time Qt prefix so ensureQtEnvironment can use it as a fallback

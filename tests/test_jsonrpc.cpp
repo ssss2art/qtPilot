@@ -134,6 +134,44 @@ class TestJsonRpc : public QObject {
     QCOMPARE(obj["result"].toObject()["name"].toString(), QString("qtPilot"));
   }
 
+  // Test: getVersion reports the ACTUAL build version.
+  //
+  // The check above only asserted the key was present, which is how a hardcoded
+  // "0.1.0" survived here while the project moved to 0.3.1 -- every client was
+  // told the wrong version and no test objected. QTPILOT_EXPECTED_VERSION comes
+  // from CMake's PROJECT_VERSION, so this fails if the handler is ever pinned to
+  // a literal again.
+  void test_getVersionReportsTheBuildVersion() {
+    QString request = R"({"jsonrpc":"2.0","id":2,"method":"getVersion"})";
+    QString response = handler_->HandleMessage(request);
+
+    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
+    QVERIFY(!doc.isNull());
+    QVERIFY(doc.isObject());
+    QJsonObject result = doc.object()["result"].toObject();
+    QCOMPARE(result["version"].toString(), QStringLiteral(QTPILOT_EXPECTED_VERSION));
+    QVERIFY2(result["version"].toString() != QStringLiteral("0.1.0"),
+             "getVersion is still reporting the stale hardcoded version");
+  }
+
+  // Test: getVersion carries a wire-protocol revision a client can negotiate on.
+  //
+  // Without this the client had no way to detect skew, so a probe built from a
+  // different revision failed later as an opaque "method not found".
+  void test_getVersionCarriesProtocolVersion() {
+    QString request = R"({"jsonrpc":"2.0","id":2,"method":"getVersion"})";
+    QString response = handler_->HandleMessage(request);
+
+    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
+    QVERIFY(!doc.isNull());
+    QVERIFY(doc.isObject());
+    QJsonObject result = doc.object()["result"].toObject();
+    QVERIFY2(result.contains("protocolVersion"),
+             "getVersion must publish protocolVersion for the client handshake");
+    QVERIFY(result["protocolVersion"].isDouble());
+    QCOMPARE(result["protocolVersion"].toInt(), 1);
+  }
+
   // Test: echo returns params
   void test_echoReturnsParams() {
     QString request = R"({"jsonrpc":"2.0","id":3,"method":"echo","params":{"foo":"bar"}})";

@@ -286,6 +286,73 @@ The probe reads these environment variables at startup:
 | `QTPILOT_MODE` | `all` | API mode: `native`, `chrome`, `computer_use`, or `all` |
 | `QTPILOT_INJECT_CHILDREN` | unset | Set to `1` to inject probe into child processes |
 | `QTPILOT_ENABLED` | unset | Set to `0` to disable the probe |
+| `QTPILOT_BIND_ADDRESS` | `any` | Network exposure. `any` (default) or `loopback`. See [Network exposure](#network-exposure) |
+
+The MCP server (the Python side) reads one more:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QTPILOT_CALL_TIMEOUT` | `30` | Seconds to wait for a probe response before failing the call. `0` disables the deadline |
+
+### Network exposure
+
+**The probe listens on all interfaces by default**, and announces itself over UDP
+discovery, so an instrumented application is reachable from another machine on
+the same network without any configuration.
+
+That default is deliberate. Driving applications that run somewhere other than
+the machine you are working from is a first-class use of qtPilot, and discovery
+is how those instances are found at all — a probe bound to loopback is invisible
+to everything except its own host.
+
+#### What that means
+
+`qt.methods.invoke` calls arbitrary slots on the host application, and **the
+probe does not authenticate its clients**. Any host that can reach the port can
+run code inside the instrumented process. The probe says so once at startup
+rather than leaving you to discover it.
+
+Treat an instrumented application the way you would treat any process with a
+debug port open: run it on a network you control, and prefer not to leave one
+running on a shared network when you are not using it. Authentication is tracked
+as R7 in [`observability-testability-gaps.md`](observability-testability-gaps.md)
+and does not exist yet.
+
+#### Restricting to one machine
+
+When everything is on the same host — local development, CI, a single-machine
+test run — narrow it:
+
+```bash
+QTPILOT_BIND_ADDRESS=loopback ./your-app
+```
+
+Discovery announcements follow the bind, so a loopback-bound probe announces to
+loopback only rather than advertising itself to the network.
+
+An unrecognised value restricts to loopback rather than falling back to the
+default. Setting this variable at all means you are trying to narrow the probe,
+and a typo silently resolving to "wide open" would discard that intent — a
+refused connection is something you can see and fix.
+
+### Deployment topologies
+
+What the default setup supports, and what each shape needs:
+
+| Topology | Reachability | Notes |
+|----------|--------------|-------|
+| **One app, same machine** | Works as-is | `QTPILOT_BIND_ADDRESS=loopback` is worth setting; nothing is lost |
+| **One app, another machine on the LAN** | Works as-is | Connect by address, or let UDP discovery find it |
+| **Several apps across several machines** | Works as-is | Each instance announces itself; enumerate them and connect by address. See the concurrency note below |
+| **App on a mobile device over USB** | Works as-is | `adb forward` / `iproxy` terminate on the device's loopback, so this works under either setting |
+| **App on a mobile device over Wi-Fi** | Works as-is | Reachable by device address, same as any other host |
+| **Anything across a routed boundary** | Not supported | UDP discovery is broadcast-scoped and does not cross subnets; connect by address explicitly |
+
+**Concurrency note.** Each probe currently accepts **one client at a time**, and
+a stale client blocks a new connection. Enumerating many instances and connecting
+to them in turn works today; holding sessions to several at once does not. That
+limit is the server, not the network setting — tracked as R6 in
+[`observability-testability-gaps.md`](observability-testability-gaps.md).
 
 Example:
 ```bash

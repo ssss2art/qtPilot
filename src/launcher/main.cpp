@@ -5,6 +5,7 @@
 // Launches a Qt application with the qtPilot probe library injected.
 // Works on Windows (DLL injection), Linux (LD_PRELOAD), and macOS (DYLD_INSERT_LIBRARIES).
 
+#include "core/version.h"
 #include "injector.h"
 #include "qt_env_setup.h"
 
@@ -145,7 +146,7 @@ QString findProbePath(const QString& qtVersion) {
 int main(int argc, char* argv[]) {
   QCoreApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("qtpilot-launch"));
-  app.setApplicationVersion(QStringLiteral("0.1.0"));
+  app.setApplicationVersion(QString::fromUtf8(qtPilot::kVersion));
 
   // Set up command line parser
   QCommandLineParser parser;
