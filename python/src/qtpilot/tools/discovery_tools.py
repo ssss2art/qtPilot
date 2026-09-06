@@ -118,5 +118,8 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             raise ValueError(result["error"])
         changed = result.pop("changed", False)
         if changed:
-            await ctx.send_tool_list_changed()
+            # Compat shim: FastMCP 4 removed Context.send_tool_list_changed.
+            # Calling it directly raised on every successful switch, after the
+            # mode had already changed server-side.
+            await mcp_compat.notify_tool_list_changed(ctx)
         return {"ok": True, **result}

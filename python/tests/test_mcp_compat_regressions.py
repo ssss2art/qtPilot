@@ -1,0 +1,108 @@
+"""Regressions for defects the existing suite could not see.
+
+Both bugs here survived a full green test run, for the same reason in each case:
+the tests exercised the layer *underneath* the bug. `test_mode_switching.py`
+calls `state.set_mode()` directly, so it never touched the MCP tool wrapper that
+was raising; and nothing constructed two servers in one process, so per-server
+isolation was never asserted.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+from fastmcp import Client
+
+from qtpilot import _mcp_compat as mcp_compat
+from qtpilot.server import create_server
+
+
+# ---------------------------------------------------------------------------
+# qtpilot_set_mode through the real MCP tool boundary
+# ---------------------------------------------------------------------------
+# The wrapper called Context.send_tool_list_changed(), which FastMCP 4 removed.
+# Every SUCCESSFUL switch raised AttributeError -- after set_mode() had already
+# mutated the server, so the client saw a hard error for an operation that had
+# actually happened. Calling the tool through a Client is what catches it;
+# calling ServerState.set_mode() directly does not.
+
+
+@pytest.mark.asyncio
+async def test_set_mode_tool_succeeds_through_a_client():
+    server = create_server(mode="native")
+    async with Client(server) as client:
+        result = await client.call_tool("qtpilot_set_mode", {"mode": "chrome"})
+
+    assert result.data["ok"] is True
+    assert result.data["mode"] == "chrome"
+    assert result.data["previous_mode"] == "native"
+
+
+@pytest.mark.asyncio
+async def test_set_mode_tool_actually_narrows_the_tool_surface():
+    server = create_server(mode="native")
+    async with Client(server) as client:
+        before = {t.name for t in await client.list_tools()}
+        await client.call_tool("qtpilot_set_mode", {"mode": "chrome"})
+        after = {t.name for t in await client.list_tools()}
+
+    assert any(n.startswith("qt_") for n in before)
+    assert not any(n.startswith("qt_") for n in after)
+    assert any(n.startswith("chr_") for n in after)
+
+
+@pytest.mark.asyncio
+async def test_switching_to_the_current_mode_is_a_no_op():
+    server = create_server(mode="native")
+    async with Client(server) as client:
+        first = {t.name for t in await client.list_tools()}
+        result = await client.call_tool("qtpilot_set_mode", {"mode": "native"})
+        second = {t.name for t in await client.list_tools()}
+
+    assert result.data["ok"] is True
+    assert first == second
+
+
+class _NoNotificationContext:
+    """A Context offering neither notification API."""
+
+
+class _LegacyContext:
+    """FastMCP 2.x/3.x shape."""
+
+    def __init__(self) -> None:
+        self.called = False
+
+    async def send_tool_list_changed(self) -> None:
+        self.called = True
+
+
+class _RaisingContext:
+    def __init__(self) -> None:
+        self.called = False
+
+    async def send_tool_list_changed(self) -> None:
+        self.called = True
+        raise RuntimeError("client went away mid-notification")
+
+
+@pytest.mark.asyncio
+async def test_notify_uses_the_legacy_api_when_present():
+    ctx = _LegacyContext()
+    assert await mcp_compat.notify_tool_list_changed(ctx) is True
+    assert ctx.called
+
+
+@pytest.mark.asyncio
+async def test_notify_is_a_no_op_when_no_api_exists():
+    """Must not raise: the notification is a cache hint, not part of the switch."""
+    assert await mcp_compat.notify_tool_list_changed(_NoNotificationContext()) is False
+
+
+@pytest.mark.asyncio
+async def test_notify_swallows_a_failing_send():
+    """A dead client must not fail a mode switch that already took effect."""
+    ctx = _RaisingContext()
+    assert await mcp_compat.notify_tool_list_changed(ctx) is False
+    assert ctx.called

@@ -87,6 +87,47 @@ def is_stateless_protocol() -> bool:
     return protocol_revision() >= REVISION_STATELESS
 
 
+async def notify_tool_list_changed(ctx: Any) -> bool:
+    """Tell the client its cached tools/list is stale, across SDK generations.
+
+    FastMCP 2.x/3.x expose ``Context.send_tool_list_changed()``. FastMCP 4
+    removed it in favour of the generic ``Context.send_notification()`` taking
+    an ``mcp.types`` notification instance. Calling the old name on 4 raises
+    AttributeError, which is what made every SUCCESSFUL mode switch fail there
+    -- the server state had already changed, so the client saw an error for an
+    operation that had in fact happened.
+
+    Best-effort by design: the notification is a cache-invalidation hint, not
+    part of the mode switch. A client that never receives it re-lists on its own
+    schedule, which is strictly better than failing a completed operation.
+
+    :returns: True if a notification was delivered, False if this SDK offers no
+        way to send one. Never raises.
+    """
+    legacy = getattr(ctx, "send_tool_list_changed", None)
+    if callable(legacy):
+        try:
+            await legacy()
+            return True
+        except Exception:  # noqa: BLE001 - hint only; never fail the caller
+            logger.debug("send_tool_list_changed() failed", exc_info=True)
+            return False
+
+    send = getattr(ctx, "send_notification", None)
+    if callable(send):
+        try:
+            import mcp.types as mcp_types
+
+            await send(mcp_types.ToolListChangedNotification())
+            return True
+        except Exception:  # noqa: BLE001 - as above
+            logger.debug("send_notification(ToolListChanged) failed", exc_info=True)
+            return False
+
+    logger.debug("No tools/list_changed notification API on this SDK")
+    return False
+
+
 async def list_tool_names(mcp: FastMCP) -> list[str]:
     """Return the names of every tool currently registered on ``mcp``.
 
