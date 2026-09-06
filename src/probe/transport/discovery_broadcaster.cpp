@@ -3,6 +3,8 @@
 
 #include "transport/discovery_broadcaster.h"
 
+#include "transport/bind_policy.h"
+
 #include <QCoreApplication>
 #include <QHostInfo>
 #include <QJsonDocument>
@@ -96,7 +98,7 @@ void DiscoveryBroadcaster::sendAnnounce() {
     return;
   }
   QByteArray payload = buildAnnouncePayload();
-  socket_->writeDatagram(payload, QHostAddress::Broadcast, discoveryPort_);
+  socket_->writeDatagram(payload, announceAddress(), discoveryPort_);
 }
 
 void DiscoveryBroadcaster::sendGoodbye() {
@@ -104,7 +106,7 @@ void DiscoveryBroadcaster::sendGoodbye() {
     return;
   }
   QByteArray payload = buildGoodbyePayload();
-  socket_->writeDatagram(payload, QHostAddress::Broadcast, discoveryPort_);
+  socket_->writeDatagram(payload, announceAddress(), discoveryPort_);
 }
 
 QByteArray DiscoveryBroadcaster::buildAnnouncePayload() const {

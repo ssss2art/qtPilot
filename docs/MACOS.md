@@ -217,4 +217,9 @@ Tested against a large real-world Qt application (~2300 library types, custom QM
 - `getGeometry` — returned correct coordinates with devicePixelRatio=2 (Retina)
 
 **Known issues:**
-- `findByClassName` — crashes due to stale pointers (not macOS-specific, but all repros were on macOS)
+- `findByClassName` — was reported to crash on stale pointers (not macOS-specific,
+  but all repros were on macOS). **Status unconfirmed.** `ObjectRegistry` now
+  holds `QHash<QString, QPointer<QObject>>` and guards its queued lambdas with a
+  `QPointer`, so the described mechanism should no longer be reachable, but this
+  has not been re-tested against the large application the report came from.
+  Treat as open until someone reproduces or clears it.

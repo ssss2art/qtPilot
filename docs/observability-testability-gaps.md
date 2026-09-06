@@ -14,8 +14,9 @@ notes why it matters and a rough effort estimate (S/M/L).
 
 ## Already shipped / in flight
 
-All of the below are implemented on feature branches, unit-tested, **and
-live-validated against a design-system gallery app**. Not yet pushed to origin.
+All of the below are implemented, unit-tested, **and live-validated against a
+design-system gallery app**. All are merged to `main`; the branch names in the
+Status column are historical and those branches no longer exist.
 
 | # | Gap | Where | Status |
 |---|-----|-------|--------|
@@ -104,14 +105,15 @@ NOTIFY-watch (the rest of `feat/sync-and-signals`, not yet implemented).
 
 | ID | Gap | Why it matters | Evidence | Effort |
 |----|-----|----------------|----------|--------|
-| R1 | **No request timeout** | a blocking handler hangs the call forever | `connection.py` `await future` | S |
+| R1 | ~~**No request timeout**~~ **DONE** -- `call()` takes a deadline (default 30s, `QTPILOT_CALL_TIMEOUT`) and raises `ProbeTimeoutError` | a blocking handler hung the call forever | `connection.py` | S |
 | R2 | RPC pipeline runs on the **GUI thread** | slow call freezes app + socket; cross-thread invoke can deadlock | `websocket_server.cpp` synchronous handle | M/L |
 | R3 | **No auto-reconnect**; reconnect loses probe link | app restart / blip kills the session until manual re-connect | `connection.py`, `server.py` | M |
-| R4 | **No probe↔python version handshake**; probe version stale (`0.1.0` vs `0.3.1`) | silent skew → opaque "method not found" | `jsonrpc_handler.cpp`, `discovery_tools.py` | S |
+| R4 | ~~**No probe↔python version handshake**; probe version stale~~ **DONE** -- version generated from `PROJECT_VERSION`; `protocolVersion` on the wire; client warns on skew at connect | silent skew → opaque "method not found" | `core/version.h.in`, `connection.py` | S |
 | R5 | Legacy `qtpilot.*` handlers throw **generic errors** (good `ErrorCode` taxonomy unused there) | clients can't branch on failure type | `jsonrpc_handler.cpp` | S/M |
 | R6 | **Single-client server**; no multi-probe / parallel sessions | can't drive two apps; stale client blocks new connects | `websocket_server.cpp`, `server.py` | M |
-| R7 | Probe binds **`0.0.0.0` + LAN broadcast, no auth** → `invokeMethod` = remote code exec | exposure on shared/CI networks | `websocket_server.cpp`, `discovery_broadcaster.cpp` | M |
+| R7 | Probe binds **all interfaces + LAN broadcast, no auth** -> `invokeMethod` = remote code exec | **Reduced, not closed.** The bind is now a policy (`QTPILOT_BIND_ADDRESS`) that an operator can narrow to loopback, an unrecognised value restricts rather than widens, announcements follow the bind, and the probe states the exposure at startup. The **default remains all-interfaces**: reaching instrumented apps on other hosts is a product requirement and discovery is broadcast-based, so a loopback default is an outage rather than a hardening. **Authentication is the actual fix and does not exist** -- until it does, narrowing the bind is the only control available | `bind_policy.cpp`, `websocket_server.cpp` | M |
 | R8 | **No headless E2E/CI harness** (tests mock the socket) | transport/lifecycle regressions uncaught | `python/tests/conftest.py` | M |
+| R9 | **Server teardown with a live client crashes on some Qt versions** | `stop()` calls `deleteLater()` on the accepted socket, but `nextPendingConnection()` parents that socket to the `QWebSocketServer`, which is a child of `WebSocketServer` -- so `~WebSocketServer` can also reach it down the parent chain, and which path runs first is left to timing. Observed as a **SEGFAULT on Qt 6.8.0 and 6.9.0, Linux and Windows both**, while 5.15.2 / 6.5.3 / 6.10.0 / 6.11.1 passed. Reproducer: connect a real `QWebSocket` to the server, then destroy the server. Ordering the teardown by waiting on `QWebSocket::disconnected` does not help -- `close()` does not emit it within 5s on 5.15/6.5. **Root cause unconfirmed and the product path is unchanged**; the test that exposed it was removed rather than left flaky, so nothing in CI covers this today. A probe shutting down while an MCP client is attached has the same shape | `websocket_server.cpp` `stop()` / `onNewConnection()` | M |
 
 ---
 
@@ -125,7 +127,8 @@ Ordered by value × independence. Each row is one PR off `main` unless noted.
 | `fix/value-serialization` | C1 enums/flags, C2 gadgets/QObject*, C3 metadata | ✅ done (C4 bytes deferred); stacks on the above |
 | `feat/sync-and-signals` | #4 signal arg values | ✅ done. ⏳ still to add: T1 wait primitive, O5 NOTIFY-watch |
 | `feat/native-diagnostics` | O1 native console capture, O2 probe-log separation, O7 drop visibility | ⏳ planned — low-effort, high observability ROI |
-| `fix/transport-robustness` | R1 timeout, R3 auto-reconnect, R4 version handshake, R5 structured errors (+ R7 loopback default) | ⏳ planned — reliability |
+| `fix/probe-hardening` | R7 bind policy (default unchanged), R4 version + protocol handshake, R1 request timeout | ✅ done |
+| `fix/transport-robustness` | R3 auto-reconnect, R5 structured errors, R6 multi-client, **R7 authentication (the real fix; blocks any change to the bind default)** | ⏳ planned — reliability |
 | `feat/model-introspection` *(epic)* | M1 proxy mapping, M2 headerData, M3 setData/selection, M4 change taxonomy | ⏳ planned |
 | `feat/qml-support` *(epic)* | Q1 introspection, Q2 visual tree, Q3 drive Quick items | ⏳ planned — large; scope separately |
 | `feat/interaction-enhancements` *(epic)* | T3 mouse modifiers/held keys/multi-chord sequences, T4 hover, T5 multi-select, T6 menus, T7 diff, T8 DPR, T9 focus | ⏳ planned |

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QHostAddress>
 #include <QObject>
 #include <QString>
 
@@ -51,6 +52,15 @@ class QTPILOT_EXPORT WebSocketServer : public QObject {
   /// @brief Get the configured port.
   /// @return The port number.
   quint16 port() const;
+
+  /// @brief The address the server is actually listening on.
+  ///
+  /// Exposed so the exposure policy is observable rather than inferred: the
+  /// difference between a loopback bind and an all-interfaces bind is a security
+  /// boundary, and a test that cannot read it back can only assert that some
+  /// code path was taken.
+  /// @return The bound address, or QHostAddress::Null when not listening.
+  QHostAddress serverAddress() const;
 
   /// @brief Check if a client is currently connected.
   /// @return true if a client is connected.
