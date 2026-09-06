@@ -3,6 +3,7 @@
 
 #include "transport/websocket_server.h"
 
+#include "transport/bind_policy.h"
 #include "transport/jsonrpc_handler.h"
 #include "transport/notification_queue.h"
 
@@ -32,9 +33,16 @@ bool WebSocketServer::start() {
     return true;
   }
 
-  if (!m_server->listen(QHostAddress::Any, m_port)) {
+  // All interfaces by default -- reaching instrumented apps on other hosts is a
+  // requirement, and discovery is broadcast-based, so a loopback default would
+  // be an outage rather than a hardening. QTPILOT_BIND_ADDRESS=loopback narrows
+  // it for single-machine work. See bind_policy.h for why the exposure is not
+  // the mitigation here; authentication is (R7, not yet implemented).
+  const QHostAddress bindAddress = listenAddress();
+  if (!m_server->listen(bindAddress, m_port)) {
     QString error = m_server->errorString();
-    qCritical() << "[qtPilot] Failed to start WebSocket server on port" << m_port << ":" << error;
+    qCritical() << "[qtPilot] Failed to start WebSocket server on" << bindAddress.toString() << ":"
+                << m_port << ":" << error;
     emit errorOccurred(error);
     return false;
   }
@@ -44,8 +52,23 @@ bool WebSocketServer::start() {
     m_port = m_server->serverPort();
   }
 
-  // Print startup message to stderr as specified in CONTEXT.md
-  fprintf(stderr, "qtPilot listening on ws://0.0.0.0:%u\n", static_cast<unsigned>(m_port));
+  // Print startup message to stderr as specified in CONTEXT.md. The host is the
+  // address actually bound, not a hardcoded one -- the previous message claimed
+  // 0.0.0.0 unconditionally, which is exactly the detail an operator needs to be
+  // told truthfully.
+  fprintf(stderr, "qtPilot listening on ws://%s:%u\n", bindAddress.toString().toUtf8().constData(),
+          static_cast<unsigned>(m_port));
+  // Stated once at startup rather than shouted. Reaching instrumented apps on
+  // other hosts is the normal case, so this is not a misconfiguration to warn
+  // about -- but the probe invokes arbitrary slots and authenticates nobody, and
+  // an operator deciding where to run it should not have to read the source to
+  // learn that. Fact plus remedy, one line.
+  if (configuredExposure() == NetworkExposure::Lan) {
+    fprintf(stderr,
+            "[qtPilot] Reachable from any host on this network, with no "
+            "authentication; any of them can invoke methods in this process. "
+            "Set QTPILOT_BIND_ADDRESS=loopback to restrict to this machine.\n");
+  }
   fflush(stderr);
 
   return true;
@@ -73,6 +96,10 @@ bool WebSocketServer::isListening() const {
 
 quint16 WebSocketServer::port() const {
   return m_port;
+}
+
+QHostAddress WebSocketServer::serverAddress() const {
+  return m_server ? m_server->serverAddress() : QHostAddress();
 }
 
 bool WebSocketServer::hasActiveClient() const {

@@ -162,6 +162,14 @@ qtPilot_add_test(NAME test_key_name_mapper SOURCES test_key_name_mapper.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+qtPilot_add_test(NAME test_bind_policy SOURCES test_bind_policy.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Network
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+qtPilot_add_test(NAME test_websocket_server_bind SOURCES test_websocket_server_bind.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
 qtPilot_add_test(NAME test_probe_version SOURCES test_probe_version.cpp
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 

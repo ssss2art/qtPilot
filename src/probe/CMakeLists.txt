@@ -17,6 +17,7 @@ set(PROBE_SOURCES
     transport/notification_queue.cpp
     transport/jsonrpc_handler.cpp
     transport/discovery_broadcaster.cpp
+    transport/bind_policy.cpp
     api/response_envelope.cpp
     api/symbolic_name_map.cpp
     api/native_mode_api.cpp
@@ -50,6 +51,7 @@ set(PROBE_HEADERS
     transport/notification_queue.h
     transport/jsonrpc_handler.h
     transport/discovery_broadcaster.h
+    transport/bind_policy.h
     api/error_codes.h
     api/response_envelope.h
     api/symbolic_name_map.h

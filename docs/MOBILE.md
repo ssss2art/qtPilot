@@ -103,22 +103,29 @@ a socket with -- and could not see `Repeater` or `ListView` delegates at all.
 
 ## Connecting from the host
 
-The probe listens on `QHostAddress::Any` port 9222 (override with
-`QTPILOT_PORT`) and broadcasts UDP discovery packets, so a device on the same
-network is reachable directly:
+The probe listens on **all interfaces** port 9222 by default (override the port
+with `QTPILOT_PORT`) and broadcasts UDP discovery packets, so a device on the
+same network is reachable directly:
 
 ```bash
 qtpilot serve --mode native --ws-url ws://<device-ip>:9222
 ```
 
 Over USB, forward the port instead — more reliable on a locked-down or
-Wi-Fi-less network:
+Wi-Fi-less network, and it works regardless of the bind setting, because
+`adb forward` and `iproxy` both terminate on the device's own loopback:
 
 ```bash
 adb forward tcp:9222 tcp:9222        # Android
 iproxy 9222 9222                     # iOS (usbmuxd)
 qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
+
+If you are working exclusively over USB, `QTPILOT_BIND_ADDRESS=loopback` in the
+app's launch environment keeps the device from accepting connections over the
+air and from announcing itself. See
+[Network exposure](GETTING-STARTED.md#network-exposure) — the probe invokes
+arbitrary slots and does not authenticate clients.
 
 `iproxy` is known to drop a device while `devicectl` still lists it; the symptom
 is `Connection reset by peer` against a healthy device. Replug, or connect to
