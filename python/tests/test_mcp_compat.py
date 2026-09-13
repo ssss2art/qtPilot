@@ -139,7 +139,7 @@ requires_transforms = pytest.mark.skipif(
 )
 
 
-def _server_with_modes(get_mode):
+def _server_with_modes(get_mode, is_ghost_tool=None):
     mcp = FastMCP("mode-visibility-test")
 
     @mcp.tool
@@ -158,7 +158,9 @@ def _server_with_modes(get_mode):
     def qtpilot_status() -> str:
         return "session"
 
-    assert mcp_compat.install_mode_visibility(mcp, get_mode, PREFIXES)
+    assert mcp_compat.install_mode_visibility(
+        mcp, get_mode, PREFIXES, is_ghost_tool=is_ghost_tool
+    )
     return mcp
 
 
@@ -217,23 +219,42 @@ class TestModeVisibility:
 
     @requires_transforms
     @pytest.mark.asyncio
-    async def test_hidden_tool_is_not_resolvable(self):
-        """A filtered tool must also be uncallable, not merely unlisted."""
+    async def test_cross_mode_tool_is_unlisted_but_resolvable(self):
+        """Inactive-mode tools are filtered from tools/list but stay resolvable."""
         mcp = _server_with_modes(lambda: "native")
+        names = await mcp_compat.list_tool_names(mcp)
+        assert "cu_screenshot" not in names
         assert await mcp_compat.find_tool(mcp, "qt_ping") is not None
-        assert await mcp_compat.find_tool(mcp, "cu_screenshot") is None
+        assert await mcp_compat.find_tool(mcp, "cu_screenshot") is not None
 
     @requires_transforms
     @pytest.mark.asyncio
-    async def test_hidden_tool_cannot_be_called_by_a_stale_client(self):
-        """End-to-end: a client holding an old tool list gets refused."""
+    async def test_cross_mode_tool_can_be_called_by_client(self):
+        """A client calling an unlisted mode tool succeeds rather than being locked out."""
         from fastmcp import Client
 
         mcp = _server_with_modes(lambda: "native")
         async with Client(mcp) as client:
             assert (await client.call_tool("qt_ping", {})) is not None
-            with pytest.raises(Exception):
-                await client.call_tool("cu_screenshot", {})
+            # cu_screenshot is not in tools/list for native mode, but callable
+            assert (await client.call_tool("cu_screenshot", {})) is not None
+
+    @requires_transforms
+    @pytest.mark.asyncio
+    async def test_ghost_tool_is_unlisted_across_all_modes_but_resolvable(self):
+        """Ghost tools never appear in tools/list but resolve and execute."""
+        from fastmcp import Client
+
+        mcp = _server_with_modes(
+            lambda: "all", is_ghost_tool=lambda name: name == "qt_ping"
+        )
+        names = await mcp_compat.list_tool_names(mcp)
+        assert "qt_ping" not in names
+        assert "cu_screenshot" in names
+        assert await mcp_compat.find_tool(mcp, "qt_ping") is not None
+
+        async with Client(mcp) as client:
+            assert (await client.call_tool("qt_ping", {})) is not None
 
     @requires_transforms
     @pytest.mark.asyncio

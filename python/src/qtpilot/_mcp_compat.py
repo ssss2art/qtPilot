@@ -174,20 +174,28 @@ async def find_tool(mcp: FastMCP, name: str) -> Any | None:
     Used by tests to invoke a tool's underlying callable without reaching into
     the server's internals.
     """
-    lister = getattr(mcp, "list_tools", None)
-    if callable(lister):  # fastmcp 3.x / 4.x
-        for tool in await lister():
-            if tool.name == name:
-                return tool
-        return None
+    getter = getattr(mcp, "get_tool", None)
+    if callable(getter):  # fastmcp 3.x / 4.x
+        try:
+            return await getter(name)
+        except Exception:
+            return None
 
-    getter = getattr(mcp, "get_tools", None)
-    if callable(getter):  # fastmcp 2.x
-        return (await getter()).get(name)
+    get_tools = getattr(mcp, "get_tools", None)
+    if callable(get_tools):  # fastmcp 2.x
+        return (await get_tools()).get(name)
 
     manager = getattr(mcp, "_tool_manager", None)
     tools = getattr(manager, "_tools", None)
-    return tools.get(name) if tools is not None else None
+    if tools is not None:
+        return tools.get(name)
+
+    lister = getattr(mcp, "list_tools", None)
+    if callable(lister):
+        for tool in await lister():
+            if tool.name == name:
+                return tool
+    return None
 
 
 def supports_tool_removal(mcp: FastMCP) -> bool:
@@ -248,6 +256,7 @@ def supports_transforms(mcp: FastMCP) -> bool:
 def _build_mode_visibility_transform(
     get_mode: Callable[[], str],
     mode_prefixes: Mapping[str, Sequence[str]],
+    is_ghost_tool: Callable[[str], bool] | None = None,
 ) -> Any:
     """Build a transform hiding tools that don't belong to the active mode.
 
@@ -274,6 +283,10 @@ def _build_mode_visibility_transform(
             return None
 
         def _visible(self, name: str) -> bool:
+            if is_ghost_tool is not None and is_ghost_tool(name):
+                # Ghost tools (e.g. legacy compatibility shims) are never
+                # advertised in tools/list across any mode to conserve agent context.
+                return False
             owner = self._owner(name)
             if owner is None:
                 # Session tools (qtpilot_*) and recording tools belong to no
@@ -285,13 +298,13 @@ def _build_mode_visibility_transform(
         async def list_tools(self, tools):
             return [t for t in tools if self._visible(t.name)]
 
-        async def get_tool(self, name, call_next, *, version=None):
-            tool = await call_next(name, version=version)
-            if tool is None or not self._visible(name):
-                # Hide from resolution too, so a stale client cannot call a
-                # tool that no longer appears in tools/list.
-                return None
-            return tool
+        async def get_tool(self, name, call_next, **kwargs):
+            # Allow resolution for all registered tools, including ghost tools
+            # and tools belonging to inactive modes. Mode filtering strictly
+            # scopes tools/list (prompt context economy), while get_tool permits
+            # direct execution to avoid breaking clients with cached tool lists
+            # or skills crossing modes.
+            return await call_next(name, **kwargs)
 
     return ModeVisibility()
 
@@ -300,6 +313,7 @@ def install_mode_visibility(
     mcp: FastMCP,
     get_mode: Callable[[], str],
     mode_prefixes: Mapping[str, Sequence[str]],
+    is_ghost_tool: Callable[[str], bool] | None = None,
 ) -> bool:
     """Install mode-based tool filtering on ``mcp``. True if it took effect.
 
@@ -309,7 +323,11 @@ def install_mode_visibility(
     if not supports_transforms(mcp):
         return False
     try:
-        mcp.add_transform(_build_mode_visibility_transform(get_mode, mode_prefixes))
+        mcp.add_transform(
+            _build_mode_visibility_transform(
+                get_mode, mode_prefixes, is_ghost_tool=is_ghost_tool
+            )
+        )
     except Exception as exc:  # noqa: BLE001 - never block startup over this
         logger.warning("Could not install mode visibility transform: %s", exc)
         return False
