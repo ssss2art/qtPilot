@@ -27,22 +27,32 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         return await require_probe().call("chr.readPage", params)
 
     @mcp.tool
-    async def chr_click(ref: str, ctx: Context = None) -> dict:
+    async def chr_click(ref: str | int, ctx: Context = None) -> dict:
         """Click an element by its accessibility reference.
-        Example: chr_click(ref="btn_submit")
+        Example: chr_click(ref="btn_submit") or chr_click(ref=7)
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call("chr.click", {"ref": ref})
+        return await require_probe().call("chr.click", {"ref": str(ref)})
 
     @mcp.tool
-    async def chr_formInput(ref: str, value: str | int | float | bool, ctx: Context = None) -> dict:
+    async def chr_formInput(
+        ref: str | int,
+        value: str | int | float | bool | None = None,
+        text: str | int | float | bool | None = None,
+        ctx: Context = None,
+    ) -> dict:
         """Set a form input value by accessibility reference.
         Example: chr_formInput(ref="input_name", value="Alice")
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call("chr.formInput", {"ref": ref, "value": value})
+        resolved_val = value if value is not None else text
+        if resolved_val is None:
+            raise ValueError("value or text must be provided")
+        return await require_probe().call(
+            "chr.formInput", {"ref": str(ref), "value": resolved_val}
+        )
 
     @mcp.tool
     async def chr_getPageText(ctx: Context) -> dict:
@@ -63,7 +73,9 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         return await require_probe().call("chr.find", {"query": query})
 
     @mcp.tool
-    async def chr_navigate(ref: str, action: str = "activateTab", ctx: Context = None) -> dict:
+    async def chr_navigate(
+        ref: str | int, action: str = "activateTab", ctx: Context = None
+    ) -> dict:
         """Navigate to or activate an element by reference.
 
         Args:
@@ -74,7 +86,9 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call("chr.navigate", {"ref": ref, "action": action})
+        return await require_probe().call(
+            "chr.navigate", {"ref": str(ref), "action": action}
+        )
 
     @mcp.tool
     async def chr_tabsContext(ctx: Context) -> dict:
