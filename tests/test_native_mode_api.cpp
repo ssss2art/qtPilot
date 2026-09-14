@@ -56,7 +56,9 @@ class TestNativeModeApi : public QObject {
   void testObjectsSearchByClassName();
   void testObjectsSearchByObjectName();
   void testObjectsSearchByProperties();
-  void testObjectsSearchNoFiltersIsError();
+  void testObjectsSearchEmptyFilters();
+  void testObjectsSearchByRootOnly();
+  void testObjectsSearchParamAliases();
   void testObjectsSearchLimitTruncation();
 
   // Properties (qt.properties.*)
@@ -487,10 +489,57 @@ void TestNativeModeApi::testObjectsSearchByProperties() {
   QVERIFY(found);
 }
 
-void TestNativeModeApi::testObjectsSearchNoFiltersIsError() {
+void TestNativeModeApi::testObjectsSearchEmptyFilters() {
   QJsonObject params;
-  QJsonObject error = callExpectError("qt.objects.search", params);
-  QCOMPARE(error[QStringLiteral("code")].toInt(), int(JsonRpcError::kInvalidParams));
+  QJsonValue result = callResult("qt.objects.search", params);
+  QVERIFY(result.isObject());
+  QJsonObject obj = result.toObject();
+  QVERIFY(obj.contains(QStringLiteral("objects")));
+  QVERIFY(obj.contains(QStringLiteral("count")));
+  QVERIFY(obj.contains(QStringLiteral("truncated")));
+  QVERIFY(obj[QStringLiteral("count")].toInt() > 0);
+}
+
+void TestNativeModeApi::testObjectsSearchByRootOnly() {
+  QString rootId = ObjectRegistry::instance()->objectId(m_testWindow);
+  QJsonObject params;
+  params[QStringLiteral("root")] = rootId;
+  QJsonValue result = callResult("qt.objects.search", params);
+  QVERIFY(result.isObject());
+  QJsonObject obj = result.toObject();
+  QVERIFY(obj.contains(QStringLiteral("objects")));
+  QJsonArray objects = obj[QStringLiteral("objects")].toArray();
+  QVERIFY(objects.size() >= 1);
+
+  bool foundButton = false;
+  for (const auto& v : objects) {
+    if (v.toObject()[QStringLiteral("objectName")].toString() == QStringLiteral("testBtn")) {
+      foundButton = true;
+      break;
+    }
+  }
+  QVERIFY(foundButton);
+}
+
+void TestNativeModeApi::testObjectsSearchParamAliases() {
+  // test 'name' alias for 'objectName'
+  QJsonObject params1;
+  params1[QStringLiteral("name")] = QStringLiteral("testBtn");
+  QJsonValue res1 = callResult("qt.objects.search", params1);
+  QVERIFY(res1.toObject()[QStringLiteral("count")].toInt() >= 1);
+
+  // test 'class_name' alias for 'className'
+  QJsonObject params2;
+  params2[QStringLiteral("class_name")] = QStringLiteral("QPushButton");
+  QJsonValue res2 = callResult("qt.objects.search", params2);
+  QVERIFY(res2.toObject()[QStringLiteral("count")].toInt() >= 1);
+
+  // test 'rootId' alias for 'root'
+  QString rootId = ObjectRegistry::instance()->objectId(m_testWindow);
+  QJsonObject params3;
+  params3[QStringLiteral("rootId")] = rootId;
+  QJsonValue res3 = callResult("qt.objects.search", params3);
+  QVERIFY(res3.toObject()[QStringLiteral("count")].toInt() >= 1);
 }
 
 void TestNativeModeApi::testObjectsSearchLimitTruncation() {
