@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastmcp import Context, FastMCP
 
+from qtpilot import _mcp_compat as mcp_compat
+
 
 def register_discovery_tools(mcp: FastMCP) -> None:
     """Register probe discovery and connection management tools."""
@@ -88,6 +90,9 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             "available_modes": ["native", "cu", "chrome", "all"],
             "connection": connection,
             "discovery": disc_info,
+            # Which MCP revision this process actually speaks. qtPilot supports
+            # two; a bug report is ambiguous without it.
+            "mcp": mcp_compat.describe(),
         }
 
     @mcp.tool
@@ -108,10 +113,13 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         from qtpilot.server import get_state
 
         state = get_state()
-        result = state.set_mode(mode)
+        result = await state.set_mode(mode)
         if "error" in result:
             raise ValueError(result["error"])
         changed = result.pop("changed", False)
         if changed:
-            await ctx.send_tool_list_changed()
+            # Compat shim: FastMCP 4 removed Context.send_tool_list_changed.
+            # Calling it directly raised on every successful switch, after the
+            # mode had already changed server-side.
+            await mcp_compat.notify_tool_list_changed(ctx)
         return {"ok": True, **result}
