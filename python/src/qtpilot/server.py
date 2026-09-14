@@ -433,6 +433,10 @@ def create_server(
     from qtpilot.tools.logging_tools import register_logging_tools
     register_logging_tools(mcp)
 
+    # Register legacy compatibility tools (ghost tools)
+    from qtpilot.tools.legacy import LEGACY_GHOST_TOOLS, register_legacy_tools
+    register_legacy_tools(mcp)
+
     # Register mode-specific tools.
     #
     # Where the SDK supports transforms, register *every* mode up front and let
@@ -442,7 +446,10 @@ def create_server(
     # surface on FastMCP 4, which dropped remove_tool. Older SDKs fall back to
     # registering just the active mode and mutating on switch.
     _MODE_VISIBILITY[mcp] = mcp_compat.install_mode_visibility(
-        mcp, lambda: server_state.mode, _MODE_PREFIXES
+        mcp,
+        lambda: server_state.mode,
+        _MODE_PREFIXES,
+        is_ghost_tool=lambda name: name in LEGACY_GHOST_TOOLS,
     )
     _register_tools_for_mode(mcp, "all" if _uses_mode_visibility(mcp) else mode)
 
