@@ -14,7 +14,10 @@
 #include <QThread>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 namespace {
 
@@ -88,13 +91,13 @@ void TestEventCapture::cleanup() {
 
 void TestEventCapture::testStartStopCapture() {
   auto* ec = EventCapture::instance();
-  QVERIFY(!ec->isCapturing());
+  QEXPECT_THAT(ec->isCapturing(), IsFalse());
 
   ec->startCapture();
-  QVERIFY(ec->isCapturing());
+  QEXPECT_THAT(ec->isCapturing(), IsTrue());
 
   ec->stopCapture();
-  QVERIFY(!ec->isCapturing());
+  QEXPECT_THAT(ec->isCapturing(), IsFalse());
 }
 
 void TestEventCapture::testStartStopCaptureFromWorkerThread() {
@@ -102,9 +105,9 @@ void TestEventCapture::testStartStopCaptureFromWorkerThread() {
   worker.start();
 
   QTRY_VERIFY_WITH_TIMEOUT(worker.isFinished(), 2000);
-  QVERIFY(worker.wait());
-  QVERIFY(worker.started);
-  QVERIFY(worker.stopped);
+  QEXPECT_THAT(worker.wait(), IsTrue());
+  QEXPECT_THAT(worker.started.loadRelaxed(), IsTrue());
+  QEXPECT_THAT(worker.stopped.loadRelaxed(), IsTrue());
 }
 
 void TestEventCapture::testShowEvent() {
@@ -112,7 +115,7 @@ void TestEventCapture::testShowEvent() {
   ec->startCapture();
 
   QSignalSpy spy(ec, &EventCapture::eventCaptured);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   m_window->show();
   QApplication::processEvents();
@@ -123,12 +126,12 @@ void TestEventCapture::testShowEvent() {
     QJsonObject n = spy.at(i).at(0).toJsonObject();
     if (n["type"].toString() == "Show" && n["objectName"].toString() == "testWindow") {
       found = true;
-      QVERIFY(n.contains("objectId"));
-      QVERIFY(n.contains("className"));
+      QEXPECT_THAT(n, HasJsonField("objectId"));
+      QEXPECT_THAT(n, HasJsonField("className"));
       break;
     }
   }
-  QVERIFY2(found, "Should have captured a Show event for testWindow");
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestEventCapture::testHideEvent() {
@@ -140,7 +143,7 @@ void TestEventCapture::testHideEvent() {
   ec->startCapture();
 
   QSignalSpy spy(ec, &EventCapture::eventCaptured);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   m_window->hide();
   QApplication::processEvents();
@@ -150,12 +153,12 @@ void TestEventCapture::testHideEvent() {
     QJsonObject n = spy.at(i).at(0).toJsonObject();
     if (n["type"].toString() == "Hide" && n["objectName"].toString() == "testWindow") {
       found = true;
-      QVERIFY(n.contains("objectId"));
-      QVERIFY(n.contains("className"));
+      QEXPECT_THAT(n, HasJsonField("objectId"));
+      QEXPECT_THAT(n, HasJsonField("className"));
       break;
     }
   }
-  QVERIFY2(found, "Should have captured a Hide event for testWindow");
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestEventCapture::testResizeEvent() {
@@ -166,7 +169,7 @@ void TestEventCapture::testResizeEvent() {
   ec->startCapture();
 
   QSignalSpy spy(ec, &EventCapture::eventCaptured);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   m_window->resize(600, 400);
   QApplication::processEvents();
@@ -179,7 +182,7 @@ void TestEventCapture::testResizeEvent() {
       break;
     }
   }
-  QVERIFY2(found, "Should have captured a Resize event for testWindow");
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestEventCapture::testResizeEventContainsSize() {
@@ -190,7 +193,7 @@ void TestEventCapture::testResizeEventContainsSize() {
   ec->startCapture();
 
   QSignalSpy spy(ec, &EventCapture::eventCaptured);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   m_window->resize(800, 600);
   QApplication::processEvents();
@@ -199,12 +202,10 @@ void TestEventCapture::testResizeEventContainsSize() {
     QJsonObject n = spy.at(i).at(0).toJsonObject();
     if (n["type"].toString() == "Resize" && n["objectName"].toString() == "testWindow") {
       // Resize notifications must include a "size" object with w/h
-      QVERIFY2(n.contains("size"), "Resize notification must contain 'size'");
+      QEXPECT_THAT(n, HasJsonField("size"));
       QJsonObject size = n["size"].toObject();
-      QVERIFY2(size.contains("w"), "Size must contain 'w'");
-      QVERIFY2(size.contains("h"), "Size must contain 'h'");
-      QCOMPARE(size["w"].toInt(), 800);
-      QCOMPARE(size["h"].toInt(), 600);
+      QEXPECT_THAT(size, HasJsonField("w", 800));
+      QEXPECT_THAT(size, HasJsonField("h", 600));
       return;
     }
   }
@@ -219,7 +220,7 @@ void TestEventCapture::testCloseEvent() {
   ec->startCapture();
 
   QSignalSpy spy(ec, &EventCapture::eventCaptured);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   // Send a close event (doesn't destroy — just sends QCloseEvent)
   m_window->close();
@@ -230,12 +231,12 @@ void TestEventCapture::testCloseEvent() {
     QJsonObject n = spy.at(i).at(0).toJsonObject();
     if (n["type"].toString() == "Close" && n["objectName"].toString() == "testWindow") {
       found = true;
-      QVERIFY(n.contains("objectId"));
-      QVERIFY(n.contains("className"));
+      QEXPECT_THAT(n, HasJsonField("objectId"));
+      QEXPECT_THAT(n, HasJsonField("className"));
       break;
     }
   }
-  QVERIFY2(found, "Should have captured a Close event for testWindow");
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestEventCapture::testNonWidgetIgnored() {
@@ -243,7 +244,7 @@ void TestEventCapture::testNonWidgetIgnored() {
   ec->startCapture();
 
   QSignalSpy spy(ec, &EventCapture::eventCaptured);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   // Send a show event to a plain QObject (not a QWidget)
   QObject plainObj;
@@ -255,8 +256,7 @@ void TestEventCapture::testNonWidgetIgnored() {
   // Should NOT have captured anything for plainObject
   for (int i = 0; i < spy.count(); ++i) {
     QJsonObject n = spy.at(i).at(0).toJsonObject();
-    QVERIFY2(n["objectName"].toString() != "plainObject",
-             "EventCapture should not capture events on non-QWidget objects");
+    QEXPECT_THAT(n["objectName"].toString(), Ne("plainObject"));
   }
 }
 
@@ -266,12 +266,12 @@ void TestEventCapture::testNotCapturingIgnoresEvents() {
   ec->stopCapture();
 
   QSignalSpy spy(ec, &EventCapture::eventCaptured);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   m_window->show();
   QApplication::processEvents();
 
-  QCOMPARE(spy.count(), 0);
+  QEXPECT_THAT(spy.count(), Eq(0));
 }
 
 QTEST_MAIN(TestEventCapture)

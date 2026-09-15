@@ -5,7 +5,10 @@
 
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// End-to-end check that the exposure policy reaches the actual socket.
 ///
@@ -32,17 +35,17 @@ class TestWebSocketServerBind : public QObject {
   /// network, so a remote host can connect and discovery can find it.
   void bindsAllInterfacesByDefault() {
     WebSocketServer server(kEphemeral);
-    QVERIFY2(server.start(), "server failed to start on an ephemeral port");
-    QVERIFY(server.isListening());
-    QCOMPARE(server.serverAddress(), QHostAddress(QHostAddress::Any));
+    QEXPECT_THAT(server.start(), IsTrue());
+    QEXPECT_THAT(server.isListening(), IsTrue());
+    QEXPECT_THAT(server.serverAddress(), Eq(QHostAddress(QHostAddress::Any)));
     server.stop();
   }
 
   void bindsLoopbackWhenRestricted() {
     qputenv("QTPILOT_BIND_ADDRESS", QByteArray("loopback"));
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
-    QCOMPARE(server.serverAddress(), QHostAddress(QHostAddress::LocalHost));
+    QEXPECT_THAT(server.start(), IsTrue());
+    QEXPECT_THAT(server.serverAddress(), Eq(QHostAddress(QHostAddress::LocalHost)));
     server.stop();
   }
 
@@ -51,8 +54,8 @@ class TestWebSocketServerBind : public QObject {
   void unrecognisedValueRestrictsToLoopback() {
     qputenv("QTPILOT_BIND_ADDRESS", QByteArray("loopbak"));
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
-    QCOMPARE(server.serverAddress(), QHostAddress(QHostAddress::LocalHost));
+    QEXPECT_THAT(server.start(), IsTrue());
+    QEXPECT_THAT(server.serverAddress(), Eq(QHostAddress(QHostAddress::LocalHost)));
     server.stop();
   }
 
@@ -60,8 +63,8 @@ class TestWebSocketServerBind : public QObject {
   /// the reported port is what a client connects to.
   void ephemeralPortIsReadBackAfterListen() {
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
-    QVERIFY2(server.port() != 0, "port 0 was not replaced with the OS-assigned port");
+    QEXPECT_THAT(server.start(), IsTrue());
+    QEXPECT_THAT(server.port(), Ne(0));
     server.stop();
   }
 

@@ -11,7 +11,10 @@
 #include <QTimer>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// @brief Unit tests for ObjectRegistry
 ///
@@ -72,9 +75,9 @@ void TestObjectRegistry::testSingleton() {
   ObjectRegistry* inst1 = ObjectRegistry::instance();
   ObjectRegistry* inst2 = ObjectRegistry::instance();
 
-  QVERIFY(inst1 != nullptr);
-  QVERIFY(inst2 != nullptr);
-  QCOMPARE(inst1, inst2);
+  QEXPECT_THAT(inst1, NotNull());
+  QEXPECT_THAT(inst2, NotNull());
+  QEXPECT_THAT(inst1, Eq(inst2));
 }
 
 void TestObjectRegistry::testObjectTracking() {
@@ -89,12 +92,12 @@ void TestObjectRegistry::testObjectTracking() {
   QCoreApplication::processEvents();
 
   // Verify object is tracked
-  QVERIFY(registry->contains(testObj));
-  QVERIFY(registry->objectCount() > countBefore);
+  QEXPECT_THAT(registry->contains(testObj), IsTrue());
+  QEXPECT_THAT(registry->objectCount(), Gt(countBefore));
 
   // Verify it's in allObjects list
   QList<QObject*> allObjs = registry->allObjects();
-  QVERIFY(allObjs.contains(testObj));
+  QEXPECT_THAT(allObjs, Contains(testObj));
 
   // Cleanup is automatic via parent
 }
@@ -116,19 +119,19 @@ void TestObjectRegistry::testFindByObjectName() {
 
   // Find by name (global search)
   QObject* found = registry->findByObjectName(QStringLiteral("findTestChild1"));
-  QCOMPARE(found, child1);
+  QEXPECT_THAT(found, Eq(child1));
 
   // Find by name within subtree
   QObject* foundInParent = registry->findByObjectName(QStringLiteral("findTestChild2"), parent);
-  QCOMPARE(foundInParent, child2);
+  QEXPECT_THAT(foundInParent, Eq(child2));
 
   // Search for non-existent name
   QObject* notFound = registry->findByObjectName(QStringLiteral("nonExistentObject"));
-  QVERIFY(notFound == nullptr);
+  QEXPECT_THAT(notFound, IsNull());
 
   // Search in wrong subtree
   QObject* wrongSubtree = registry->findByObjectName(QStringLiteral("findTestParent"), child1);
-  QVERIFY(wrongSubtree == nullptr);
+  QEXPECT_THAT(wrongSubtree, IsNull());
 }
 
 void TestObjectRegistry::testFindAllByClassName() {
@@ -152,18 +155,15 @@ void TestObjectRegistry::testFindAllByClassName() {
 
   // Find all QTimers in the subtree
   QList<QObject*> timers = registry->findAllByClassName(QStringLiteral("QTimer"), parent);
-  QCOMPARE(timers.size(), 2);
-  QVERIFY(timers.contains(timer1));
-  QVERIFY(timers.contains(timer2));
-  QVERIFY(!timers.contains(child));
+  QEXPECT_THAT(timers, SizeIs(2));
+  QEXPECT_THAT(timers, Contains(timer1));
+  QEXPECT_THAT(timers, Contains(timer2));
+  QEXPECT_THAT(timers, Not(Contains(child)));
 
   // Search is subclass-aware: querying the base class "QObject" matches every
   // tracked object, including the QTimer instances (QTimer derives QObject).
   QList<QObject*> allObjects = registry->findAllByClassName(QStringLiteral("QObject"), parent);
-  QVERIFY(allObjects.contains(parent));
-  QVERIFY(allObjects.contains(child));
-  QVERIFY(allObjects.contains(timer1));
-  QVERIFY(allObjects.contains(timer2));
+  QEXPECT_THAT(allObjects, AllOf(Contains(parent), Contains(child), Contains(timer1), Contains(timer2)));
 }
 
 void TestObjectRegistry::testObjectRemoval() {
@@ -174,7 +174,7 @@ void TestObjectRegistry::testObjectRemoval() {
   tempObj->setObjectName(QStringLiteral("tempObjectForRemoval"));
 
   QCoreApplication::processEvents();
-  QVERIFY(registry->contains(tempObj));
+  QEXPECT_THAT(registry->contains(tempObj), IsTrue());
 
   // Delete the object
   delete tempObj;
@@ -186,7 +186,7 @@ void TestObjectRegistry::testObjectRemoval() {
   // We can't check contains() directly since the pointer is invalid,
   // but we can verify the count decreased and we can't find by name
   QObject* shouldBeNull = registry->findByObjectName(QStringLiteral("tempObjectForRemoval"));
-  QVERIFY(shouldBeNull == nullptr);
+  QEXPECT_THAT(shouldBeNull, IsNull());
 }
 
 void TestObjectRegistry::testDisconnectedRegistrationIsLazy() {
@@ -197,12 +197,12 @@ void TestObjectRegistry::testDisconnectedRegistrationIsLazy() {
   obj->setObjectName(QStringLiteral("lazyRegistrationObject"));
   QCoreApplication::processEvents();
 
-  QVERIFY(registry->contains(obj));
-  QCOMPARE(addedSpy.count(), 0);
+  QEXPECT_THAT(registry->contains(obj), IsTrue());
+  QEXPECT_THAT(addedSpy.count(), Eq(0));
 
   const QString id = registry->objectId(obj);
-  QVERIFY(!id.isEmpty());
-  QCOMPARE(registry->findById(id), obj);
+  QEXPECT_THAT(id, QIsNotEmpty());
+  QEXPECT_THAT(registry->findById(id), Eq(obj));
 }
 
 void TestObjectRegistry::testConnectedRegistrationPublishesObjectAdded() {
@@ -223,7 +223,7 @@ void TestObjectRegistry::testConnectedRegistrationPublishesObjectAdded() {
     }
     return false;
   })(), 1000);
-  QVERIFY(found);
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestObjectRegistry::testDestroyedObjectSuppressesQueuedObjectAdded() {
@@ -237,7 +237,7 @@ void TestObjectRegistry::testDestroyedObjectSuppressesQueuedObjectAdded() {
   QCoreApplication::processEvents();
 
   for (const auto& emission : addedSpy) {
-    QVERIFY(qvariant_cast<QObject*>(emission.at(0)) != destroyedAddress);
+    QEXPECT_THAT(qvariant_cast<QObject*>(emission.at(0)), Ne(destroyedAddress));
   }
 }
 
@@ -289,11 +289,11 @@ void TestObjectRegistry::testThreadSafety() {
   }
 
   // Verify no errors occurred
-  QCOMPARE(errors.loadRelaxed(), 0);
-  QCOMPARE(createdCount.loadRelaxed(), threadCount * objectsPerThread);
+  QEXPECT_THAT(errors.loadRelaxed(), Eq(0));
+  QEXPECT_THAT(createdCount.loadRelaxed(), Eq(threadCount * objectsPerThread));
 
   // Registry should still be functional
-  QVERIFY(registry->objectCount() >= 0);  // Just verify it doesn't crash
+  QEXPECT_THAT(registry->objectCount(), Ge(0));  // Just verify it doesn't crash
 
   qDebug() << "Thread safety test: created" << createdCount.loadRelaxed() << "objects across"
            << threadCount << "threads with" << errors.loadRelaxed() << "errors";

@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "interaction/hit_test.h"
 #include "interaction/input_simulator.h"
@@ -15,6 +16,7 @@
 #include <QtTest>
 
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 class TestUIInteraction : public QObject {
   Q_OBJECT
@@ -81,36 +83,36 @@ void TestUIInteraction::cleanupTestCase() {
 void TestUIInteraction::testMouseClick() {
   // Setup signal spy to detect click
   QSignalSpy spy(m_button, &QPushButton::clicked);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   // Click the button using InputSimulator
   InputSimulator::mouseClick(m_button);
 
   // Verify click was detected
-  QCOMPARE(spy.count(), 1);
+  QEXPECT_THAT(spy.count(), Eq(1));
 }
 
 void TestUIInteraction::testMouseClickPosition() {
   // Click at a specific position (10, 10) from top-left
   QSignalSpy spy(m_button, &QPushButton::clicked);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   InputSimulator::mouseClick(m_button, InputSimulator::MouseButton::Left, QPoint(10, 10));
 
   // Verify click was detected
-  QCOMPARE(spy.count(), 1);
+  QEXPECT_THAT(spy.count(), Eq(1));
 }
 
 void TestUIInteraction::testSendText() {
   // Clear the line edit first
   m_lineEdit->clear();
-  QCOMPARE(m_lineEdit->text(), QString(""));
+  QEXPECT_THAT(m_lineEdit->text(), QIsEmpty());
 
   // Type text into line edit
   InputSimulator::sendText(m_lineEdit, "Hello World");
 
   // Verify text was entered
-  QCOMPARE(m_lineEdit->text(), QString("Hello World"));
+  QEXPECT_THAT(m_lineEdit->text(), QStrEq("Hello World"));
 }
 
 void TestUIInteraction::testSendKeySequence() {
@@ -124,7 +126,7 @@ void TestUIInteraction::testSendKeySequence() {
   QApplication::processEvents();
 
   // Verify all text is selected
-  QCOMPARE(m_lineEdit->selectedText(), QString("Select Me"));
+  QEXPECT_THAT(m_lineEdit->selectedText(), QStrEq("Select Me"));
 }
 
 // === Screenshot tests ===
@@ -134,17 +136,12 @@ void TestUIInteraction::testCaptureWidget() {
   QByteArray base64 = Screenshot::captureWidget(m_button);
 
   // Verify we got some data
-  QVERIFY(!base64.isEmpty());
+  QEXPECT_THAT(base64, QIsNotEmpty());
 
   // Decode and verify it's a PNG (starts with PNG signature)
   QByteArray decoded = QByteArray::fromBase64(base64);
-  QVERIFY(decoded.size() > 8);
-
-  // PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A
-  QCOMPARE(decoded[0], static_cast<char>(0x89));
-  QCOMPARE(decoded[1], 'P');
-  QCOMPARE(decoded[2], 'N');
-  QCOMPARE(decoded[3], 'G');
+  QEXPECT_THAT(decoded.size(), Gt(8));
+  QEXPECT_THAT(decoded.startsWith("\x89PNG"), IsTrue());
 }
 
 void TestUIInteraction::testCaptureRegion() {
@@ -152,15 +149,12 @@ void TestUIInteraction::testCaptureRegion() {
   QByteArray base64 = Screenshot::captureRegion(m_window, QRect(0, 0, 50, 50));
 
   // Verify we got some data
-  QVERIFY(!base64.isEmpty());
+  QEXPECT_THAT(base64, QIsNotEmpty());
 
   // Decode and verify it's a PNG
   QByteArray decoded = QByteArray::fromBase64(base64);
-  QVERIFY(decoded.size() > 8);
-  QCOMPARE(decoded[0], static_cast<char>(0x89));
-  QCOMPARE(decoded[1], 'P');
-  QCOMPARE(decoded[2], 'N');
-  QCOMPARE(decoded[3], 'G');
+  QEXPECT_THAT(decoded.size(), Gt(8));
+  QEXPECT_THAT(decoded.startsWith("\x89PNG"), IsTrue());
 }
 
 // === HitTest tests ===
@@ -170,40 +164,40 @@ void TestUIInteraction::testWidgetGeometry() {
   QJsonObject geo = HitTest::widgetGeometry(m_button);
 
   // Verify all required fields are present
-  QVERIFY(geo.contains("local"));
-  QVERIFY(geo.contains("global"));
-  QVERIFY(geo.contains("devicePixelRatio"));
+  QEXPECT_THAT(geo, AllOf(
+      HasJsonField("local"),
+      HasJsonField("global"),
+      HasJsonField("devicePixelRatio")));
 
   // Verify local geometry
   QJsonObject local = geo["local"].toObject();
-  QVERIFY(local.contains("x"));
-  QVERIFY(local.contains("y"));
-  QVERIFY(local.contains("width"));
-  QVERIFY(local.contains("height"));
-  QVERIFY(local["width"].toInt() > 0);
-  QVERIFY(local["height"].toInt() > 0);
+  QEXPECT_THAT(local, AllOf(
+      HasJsonField("x"),
+      HasJsonField("y"),
+      HasJsonField("width", Gt(0)),
+      HasJsonField("height", Gt(0))));
 
   // Verify global geometry
   QJsonObject global = geo["global"].toObject();
-  QVERIFY(global.contains("x"));
-  QVERIFY(global.contains("y"));
-  QVERIFY(global.contains("width"));
-  QVERIFY(global.contains("height"));
+  QEXPECT_THAT(global, AllOf(
+      HasJsonField("x"),
+      HasJsonField("y"),
+      HasJsonField("width"),
+      HasJsonField("height")));
 
   // Verify devicePixelRatio is reasonable (usually 1.0, 1.5, 2.0)
   double dpr = geo["devicePixelRatio"].toDouble();
-  QVERIFY(dpr >= 1.0);
-  QVERIFY(dpr <= 4.0);
+  QEXPECT_THAT(dpr, AllOf(Ge(1.0), Le(4.0)));
 }
 
 void TestUIInteraction::testChildAt() {
   // Get the central widget
   QWidget* central = m_window->centralWidget();
-  QVERIFY(central != nullptr);
+  QEXPECT_THAT(central, NotNull());
 
   // Get layout to find button position
   QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(central->layout());
-  QVERIFY(layout != nullptr);
+  QEXPECT_THAT(layout, NotNull());
 
   // Map button center to central widget coordinates
   QPoint buttonCenter = m_button->rect().center();
@@ -213,9 +207,9 @@ void TestUIInteraction::testChildAt() {
   QWidget* found = HitTest::childAt(central, buttonCenterInCentral);
 
   // Should find the button (or at least not return nullptr)
-  QVERIFY(found != nullptr);
+  QEXPECT_THAT(found, NotNull());
   // The found widget should be the button or contain the button
-  QVERIFY(found == m_button || found->findChild<QPushButton*>() == m_button);
+  QEXPECT_THAT(found == m_button || found->findChild<QPushButton*>() == m_button, IsTrue());
 }
 
 QTEST_MAIN(TestUIInteraction)

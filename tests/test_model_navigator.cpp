@@ -17,7 +17,10 @@
 #include <QTreeView>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// Minimal lazy model: rowCount reports 0 until fetchMore is called.
 class LazyFlatModel : public QAbstractListModel {
@@ -276,10 +279,10 @@ QJsonObject TestModelNavigator::callExpectError(const QString& method, const QJs
 
 void TestModelNavigator::testModelsListFindsTestModel() {
   QJsonValue result = callResult("qt.models.list", QJsonObject());
-  QVERIFY(result.isArray());
+  QEXPECT_THAT(result.isArray(), IsTrue());
 
   QJsonArray models = result.toArray();
-  QVERIFY(models.size() >= 2);  // At least testModel and largeModel
+  QEXPECT_THAT(models.size(), Ge(2));  // At least testModel and largeModel
 
   // Find testModel in the list
   bool foundTestModel = false;
@@ -290,12 +293,12 @@ void TestModelNavigator::testModelsListFindsTestModel() {
       int colCount = model["columnCount"].toInt();
       if (rowCount == 3 && colCount == 2) {
         foundTestModel = true;
-        QVERIFY(!model["objectId"].toString().isEmpty());
+        QEXPECT_THAT(model["objectId"].toString().isEmpty(), IsFalse());
         break;
       }
     }
   }
-  QVERIFY2(foundTestModel, "testModel (3x2 QStandardItemModel) not found in qt.models.list");
+  QEXPECT_THAT(foundTestModel, IsTrue());
 }
 
 void TestModelNavigator::testModelsListIncludesRoleNames() {
@@ -305,9 +308,8 @@ void TestModelNavigator::testModelsListIncludesRoleNames() {
   // Every model entry should have roleNames
   for (const QJsonValue& v : models) {
     QJsonObject model = v.toObject();
-    QVERIFY2(model.contains("roleNames"),
-             qPrintable(QString("Model %1 missing roleNames").arg(model["className"].toString())));
-    QVERIFY(model["roleNames"].isObject());
+    QEXPECT_THAT(model, HasJsonField("roleNames"));
+    QEXPECT_THAT(model["roleNames"].isObject(), IsTrue());
   }
 }
 
@@ -320,15 +322,15 @@ void TestModelNavigator::testModelsDataSmallModel() {
 
   // Call without offset/limit - small model should return all rows
   QJsonValue result = callResult("qt.models.data", QJsonObject{{"objectId", modelId}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject data = result.toObject();
-  QCOMPARE(data["totalRows"].toInt(), 3);
-  QCOMPARE(data["totalColumns"].toInt(), 2);
-  QCOMPARE(data["hasMore"].toBool(), false);
+  QEXPECT_THAT(data, HasJsonField("totalRows", 3));
+  QEXPECT_THAT(data, HasJsonField("totalColumns", 2));
+  QEXPECT_THAT(data, HasJsonField("hasMore", false));
 
   QJsonArray rows = data["rows"].toArray();
-  QCOMPARE(rows.size(), 3);
+  QEXPECT_THAT(rows, JsonArraySize(3));
 }
 
 void TestModelNavigator::testModelsDataDisplayRole() {
@@ -340,18 +342,18 @@ void TestModelNavigator::testModelsDataDisplayRole() {
 
   // Row 0: cells[0] should have display="A1", cells[1] should have display="A2"
   QJsonArray row0Cells = rows[0].toObject()["cells"].toArray();
-  QCOMPARE(row0Cells[0].toObject()["display"].toString(), QString("A1"));
-  QCOMPARE(row0Cells[1].toObject()["display"].toString(), QString("A2"));
+  QEXPECT_THAT(row0Cells[0].toObject(), HasJsonField("display", "A1"));
+  QEXPECT_THAT(row0Cells[1].toObject(), HasJsonField("display", "A2"));
 
   // Row 1: "B1", "B2"
   QJsonArray row1Cells = rows[1].toObject()["cells"].toArray();
-  QCOMPARE(row1Cells[0].toObject()["display"].toString(), QString("B1"));
-  QCOMPARE(row1Cells[1].toObject()["display"].toString(), QString("B2"));
+  QEXPECT_THAT(row1Cells[0].toObject(), HasJsonField("display", "B1"));
+  QEXPECT_THAT(row1Cells[1].toObject(), HasJsonField("display", "B2"));
 
   // Row 2: "C1", "C2"
   QJsonArray row2Cells = rows[2].toObject()["cells"].toArray();
-  QCOMPARE(row2Cells[0].toObject()["display"].toString(), QString("C1"));
-  QCOMPARE(row2Cells[1].toObject()["display"].toString(), QString("C2"));
+  QEXPECT_THAT(row2Cells[0].toObject(), HasJsonField("display", "C1"));
+  QEXPECT_THAT(row2Cells[1].toObject(), HasJsonField("display", "C2"));
 }
 
 void TestModelNavigator::testModelsDataWithOffset() {
@@ -361,17 +363,17 @@ void TestModelNavigator::testModelsDataWithOffset() {
       callResult("qt.models.data", QJsonObject{{"objectId", modelId}, {"offset", 1}, {"limit", 1}});
   QJsonObject data = result.toObject();
 
-  QCOMPARE(data["totalRows"].toInt(), 3);
-  QCOMPARE(data["offset"].toInt(), 1);
-  QCOMPARE(data["limit"].toInt(), 1);
-  QCOMPARE(data["hasMore"].toBool(), true);
+  QEXPECT_THAT(data, HasJsonField("totalRows", 3));
+  QEXPECT_THAT(data, HasJsonField("offset", 1));
+  QEXPECT_THAT(data, HasJsonField("limit", 1));
+  QEXPECT_THAT(data, HasJsonField("hasMore", true));
 
   QJsonArray rows = data["rows"].toArray();
-  QCOMPARE(rows.size(), 1);
+  QEXPECT_THAT(rows, JsonArraySize(1));
 
   // Should be row 1: "B1", "B2"
   QJsonArray cells = rows[0].toObject()["cells"].toArray();
-  QCOMPARE(cells[0].toObject()["display"].toString(), QString("B1"));
+  QEXPECT_THAT(cells[0].toObject(), HasJsonField("display", "B1"));
 }
 
 void TestModelNavigator::testModelsDataSmartPaginationLargeModel() {
@@ -381,13 +383,13 @@ void TestModelNavigator::testModelsDataSmartPaginationLargeModel() {
   QJsonValue result = callResult("qt.models.data", QJsonObject{{"objectId", modelId}});
   QJsonObject data = result.toObject();
 
-  QCOMPARE(data["totalRows"].toInt(), 150);
-  QCOMPARE(data["limit"].toInt(), 100);
-  QCOMPARE(data["hasMore"].toBool(), true);
-  QCOMPARE(data["offset"].toInt(), 0);
+  QEXPECT_THAT(data, HasJsonField("totalRows", 150));
+  QEXPECT_THAT(data, HasJsonField("limit", 100));
+  QEXPECT_THAT(data, HasJsonField("hasMore", true));
+  QEXPECT_THAT(data, HasJsonField("offset", 0));
 
   QJsonArray rows = data["rows"].toArray();
-  QCOMPARE(rows.size(), 100);  // Smart pagination caps at 100
+  QEXPECT_THAT(rows, JsonArraySize(100));  // Smart pagination caps at 100
 }
 
 void TestModelNavigator::testModelsDataByRoleName() {
@@ -398,12 +400,11 @@ void TestModelNavigator::testModelsDataByRoleName() {
   QJsonObject data = result.toObject();
 
   QJsonArray rows = data["rows"].toArray();
-  QVERIFY(rows.size() > 0);
+  QEXPECT_THAT(rows.size(), Gt(0));
 
   // Verify display data is present
   QJsonArray row0Cells = rows[0].toObject()["cells"].toArray();
-  QVERIFY(row0Cells[0].toObject().contains("display"));
-  QCOMPARE(row0Cells[0].toObject()["display"].toString(), QString("A1"));
+  QEXPECT_THAT(row0Cells[0].toObject(), HasJsonField("display", "A1"));
 }
 
 void TestModelNavigator::testModelsDataByRoleId() {
@@ -415,12 +416,11 @@ void TestModelNavigator::testModelsDataByRoleId() {
   QJsonObject data = result.toObject();
 
   QJsonArray rows = data["rows"].toArray();
-  QVERIFY(rows.size() > 0);
+  QEXPECT_THAT(rows.size(), Gt(0));
 
   // DisplayRole (0) should map to "display" key name
   QJsonArray row0Cells = rows[0].toObject()["cells"].toArray();
-  QVERIFY(row0Cells[0].toObject().contains("display"));
-  QCOMPARE(row0Cells[0].toObject()["display"].toString(), QString("A1"));
+  QEXPECT_THAT(row0Cells[0].toObject(), HasJsonField("display", "A1"));
 }
 
 void TestModelNavigator::testModelsDataInvalidRole() {
@@ -429,13 +429,13 @@ void TestModelNavigator::testModelsDataInvalidRole() {
   QJsonObject error = callExpectError(
       "qt.models.data", QJsonObject{{"objectId", modelId}, {"roles", QJsonArray{"nonexistent"}}});
 
-  QCOMPARE(error["code"].toInt(), ErrorCode::kModelRoleNotFound);
-  QVERIFY(error["message"].toString().contains("nonexistent"));
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kModelRoleNotFound));
+  QEXPECT_THAT(error["message"].toString(), QStrContains("nonexistent"));
 
   // Should include available roles in error data
   QJsonObject data = error["data"].toObject();
-  QVERIFY(data.contains("availableRoles"));
-  QVERIFY(data.contains("roleName"));
+  QEXPECT_THAT(data, HasJsonField("availableRoles"));
+  QEXPECT_THAT(data, HasJsonField("roleName"));
 }
 
 void TestModelNavigator::testModelsDataNotAModel() {
@@ -444,11 +444,11 @@ void TestModelNavigator::testModelsDataNotAModel() {
 
   QJsonObject error = callExpectError("qt.models.data", QJsonObject{{"objectId", buttonId}});
 
-  QCOMPARE(error["code"].toInt(), ErrorCode::kNotAModel);
-  QVERIFY(!error["message"].toString().isEmpty());
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kNotAModel));
+  QEXPECT_THAT(error["message"].toString().isEmpty(), IsFalse());
 
   QJsonObject data = error["data"].toObject();
-  QVERIFY(data.contains("hint"));
+  QEXPECT_THAT(data, HasJsonField("hint"));
 }
 
 // ========================================================================
@@ -461,22 +461,22 @@ void TestModelNavigator::testResponseEnvelopeWrapping() {
 
   QJsonObject envelope = callEnvelope("qt.models.data", QJsonObject{{"objectId", modelId}});
 
-  QVERIFY(envelope.contains("result"));
-  QVERIFY(envelope.contains("meta"));
+  QEXPECT_THAT(envelope, HasJsonField("result"));
+  QEXPECT_THAT(envelope, HasJsonField("meta"));
 
   QJsonObject meta = envelope["meta"].toObject();
-  QVERIFY(meta.contains("timestamp"));
+  QEXPECT_THAT(meta, HasJsonField("timestamp"));
   qint64 ts = static_cast<qint64>(meta["timestamp"].toDouble());
-  QVERIFY(ts > 0);
+  QEXPECT_THAT(ts, Gt(0));
 }
 
 void TestModelNavigator::testModelsListResponseEnvelope() {
   // qt.models.list should also have envelope
   QJsonObject envelope = callEnvelope("qt.models.list", QJsonObject());
 
-  QVERIFY(envelope.contains("result"));
-  QVERIFY(envelope.contains("meta"));
-  QVERIFY(envelope["result"].isArray());
+  QEXPECT_THAT(envelope, HasJsonField("result"));
+  QEXPECT_THAT(envelope, HasJsonField("meta"));
+  QEXPECT_THAT(envelope["result"].isArray(), IsTrue());
 }
 
 // ========================================================================
@@ -485,17 +485,17 @@ void TestModelNavigator::testModelsListResponseEnvelope() {
 
 void TestModelNavigator::testEnsureFetchedCallsFetchMoreOnLazyModel() {
   LazyFlatModel lazy(42, this);
-  QCOMPARE(lazy.fetchedRows(), 0);
+  QEXPECT_THAT(lazy.fetchedRows(), Eq(0));
 
   ModelNavigator::ensureFetched(&lazy, QModelIndex());
 
-  QCOMPARE(lazy.fetchedRows(), 42);
-  QCOMPARE(lazy.rowCount(), 42);
+  QEXPECT_THAT(lazy.fetchedRows(), Eq(42));
+  QEXPECT_THAT(lazy.rowCount(), Eq(42));
 }
 
 void TestModelNavigator::testPathToIndexRoot() {
   QModelIndex idx = ModelNavigator::pathToIndex(m_smallModel, {});
-  QVERIFY(!idx.isValid());  // root
+  QEXPECT_THAT(idx.isValid(), IsFalse());  // root
 }
 
 void TestModelNavigator::testPathToIndexTwoLevel() {
@@ -510,8 +510,8 @@ void TestModelNavigator::testPathToIndexTwoLevel() {
   tree->appendRow(b);
 
   QModelIndex idx = ModelNavigator::pathToIndex(tree, {0, 1});
-  QVERIFY(idx.isValid());
-  QCOMPARE(tree->data(idx, Qt::DisplayRole).toString(), QString("A.1"));
+  QEXPECT_THAT(idx.isValid(), IsTrue());
+  QEXPECT_THAT(tree->data(idx, Qt::DisplayRole).toString(), QStrEq("A.1"));
 
   delete tree;
 }
@@ -519,15 +519,15 @@ void TestModelNavigator::testPathToIndexTwoLevel() {
 void TestModelNavigator::testPathToIndexInvalidReturnsFailedSegment() {
   int failed = -1;
   QModelIndex idx = ModelNavigator::pathToIndex(m_smallModel, {99}, &failed);
-  QVERIFY(!idx.isValid());
-  QCOMPARE(failed, 0);
+  QEXPECT_THAT(idx.isValid(), IsFalse());
+  QEXPECT_THAT(failed, Eq(0));
 }
 
 void TestModelNavigator::testPathToIndexCallsEnsureFetched() {
   LazyFlatModel lazy(10, this);
   QModelIndex idx = ModelNavigator::pathToIndex(&lazy, {5});
-  QVERIFY(idx.isValid());
-  QCOMPARE(lazy.data(idx, Qt::DisplayRole).toString(), QString("Row5"));
+  QEXPECT_THAT(idx.isValid(), IsTrue());
+  QEXPECT_THAT(lazy.data(idx, Qt::DisplayRole).toString(), QStrEq("Row5"));
 }
 
 void TestModelNavigator::testTextPathToIndexTwoLevel() {
@@ -538,8 +538,8 @@ void TestModelNavigator::testTextPathToIndexTwoLevel() {
   tree->appendRow(etc);
 
   QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"ETC", "fos4 Fresnel"}, 0);
-  QVERIFY(idx.isValid());
-  QCOMPARE(tree->data(idx, Qt::DisplayRole).toString(), QString("fos4 Fresnel"));
+  QEXPECT_THAT(idx.isValid(), IsTrue());
+  QEXPECT_THAT(tree->data(idx, Qt::DisplayRole).toString(), QStrEq("fos4 Fresnel"));
 
   delete tree;
 }
@@ -550,8 +550,8 @@ void TestModelNavigator::testTextPathToIndexMissingSegment() {
 
   int failed = -1;
   QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"A", "missing"}, 0, &failed);
-  QVERIFY(!idx.isValid());
-  QCOMPARE(failed, 1);
+  QEXPECT_THAT(idx.isValid(), IsFalse());
+  QEXPECT_THAT(failed, Eq(1));
 
   delete tree;
 }
@@ -567,9 +567,9 @@ void TestModelNavigator::testTextPathToIndexWithColumn() {
   tree->setItem(2, 1, new QStandardItem("r2c1"));
 
   QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"r1c1"}, 1);
-  QVERIFY(idx.isValid());
+  QEXPECT_THAT(idx.isValid(), IsTrue());
   // Row identity should be row 1 (addressed via column 0).
-  QCOMPARE(idx.row(), 1);
+  QEXPECT_THAT(idx.row(), Eq(1));
 }
 
 // ========================================================================
@@ -587,14 +587,14 @@ void TestModelNavigator::testIndexToRowDataProducesPathAndCells() {
   QJsonObject row = ModelNavigator::indexToRowData(tree, c1, {Qt::DisplayRole});
 
   QJsonArray path = row["path"].toArray();
-  QCOMPARE(path.size(), 2);
-  QCOMPARE(path[0].toInt(), 0);
-  QCOMPARE(path[1].toInt(), 1);
+  QEXPECT_THAT(path, JsonArraySize(2));
+  QEXPECT_THAT(path[0].toInt(), Eq(0));
+  QEXPECT_THAT(path[1].toInt(), Eq(1));
 
   QJsonArray cells = row["cells"].toArray();
-  QCOMPARE(cells.size(), 1);  // single column
-  QCOMPARE(cells[0].toObject()["display"].toString(), QString("C1"));
-  QCOMPARE(row["hasChildren"].toBool(), false);
+  QEXPECT_THAT(cells, JsonArraySize(1));  // single column
+  QEXPECT_THAT(cells[0].toObject(), HasJsonField("display", "C1"));
+  QEXPECT_THAT(row, HasJsonField("hasChildren", false));
 
   delete tree;
 }
@@ -613,14 +613,14 @@ void TestModelNavigator::testGetModelDataWithTwoLevelParentPath() {
   tree->appendRow(a);
 
   QJsonObject data = ModelNavigator::getModelData(tree, {0, 0}, 0, -1, {});
-  QCOMPARE(data["totalRows"].toInt(), 1);
+  QEXPECT_THAT(data, HasJsonField("totalRows", 1));
   QJsonArray rows = data["rows"].toArray();
-  QCOMPARE(rows.size(), 1);
+  QEXPECT_THAT(rows, JsonArraySize(1));
   QJsonArray path = rows[0].toObject()["path"].toArray();
-  QCOMPARE(path.size(), 3);
-  QCOMPARE(path[0].toInt(), 0);
-  QCOMPARE(path[1].toInt(), 0);
-  QCOMPARE(path[2].toInt(), 0);
+  QEXPECT_THAT(path, JsonArraySize(3));
+  QEXPECT_THAT(path[0].toInt(), Eq(0));
+  QEXPECT_THAT(path[1].toInt(), Eq(0));
+  QEXPECT_THAT(path[2].toInt(), Eq(0));
 
   delete tree;
 }
@@ -628,20 +628,20 @@ void TestModelNavigator::testGetModelDataWithTwoLevelParentPath() {
 void TestModelNavigator::testGetModelDataRowsHavePathField() {
   QJsonObject data = ModelNavigator::getModelData(m_smallModel, {}, 0, -1, {});
   QJsonArray rows = data["rows"].toArray();
-  QCOMPARE(rows.size(), 3);
+  QEXPECT_THAT(rows, JsonArraySize(3));
   for (int i = 0; i < 3; ++i) {
     QJsonArray path = rows[i].toObject()["path"].toArray();
-    QCOMPARE(path.size(), 1);
-    QCOMPARE(path[0].toInt(), i);
+    QEXPECT_THAT(path, JsonArraySize(1));
+    QEXPECT_THAT(path[0].toInt(), Eq(i));
   }
   // parent echo
-  QCOMPARE(data["parent"].toArray().size(), 0);
+  QEXPECT_THAT(data["parent"].toArray(), JsonArraySize(0));
 }
 
 void TestModelNavigator::testGetModelDataInvalidParentPathReturnsEmpty() {
   QJsonObject data = ModelNavigator::getModelData(m_smallModel, {99}, 0, -1, {});
-  QCOMPARE(data["totalRows"].toInt(), 0);
-  QCOMPARE(data["rows"].toArray().size(), 0);
+  QEXPECT_THAT(data, HasJsonField("totalRows", 0));
+  QEXPECT_THAT(data["rows"].toArray(), JsonArraySize(0));
 }
 
 // ========================================================================
@@ -663,11 +663,11 @@ void TestModelNavigator::testApiModelsDataWithParentArray() {
                                  QJsonObject{{"objectId", modelId},
                                              {"parent", QJsonArray{0}}});
   QJsonObject data = result.toObject();
-  QCOMPARE(data["totalRows"].toInt(), 2);
-  QCOMPARE(data["rows"].toArray().size(), 2);
-  QCOMPARE(data["rows"].toArray()[0].toObject()["cells"].toArray()[0]
-               .toObject()["display"].toString(),
-           QString("A.0"));
+  QEXPECT_THAT(data, HasJsonField("totalRows", 2));
+  QEXPECT_THAT(data["rows"].toArray(), JsonArraySize(2));
+  QEXPECT_THAT(data["rows"].toArray()[0].toObject()["cells"].toArray()[0]
+                   .toObject(),
+               HasJsonField("display", "A.0"));
 }
 
 void TestModelNavigator::testApiModelsDataInvalidParentPathError() {
@@ -675,11 +675,11 @@ void TestModelNavigator::testApiModelsDataInvalidParentPathError() {
   QJsonObject error = callExpectError("qt.models.data",
                                       QJsonObject{{"objectId", modelId},
                                                   {"parent", QJsonArray{99}}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidParentPath);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kInvalidParentPath));
   QJsonObject details = error["data"].toObject();
-  QCOMPARE(details["failedSegment"].toInt(), 0);
-  QVERIFY(details.contains("path"));
-  QVERIFY(details.contains("availableRows"));
+  QEXPECT_THAT(details, HasJsonField("failedSegment", 0));
+  QEXPECT_THAT(details, HasJsonField("path"));
+  QEXPECT_THAT(details, HasJsonField("availableRows"));
 }
 
 void TestModelNavigator::testApiModelsDataEchoesParent() {
@@ -687,7 +687,7 @@ void TestModelNavigator::testApiModelsDataEchoesParent() {
   QJsonValue result = callResult("qt.models.data",
                                  QJsonObject{{"objectId", modelId},
                                              {"parent", QJsonArray{}}});
-  QCOMPARE(result.toObject()["parent"].toArray().size(), 0);
+  QEXPECT_THAT(result.toObject()["parent"].toArray(), JsonArraySize(0));
 }
 
 // ========================================================================
@@ -708,11 +708,11 @@ void TestModelNavigator::testFindRecursiveExactMatch() {
 
   QJsonArray matches;
   bool truncated = ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
-  QCOMPARE(matches.size(), 1);
-  QCOMPARE(truncated, false);
+  QEXPECT_THAT(matches, JsonArraySize(1));
+  QEXPECT_THAT(truncated, IsFalse());
   QJsonArray path = matches[0].toObject()["path"].toArray();
-  QCOMPARE(path.size(), 1);
-  QCOMPARE(path[0].toInt(), 1);
+  QEXPECT_THAT(path, JsonArraySize(1));
+  QEXPECT_THAT(path[0].toInt(), Eq(1));
 
   delete tree;
 }
@@ -734,7 +734,7 @@ void TestModelNavigator::testFindRecursiveContainsMultipleLevels() {
 
   QJsonArray matches;
   ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
-  QCOMPARE(matches.size(), 2);
+  QEXPECT_THAT(matches, JsonArraySize(2));
 
   delete tree;
 }
@@ -750,8 +750,8 @@ void TestModelNavigator::testFindRecursiveRespectsMaxHits() {
 
   QJsonArray matches;
   bool truncated = ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
-  QCOMPARE(matches.size(), 2);
-  QCOMPARE(truncated, true);
+  QEXPECT_THAT(matches, JsonArraySize(2));
+  QEXPECT_THAT(truncated, IsTrue());
 
   delete tree;
 }
@@ -772,7 +772,7 @@ void TestModelNavigator::testFindRecursiveScopesToParent() {
 
   QJsonArray matches;
   ModelNavigator::findRecursive(tree, tree->index(0, 0), opts, matches);
-  QCOMPARE(matches.size(), 1);
+  QEXPECT_THAT(matches, JsonArraySize(1));
 
   delete tree;
 }
@@ -787,8 +787,8 @@ void TestModelNavigator::testFindRecursiveFindsLazyChildren() {
 
   QJsonArray matches;
   ModelNavigator::findRecursive(&lazy, QModelIndex(), opts, matches);
-  QCOMPARE(matches.size(), 1);
-  QCOMPARE(lazy.fetchedRows(), 20);
+  QEXPECT_THAT(matches, JsonArraySize(1));
+  QEXPECT_THAT(lazy.fetchedRows(), Eq(20));
 }
 
 void TestModelNavigator::testFindRecursiveRegex() {
@@ -803,10 +803,10 @@ void TestModelNavigator::testFindRecursiveRegex() {
   opts.maxHits = 10;
 
   QString err;
-  QVERIFY(ModelNavigator::compileFindOptions(opts, &err));
+  QEXPECT_THAT(ModelNavigator::compileFindOptions(opts, &err), IsTrue());
   QJsonArray matches;
   ModelNavigator::findRecursive(tree, QModelIndex(), opts, matches);
-  QCOMPARE(matches.size(), 2);
+  QEXPECT_THAT(matches, JsonArraySize(2));
 
   delete tree;
 }
@@ -822,8 +822,8 @@ void TestModelNavigator::testFindRecursiveInvalidRegex() {
 
   QString err;
   bool ok = ModelNavigator::compileFindOptions(opts, &err);
-  QCOMPARE(ok, false);
-  QVERIFY(!err.isEmpty());
+  QEXPECT_THAT(ok, IsFalse());
+  QEXPECT_THAT(err.isEmpty(), IsFalse());
 
   delete tree;
 }
@@ -839,9 +839,9 @@ void TestModelNavigator::testApiModelsFindExact() {
                                              {"value", "B1"},
                                              {"match", "exact"}});
   QJsonObject data = result.toObject();
-  QCOMPARE(data["count"].toInt(), 1);
+  QEXPECT_THAT(data, HasJsonField("count", 1));
   QJsonArray matches = data["matches"].toArray();
-  QCOMPARE(matches[0].toObject()["path"].toArray()[0].toInt(), 1);
+  QEXPECT_THAT(matches[0].toObject()["path"].toArray()[0].toInt(), Eq(1));
 }
 
 void TestModelNavigator::testApiModelsFindContainsReturnsPathAndCells() {
@@ -852,9 +852,9 @@ void TestModelNavigator::testApiModelsFindContainsReturnsPathAndCells() {
                                              {"match", "contains"}});
   QJsonObject data = result.toObject();
   // A1, B1, C1 contain "1" in column 0 → 3 matches.
-  QCOMPARE(data["count"].toInt(), 3);
+  QEXPECT_THAT(data, HasJsonField("count", 3));
   QJsonArray first = data["matches"].toArray()[0].toObject()["cells"].toArray();
-  QVERIFY(!first.isEmpty());
+  QEXPECT_THAT(first.isEmpty(), IsFalse());
 }
 
 void TestModelNavigator::testApiModelsFindScopesToParent() {
@@ -874,7 +874,7 @@ void TestModelNavigator::testApiModelsFindScopesToParent() {
                                              {"value", "target"},
                                              {"match", "exact"},
                                              {"parent", QJsonArray{0}}});
-  QCOMPARE(result.toObject()["count"].toInt(), 1);
+  QEXPECT_THAT(result.toObject(), HasJsonField("count", 1));
 }
 
 void TestModelNavigator::testApiModelsFindTruncated() {
@@ -885,8 +885,8 @@ void TestModelNavigator::testApiModelsFindTruncated() {
                                              {"match", "contains"},
                                              {"maxHits", 3}});
   QJsonObject data = result.toObject();
-  QCOMPARE(data["count"].toInt(), 3);
-  QCOMPARE(data["truncated"].toBool(), true);
+  QEXPECT_THAT(data, HasJsonField("count", 3));
+  QEXPECT_THAT(data, HasJsonField("truncated", true));
 }
 
 void TestModelNavigator::testApiModelsFindInvalidRegexError() {
@@ -895,9 +895,9 @@ void TestModelNavigator::testApiModelsFindInvalidRegexError() {
                                       QJsonObject{{"objectId", modelId},
                                                   {"value", "[unclosed"},
                                                   {"match", "regex"}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidRegex);
-  QVERIFY(error["data"].toObject().contains("pattern"));
-  QVERIFY(error["data"].toObject().contains("error"));
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kInvalidRegex));
+  QEXPECT_THAT(error["data"].toObject(), HasJsonField("pattern"));
+  QEXPECT_THAT(error["data"].toObject(), HasJsonField("error"));
 }
 
 void TestModelNavigator::testApiModelsFindRoleNotFoundError() {
@@ -906,7 +906,7 @@ void TestModelNavigator::testApiModelsFindRoleNotFoundError() {
                                       QJsonObject{{"objectId", modelId},
                                                   {"value", "x"},
                                                   {"role", "nonexistent"}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kModelRoleNotFound);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kModelRoleNotFound));
 }
 
 // ========================================================================
@@ -920,10 +920,10 @@ void TestModelNavigator::testApiUiClickItemPathSelect() {
                                              {"path", QJsonArray{1}},
                                              {"action", "select"}});
   QJsonObject data = result.toObject();
-  QCOMPARE(data["found"].toBool(), true);
-  QCOMPARE(data["path"].toArray()[0].toInt(), 1);
+  QEXPECT_THAT(data, HasJsonField("found", true));
+  QEXPECT_THAT(data["path"].toArray()[0].toInt(), Eq(1));
   // Verify the view's current index reflects the selection.
-  QCOMPARE(m_tableView->currentIndex().row(), 1);
+  QEXPECT_THAT(m_tableView->currentIndex().row(), Eq(1));
 }
 
 void TestModelNavigator::testApiUiClickItemMissingPathAndItemPath() {
@@ -931,7 +931,7 @@ void TestModelNavigator::testApiUiClickItemMissingPathAndItemPath() {
   QJsonObject error = callExpectError("qt.ui.clickItem",
                                       QJsonObject{{"objectId", viewId},
                                                   {"action", "select"}});
-  QCOMPARE(error["code"].toInt(), JsonRpcError::kInvalidParams);
+  QEXPECT_THAT(error, HasJsonField("code", JsonRpcError::kInvalidParams));
 }
 
 void TestModelNavigator::testApiUiClickItemBothPathAndItemPathError() {
@@ -940,7 +940,7 @@ void TestModelNavigator::testApiUiClickItemBothPathAndItemPathError() {
                                       QJsonObject{{"objectId", viewId},
                                                   {"path", QJsonArray{0}},
                                                   {"itemPath", QJsonArray{"A1"}}});
-  QCOMPARE(error["code"].toInt(), JsonRpcError::kInvalidParams);
+  QEXPECT_THAT(error, HasJsonField("code", JsonRpcError::kInvalidParams));
 }
 
 void TestModelNavigator::testApiUiClickItemInvalidPathError() {
@@ -948,11 +948,11 @@ void TestModelNavigator::testApiUiClickItemInvalidPathError() {
   QJsonObject error = callExpectError("qt.ui.clickItem",
                                       QJsonObject{{"objectId", viewId},
                                                   {"path", QJsonArray{99}}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kItemNotFound);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kItemNotFound));
   QJsonObject details = error["data"].toObject();
-  QCOMPARE(details["mode"].toString(), QString("row"));
-  QCOMPARE(details["failedSegment"].toInt(), 0);
-  QCOMPARE(details["requestedRow"].toInt(), 99);
+  QEXPECT_THAT(details, HasJsonField("mode", "row"));
+  QEXPECT_THAT(details, HasJsonField("failedSegment", 0));
+  QEXPECT_THAT(details, HasJsonField("requestedRow", 99));
 }
 
 void TestModelNavigator::testApiUiClickItemTextPathSelect() {
@@ -974,11 +974,11 @@ void TestModelNavigator::testApiUiClickItemTextPathSelect() {
                                              {"itemPath", QJsonArray{"ETC", "fos4 Fresnel"}},
                                              {"action", "select"}});
   QJsonObject data = result.toObject();
-  QCOMPARE(data["found"].toBool(), true);
+  QEXPECT_THAT(data, HasJsonField("found", true));
   QJsonArray path = data["path"].toArray();
-  QCOMPARE(path.size(), 2);
-  QCOMPARE(path[0].toInt(), 0);
-  QCOMPARE(path[1].toInt(), 0);
+  QEXPECT_THAT(path, JsonArraySize(2));
+  QEXPECT_THAT(path[0].toInt(), Eq(0));
+  QEXPECT_THAT(path[1].toInt(), Eq(0));
 
   delete view;
   delete tree;
@@ -989,10 +989,10 @@ void TestModelNavigator::testApiUiClickItemTextPathMissingSegment() {
   QJsonObject error = callExpectError("qt.ui.clickItem",
                                       QJsonObject{{"objectId", viewId},
                                                   {"itemPath", QJsonArray{"not-a-value"}}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kItemNotFound);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kItemNotFound));
   QJsonObject details = error["data"].toObject();
-  QCOMPARE(details["mode"].toString(), QString("text"));
-  QCOMPARE(details["segmentText"].toString(), QString("not-a-value"));
+  QEXPECT_THAT(details, HasJsonField("mode", "text"));
+  QEXPECT_THAT(details, HasJsonField("segmentText", "not-a-value"));
 }
 
 void TestModelNavigator::testApiUiClickItemClickAction() {
@@ -1001,7 +1001,7 @@ void TestModelNavigator::testApiUiClickItemClickAction() {
              QJsonObject{{"objectId", viewId},
                          {"path", QJsonArray{1}},
                          {"action", "click"}});
-  QCOMPARE(m_tableView->currentIndex().row(), 1);
+  QEXPECT_THAT(m_tableView->currentIndex().row(), Eq(1));
 }
 
 void TestModelNavigator::testApiUiClickItemDoubleClickAction() {
@@ -1010,8 +1010,8 @@ void TestModelNavigator::testApiUiClickItemDoubleClickAction() {
                                  QJsonObject{{"objectId", viewId},
                                              {"path", QJsonArray{0}},
                                              {"action", "doubleClick"}});
-  QCOMPARE(result.toObject()["found"].toBool(), true);
-  QCOMPARE(m_tableView->currentIndex().row(), 0);
+  QEXPECT_THAT(result.toObject(), HasJsonField("found", true));
+  QEXPECT_THAT(m_tableView->currentIndex().row(), Eq(0));
 }
 
 void TestModelNavigator::testApiUiClickItemEditOpensEditor() {
@@ -1023,12 +1023,12 @@ void TestModelNavigator::testApiUiClickItemEditOpensEditor() {
                                              {"action", "edit"},
                                              {"column", 0},
                                              {"editColumn", 1}});
-  QCOMPARE(result.toObject()["found"].toBool(), true);
+  QEXPECT_THAT(result.toObject(), HasJsonField("found", true));
   // Edit succeeded without throwing, and the current index moved to the
   // edit cell. (state() is protected so we can't query EditingState directly;
   // the non-throw path + currentIndex shift is the observable contract.)
-  QCOMPARE(m_tableView->currentIndex().row(), 0);
-  QCOMPARE(m_tableView->currentIndex().column(), 1);
+  QEXPECT_THAT(m_tableView->currentIndex().row(), Eq(0));
+  QEXPECT_THAT(m_tableView->currentIndex().column(), Eq(1));
 }
 
 void TestModelNavigator::testApiUiClickItemEditInvalidColumnError() {
@@ -1038,8 +1038,8 @@ void TestModelNavigator::testApiUiClickItemEditInvalidColumnError() {
                                                   {"path", QJsonArray{0}},
                                                   {"action", "edit"},
                                                   {"editColumn", 99}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidColumn);
-  QCOMPARE(error["data"].toObject()["editColumn"].toInt(), 99);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kInvalidColumn));
+  QEXPECT_THAT(error["data"].toObject(), HasJsonField("editColumn", 99));
 }
 
 void TestModelNavigator::testApiUiClickItemEditNonEditableError() {
@@ -1061,7 +1061,7 @@ void TestModelNavigator::testApiUiClickItemEditNonEditableError() {
                                       QJsonObject{{"objectId", viewId},
                                                   {"path", QJsonArray{0}},
                                                   {"action", "edit"}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kNotEditable);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kNotEditable));
 
   delete view;
   delete model;
@@ -1080,7 +1080,7 @@ void TestModelNavigator::testApiUiClickItemComboBoxSelectsValue() {
              QJsonObject{{"objectId", id},
                          {"itemPath", QJsonArray{"Beta"}},
                          {"action", "select"}});
-  QCOMPARE(combo->currentIndex(), 1);
+  QEXPECT_THAT(combo->currentIndex(), Eq(1));
 
   delete combo;
 }
@@ -1098,7 +1098,7 @@ void TestModelNavigator::testApiUiClickItemComboBoxEditReturnsNotEditable() {
                                       QJsonObject{{"objectId", id},
                                                   {"itemPath", QJsonArray{"X"}},
                                                   {"action", "edit"}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kNotEditable);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kNotEditable));
 
   delete combo;
 }
@@ -1116,7 +1116,7 @@ void TestModelNavigator::testApiUiClickItemComboBoxRejectsNonZeroColumn() {
                                       QJsonObject{{"objectId", id},
                                                   {"itemPath", QJsonArray{"Y"}},
                                                   {"column", 1}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kInvalidColumn);
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kInvalidColumn));
 
   delete combo;
 }
@@ -1140,16 +1140,16 @@ void TestModelNavigator::testApiUiClickItemExpandsAncestors() {
   QString viewId = ObjectRegistry::instance()->objectId(view);
 
   // All ancestors start collapsed.
-  QVERIFY(!view->isExpanded(tree->index(0, 0)));
-  QVERIFY(!view->isExpanded(tree->index(0, 0, tree->index(0, 0))));
+  QEXPECT_THAT(view->isExpanded(tree->index(0, 0)), IsFalse());
+  QEXPECT_THAT(view->isExpanded(tree->index(0, 0, tree->index(0, 0))), IsFalse());
 
   callResult("qt.ui.clickItem",
              QJsonObject{{"objectId", viewId},
                          {"path", QJsonArray{0, 0, 0}},
                          {"action", "select"}});
 
-  QVERIFY(view->isExpanded(tree->index(0, 0)));
-  QVERIFY(view->isExpanded(tree->index(0, 0, tree->index(0, 0))));
+  QEXPECT_THAT(view->isExpanded(tree->index(0, 0)), IsTrue());
+  QEXPECT_THAT(view->isExpanded(tree->index(0, 0, tree->index(0, 0))), IsTrue());
 
   delete view;
   delete tree;

@@ -5,7 +5,27 @@
 
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
+
+inline void PrintTo(const KeyCombo& combo, std::ostream* os) {
+  *os << "KeyCombo(key=" << combo.key << ", modifiers=" << static_cast<int>(combo.modifiers) << ")";
+}
+
+MATCHER_P2(MatchesKeyCombo, expectedKey, expectedModifiers, "") {
+  if (arg.key != expectedKey) {
+    *result_listener << "key was " << arg.key << ", expected " << expectedKey;
+    return false;
+  }
+  if (arg.modifiers != expectedModifiers) {
+    *result_listener << "modifiers were " << static_cast<int>(arg.modifiers)
+                     << ", expected " << static_cast<int>(expectedModifiers);
+    return false;
+  }
+  return true;
+}
 
 /// @brief Unit tests for KeyNameMapper: key name resolution and combo parsing.
 ///
@@ -39,125 +59,125 @@ class TestKeyNameMapper : public QObject {
 
 void TestKeyNameMapper::testResolveNavigationKeys() {
   // Return and Enter both map to Key_Return
-  QCOMPARE(KeyNameMapper::resolve("Return"), Qt::Key_Return);
-  QCOMPARE(KeyNameMapper::resolve("Enter"), Qt::Key_Return);
+  QEXPECT_THAT(KeyNameMapper::resolve("Return"), Eq(Qt::Key_Return));
+  QEXPECT_THAT(KeyNameMapper::resolve("Enter"), Eq(Qt::Key_Return));
 
   // Tab
-  QCOMPARE(KeyNameMapper::resolve("Tab"), Qt::Key_Tab);
+  QEXPECT_THAT(KeyNameMapper::resolve("Tab"), Eq(Qt::Key_Tab));
 
   // Escape variants
-  QCOMPARE(KeyNameMapper::resolve("Escape"), Qt::Key_Escape);
-  QCOMPARE(KeyNameMapper::resolve("Esc"), Qt::Key_Escape);
+  QEXPECT_THAT(KeyNameMapper::resolve("Escape"), Eq(Qt::Key_Escape));
+  QEXPECT_THAT(KeyNameMapper::resolve("Esc"), Eq(Qt::Key_Escape));
 
   // Backspace variants
-  QCOMPARE(KeyNameMapper::resolve("BackSpace"), Qt::Key_Backspace);
-  QCOMPARE(KeyNameMapper::resolve("Backspace"), Qt::Key_Backspace);
+  QEXPECT_THAT(KeyNameMapper::resolve("BackSpace"), Eq(Qt::Key_Backspace));
+  QEXPECT_THAT(KeyNameMapper::resolve("Backspace"), Eq(Qt::Key_Backspace));
 
   // Delete
-  QCOMPARE(KeyNameMapper::resolve("Delete"), Qt::Key_Delete);
+  QEXPECT_THAT(KeyNameMapper::resolve("Delete"), Eq(Qt::Key_Delete));
 
   // Space variants
-  QCOMPARE(KeyNameMapper::resolve("Space"), Qt::Key_Space);
-  QCOMPARE(KeyNameMapper::resolve("space"), Qt::Key_Space);
+  QEXPECT_THAT(KeyNameMapper::resolve("Space"), Eq(Qt::Key_Space));
+  QEXPECT_THAT(KeyNameMapper::resolve("space"), Eq(Qt::Key_Space));
 }
 
 void TestKeyNameMapper::testResolveArrowKeys() {
   // xdotool-style
-  QCOMPARE(KeyNameMapper::resolve("Up"), Qt::Key_Up);
-  QCOMPARE(KeyNameMapper::resolve("Down"), Qt::Key_Down);
-  QCOMPARE(KeyNameMapper::resolve("Left"), Qt::Key_Left);
-  QCOMPARE(KeyNameMapper::resolve("Right"), Qt::Key_Right);
+  QEXPECT_THAT(KeyNameMapper::resolve("Up"), Eq(Qt::Key_Up));
+  QEXPECT_THAT(KeyNameMapper::resolve("Down"), Eq(Qt::Key_Down));
+  QEXPECT_THAT(KeyNameMapper::resolve("Left"), Eq(Qt::Key_Left));
+  QEXPECT_THAT(KeyNameMapper::resolve("Right"), Eq(Qt::Key_Right));
 
   // Chrome-style
-  QCOMPARE(KeyNameMapper::resolve("ArrowUp"), Qt::Key_Up);
-  QCOMPARE(KeyNameMapper::resolve("ArrowDown"), Qt::Key_Down);
-  QCOMPARE(KeyNameMapper::resolve("ArrowLeft"), Qt::Key_Left);
-  QCOMPARE(KeyNameMapper::resolve("ArrowRight"), Qt::Key_Right);
+  QEXPECT_THAT(KeyNameMapper::resolve("ArrowUp"), Eq(Qt::Key_Up));
+  QEXPECT_THAT(KeyNameMapper::resolve("ArrowDown"), Eq(Qt::Key_Down));
+  QEXPECT_THAT(KeyNameMapper::resolve("ArrowLeft"), Eq(Qt::Key_Left));
+  QEXPECT_THAT(KeyNameMapper::resolve("ArrowRight"), Eq(Qt::Key_Right));
 }
 
 void TestKeyNameMapper::testResolveFunctionKeys() {
-  QCOMPARE(KeyNameMapper::resolve("F1"), Qt::Key_F1);
-  QCOMPARE(KeyNameMapper::resolve("F2"), Qt::Key_F2);
-  QCOMPARE(KeyNameMapper::resolve("F3"), Qt::Key_F3);
-  QCOMPARE(KeyNameMapper::resolve("F4"), Qt::Key_F4);
-  QCOMPARE(KeyNameMapper::resolve("F5"), Qt::Key_F5);
-  QCOMPARE(KeyNameMapper::resolve("F6"), Qt::Key_F6);
-  QCOMPARE(KeyNameMapper::resolve("F7"), Qt::Key_F7);
-  QCOMPARE(KeyNameMapper::resolve("F8"), Qt::Key_F8);
-  QCOMPARE(KeyNameMapper::resolve("F9"), Qt::Key_F9);
-  QCOMPARE(KeyNameMapper::resolve("F10"), Qt::Key_F10);
-  QCOMPARE(KeyNameMapper::resolve("F11"), Qt::Key_F11);
-  QCOMPARE(KeyNameMapper::resolve("F12"), Qt::Key_F12);
+  QEXPECT_THAT(KeyNameMapper::resolve("F1"), Eq(Qt::Key_F1));
+  QEXPECT_THAT(KeyNameMapper::resolve("F2"), Eq(Qt::Key_F2));
+  QEXPECT_THAT(KeyNameMapper::resolve("F3"), Eq(Qt::Key_F3));
+  QEXPECT_THAT(KeyNameMapper::resolve("F4"), Eq(Qt::Key_F4));
+  QEXPECT_THAT(KeyNameMapper::resolve("F5"), Eq(Qt::Key_F5));
+  QEXPECT_THAT(KeyNameMapper::resolve("F6"), Eq(Qt::Key_F6));
+  QEXPECT_THAT(KeyNameMapper::resolve("F7"), Eq(Qt::Key_F7));
+  QEXPECT_THAT(KeyNameMapper::resolve("F8"), Eq(Qt::Key_F8));
+  QEXPECT_THAT(KeyNameMapper::resolve("F9"), Eq(Qt::Key_F9));
+  QEXPECT_THAT(KeyNameMapper::resolve("F10"), Eq(Qt::Key_F10));
+  QEXPECT_THAT(KeyNameMapper::resolve("F11"), Eq(Qt::Key_F11));
+  QEXPECT_THAT(KeyNameMapper::resolve("F12"), Eq(Qt::Key_F12));
 }
 
 void TestKeyNameMapper::testResolveModifierKeys() {
   // Shift variants
-  QCOMPARE(KeyNameMapper::resolve("Shift"), Qt::Key_Shift);
-  QCOMPARE(KeyNameMapper::resolve("Shift_L"), Qt::Key_Shift);
+  QEXPECT_THAT(KeyNameMapper::resolve("Shift"), Eq(Qt::Key_Shift));
+  QEXPECT_THAT(KeyNameMapper::resolve("Shift_L"), Eq(Qt::Key_Shift));
 
   // Control variants
-  QCOMPARE(KeyNameMapper::resolve("Control"), Qt::Key_Control);
-  QCOMPARE(KeyNameMapper::resolve("Control_L"), Qt::Key_Control);
+  QEXPECT_THAT(KeyNameMapper::resolve("Control"), Eq(Qt::Key_Control));
+  QEXPECT_THAT(KeyNameMapper::resolve("Control_L"), Eq(Qt::Key_Control));
 
   // Alt variants
-  QCOMPARE(KeyNameMapper::resolve("Alt"), Qt::Key_Alt);
-  QCOMPARE(KeyNameMapper::resolve("Alt_L"), Qt::Key_Alt);
+  QEXPECT_THAT(KeyNameMapper::resolve("Alt"), Eq(Qt::Key_Alt));
+  QEXPECT_THAT(KeyNameMapper::resolve("Alt_L"), Eq(Qt::Key_Alt));
 
   // Super variants
-  QCOMPARE(KeyNameMapper::resolve("Super"), Qt::Key_Super_L);
-  QCOMPARE(KeyNameMapper::resolve("Super_L"), Qt::Key_Super_L);
+  QEXPECT_THAT(KeyNameMapper::resolve("Super"), Eq(Qt::Key_Super_L));
+  QEXPECT_THAT(KeyNameMapper::resolve("Super_L"), Eq(Qt::Key_Super_L));
 
   // Meta
-  QCOMPARE(KeyNameMapper::resolve("Meta"), Qt::Key_Meta);
+  QEXPECT_THAT(KeyNameMapper::resolve("Meta"), Eq(Qt::Key_Meta));
 }
 
 void TestKeyNameMapper::testResolveCaseInsensitive() {
   // Return - different cases
-  QCOMPARE(KeyNameMapper::resolve("return"), Qt::Key_Return);
-  QCOMPARE(KeyNameMapper::resolve("RETURN"), Qt::Key_Return);
-  QCOMPARE(KeyNameMapper::resolve("Return"), Qt::Key_Return);
+  QEXPECT_THAT(KeyNameMapper::resolve("return"), Eq(Qt::Key_Return));
+  QEXPECT_THAT(KeyNameMapper::resolve("RETURN"), Eq(Qt::Key_Return));
+  QEXPECT_THAT(KeyNameMapper::resolve("Return"), Eq(Qt::Key_Return));
 
   // Escape - different cases
-  QCOMPARE(KeyNameMapper::resolve("escape"), Qt::Key_Escape);
-  QCOMPARE(KeyNameMapper::resolve("ESCAPE"), Qt::Key_Escape);
-  QCOMPARE(KeyNameMapper::resolve("Escape"), Qt::Key_Escape);
+  QEXPECT_THAT(KeyNameMapper::resolve("escape"), Eq(Qt::Key_Escape));
+  QEXPECT_THAT(KeyNameMapper::resolve("ESCAPE"), Eq(Qt::Key_Escape));
+  QEXPECT_THAT(KeyNameMapper::resolve("Escape"), Eq(Qt::Key_Escape));
 
   // Tab - different cases
-  QCOMPARE(KeyNameMapper::resolve("tab"), Qt::Key_Tab);
-  QCOMPARE(KeyNameMapper::resolve("TAB"), Qt::Key_Tab);
-  QCOMPARE(KeyNameMapper::resolve("Tab"), Qt::Key_Tab);
+  QEXPECT_THAT(KeyNameMapper::resolve("tab"), Eq(Qt::Key_Tab));
+  QEXPECT_THAT(KeyNameMapper::resolve("TAB"), Eq(Qt::Key_Tab));
+  QEXPECT_THAT(KeyNameMapper::resolve("Tab"), Eq(Qt::Key_Tab));
 
   // Function keys are also case-insensitive
-  QCOMPARE(KeyNameMapper::resolve("f1"), Qt::Key_F1);
-  QCOMPARE(KeyNameMapper::resolve("F1"), Qt::Key_F1);
+  QEXPECT_THAT(KeyNameMapper::resolve("f1"), Eq(Qt::Key_F1));
+  QEXPECT_THAT(KeyNameMapper::resolve("F1"), Eq(Qt::Key_F1));
 }
 
 void TestKeyNameMapper::testResolveUnknown() {
-  QCOMPARE(KeyNameMapper::resolve("NotAKey"), Qt::Key_unknown);
-  QCOMPARE(KeyNameMapper::resolve("FooBar"), Qt::Key_unknown);
-  QCOMPARE(KeyNameMapper::resolve(""), Qt::Key_unknown);
+  QEXPECT_THAT(KeyNameMapper::resolve("NotAKey"), Eq(Qt::Key_unknown));
+  QEXPECT_THAT(KeyNameMapper::resolve("FooBar"), Eq(Qt::Key_unknown));
+  QEXPECT_THAT(KeyNameMapper::resolve(""), Eq(Qt::Key_unknown));
 }
 
 void TestKeyNameMapper::testResolveSingleChar() {
   // Lowercase letters -> Key_A .. Key_Z
-  QCOMPARE(KeyNameMapper::resolve("a"), Qt::Key_A);
-  QCOMPARE(KeyNameMapper::resolve("z"), Qt::Key_Z);
+  QEXPECT_THAT(KeyNameMapper::resolve("a"), Eq(Qt::Key_A));
+  QEXPECT_THAT(KeyNameMapper::resolve("z"), Eq(Qt::Key_Z));
 
   // Uppercase letters
-  QCOMPARE(KeyNameMapper::resolve("A"), Qt::Key_A);
-  QCOMPARE(KeyNameMapper::resolve("Z"), Qt::Key_Z);
+  QEXPECT_THAT(KeyNameMapper::resolve("A"), Eq(Qt::Key_A));
+  QEXPECT_THAT(KeyNameMapper::resolve("Z"), Eq(Qt::Key_Z));
 
   // Digits
-  QCOMPARE(KeyNameMapper::resolve("0"), Qt::Key_0);
-  QCOMPARE(KeyNameMapper::resolve("1"), Qt::Key_1);
-  QCOMPARE(KeyNameMapper::resolve("9"), Qt::Key_9);
+  QEXPECT_THAT(KeyNameMapper::resolve("0"), Eq(Qt::Key_0));
+  QEXPECT_THAT(KeyNameMapper::resolve("1"), Eq(Qt::Key_1));
+  QEXPECT_THAT(KeyNameMapper::resolve("9"), Eq(Qt::Key_9));
 }
 
 void TestKeyNameMapper::testResolveNamedPunctuation() {
-  QCOMPARE(KeyNameMapper::resolve("Plus"), Qt::Key_Plus);
-  QCOMPARE(KeyNameMapper::resolve("Minus"), Qt::Key_Minus);
-  QCOMPARE(KeyNameMapper::resolve("Question"), Qt::Key_Question);
-  QCOMPARE(KeyNameMapper::resolve("QuestionMark"), Qt::Key_Question);
+  QEXPECT_THAT(KeyNameMapper::resolve("Plus"), Eq(Qt::Key_Plus));
+  QEXPECT_THAT(KeyNameMapper::resolve("Minus"), Eq(Qt::Key_Minus));
+  QEXPECT_THAT(KeyNameMapper::resolve("Question"), Eq(Qt::Key_Question));
+  QEXPECT_THAT(KeyNameMapper::resolve("QuestionMark"), Eq(Qt::Key_Question));
 }
 
 // ========================================================================
@@ -166,68 +186,49 @@ void TestKeyNameMapper::testResolveNamedPunctuation() {
 
 void TestKeyNameMapper::testParseKeyCombo_Simple() {
   // Single key, no modifiers
-  KeyCombo combo = KeyNameMapper::parseKeyCombo("Return");
-  QCOMPARE(combo.key, Qt::Key_Return);
-  QCOMPARE(combo.modifiers, Qt::KeyboardModifiers(Qt::NoModifier));
-
-  KeyCombo combo2 = KeyNameMapper::parseKeyCombo("F5");
-  QCOMPARE(combo2.key, Qt::Key_F5);
-  QCOMPARE(combo2.modifiers, Qt::KeyboardModifiers(Qt::NoModifier));
-
-  KeyCombo combo3 = KeyNameMapper::parseKeyCombo("Escape");
-  QCOMPARE(combo3.key, Qt::Key_Escape);
-  QCOMPARE(combo3.modifiers, Qt::KeyboardModifiers(Qt::NoModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("Return"),
+               MatchesKeyCombo(Qt::Key_Return, Qt::NoModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("F5"),
+               MatchesKeyCombo(Qt::Key_F5, Qt::NoModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("Escape"),
+               MatchesKeyCombo(Qt::Key_Escape, Qt::NoModifier));
 }
 
 void TestKeyNameMapper::testParseKeyCombo_WithModifiers() {
   // ctrl+c
-  KeyCombo combo1 = KeyNameMapper::parseKeyCombo("ctrl+c");
-  QCOMPARE(combo1.key, Qt::Key_C);
-  QCOMPARE(combo1.modifiers, Qt::KeyboardModifiers(Qt::ControlModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("ctrl+c"),
+               MatchesKeyCombo(Qt::Key_C, Qt::ControlModifier));
 
   // ctrl+shift+s
-  KeyCombo combo2 = KeyNameMapper::parseKeyCombo("ctrl+shift+s");
-  QCOMPARE(combo2.key, Qt::Key_S);
-  QCOMPARE(combo2.modifiers, Qt::KeyboardModifiers(Qt::ControlModifier | Qt::ShiftModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("ctrl+shift+s"),
+               MatchesKeyCombo(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier));
 
   // alt+F4
-  KeyCombo combo3 = KeyNameMapper::parseKeyCombo("alt+F4");
-  QCOMPARE(combo3.key, Qt::Key_F4);
-  QCOMPARE(combo3.modifiers, Qt::KeyboardModifiers(Qt::AltModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("alt+F4"),
+               MatchesKeyCombo(Qt::Key_F4, Qt::AltModifier));
 }
 
 void TestKeyNameMapper::testParseKeyCombo_ChromeStyle() {
   // ctrl+shift+ArrowUp
-  KeyCombo combo = KeyNameMapper::parseKeyCombo("ctrl+shift+ArrowUp");
-  QCOMPARE(combo.key, Qt::Key_Up);
-  QCOMPARE(combo.modifiers, Qt::KeyboardModifiers(Qt::ControlModifier | Qt::ShiftModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("ctrl+shift+ArrowUp"),
+               MatchesKeyCombo(Qt::Key_Up, Qt::ControlModifier | Qt::ShiftModifier));
 
   // ctrl+ArrowDown
-  KeyCombo combo2 = KeyNameMapper::parseKeyCombo("ctrl+ArrowDown");
-  QCOMPARE(combo2.key, Qt::Key_Down);
-  QCOMPARE(combo2.modifiers, Qt::KeyboardModifiers(Qt::ControlModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("ctrl+ArrowDown"),
+               MatchesKeyCombo(Qt::Key_Down, Qt::ControlModifier));
 }
 
 void TestKeyNameMapper::testParseKeyCombo_NamedPunctuation() {
-  const KeyCombo metaPlus = KeyNameMapper::parseKeyCombo("meta+Plus");
-  QCOMPARE(metaPlus.key, Qt::Key_Plus);
-  QCOMPARE(metaPlus.modifiers, Qt::KeyboardModifiers(Qt::MetaModifier));
-
-  const KeyCombo cmdPlus = KeyNameMapper::parseKeyCombo("cmd+Plus");
-  QCOMPARE(cmdPlus.key, Qt::Key_Plus);
-  QCOMPARE(cmdPlus.modifiers, Qt::KeyboardModifiers(Qt::MetaModifier));
-
-  const KeyCombo commandPlus = KeyNameMapper::parseKeyCombo("command+Plus");
-  QCOMPARE(commandPlus.key, Qt::Key_Plus);
-  QCOMPARE(commandPlus.modifiers, Qt::KeyboardModifiers(Qt::MetaModifier));
-
-  const KeyCombo controlMinus = KeyNameMapper::parseKeyCombo("ctrl+Minus");
-  QCOMPARE(controlMinus.key, Qt::Key_Minus);
-  QCOMPARE(controlMinus.modifiers, Qt::KeyboardModifiers(Qt::ControlModifier));
-
-  const KeyCombo questionMark = KeyNameMapper::parseKeyCombo("QuestionMark");
-  QCOMPARE(questionMark.key, Qt::Key_Question);
-  QCOMPARE(questionMark.modifiers, Qt::KeyboardModifiers(Qt::NoModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("meta+Plus"),
+               MatchesKeyCombo(Qt::Key_Plus, Qt::MetaModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("cmd+Plus"),
+               MatchesKeyCombo(Qt::Key_Plus, Qt::MetaModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("command+Plus"),
+               MatchesKeyCombo(Qt::Key_Plus, Qt::MetaModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("ctrl+Minus"),
+               MatchesKeyCombo(Qt::Key_Minus, Qt::ControlModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("QuestionMark"),
+               MatchesKeyCombo(Qt::Key_Question, Qt::NoModifier));
 }
 
 QTEST_GUILESS_MAIN(TestKeyNameMapper)
