@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "introspection/signal_monitor.h"
 #include "transport/jsonrpc_handler.h"
@@ -15,6 +16,7 @@
 #include <QtTest>
 
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 namespace {
 
@@ -168,14 +170,17 @@ void TestJsonRpcIntrospection::testFindByObjectName() {
   QString response = callMethod("qtpilot.findByObjectName", QJsonObject{{"name", "testButton"}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
-  QString id = result.toObject()["id"].toString();
-  QVERIFY(!id.isEmpty());
+  QJsonObject resObj = result.toObject();
+  QEXPECT_THAT(resObj, HasJsonField("id"));
+
+  QString id = resObj["id"].toString();
+  QEXPECT_THAT(id, QIsNotEmpty());
 
   // Verify the ID can be used to look up the object
   QObject* found = ObjectRegistry::instance()->findById(id);
-  QVERIFY(found == m_testButton);
+  QEXPECT_THAT(found, Eq(m_testButton));
 }
 
 void TestJsonRpcIntrospection::testFindByClassName() {
@@ -183,10 +188,13 @@ void TestJsonRpcIntrospection::testFindByClassName() {
       callMethod("qtpilot.findByClassName", QJsonObject{{"className", "QPushButton"}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
-  QJsonArray ids = result.toObject()["ids"].toArray();
-  QVERIFY(ids.size() >= 1);
+  QJsonObject resObj = result.toObject();
+  QEXPECT_THAT(resObj, HasJsonField("ids"));
+
+  QJsonArray ids = resObj["ids"].toArray();
+  QEXPECT_THAT(ids.size(), Ge(1));
 
   // Verify at least one of the returned IDs refers to our test button
   bool found = false;
@@ -197,7 +205,7 @@ void TestJsonRpcIntrospection::testFindByClassName() {
       break;
     }
   }
-  QVERIFY(found);
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestJsonRpcIntrospection::testGetObjectTree() {
@@ -207,10 +215,10 @@ void TestJsonRpcIntrospection::testGetObjectTree() {
       callMethod("qtpilot.getObjectTree", QJsonObject{{"root", id}, {"maxDepth", 2}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject tree = result.toObject();
-  QVERIFY(tree.contains("id") || tree.contains("children") || tree.contains("className"));
+  QEXPECT_THAT(tree, AnyOf(HasJsonField("id"), HasJsonField("children"), HasJsonField("className")));
 }
 
 void TestJsonRpcIntrospection::testGetObjectInfo() {
@@ -219,11 +227,12 @@ void TestJsonRpcIntrospection::testGetObjectInfo() {
   QString response = callMethod("qtpilot.getObjectInfo", QJsonObject{{"id", id}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject info = result.toObject();
-  QCOMPARE(info["className"].toString(), QString("QPushButton"));
-  QCOMPARE(info["objectName"].toString(), QString("testButton"));
+  QEXPECT_THAT(info, AllOf(
+      HasJsonField("className", QStrEq("QPushButton")),
+      HasJsonField("objectName", QStrEq("testButton"))));
 }
 
 // ========================================================================
@@ -236,20 +245,11 @@ void TestJsonRpcIntrospection::testListProperties() {
   QString response = callMethod("qtpilot.listProperties", QJsonObject{{"id", id}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isArray());
+  QEXPECT_THAT(result.isArray(), IsTrue());
 
   QJsonArray props = result.toArray();
-  QVERIFY(props.size() > 0);
-
-  // Should have "text" property
-  bool hasText = false;
-  for (const QJsonValue& v : props) {
-    if (v.toObject()["name"].toString() == "text") {
-      hasText = true;
-      break;
-    }
-  }
-  QVERIFY(hasText);
+  QEXPECT_THAT(props, QIsNotEmpty());
+  QEXPECT_THAT(props, JsonArrayContains(HasJsonField("name", QStrEq("text"))));
 }
 
 void TestJsonRpcIntrospection::testGetProperty() {
@@ -258,8 +258,8 @@ void TestJsonRpcIntrospection::testGetProperty() {
   QString response = callMethod("qtpilot.getProperty", QJsonObject{{"id", id}, {"name", "text"}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["value"].toString(), QString("Test Button"));
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("value", QStrEq("Test Button")));
 }
 
 void TestJsonRpcIntrospection::testSetProperty() {
@@ -269,11 +269,11 @@ void TestJsonRpcIntrospection::testSetProperty() {
                                 QJsonObject{{"id", id}, {"name", "text"}, {"value", "New Text"}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 
   // Verify the property was actually set
-  QCOMPARE(m_testButton->text(), QString("New Text"));
+  QEXPECT_THAT(m_testButton->text(), QStrEq("New Text"));
 }
 
 // ========================================================================
@@ -286,20 +286,11 @@ void TestJsonRpcIntrospection::testListMethods() {
   QString response = callMethod("qtpilot.listMethods", QJsonObject{{"id", id}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isArray());
+  QEXPECT_THAT(result.isArray(), IsTrue());
 
   QJsonArray methods = result.toArray();
-  QVERIFY(methods.size() > 0);
-
-  // Should have "click" slot
-  bool hasClick = false;
-  for (const QJsonValue& v : methods) {
-    if (v.toObject()["name"].toString() == "click") {
-      hasClick = true;
-      break;
-    }
-  }
-  QVERIFY(hasClick);
+  QEXPECT_THAT(methods, QIsNotEmpty());
+  QEXPECT_THAT(methods, JsonArrayContains(HasJsonField("name", QStrEq("click"))));
 }
 
 void TestJsonRpcIntrospection::testInvokeMethod() {
@@ -314,10 +305,10 @@ void TestJsonRpcIntrospection::testInvokeMethod() {
   QApplication::processEvents();
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   // The click slot should have fired the clicked signal
-  QCOMPARE(spy.count(), 1);
+  QEXPECT_THAT(spy.count(), Eq(1));
 }
 
 void TestJsonRpcIntrospection::testListSignals() {
@@ -326,20 +317,11 @@ void TestJsonRpcIntrospection::testListSignals() {
   QString response = callMethod("qtpilot.listSignals", QJsonObject{{"id", id}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isArray());
+  QEXPECT_THAT(result.isArray(), IsTrue());
 
   QJsonArray signalList = result.toArray();
-  QVERIFY(signalList.size() > 0);
-
-  // Should have "clicked" signal
-  bool hasClicked = false;
-  for (const QJsonValue& v : signalList) {
-    if (v.toObject()["name"].toString() == "clicked") {
-      hasClicked = true;
-      break;
-    }
-  }
-  QVERIFY(hasClicked);
+  QEXPECT_THAT(signalList, QIsNotEmpty());
+  QEXPECT_THAT(signalList, JsonArrayContains(HasJsonField("name", QStrEq("clicked"))));
 }
 
 // ========================================================================
@@ -353,11 +335,11 @@ void TestJsonRpcIntrospection::testSubscribeSignal() {
       callMethod("qtpilot.subscribeSignal", QJsonObject{{"objectId", id}, {"signal", "clicked"}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
-  QString subId = result.toObject()["subscriptionId"].toString();
-  QVERIFY(!subId.isEmpty());
-  QVERIFY(subId.startsWith("sub_"));  // Format is sub_N
+  QJsonObject resObj = result.toObject();
+  QEXPECT_THAT(resObj, HasJsonField("subscriptionId", QStrStartsWith("sub_")));
+  QString subId = resObj["subscriptionId"].toString();
 
   // Clean up
   SignalMonitor::instance()->unsubscribe(subId);
@@ -378,11 +360,11 @@ void TestJsonRpcIntrospection::testUnsubscribeSignal() {
       callMethod("qtpilot.unsubscribeSignal", QJsonObject{{"subscriptionId", subId}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 
   int countAfter = SignalMonitor::instance()->subscriptionCount();
-  QCOMPARE(countAfter, countBefore - 1);
+  QEXPECT_THAT(countAfter, Eq(countBefore - 1));
 }
 
 void TestJsonRpcIntrospection::testLifecycleNotifications() {
@@ -391,16 +373,16 @@ void TestJsonRpcIntrospection::testLifecycleNotifications() {
       callMethod("qtpilot.setLifecycleNotifications", QJsonObject{{"enabled", true}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["enabled"].toBool(), true);
-  QCOMPARE(SignalMonitor::instance()->lifecycleNotificationsEnabled(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("enabled", Eq(true)));
+  QEXPECT_THAT(SignalMonitor::instance()->lifecycleNotificationsEnabled(), IsTrue());
 
   // Disable them
   response = callMethod("qtpilot.setLifecycleNotifications", QJsonObject{{"enabled", false}});
 
   result = getResult(response);
-  QCOMPARE(result.toObject()["enabled"].toBool(), false);
-  QCOMPARE(SignalMonitor::instance()->lifecycleNotificationsEnabled(), false);
+  QEXPECT_THAT(result.toObject(), HasJsonField("enabled", Eq(false)));
+  QEXPECT_THAT(SignalMonitor::instance()->lifecycleNotificationsEnabled(), IsFalse());
 }
 
 // ========================================================================
@@ -416,10 +398,10 @@ void TestJsonRpcIntrospection::testClick() {
   QApplication::processEvents();
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 
-  QCOMPARE(spy.count(), 1);
+  QEXPECT_THAT(spy.count(), Eq(1));
 }
 
 void TestJsonRpcIntrospection::testClickExplicitTopLeft() {
@@ -430,8 +412,8 @@ void TestJsonRpcIntrospection::testClickExplicitTopLeft() {
   const QString response = callMethod(
       "qtpilot.click", QJsonObject{{"id", id}, {"position", QJsonObject{{"x", 0}, {"y", 0}}}});
 
-  QVERIFY2(getError(response).isEmpty(), qPrintable(getError(response)["message"].toString()));
-  QCOMPARE(recorder.pressPosition, QPoint(0, 0));
+  QEXPECT_THAT(getError(response), QIsEmpty());
+  QEXPECT_THAT(recorder.pressPosition, Eq(QPoint(0, 0)));
 }
 
 void TestJsonRpcIntrospection::testClickRejectsMalformedPosition() {
@@ -440,8 +422,9 @@ void TestJsonRpcIntrospection::testClickRejectsMalformedPosition() {
       callMethod("qtpilot.click", QJsonObject{{"id", id}, {"position", QJsonObject{{"x", "bad"}}}});
 
   const QJsonObject error = getError(response);
-  QCOMPARE(error["code"].toInt(), JsonRpcError::kInvalidParams);
-  QVERIFY(error["message"].toString().contains("numeric"));
+  QEXPECT_THAT(error, AllOf(
+      HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
+      HasJsonField("message", QStrContains("numeric"))));
 }
 
 void TestJsonRpcIntrospection::testSendKeys() {
@@ -455,10 +438,10 @@ void TestJsonRpcIntrospection::testSendKeys() {
   QApplication::processEvents();
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 
-  QCOMPARE(m_testLineEdit->text(), QString("Hello"));
+  QEXPECT_THAT(m_testLineEdit->text(), QStrEq("Hello"));
 }
 
 void TestJsonRpcIntrospection::testScreenshot() {
@@ -467,14 +450,17 @@ void TestJsonRpcIntrospection::testScreenshot() {
   QString response = callMethod("qtpilot.screenshot", QJsonObject{{"id", id}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
-  QString base64 = result.toObject()["image"].toString();
-  QVERIFY(!base64.isEmpty());
+  QJsonObject resObj = result.toObject();
+  QEXPECT_THAT(resObj, HasJsonField("image"));
+
+  QString base64 = resObj["image"].toString();
+  QEXPECT_THAT(base64, QIsNotEmpty());
 
   // Verify it's valid base64 PNG
   QByteArray decoded = QByteArray::fromBase64(base64.toLatin1());
-  QVERIFY(decoded.startsWith("\x89PNG"));
+  QEXPECT_THAT(decoded.startsWith("\x89PNG"), IsTrue());
 }
 
 void TestJsonRpcIntrospection::testGetGeometry() {
@@ -483,16 +469,17 @@ void TestJsonRpcIntrospection::testGetGeometry() {
   QString response = callMethod("qtpilot.getGeometry", QJsonObject{{"id", id}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject geo = result.toObject();
-  QVERIFY(geo.contains("local"));
-  QVERIFY(geo.contains("global"));
-  QVERIFY(geo.contains("devicePixelRatio"));
+  QEXPECT_THAT(geo, AllOf(
+      HasJsonField("local"),
+      HasJsonField("global"),
+      HasJsonField("devicePixelRatio")));
 
   QJsonObject local = geo["local"].toObject();
-  QVERIFY(local["width"].toInt() > 0);
-  QVERIFY(local["height"].toInt() > 0);
+  QEXPECT_THAT(local["width"].toInt(), Gt(0));
+  QEXPECT_THAT(local["height"].toInt(), Gt(0));
 }
 
 void TestJsonRpcIntrospection::testHitTest() {
@@ -503,13 +490,8 @@ void TestJsonRpcIntrospection::testHitTest() {
       callMethod("qtpilot.hitTest", QJsonObject{{"x", globalPos.x()}, {"y", globalPos.y()}});
 
   QJsonValue result = getResult(response);
-  QVERIFY(result.isObject());
-
-  QString foundId = result.toObject()["id"].toString();
-  // The hit test may return the button or a child - just verify it found something
-  // Note: In minimal QPA, hit testing may not work perfectly
-  // So we just verify the API returns a valid response format
-  QVERIFY(result.toObject().contains("id"));
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("id"));
 }
 
 QTEST_MAIN(TestJsonRpcIntrospection)

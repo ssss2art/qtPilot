@@ -11,6 +11,10 @@
 #include <QString>
 #include <QTest>
 
+#include "common/qt_matchers.h"
+
+using namespace qtPilot::test;
+
 class TestJsonRpc : public QObject {
   Q_OBJECT
 
@@ -41,12 +45,9 @@ class TestJsonRpc : public QObject {
         R"({"jsonrpc":"2.0","method":"qtpilot.echo","params":{"hello":"world"},"id":1})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["jsonrpc"].toString(), QString("2.0"));
-    QCOMPARE(obj["id"].toInt(), 1);
-    QCOMPARE(obj["result"].toObject()["hello"].toString(), QString("world"));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 AllOf(HasJsonRpcId(1),
+                       IsJsonRpcSuccess(HasJsonField("hello", "world"))));
   }
 
   // Test: Parse error returns -32700
@@ -54,11 +55,8 @@ class TestJsonRpc : public QObject {
     QString request = R"({invalid json)";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QVERIFY(obj.contains("error"));
-    QCOMPARE(obj["error"].toObject()["code"].toInt(), -32700);
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 IsJsonRpcError(-32700));
   }
 
   // Test: Invalid request (missing jsonrpc) returns -32600
@@ -66,11 +64,8 @@ class TestJsonRpc : public QObject {
     QString request = R"({"id":1,"method":"ping"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QVERIFY(obj.contains("error"));
-    QCOMPARE(obj["error"].toObject()["code"].toInt(), -32600);
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 IsJsonRpcError(-32600));
   }
 
   // Test: Unknown method returns -32601
@@ -78,11 +73,8 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":1,"method":"unknownMethod"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QVERIFY(obj.contains("error"));
-    QCOMPARE(obj["error"].toObject()["code"].toInt(), -32601);
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 IsJsonRpcError(-32601));
   }
 
   // Test: Notification (no id) returns empty response
@@ -90,7 +82,7 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","method":"ping"})";
     QString response = handler_->HandleMessage(request);
 
-    QVERIFY(response.isEmpty());
+    QEXPECT_THAT(response, QIsEmpty());
   }
 
   // Test: Notification emits signal
@@ -99,10 +91,10 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","method":"test.notify","params":{"key":"value"}})";
     QString response = handler_->HandleMessage(request);
 
-    QVERIFY(response.isEmpty());
-    QCOMPARE(spy.count(), 1);
+    QEXPECT_THAT(response, QIsEmpty());
+    QEXPECT_THAT(spy.count(), Eq(1));
     QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args.at(0).toString(), QString("test.notify"));
+    QEXPECT_THAT(args.at(0).toString(), QStrEq("test.notify"));
   }
 
   // Test: Ping returns pong
@@ -110,12 +102,9 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["jsonrpc"].toString(), QString("2.0"));
-    QCOMPARE(obj["id"].toInt(), 1);
-    QCOMPARE(obj["result"].toString(), QString("pong"));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 AllOf(HasJsonRpcId(1),
+                       IsJsonRpcSuccess(QStrEq("pong"))));
   }
 
   // Test: getVersion returns version info
@@ -123,15 +112,11 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":2,"method":"getVersion"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["jsonrpc"].toString(), QString("2.0"));
-    QCOMPARE(obj["id"].toInt(), 2);
-    QVERIFY(obj["result"].toObject().contains("version"));
-    QVERIFY(obj["result"].toObject().contains("protocol"));
-    QVERIFY(obj["result"].toObject().contains("name"));
-    QCOMPARE(obj["result"].toObject()["name"].toString(), QString("qtPilot"));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 AllOf(HasJsonRpcId(2),
+                       IsJsonRpcSuccess(AllOf(HasJsonField("version"),
+                                              HasJsonField("protocol"),
+                                              HasJsonField("name", "qtPilot")))));
   }
 
   // Test: getVersion reports the ACTUAL build version.
@@ -145,13 +130,11 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":2,"method":"getVersion"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QVERIFY(!doc.isNull());
-    QVERIFY(doc.isObject());
-    QJsonObject result = doc.object()["result"].toObject();
-    QCOMPARE(result["version"].toString(), QStringLiteral(QTPILOT_EXPECTED_VERSION));
-    QVERIFY2(result["version"].toString() != QStringLiteral("0.1.0"),
-             "getVersion is still reporting the stale hardcoded version");
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 IsJsonRpcSuccess(HasJsonField(
+                     "version",
+                     AllOf(QStrEq(QTPILOT_EXPECTED_VERSION),
+                           Not(QStrEq("0.1.0"))))));
   }
 
   // Test: getVersion carries a wire-protocol revision a client can negotiate on.
@@ -162,14 +145,8 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":2,"method":"getVersion"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QVERIFY(!doc.isNull());
-    QVERIFY(doc.isObject());
-    QJsonObject result = doc.object()["result"].toObject();
-    QVERIFY2(result.contains("protocolVersion"),
-             "getVersion must publish protocolVersion for the client handshake");
-    QVERIFY(result["protocolVersion"].isDouble());
-    QCOMPARE(result["protocolVersion"].toInt(), 1);
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 IsJsonRpcSuccess(HasJsonField("protocolVersion", 1)));
   }
 
   // Test: echo returns params
@@ -177,12 +154,9 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":3,"method":"echo","params":{"foo":"bar"}})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["jsonrpc"].toString(), QString("2.0"));
-    QCOMPARE(obj["id"].toInt(), 3);
-    QCOMPARE(obj["result"].toObject()["foo"].toString(), QString("bar"));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 AllOf(HasJsonRpcId(3),
+                       IsJsonRpcSuccess(HasJsonField("foo", "bar"))));
   }
 
   // Test: String id is preserved
@@ -190,10 +164,8 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":"my-request-id","method":"ping"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["id"].toString(), QString("my-request-id"));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 HasJsonRpcId("my-request-id"));
   }
 
   // Test: getModes returns array
@@ -201,12 +173,9 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":5,"method":"getModes"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["jsonrpc"].toString(), QString("2.0"));
-    QVERIFY(obj["result"].isArray());
-    QCOMPARE(obj["result"].toArray().size(), 3);
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 AllOf(HasJsonRpcId(5),
+                       IsJsonRpcSuccess(JsonArraySize(3))));
   }
 
   // Test: Custom method can be registered
@@ -218,10 +187,9 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":6,"method":"customMethod"})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["result"].toObject()["custom"].toString(), QString("response"));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 AllOf(HasJsonRpcId(6),
+                       IsJsonRpcSuccess(HasJsonField("custom", "response"))));
   }
 
   // Test: qtpilot.echo method works (per RESEARCH.md spec)
@@ -230,12 +198,9 @@ class TestJsonRpc : public QObject {
         R"({"jsonrpc":"2.0","method":"qtpilot.echo","params":{"test":"data"},"id":7})";
     QString response = handler_->HandleMessage(request);
 
-    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
-    QJsonObject obj = doc.object();
-
-    QCOMPARE(obj["jsonrpc"].toString(), QString("2.0"));
-    QCOMPARE(obj["id"].toInt(), 7);
-    QCOMPARE(obj["result"].toObject()["test"].toString(), QString("data"));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
+                 AllOf(HasJsonRpcId(7),
+                       IsJsonRpcSuccess(HasJsonField("test", "data"))));
   }
 
  private:

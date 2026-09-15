@@ -8,7 +8,10 @@
 #include <QWebSocket>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// Teardown of a server that still has a client attached.
 ///
@@ -55,9 +58,9 @@ class TestWebSocketTeardown : public QObject {
     QWebSocket client;
     {
       WebSocketServer server(kEphemeral);
-      QVERIFY(server.start());
-      QVERIFY2(attachClient(server, client), "server never accepted the client");
-      QVERIFY(server.hasActiveClient());
+      QEXPECT_THAT(server.start(), IsTrue());
+      QEXPECT_THAT(attachClient(server, client), IsTrue());
+      QEXPECT_THAT(server.hasActiveClient(), IsTrue());
       // Destructor runs here, with the client still attached.
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
@@ -67,29 +70,29 @@ class TestWebSocketTeardown : public QObject {
   /// without relying on destruction order.
   void stoppingWithALiveClientIsSafe() {
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
+    QEXPECT_THAT(server.start(), IsTrue());
 
     QWebSocket client;
-    QVERIFY(attachClient(server, client));
+    QEXPECT_THAT(attachClient(server, client), IsTrue());
 
     server.stop();
-    QVERIFY(!server.hasActiveClient());
-    QVERIFY(!server.isListening());
+    QEXPECT_THAT(server.hasActiveClient(), IsFalse());
+    QEXPECT_THAT(server.isListening(), IsFalse());
     QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
   }
 
   /// stop() must be idempotent: the destructor calls it after any explicit call.
   void stopIsIdempotentWithALiveClient() {
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
+    QEXPECT_THAT(server.start(), IsTrue());
 
     QWebSocket client;
-    QVERIFY(attachClient(server, client));
+    QEXPECT_THAT(attachClient(server, client), IsTrue());
 
     server.stop();
     server.stop();
     server.stop();
-    QVERIFY(!server.hasActiveClient());
+    QEXPECT_THAT(server.hasActiveClient(), IsFalse());
   }
 
   /// A client that vanishes without a close handshake. abort() drops the socket
@@ -97,14 +100,14 @@ class TestWebSocketTeardown : public QObject {
   /// the state most likely to make close() emit disconnected() synchronously.
   void stoppingAfterAnAbortedClientIsSafe() {
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
+    QEXPECT_THAT(server.start(), IsTrue());
 
     QWebSocket client;
-    QVERIFY(attachClient(server, client));
+    QEXPECT_THAT(attachClient(server, client), IsTrue());
 
     client.abort();
     server.stop();  // deliberately no event-loop turn in between
-    QVERIFY(!server.hasActiveClient());
+    QEXPECT_THAT(server.hasActiveClient(), IsFalse());
     QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
   }
 
@@ -113,36 +116,36 @@ class TestWebSocketTeardown : public QObject {
   /// synchronous-emit path and costs nothing to pin.
   void stopFromWithinTheDisconnectedHandlerIsSafe() {
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
+    QEXPECT_THAT(server.start(), IsTrue());
 
     connect(&server, &WebSocketServer::clientDisconnected, &server, [&server]() { server.stop(); });
 
     QWebSocket client;
-    QVERIFY(attachClient(server, client));
+    QEXPECT_THAT(attachClient(server, client), IsTrue());
 
     client.close();
     QTest::qWait(300);
-    QVERIFY(!server.hasActiveClient());
+    QEXPECT_THAT(server.hasActiveClient(), IsFalse());
   }
 
   /// The server must survive a client leaving and keep listening, since that is
   /// the documented behaviour and the teardown rewrite touches the same slot.
   void serverKeepsListeningAfterAClientLeaves() {
     WebSocketServer server(kEphemeral);
-    QVERIFY(server.start());
+    QEXPECT_THAT(server.start(), IsTrue());
 
     QWebSocket first;
-    QVERIFY(attachClient(server, first));
+    QEXPECT_THAT(attachClient(server, first), IsTrue());
 
     QSignalSpy gone(&server, &WebSocketServer::clientDisconnected);
     first.close();
-    QVERIFY2(gone.wait(5000), "server never observed the client leaving");
+    QEXPECT_THAT(gone.wait(5000), IsTrue());
 
-    QVERIFY(server.isListening());
-    QVERIFY(!server.hasActiveClient());
+    QEXPECT_THAT(server.isListening(), IsTrue());
+    QEXPECT_THAT(server.hasActiveClient(), IsFalse());
 
     QWebSocket second;
-    QVERIFY2(attachClient(server, second), "server did not accept a reconnect");
+    QEXPECT_THAT(attachClient(server, second), IsTrue());
     server.stop();
   }
 };
