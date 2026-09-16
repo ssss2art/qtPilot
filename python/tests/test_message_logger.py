@@ -10,8 +10,6 @@ import pytest
 
 from qtpilot.message_logger import MessageLogger
 
-pytestmark = pytest.mark.asyncio
-
 
 class TestMessageLoggerLifecycle:
     def test_initial_state(self):
@@ -378,6 +376,7 @@ class TestMessageLoggerTruncation:
         assert MessageLogger._truncate(None) is None
 
 
+@pytest.mark.asyncio
 class TestMessageLoggerAttachDetach:
     async def test_attach_registers_handlers(self, mock_probe):
         """attach() adds send observer, call observer, and notification handler to probe."""
