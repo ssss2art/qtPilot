@@ -305,8 +305,7 @@ void NativeModeApi::registerObjectMethods() {
           rootObj = ObjectResolver::resolve(rootId);
           if (!rootObj) {
             throw JsonRpcException(
-                ErrorCode::kObjectNotFound,
-                QStringLiteral("Root object not found: %1").arg(rootId),
+                ErrorCode::kObjectNotFound, QStringLiteral("Root object not found: %1").arg(rootId),
                 QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")},
                             {QStringLiteral("root"), rootId}});
           }

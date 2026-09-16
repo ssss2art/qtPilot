@@ -16,6 +16,10 @@ async def _tool_names(mcp: FastMCP) -> set[str]:
     return set(await mcp_compat.list_tool_names(mcp))
 
 
+def _result_data(res):
+    return res.data if res.data is not None else res.structured_content
+
+
 class TestLegacyGhostVisibility:
     @pytest.mark.asyncio
     async def test_legacy_tools_are_hidden_from_public_list(self):
@@ -97,7 +101,7 @@ class TestLegacyForwarding:
             mock_probe.call.assert_awaited_once_with(
                 "qt.objects.inspect", {"objectId": "btn", "parts": ["info"]}
             )
-            assert res.data == {"className": "QPushButton", "objectName": "btn"}
+            assert _result_data(res) == {"className": "QPushButton", "objectName": "btn"}
 
     @pytest.mark.asyncio
     async def test_qt_properties_list_forwards_to_inspect(self, mock_probe):
@@ -112,7 +116,7 @@ class TestLegacyForwarding:
             mock_probe.call.assert_awaited_once_with(
                 "qt.objects.inspect", {"objectId": "btn", "parts": ["properties"]}
             )
-            assert res.data == {
+            assert _result_data(res) == {
                 "objectId": "btn",
                 "properties": [{"name": "text", "value": "Click"}],
             }
@@ -130,7 +134,7 @@ class TestLegacyForwarding:
             mock_probe.call.assert_awaited_once_with(
                 "qt.objects.inspect", {"objectId": "btn", "parts": ["methods"]}
             )
-            assert res.data == {
+            assert _result_data(res) == {
                 "objectId": "btn",
                 "methods": [{"name": "click"}],
             }
@@ -148,7 +152,7 @@ class TestLegacyForwarding:
             mock_probe.call.assert_awaited_once_with(
                 "qt.objects.inspect", {"objectId": "btn", "parts": ["signals"]}
             )
-            assert res.data == {
+            assert _result_data(res) == {
                 "objectId": "btn",
                 "signals": [{"name": "clicked"}],
             }
@@ -166,7 +170,7 @@ class TestLegacyForwarding:
             mock_probe.call.assert_awaited_once_with(
                 "qt.objects.inspect", {"objectId": "qmlItem", "parts": ["qml"]}
             )
-            assert res.data == {"isQmlItem": True}
+            assert _result_data(res) == {"isQmlItem": True}
 
     @pytest.mark.asyncio
     async def test_qt_models_info_forwards_to_inspect(self, mock_probe):
@@ -181,44 +185,44 @@ class TestLegacyForwarding:
             mock_probe.call.assert_awaited_once_with(
                 "qt.objects.inspect", {"objectId": "tree", "parts": ["model"]}
             )
-            assert res.data == {"rowCount": 10}
+            assert _result_data(res) == {"rowCount": 10}
 
     @pytest.mark.asyncio
     async def test_qt_modes_returns_available_modes(self):
         mcp = create_server(mode="native")
         async with Client(mcp) as client:
             res = await client.call_tool("qt_modes", {})
-        assert "modes" in res.data
-        assert "native" in res.data["modes"]
+        assert "modes" in _result_data(res)
+        assert "native" in _result_data(res)["modes"]
 
     @pytest.mark.asyncio
     async def test_qtpilot_list_probes_returns_probes(self):
         mcp = create_server(mode="native")
         async with Client(mcp) as client:
             res = await client.call_tool("qtpilot_list_probes", {})
-        assert "probes" in res.data
+        assert "probes" in _result_data(res)
 
     @pytest.mark.asyncio
     async def test_qtpilot_get_mode_returns_mode(self):
         mcp = create_server(mode="native")
         async with Client(mcp) as client:
             res = await client.call_tool("qtpilot_get_mode", {})
-        assert res.data == {"mode": "native"}
+        assert _result_data(res) == {"mode": "native"}
 
     @pytest.mark.asyncio
     async def test_qtPilot_probe_status_returns_status(self):
         mcp = create_server(mode="native")
         async with Client(mcp) as client:
             res = await client.call_tool("qtPilot_probe_status", {})
-        assert "mode" in res.data
-        assert "connection" in res.data
+        assert "mode" in _result_data(res)
+        assert "connection" in _result_data(res)
 
     @pytest.mark.asyncio
     async def test_qtpilot_log_tail_forwards_to_status(self):
         mcp = create_server(mode="native")
         async with Client(mcp) as client:
             res = await client.call_tool("qtpilot_log_tail", {"count": 5})
-        assert "entries" in res.data
+        assert "entries" in _result_data(res)
 
     @pytest.mark.asyncio
     async def test_qt_events_startCapture_forwards(self, mock_probe):

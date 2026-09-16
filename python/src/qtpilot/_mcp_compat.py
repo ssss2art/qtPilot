@@ -151,6 +151,11 @@ async def list_tool_names(mcp: FastMCP) -> list[str]:
     if callable(lister):  # fastmcp 3.x / 4.x -> list[Tool]
         return [tool.name for tool in await lister()]
 
+    list_middleware = getattr(mcp, "_list_tools_middleware", None)
+    if callable(list_middleware):  # fastmcp 2.x with middleware
+        tools = await list_middleware()
+        return [tool.name for tool in tools]
+
     getter = getattr(mcp, "get_tools", None)
     if callable(getter):  # fastmcp 2.x -> dict[str, Tool]
         return list(await getter())
@@ -321,6 +326,21 @@ def install_mode_visibility(
     fall back to registering and unregistering tools.
     """
     if not supports_transforms(mcp):
+        # FastMCP 2.x has no transforms, but has middleware. Ghost tools (e.g.
+        # legacy compatibility shims) can be filtered out of tools/list via
+        # Middleware.on_list_tools so they don't bloat the advertised surface.
+        if is_ghost_tool is not None and callable(getattr(mcp, "add_middleware", None)):
+            try:
+                from fastmcp.server.middleware import Middleware
+
+                class _GhostFilterMiddleware(Middleware):
+                    async def on_list_tools(self, context, call_next):
+                        tools = await call_next(context)
+                        return [t for t in tools if not is_ghost_tool(t.name)]
+
+                mcp.add_middleware(_GhostFilterMiddleware())
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not install ghost tool filter middleware: %s", exc)
         return False
     try:
         mcp.add_transform(
