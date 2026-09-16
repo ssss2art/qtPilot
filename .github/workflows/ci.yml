@@ -534,19 +534,10 @@ jobs:
       matrix:
         include:
           # --- Python version coverage -------------------------------------
-          # One leg per interpreter in `requires-python` / the classifiers, on
-          # the default resolve. Previously CI tested only 3.11 while the
-          # package advertised 3.11-3.14.
+          # Floor (3.11) and latest (3.14) supported interpreters.
+          # Primary development and CI defaults to Python 3.14 (.python-version).
           - name: py3.11
             python: "3.11"
-            uv_extras: "--extra dev"
-            expect_revision: ""
-          - name: py3.12
-            python: "3.12"
-            uv_extras: "--extra dev"
-            expect_revision: ""
-          - name: py3.13
-            python: "3.13"
             uv_extras: "--extra dev"
             expect_revision: ""
           - name: py3.14
@@ -554,35 +545,20 @@ jobs:
             uv_extras: "--extra dev"
             expect_revision: ""
           # --- MCP revision coverage ---------------------------------------
-          # Pinned to the floor interpreter: the SDK legs are about protocol
-          # revision, and the version axis is already covered above.
-          # FastMCP 2.x -- the declared floor. Selects the register/unregister
-          # mode-switch path and the private-manager fallback in
-          # list_tool_names, neither of which any other leg reaches.
-          #
-          # Resolved into a clean venv rather than pinned by an extra: a locked
-          # `mcp-legacy` extra forced the DEFAULT resolve down from FastMCP 4 to
-          # 2.x, because extras are additive and the base resolution has to stay
-          # extendable by `fastmcp<3`. This leg is therefore the one place not
-          # pinned by uv.lock -- deliberate, and the reason `floor_sdk` exists.
+          # FastMCP 2.x -- declared floor on floor interpreter (3.11).
+          # Selects the register/unregister mode-switch path and private-manager fallback.
           - name: mcp-legacy
             python: "3.11"
             uv_extras: "--extra dev"
             floor_sdk: "fastmcp>=2.9,<3"
             expect_revision: "2025-11-25"
+          # FastMCP 3.x (MCP 2025-11-25) on Python 3.14.
           - name: mcp-stable
-            python: "3.11"
+            python: "3.14"
             uv_extras: "--extra dev --extra mcp-stable"
             expect_revision: "2025-11-25"
-          # MCP 2026-07-28 (FastMCP 4), now a stable release -- no --pre, and
-          # these legs block like any other. Run on both the oldest and newest
-          # interpreter: this is the path being proven out, so it gets the
-          # widest check.
+          # FastMCP 4 (MCP 2026-07-28) on Python 3.14.
           - name: mcp-next
-            python: "3.11"
-            uv_extras: "--extra dev --extra mcp-next"
-            expect_revision: "2026-07-28"
-          - name: mcp-next-py3.14
             python: "3.14"
             uv_extras: "--extra dev --extra mcp-next"
             expect_revision: "2026-07-28"

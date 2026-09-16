@@ -78,9 +78,8 @@ uvx --from 'qtpilot[mcp-next]' qtpilot serve
 pip install 'qtpilot[mcp-stable]'        # stay on 2025-11-25
 ```
 
-Both revisions are exercised by blocking CI legs (`mcp-stable`, `mcp-next`,
-`mcp-next-py3.14`). They were `continue-on-error` while FastMCP 4 was a beta;
-that allowance is gone.
+Both revisions are exercised by blocking CI legs (`mcp-stable`, `mcp-next`).
+They were `continue-on-error` while FastMCP 4 was a beta; that allowance is gone.
 
 qtPilot's own test suite passes against all three package sets, with **no
 behavioural differences** in the tool surface. `qtpilot_set_mode` narrows
