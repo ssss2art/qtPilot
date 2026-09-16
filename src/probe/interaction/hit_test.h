@@ -10,6 +10,8 @@
 #include <QWidget>
 
 class QWindow;
+class QGraphicsObject;
+class QGraphicsView;
 #ifdef QTPILOT_HAS_QML
 class QQuickItem;
 class QQuickWindow;
@@ -67,6 +69,64 @@ class QTPILOT_EXPORT HitTest {
   /// @param globalPos Screen coordinates
   /// @return Object ID of widget at position, or empty string if none
   static QString widgetIdAt(const QPoint& globalPos);
+
+  // --- QGraphicsView scene items ---
+  //
+  // Everything in a QGraphicsView plan is a QGraphicsObject, not a QWidget, so
+  // the widget entry points above report nothing for one. These map an item
+  // through the view(s) rendering it, which is the step a caller otherwise has
+  // to reverse-engineer by dragging and dividing.
+
+  /// @brief Get a graphics item's geometry in item, scene and screen coordinates.
+  ///
+  /// Local is the item's own boundingRect(); scene is that rect mapped through
+  /// the item's position and transform; global is it mapped on through a view.
+  /// Every value is a **double** -- graphics coordinates are qreal and routinely
+  /// fractional, so toInt() would yield 0. Same caveat as itemGeometry().
+  ///
+  /// Two deliberate choices, both of which callers depend on:
+  /// - **boundingRect(), not childrenBoundingRect().** A scene item is commonly
+  ///   a group (a symbol plus a label hanging below it) whose clickable body is
+  ///   the item itself. Use childrenBoundingRect() at the call site if you want
+  ///   the union.
+  /// - **Every view is reported.** One scene is often rendered into several
+  ///   views at different scales, so "the first view" would be a coin flip.
+  ///   "views" holds one entry per view; the top-level "global", "viewport",
+  ///   "visible" and "devicePixelRatio" mirror @a preferredView, or the first
+  ///   view when none is given.
+  ///
+  /// An item scrolled outside the viewport is not an error: its rect is still
+  /// reported and "visible" is false, so a caller can decide to scroll to it.
+  /// An item in a scene with no view at all -- or a @a preferredView that does
+  /// not render this item's scene -- reports a null "global".
+  ///
+  /// JSON format:
+  /// @code
+  /// {
+  ///   "local":  { "x": 0, "y": 0, "width": 40, "height": 20 },
+  ///   "scene":  { "x": 300, "y": 300, "width": 40, "height": 20 },
+  ///   "viewport": { "x": 255, "y": 295, "width": 50, "height": 25 },
+  ///   "global": { "x": 355, "y": 395, "width": 50, "height": 25 },
+  ///   "visible": true,
+  ///   "devicePixelRatio": 1.0,
+  ///   "views": [ { "viewObjectId": "...", "viewport": {...}, "global": {...},
+  ///                "visible": true, "devicePixelRatio": 1.0 } ]
+  /// }
+  /// @endcode
+  /// @param item Item to query
+  /// @param preferredView View to mirror at the top level; nullptr picks the first
+  static QJsonObject graphicsItemGeometry(QGraphicsObject* item,
+                                          QGraphicsView* preferredView = nullptr);
+
+  /// @brief Find the topmost scene item at a viewport position and return its ID.
+  ///
+  /// A hit on a plain QGraphicsItem (not a QObject, so it has no ID of its own)
+  /// walks up to the nearest QGraphicsObject ancestor rather than reporting a
+  /// miss -- decorations drawn as bare items are extremely common.
+  /// @param view View to hit test within
+  /// @param viewportPos Position in the view's *viewport* coordinates
+  /// @return Object ID of the item at that position, or empty string on a miss
+  static QString graphicsItemIdAt(QGraphicsView* view, const QPoint& viewportPos);
 
   // --- QWindow / Qt Quick equivalents ---
   //

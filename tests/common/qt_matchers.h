@@ -1367,6 +1367,7 @@ namespace test {
 using ::testing::AllOf;
 using ::testing::AnyOf;
 using ::testing::Contains;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::EndsWith;
 using ::testing::Eq;

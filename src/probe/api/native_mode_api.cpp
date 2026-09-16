@@ -25,6 +25,9 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QGraphicsObject>
+#include <QGraphicsScene>
+#include <QGraphicsView>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -88,6 +91,36 @@ QWidget* resolveWidgetParam(const QJsonObject& params, const QString& methodName
             {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
   }
   return widget;
+}
+
+/// @brief Resolve an optional view id param to a QGraphicsView*.
+///
+/// Absent means "no preference"; present but not a view is a caller error worth
+/// reporting rather than silently ignoring.
+QGraphicsView* resolveViewParam(const QJsonObject& params, const QString& key,
+                                const QString& methodName) {
+  const QString viewId = params[key].toString();
+  if (viewId.isEmpty()) {
+    return nullptr;
+  }
+
+  QObject* obj = ObjectResolver::resolve(viewId);
+  if (!obj) {
+    throw JsonRpcException(ErrorCode::kObjectNotFound,
+                           QStringLiteral("Object not found: %1").arg(viewId),
+                           QJsonObject{{QStringLiteral("method"), methodName}, {key, viewId}});
+  }
+
+  auto* view = qobject_cast<QGraphicsView*>(obj);
+  if (!view) {
+    throw JsonRpcException(ErrorCode::kObjectNotWidget,
+                           QStringLiteral("Object is not a QGraphicsView: %1").arg(viewId),
+                           QJsonObject{{QStringLiteral("method"), methodName},
+                                       {key, viewId},
+                                       {QStringLiteral("className"),
+                                        QString::fromUtf8(obj->metaObject()->className())}});
+  }
+  return view;
 }
 
 }  // anonymous namespace
@@ -238,7 +271,19 @@ void NativeModeApi::registerObjectMethods() {
           }
         }
         if (requestedParts.contains(QStringLiteral("geometry"))) {
-          if (auto* widget = qobject_cast<QWidget*>(obj)) {
+          if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+            // Scene coordinates, matching what "pos" already reports. Doubles,
+            // not ints: graphics coordinates are qreal.
+            const QRectF sceneRect = item->mapToScene(item->boundingRect()).boundingRect();
+            QJsonObject geom;
+            geom[QStringLiteral("x")] = sceneRect.x();
+            geom[QStringLiteral("y")] = sceneRect.y();
+            geom[QStringLiteral("width")] = sceneRect.width();
+            geom[QStringLiteral("height")] = sceneRect.height();
+            geom[QStringLiteral("visible")] = item->isVisible();
+            geom[QStringLiteral("coordinateSpace")] = QStringLiteral("scene");
+            result[QStringLiteral("geometry")] = geom;
+          } else if (auto* widget = qobject_cast<QWidget*>(obj)) {
             QJsonObject geom;
             geom[QStringLiteral("x")] = widget->x();
             geom[QStringLiteral("y")] = widget->y();
@@ -893,9 +938,42 @@ void NativeModeApi::registerUiMethods() {
   // qt.ui.geometry
   m_handler->RegisterMethod(QStringLiteral("qt.ui.geometry"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* widget = resolveWidgetParam(p, QStringLiteral("qt.ui.geometry"));
     QString objectId = p[QStringLiteral("objectId")].toString();
 
+    // A QGraphicsView scene item is a QObject but never a QWidget, so the widget
+    // path used to reject it -- leaving its on-screen position knowable only by
+    // calibrating the view transform by hand. Map it through its view(s) instead.
+    QObject* obj = resolveObjectParam(p, QStringLiteral("qt.ui.geometry"));
+    if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+      QGraphicsView* view =
+          resolveViewParam(p, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.geometry"));
+
+      // A view that does not render this item's scene would silently produce a
+      // null rect -- indistinguishable from "not on screen yet". Name the views
+      // the item does have instead.
+      QGraphicsScene* scene = item->scene();
+      if (view && (!scene || !scene->views().contains(view))) {
+        QJsonArray candidates;
+        if (scene) {
+          const QList<QGraphicsView*> sceneViews = scene->views();
+          for (QGraphicsView* candidate : sceneViews) {
+            candidates.append(ObjectRegistry::instance()->objectId(candidate));
+          }
+        }
+        throw JsonRpcException(
+            JsonRpcError::kInvalidParams,
+            QStringLiteral("viewObjectId does not render this item's scene: %1")
+                .arg(p[QStringLiteral("viewObjectId")].toString()),
+            QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.ui.geometry")},
+                        {QStringLiteral("objectId"), objectId},
+                        {QStringLiteral("views"), candidates}});
+      }
+
+      QJsonObject geo = HitTest::graphicsItemGeometry(item, view);
+      return envelopeToString(ResponseEnvelope::wrap(geo, objectId));
+    }
+
+    QWidget* widget = resolveWidgetParam(p, QStringLiteral("qt.ui.geometry"));
     QJsonObject geo = HitTest::widgetGeometry(widget);
     return envelopeToString(ResponseEnvelope::wrap(geo, objectId));
   });
@@ -905,6 +983,31 @@ void NativeModeApi::registerUiMethods() {
     auto p = parseParams(params);
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
+
+    // Scoped form: x/y are viewport coordinates of the named QGraphicsView, and
+    // the search runs inside its scene. Callers that already know the view want
+    // this; it also avoids QApplication::widgetAt, which is unreliable headless.
+    QGraphicsView* view =
+        resolveViewParam(p, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.hitTest"));
+    if (view) {
+      const QString itemId = HitTest::graphicsItemIdAt(view, QPoint(x, y));
+      if (itemId.isEmpty()) {
+        throw JsonRpcException(
+            ErrorCode::kObjectNotFound,
+            QStringLiteral("No scene item found at viewport point (%1, %2)").arg(x).arg(y),
+            QJsonObject{
+                {QStringLiteral("x"), x},
+                {QStringLiteral("y"), y},
+                {QStringLiteral("viewObjectId"), p[QStringLiteral("viewObjectId")].toString()}});
+      }
+      QObject* item = ObjectRegistry::instance()->findById(itemId);
+      QJsonObject result;
+      result[QStringLiteral("objectId")] = itemId;
+      result[QStringLiteral("className")] =
+          item ? QString::fromUtf8(item->metaObject()->className()) : QStringLiteral("unknown");
+      result[QStringLiteral("viewObjectId")] = p[QStringLiteral("viewObjectId")].toString();
+      return envelopeToString(ResponseEnvelope::wrap(result));
+    }
 
     QString foundId = HitTest::widgetIdAt(QPoint(x, y));
     if (foundId.isEmpty()) {
