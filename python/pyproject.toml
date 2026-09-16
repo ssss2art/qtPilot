@@ -63,7 +63,5 @@ version-file = "src/qtpilot/_version.py"
 [tool.pytest.ini_options]
 filterwarnings = [
     "error",
-    # Third-party deprecation warnings inside fastmcp 2.x dependencies
-    "ignore::authlib.deprecate.AuthlibDeprecationWarning",
 ]
 
