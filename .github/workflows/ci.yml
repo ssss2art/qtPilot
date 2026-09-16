@@ -541,7 +541,7 @@ jobs:
 
       - name: Install from the lockfile
         working-directory: python
-        run: uv sync --locked --extra dev --python 3.11
+        run: uv sync --locked --extra dev --python 3.14
 
       - name: Test
         working-directory: python
