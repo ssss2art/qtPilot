@@ -14,7 +14,10 @@
 #include <QWidget>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// @brief Test helper Q_GADGET exposing introspectable sub-properties.
 class TestGadget {
@@ -150,115 +153,115 @@ void TestMetaInspector::cleanupTestCase() {
 // ============================================================================
 
 void TestMetaInspector::testVariantToJsonBool() {
-  QCOMPARE(variantToJson(QVariant(true)), QJsonValue(true));
-  QCOMPARE(variantToJson(QVariant(false)), QJsonValue(false));
+  QEXPECT_THAT(variantToJson(QVariant(true)), Eq(QJsonValue(true)));
+  QEXPECT_THAT(variantToJson(QVariant(false)), Eq(QJsonValue(false)));
 }
 
 void TestMetaInspector::testVariantToJsonNumbers() {
   // Integer types
-  QCOMPARE(variantToJson(QVariant(42)), QJsonValue(42));
-  QCOMPARE(variantToJson(QVariant(-17)), QJsonValue(-17));
+  QEXPECT_THAT(variantToJson(QVariant(42)), Eq(QJsonValue(42)));
+  QEXPECT_THAT(variantToJson(QVariant(-17)), Eq(QJsonValue(-17)));
 
   // Floating point
-  QCOMPARE(variantToJson(QVariant(3.14)), QJsonValue(3.14));
-  QCOMPARE(variantToJson(QVariant(float(2.5))), QJsonValue(2.5));
+  QEXPECT_THAT(variantToJson(QVariant(3.14)), Eq(QJsonValue(3.14)));
+  QEXPECT_THAT(variantToJson(QVariant(float(2.5))), Eq(QJsonValue(2.5)));
 }
 
 void TestMetaInspector::testVariantToJsonString() {
-  QCOMPARE(variantToJson(QVariant(QStringLiteral("hello"))), QJsonValue(QStringLiteral("hello")));
-  QCOMPARE(variantToJson(QVariant(QString())), QJsonValue(QString()));
+  QEXPECT_THAT(variantToJson(QVariant(QStringLiteral("hello"))), Eq(QJsonValue(QStringLiteral("hello"))));
+  QEXPECT_THAT(variantToJson(QVariant(QString())), Eq(QJsonValue(QString())));
 }
 
 void TestMetaInspector::testVariantToJsonPoint() {
   QJsonValue result = variantToJson(QVariant(QPoint(10, 20)));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("x")].toInt(), 10);
-  QCOMPARE(obj[QStringLiteral("y")].toInt(), 20);
+  QEXPECT_THAT(obj, HasJsonField("x", 10));
+  QEXPECT_THAT(obj, HasJsonField("y", 20));
 
   // QPointF
   result = variantToJson(QVariant(QPointF(1.5, 2.5)));
   obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("x")].toDouble(), 1.5);
-  QCOMPARE(obj[QStringLiteral("y")].toDouble(), 2.5);
+  QEXPECT_THAT(obj, HasJsonField("x", 1.5));
+  QEXPECT_THAT(obj, HasJsonField("y", 2.5));
 }
 
 void TestMetaInspector::testVariantToJsonSize() {
   QJsonValue result = variantToJson(QVariant(QSize(100, 50)));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("width")].toInt(), 100);
-  QCOMPARE(obj[QStringLiteral("height")].toInt(), 50);
+  QEXPECT_THAT(obj, HasJsonField("width", 100));
+  QEXPECT_THAT(obj, HasJsonField("height", 50));
 
   // QSizeF
   result = variantToJson(QVariant(QSizeF(10.5, 20.5)));
   obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("width")].toDouble(), 10.5);
-  QCOMPARE(obj[QStringLiteral("height")].toDouble(), 20.5);
+  QEXPECT_THAT(obj, HasJsonField("width", 10.5));
+  QEXPECT_THAT(obj, HasJsonField("height", 20.5));
 }
 
 void TestMetaInspector::testVariantToJsonRect() {
   QJsonValue result = variantToJson(QVariant(QRect(0, 0, 100, 50)));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("x")].toInt(), 0);
-  QCOMPARE(obj[QStringLiteral("y")].toInt(), 0);
-  QCOMPARE(obj[QStringLiteral("width")].toInt(), 100);
-  QCOMPARE(obj[QStringLiteral("height")].toInt(), 50);
+  QEXPECT_THAT(obj, HasJsonField("x", 0));
+  QEXPECT_THAT(obj, HasJsonField("y", 0));
+  QEXPECT_THAT(obj, HasJsonField("width", 100));
+  QEXPECT_THAT(obj, HasJsonField("height", 50));
 
   // QRectF
   result = variantToJson(QVariant(QRectF(1.5, 2.5, 10.5, 20.5)));
   obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("x")].toDouble(), 1.5);
-  QCOMPARE(obj[QStringLiteral("y")].toDouble(), 2.5);
-  QCOMPARE(obj[QStringLiteral("width")].toDouble(), 10.5);
-  QCOMPARE(obj[QStringLiteral("height")].toDouble(), 20.5);
+  QEXPECT_THAT(obj, HasJsonField("x", 1.5));
+  QEXPECT_THAT(obj, HasJsonField("y", 2.5));
+  QEXPECT_THAT(obj, HasJsonField("width", 10.5));
+  QEXPECT_THAT(obj, HasJsonField("height", 20.5));
 }
 
 void TestMetaInspector::testVariantToJsonColor() {
   QJsonValue result = variantToJson(QVariant::fromValue(QColor(255, 0, 0)));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("r")].toInt(), 255);
-  QCOMPARE(obj[QStringLiteral("g")].toInt(), 0);
-  QCOMPARE(obj[QStringLiteral("b")].toInt(), 0);
-  QCOMPARE(obj[QStringLiteral("a")].toInt(), 255);
+  QEXPECT_THAT(obj, HasJsonField("r", 255));
+  QEXPECT_THAT(obj, HasJsonField("g", 0));
+  QEXPECT_THAT(obj, HasJsonField("b", 0));
+  QEXPECT_THAT(obj, HasJsonField("a", 255));
 
   // With alpha
   result = variantToJson(QVariant::fromValue(QColor(0, 255, 0, 128)));
   obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("r")].toInt(), 0);
-  QCOMPARE(obj[QStringLiteral("g")].toInt(), 255);
-  QCOMPARE(obj[QStringLiteral("b")].toInt(), 0);
-  QCOMPARE(obj[QStringLiteral("a")].toInt(), 128);
+  QEXPECT_THAT(obj, HasJsonField("r", 0));
+  QEXPECT_THAT(obj, HasJsonField("g", 255));
+  QEXPECT_THAT(obj, HasJsonField("b", 0));
+  QEXPECT_THAT(obj, HasJsonField("a", 128));
 }
 
 void TestMetaInspector::testVariantToJsonList() {
   // QStringList
   QStringList strings = {QStringLiteral("one"), QStringLiteral("two"), QStringLiteral("three")};
   QJsonValue result = variantToJson(QVariant(strings));
-  QVERIFY(result.isArray());
+  QEXPECT_THAT(result.isArray(), IsTrue());
 
   QJsonArray arr = result.toArray();
-  QCOMPARE(arr.size(), 3);
-  QCOMPARE(arr[0].toString(), QStringLiteral("one"));
-  QCOMPARE(arr[1].toString(), QStringLiteral("two"));
-  QCOMPARE(arr[2].toString(), QStringLiteral("three"));
+  QEXPECT_THAT(arr, JsonArraySize(3));
+  QEXPECT_THAT(arr[0], QStrEq("one"));
+  QEXPECT_THAT(arr[1], QStrEq("two"));
+  QEXPECT_THAT(arr[2], QStrEq("three"));
 
   // QVariantList
   QVariantList list = {1, QStringLiteral("mixed"), true};
   result = variantToJson(QVariant(list));
-  QVERIFY(result.isArray());
+  QEXPECT_THAT(result.isArray(), IsTrue());
 
   arr = result.toArray();
-  QCOMPARE(arr.size(), 3);
-  QCOMPARE(arr[0].toInt(), 1);
-  QCOMPARE(arr[1].toString(), QStringLiteral("mixed"));
-  QCOMPARE(arr[2].toBool(), true);
+  QEXPECT_THAT(arr, JsonArraySize(3));
+  QEXPECT_THAT(arr[0].toInt(), Eq(1));
+  QEXPECT_THAT(arr[1], QStrEq("mixed"));
+  QEXPECT_THAT(arr[2].toBool(), IsTrue());
 }
 
 void TestMetaInspector::testVariantToJsonMap() {
@@ -268,25 +271,24 @@ void TestMetaInspector::testVariantToJsonMap() {
   map[QStringLiteral("enabled")] = true;
 
   QJsonValue result = variantToJson(QVariant(map));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("name")].toString(), QStringLiteral("test"));
-  QCOMPARE(obj[QStringLiteral("value")].toInt(), 42);
-  QCOMPARE(obj[QStringLiteral("enabled")].toBool(), true);
+  QEXPECT_THAT(obj, HasJsonField("name", "test"));
+  QEXPECT_THAT(obj, HasJsonField("value", 42));
+  QEXPECT_THAT(obj, HasJsonField("enabled", true));
 }
 
 void TestMetaInspector::testVariantToJsonUnknown() {
   // QFont is an unknown type that should fall back to structured output
   QFont font(QStringLiteral("Arial"), 12);
   QJsonValue result = variantToJson(QVariant::fromValue(font));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QVERIFY(obj.contains(QStringLiteral("_type")));
-  QCOMPARE(obj[QStringLiteral("_type")].toString(), QStringLiteral("QFont"));
+  QEXPECT_THAT(obj, HasJsonField("_type", "QFont"));
   // value field should exist (may be string representation)
-  QVERIFY(obj.contains(QStringLiteral("value")));
+  QEXPECT_THAT(obj, HasJsonField("value"));
 }
 
 // ============================================================================
@@ -295,18 +297,18 @@ void TestMetaInspector::testVariantToJsonUnknown() {
 
 void TestMetaInspector::testJsonToVariantBasic() {
   // Bool
-  QCOMPARE(jsonToVariant(QJsonValue(true)).toBool(), true);
-  QCOMPARE(jsonToVariant(QJsonValue(false)).toBool(), false);
+  QEXPECT_THAT(jsonToVariant(QJsonValue(true)).toBool(), IsTrue());
+  QEXPECT_THAT(jsonToVariant(QJsonValue(false)).toBool(), IsFalse());
 
   // Number
-  QCOMPARE(jsonToVariant(QJsonValue(42)).toDouble(), 42.0);
-  QCOMPARE(jsonToVariant(QJsonValue(3.14)).toDouble(), 3.14);
+  QEXPECT_THAT(jsonToVariant(QJsonValue(42)).toDouble(), Eq(42.0));
+  QEXPECT_THAT(jsonToVariant(QJsonValue(3.14)).toDouble(), Eq(3.14));
 
   // String
-  QCOMPARE(jsonToVariant(QJsonValue(QStringLiteral("hello"))).toString(), QStringLiteral("hello"));
+  QEXPECT_THAT(jsonToVariant(QJsonValue(QStringLiteral("hello"))).toString(), QStrEq("hello"));
 
   // Null
-  QVERIFY(!jsonToVariant(QJsonValue()).isValid());
+  QEXPECT_THAT(jsonToVariant(QJsonValue()).isValid(), IsFalse());
 }
 
 void TestMetaInspector::testJsonToVariantGeometry() {
@@ -315,7 +317,7 @@ void TestMetaInspector::testJsonToVariantGeometry() {
   pointObj[QStringLiteral("x")] = 10;
   pointObj[QStringLiteral("y")] = 20;
   QVariant result = jsonToVariant(pointObj);
-  QCOMPARE(result.toPoint(), QPoint(10, 20));
+  QEXPECT_THAT(result.toPoint(), Eq(QPoint(10, 20)));
 
   // Rect-like object
   QJsonObject rectObj;
@@ -324,14 +326,14 @@ void TestMetaInspector::testJsonToVariantGeometry() {
   rectObj[QStringLiteral("width")] = 100;
   rectObj[QStringLiteral("height")] = 50;
   result = jsonToVariant(rectObj);
-  QCOMPARE(result.toRect(), QRect(5, 10, 100, 50));
+  QEXPECT_THAT(result.toRect(), Eq(QRect(5, 10, 100, 50)));
 
   // Size-like object
   QJsonObject sizeObj;
   sizeObj[QStringLiteral("width")] = 640;
   sizeObj[QStringLiteral("height")] = 480;
   result = jsonToVariant(sizeObj);
-  QCOMPARE(result.toSize(), QSize(640, 480));
+  QEXPECT_THAT(result.toSize(), Eq(QSize(640, 480)));
 }
 
 void TestMetaInspector::testJsonToVariantColor() {
@@ -342,41 +344,41 @@ void TestMetaInspector::testJsonToVariantColor() {
   colorObj[QStringLiteral("b")] = 0;
   QVariant result = jsonToVariant(colorObj);
   QColor color = result.value<QColor>();
-  QCOMPARE(color.red(), 255);
-  QCOMPARE(color.green(), 128);
-  QCOMPARE(color.blue(), 0);
+  QEXPECT_THAT(color.red(), Eq(255));
+  QEXPECT_THAT(color.green(), Eq(128));
+  QEXPECT_THAT(color.blue(), Eq(0));
 
   // With alpha
   colorObj[QStringLiteral("a")] = 200;
   result = jsonToVariant(colorObj);
   color = result.value<QColor>();
-  QCOMPARE(color.alpha(), 200);
+  QEXPECT_THAT(color.alpha(), Eq(200));
 
   // From string (with target type)
   result = jsonToVariant(QJsonValue(QStringLiteral("#FF0000")), QMetaType::QColor);
   color = result.value<QColor>();
-  QCOMPARE(color.red(), 255);
-  QCOMPARE(color.green(), 0);
-  QCOMPARE(color.blue(), 0);
+  QEXPECT_THAT(color.red(), Eq(255));
+  QEXPECT_THAT(color.green(), Eq(0));
+  QEXPECT_THAT(color.blue(), Eq(0));
 }
 
 void TestMetaInspector::testJsonToVariantRoundTrip() {
   // Test round-trip for various types
   QPoint origPoint(50, 75);
   QVariant result = jsonToVariant(variantToJson(QVariant(origPoint)));
-  QCOMPARE(result.toPoint(), origPoint);
+  QEXPECT_THAT(result.toPoint(), Eq(origPoint));
 
   QSize origSize(800, 600);
   result = jsonToVariant(variantToJson(QVariant(origSize)));
-  QCOMPARE(result.toSize(), origSize);
+  QEXPECT_THAT(result.toSize(), Eq(origSize));
 
   QRect origRect(10, 20, 100, 200);
   result = jsonToVariant(variantToJson(QVariant(origRect)));
-  QCOMPARE(result.toRect(), origRect);
+  QEXPECT_THAT(result.toRect(), Eq(origRect));
 
   QColor origColor(128, 64, 32, 255);
   result = jsonToVariant(variantToJson(QVariant::fromValue(origColor)));
-  QCOMPARE(result.value<QColor>(), origColor);
+  QEXPECT_THAT(result.value<QColor>(), Eq(origColor));
 }
 
 // ============================================================================
@@ -389,13 +391,13 @@ void TestMetaInspector::testObjectInfo() {
 
   QJsonObject info = MetaInspector::objectInfo(&obj);
 
-  QCOMPARE(info[QStringLiteral("className")].toString(), QStringLiteral("TestObject"));
-  QCOMPARE(info[QStringLiteral("objectName")].toString(), QStringLiteral("testObj"));
+  QEXPECT_THAT(info, HasJsonField("className", "TestObject"));
+  QEXPECT_THAT(info, HasJsonField("objectName", "testObj"));
 
   QJsonArray superClasses = info[QStringLiteral("superClasses")].toArray();
-  QVERIFY(superClasses.size() >= 2);
-  QCOMPARE(superClasses[0].toString(), QStringLiteral("TestObject"));
-  QCOMPARE(superClasses[1].toString(), QStringLiteral("QObject"));
+  QEXPECT_THAT(superClasses.size(), Ge(2));
+  QEXPECT_THAT(superClasses[0], QStrEq("TestObject"));
+  QEXPECT_THAT(superClasses[1], QStrEq("QObject"));
 }
 
 void TestMetaInspector::testObjectInfoWidget() {
@@ -405,11 +407,10 @@ void TestMetaInspector::testObjectInfoWidget() {
 
   QJsonObject info = MetaInspector::objectInfo(&button);
 
-  QCOMPARE(info[QStringLiteral("className")].toString(), QStringLiteral("QPushButton"));
-  QCOMPARE(info[QStringLiteral("objectName")].toString(), QStringLiteral("submitBtn"));
-  QVERIFY(info.contains(QStringLiteral("visible")));
-  QVERIFY(info.contains(QStringLiteral("enabled")));
-  QCOMPARE(info[QStringLiteral("enabled")].toBool(), true);
+  QEXPECT_THAT(info, HasJsonField("className", "QPushButton"));
+  QEXPECT_THAT(info, HasJsonField("objectName", "submitBtn"));
+  QEXPECT_THAT(info, HasJsonField("visible"));
+  QEXPECT_THAT(info, HasJsonField("enabled", true));
 }
 
 void TestMetaInspector::testListProperties() {
@@ -422,7 +423,7 @@ void TestMetaInspector::testListProperties() {
   QJsonArray props = MetaInspector::listProperties(&obj);
 
   // Should have at least our 3 custom properties + objectName from QObject
-  QVERIFY(props.size() >= 4);
+  QEXPECT_THAT(props.size(), Ge(4));
 
   // Find our intValue property
   bool foundIntValue = false;
@@ -436,33 +437,33 @@ void TestMetaInspector::testListProperties() {
 
     if (name == QStringLiteral("intValue")) {
       foundIntValue = true;
-      QCOMPARE(prop[QStringLiteral("type")].toString(), QStringLiteral("int"));
-      QCOMPARE(prop[QStringLiteral("readable")].toBool(), true);
-      QCOMPARE(prop[QStringLiteral("writable")].toBool(), true);
-      QCOMPARE(prop[QStringLiteral("value")].toInt(), 123);
+      QEXPECT_THAT(prop, HasJsonField("type", "int"));
+      QEXPECT_THAT(prop, HasJsonField("readable", true));
+      QEXPECT_THAT(prop, HasJsonField("writable", true));
+      QEXPECT_THAT(prop, HasJsonField("value", 123));
       // Statically-declared properties are flagged dynamic=false.
-      QCOMPARE(prop[QStringLiteral("dynamic")].toBool(), false);
+      QEXPECT_THAT(prop, HasJsonField("dynamic", false));
     } else if (name == QStringLiteral("stringValue")) {
       foundStringValue = true;
-      QCOMPARE(prop[QStringLiteral("value")].toString(), QStringLiteral("hello"));
+      QEXPECT_THAT(prop, HasJsonField("value", "hello"));
     } else if (name == QStringLiteral("readOnly")) {
       foundReadOnly = true;
-      QCOMPARE(prop[QStringLiteral("writable")].toBool(), false);
-      QCOMPARE(prop[QStringLiteral("value")].toBool(), true);
+      QEXPECT_THAT(prop, HasJsonField("writable", false));
+      QEXPECT_THAT(prop, HasJsonField("value", true));
     } else if (name == QStringLiteral("status")) {
       // Dynamic properties are surfaced, flagged dynamic=true, read/write.
       foundDynamicStatus = true;
-      QCOMPARE(prop[QStringLiteral("dynamic")].toBool(), true);
-      QCOMPARE(prop[QStringLiteral("readable")].toBool(), true);
-      QCOMPARE(prop[QStringLiteral("writable")].toBool(), true);
-      QCOMPARE(prop[QStringLiteral("value")].toString(), QStringLiteral("error"));
+      QEXPECT_THAT(prop, HasJsonField("dynamic", true));
+      QEXPECT_THAT(prop, HasJsonField("readable", true));
+      QEXPECT_THAT(prop, HasJsonField("writable", true));
+      QEXPECT_THAT(prop, HasJsonField("value", "error"));
     }
   }
 
-  QVERIFY2(foundIntValue, "intValue property not found");
-  QVERIFY2(foundStringValue, "stringValue property not found");
-  QVERIFY2(foundReadOnly, "readOnly property not found");
-  QVERIFY2(foundDynamicStatus, "dynamic 'status' property not found");
+  QEXPECT_THAT(foundIntValue, IsTrue());
+  QEXPECT_THAT(foundStringValue, IsTrue());
+  QEXPECT_THAT(foundReadOnly, IsTrue());
+  QEXPECT_THAT(foundDynamicStatus, IsTrue());
 }
 
 void TestMetaInspector::testListPropertiesWidget() {
@@ -471,7 +472,7 @@ void TestMetaInspector::testListPropertiesWidget() {
   QJsonArray props = MetaInspector::listProperties(&button);
 
   // Should have many properties from QPushButton, QAbstractButton, QWidget
-  QVERIFY(props.size() >= 10);
+  QEXPECT_THAT(props.size(), Ge(10));
 
   // Find text and enabled properties
   bool foundText = false;
@@ -484,7 +485,7 @@ void TestMetaInspector::testListPropertiesWidget() {
 
     if (name == QStringLiteral("text")) {
       foundText = true;
-      QCOMPARE(prop[QStringLiteral("value")].toString(), QStringLiteral("Test Button"));
+      QEXPECT_THAT(prop, HasJsonField("value", "Test Button"));
     } else if (name == QStringLiteral("enabled")) {
       foundEnabled = true;
     } else if (name == QStringLiteral("visible")) {
@@ -492,9 +493,9 @@ void TestMetaInspector::testListPropertiesWidget() {
     }
   }
 
-  QVERIFY2(foundText, "text property not found");
-  QVERIFY2(foundEnabled, "enabled property not found");
-  QVERIFY2(foundVisible, "visible property not found");
+  QEXPECT_THAT(foundText, IsTrue());
+  QEXPECT_THAT(foundEnabled, IsTrue());
+  QEXPECT_THAT(foundVisible, IsTrue());
 }
 
 void TestMetaInspector::testListMethods() {
@@ -503,7 +504,7 @@ void TestMetaInspector::testListMethods() {
   QJsonArray methods = MetaInspector::listMethods(&obj);
 
   // Should have at least our 2 custom slots + inherited deleteLater
-  QVERIFY(methods.size() >= 3);
+  QEXPECT_THAT(methods.size(), Ge(3));
 
   bool foundDoSomething = false;
   bool foundAddNumbers = false;
@@ -514,23 +515,22 @@ void TestMetaInspector::testListMethods() {
 
     if (name == QStringLiteral("doSomething")) {
       foundDoSomething = true;
-      QCOMPARE(method[QStringLiteral("signature")].toString(), QStringLiteral("doSomething()"));
-      QCOMPARE(method[QStringLiteral("access")].toString(), QStringLiteral("public"));
+      QEXPECT_THAT(method, HasJsonField("signature", "doSomething()"));
+      QEXPECT_THAT(method, HasJsonField("access", "public"));
     } else if (name == QStringLiteral("addNumbers")) {
       foundAddNumbers = true;
-      QCOMPARE(method[QStringLiteral("signature")].toString(),
-               QStringLiteral("addNumbers(int,int)"));
-      QCOMPARE(method[QStringLiteral("returnType")].toString(), QStringLiteral("int"));
+      QEXPECT_THAT(method, HasJsonField("signature", "addNumbers(int,int)"));
+      QEXPECT_THAT(method, HasJsonField("returnType", "int"));
 
       QJsonArray paramTypes = method[QStringLiteral("parameterTypes")].toArray();
-      QCOMPARE(paramTypes.size(), 2);
-      QCOMPARE(paramTypes[0].toString(), QStringLiteral("int"));
-      QCOMPARE(paramTypes[1].toString(), QStringLiteral("int"));
+      QEXPECT_THAT(paramTypes, JsonArraySize(2));
+      QEXPECT_THAT(paramTypes[0], QStrEq("int"));
+      QEXPECT_THAT(paramTypes[1], QStrEq("int"));
     }
   }
 
-  QVERIFY2(foundDoSomething, "doSomething() slot not found");
-  QVERIFY2(foundAddNumbers, "addNumbers() slot not found");
+  QEXPECT_THAT(foundDoSomething, IsTrue());
+  QEXPECT_THAT(foundAddNumbers, IsTrue());
 }
 
 void TestMetaInspector::testListSignals() {
@@ -539,7 +539,7 @@ void TestMetaInspector::testListSignals() {
   QJsonArray signalList = MetaInspector::listSignals(&obj);
 
   // Should have at least our 2 custom signals + destroyed/objectNameChanged from QObject
-  QVERIFY(signalList.size() >= 4);
+  QEXPECT_THAT(signalList.size(), Ge(4));
 
   bool foundIntValueChanged = false;
   bool foundCustomSignal = false;
@@ -550,25 +550,24 @@ void TestMetaInspector::testListSignals() {
 
     if (name == QStringLiteral("intValueChanged")) {
       foundIntValueChanged = true;
-      QCOMPARE(sig[QStringLiteral("signature")].toString(), QStringLiteral("intValueChanged(int)"));
+      QEXPECT_THAT(sig, HasJsonField("signature", "intValueChanged(int)"));
 
       QJsonArray paramTypes = sig[QStringLiteral("parameterTypes")].toArray();
-      QCOMPARE(paramTypes.size(), 1);
-      QCOMPARE(paramTypes[0].toString(), QStringLiteral("int"));
+      QEXPECT_THAT(paramTypes, JsonArraySize(1));
+      QEXPECT_THAT(paramTypes[0], QStrEq("int"));
     } else if (name == QStringLiteral("customSignal")) {
       foundCustomSignal = true;
-      QCOMPARE(sig[QStringLiteral("signature")].toString(),
-               QStringLiteral("customSignal(QString,int)"));
+      QEXPECT_THAT(sig, HasJsonField("signature", "customSignal(QString,int)"));
 
       QJsonArray paramTypes = sig[QStringLiteral("parameterTypes")].toArray();
-      QCOMPARE(paramTypes.size(), 2);
-      QCOMPARE(paramTypes[0].toString(), QStringLiteral("QString"));
-      QCOMPARE(paramTypes[1].toString(), QStringLiteral("int"));
+      QEXPECT_THAT(paramTypes, JsonArraySize(2));
+      QEXPECT_THAT(paramTypes[0], QStrEq("QString"));
+      QEXPECT_THAT(paramTypes[1], QStrEq("int"));
     }
   }
 
-  QVERIFY2(foundIntValueChanged, "intValueChanged signal not found");
-  QVERIFY2(foundCustomSignal, "customSignal signal not found");
+  QEXPECT_THAT(foundIntValueChanged, IsTrue());
+  QEXPECT_THAT(foundCustomSignal, IsTrue());
 }
 
 void TestMetaInspector::testInheritanceChain() {
@@ -577,20 +576,20 @@ void TestMetaInspector::testInheritanceChain() {
   QStringList chain = MetaInspector::inheritanceChain(&button);
 
   // QPushButton -> QAbstractButton -> QWidget -> QObject
-  QVERIFY(chain.size() >= 4);
-  QCOMPARE(chain[0], QStringLiteral("QPushButton"));
-  QCOMPARE(chain[1], QStringLiteral("QAbstractButton"));
-  QCOMPARE(chain[2], QStringLiteral("QWidget"));
-  QCOMPARE(chain[3], QStringLiteral("QObject"));
+  QEXPECT_THAT(chain.size(), Ge(4));
+  QEXPECT_THAT(chain[0], QStrEq("QPushButton"));
+  QEXPECT_THAT(chain[1], QStrEq("QAbstractButton"));
+  QEXPECT_THAT(chain[2], QStrEq("QWidget"));
+  QEXPECT_THAT(chain[3], QStrEq("QObject"));
 }
 
 void TestMetaInspector::testNullObject() {
   // All methods should handle nullptr gracefully
-  QVERIFY(MetaInspector::objectInfo(nullptr).isEmpty());
-  QVERIFY(MetaInspector::listProperties(nullptr).isEmpty());
-  QVERIFY(MetaInspector::listMethods(nullptr).isEmpty());
-  QVERIFY(MetaInspector::listSignals(nullptr).isEmpty());
-  QVERIFY(MetaInspector::inheritanceChain(nullptr).isEmpty());
+  QEXPECT_THAT(MetaInspector::objectInfo(nullptr).isEmpty(), IsTrue());
+  QEXPECT_THAT(MetaInspector::listProperties(nullptr).isEmpty(), IsTrue());
+  QEXPECT_THAT(MetaInspector::listMethods(nullptr).isEmpty(), IsTrue());
+  QEXPECT_THAT(MetaInspector::listSignals(nullptr).isEmpty(), IsTrue());
+  QEXPECT_THAT(MetaInspector::inheritanceChain(nullptr).isEmpty(), IsTrue());
 }
 
 // ============================================================================
@@ -600,14 +599,14 @@ void TestMetaInspector::testNullObject() {
 void TestMetaInspector::testGetPropertyString() {
   QPushButton button(QStringLiteral("Hello Button"));
   QJsonValue result = MetaInspector::getProperty(&button, QStringLiteral("text"));
-  QCOMPARE(result.toString(), QStringLiteral("Hello Button"));
+  QEXPECT_THAT(result.toString(), QStrEq("Hello Button"));
 }
 
 void TestMetaInspector::testGetPropertyInt() {
   TestObject obj;
   obj.setIntValue(123);
   QJsonValue result = MetaInspector::getProperty(&obj, QStringLiteral("intValue"));
-  QCOMPARE(result.toInt(), 123);
+  QEXPECT_THAT(result.toInt(), Eq(123));
 }
 
 void TestMetaInspector::testGetPropertyNotFound() {
@@ -618,24 +617,24 @@ void TestMetaInspector::testGetPropertyNotFound() {
   } catch (const std::runtime_error& e) {
     exceptionThrown = true;
     QString msg = QString::fromStdString(e.what());
-    QVERIFY2(msg.contains(QStringLiteral("not found")), qPrintable(msg));
+    QEXPECT_THAT(msg, QStrContains("not found"));
   }
-  QVERIFY2(exceptionThrown, "Expected exception for nonexistent property");
+  QEXPECT_THAT(exceptionThrown, IsTrue());
 }
 
 void TestMetaInspector::testSetPropertyString() {
   QPushButton button;
   bool success = MetaInspector::setProperty(&button, QStringLiteral("text"),
                                             QJsonValue(QStringLiteral("New Text")));
-  QVERIFY(success);
-  QCOMPARE(button.text(), QStringLiteral("New Text"));
+  QEXPECT_THAT(success, IsTrue());
+  QEXPECT_THAT(button.text(), QStrEq("New Text"));
 }
 
 void TestMetaInspector::testSetPropertyInt() {
   TestObject obj;
   bool success = MetaInspector::setProperty(&obj, QStringLiteral("intValue"), QJsonValue(999));
-  QVERIFY(success);
-  QCOMPARE(obj.intValue(), 999);
+  QEXPECT_THAT(success, IsTrue());
+  QEXPECT_THAT(obj.intValue(), Eq(999));
 }
 
 void TestMetaInspector::testSetPropertyReadOnly() {
@@ -646,17 +645,17 @@ void TestMetaInspector::testSetPropertyReadOnly() {
   } catch (const std::runtime_error& e) {
     exceptionThrown = true;
     QString msg = QString::fromStdString(e.what());
-    QVERIFY2(msg.contains(QStringLiteral("read-only")), qPrintable(msg));
+    QEXPECT_THAT(msg, QStrContains("read-only"));
   }
-  QVERIFY2(exceptionThrown, "Expected exception for read-only property");
+  QEXPECT_THAT(exceptionThrown, IsTrue());
 }
 
 void TestMetaInspector::testSetPropertyTypeCoercion() {
   TestObject obj;
   // Set int property using a JSON double (should coerce)
   bool success = MetaInspector::setProperty(&obj, QStringLiteral("intValue"), QJsonValue(42.0));
-  QVERIFY(success);
-  QCOMPARE(obj.intValue(), 42);
+  QEXPECT_THAT(success, IsTrue());
+  QEXPECT_THAT(obj.intValue(), Eq(42));
 }
 
 void TestMetaInspector::testDynamicProperty() {
@@ -665,11 +664,11 @@ void TestMetaInspector::testDynamicProperty() {
   // Set dynamic property
   bool success = MetaInspector::setProperty(&obj, QStringLiteral("dynamicProp"),
                                             QJsonValue(QStringLiteral("dynamic value")));
-  QVERIFY(success);
+  QEXPECT_THAT(success, IsTrue());
 
   // Get dynamic property
   QJsonValue result = MetaInspector::getProperty(&obj, QStringLiteral("dynamicProp"));
-  QCOMPARE(result.toString(), QStringLiteral("dynamic value"));
+  QEXPECT_THAT(result.toString(), QStrEq("dynamic value"));
 }
 
 void TestMetaInspector::testEnumPropertyMetadata() {
@@ -686,16 +685,16 @@ void TestMetaInspector::testEnumPropertyMetadata() {
     }
     foundColor = true;
     // Symbolic key for the current value, not just the raw int.
-    QCOMPARE(prop[QStringLiteral("enumKey")].toString(), QStringLiteral("Green"));
-    QCOMPARE(prop[QStringLiteral("isFlag")].toBool(), false);
+    QEXPECT_THAT(prop, HasJsonField("enumKey", "Green"));
+    QEXPECT_THAT(prop, HasJsonField("isFlag", false));
     // Full set of valid keys is surfaced so callers can set by name.
     QJsonArray keys = prop[QStringLiteral("enumKeys")].toArray();
-    QCOMPARE(keys.size(), 3);
-    QVERIFY(keys.contains(QJsonValue(QStringLiteral("Red"))));
-    QVERIFY(keys.contains(QJsonValue(QStringLiteral("Green"))));
-    QVERIFY(keys.contains(QJsonValue(QStringLiteral("Blue"))));
+    QEXPECT_THAT(keys, JsonArraySize(3));
+    QEXPECT_THAT(keys, JsonArrayContains(QJsonValue("Red")));
+    QEXPECT_THAT(keys, JsonArrayContains(QJsonValue("Green")));
+    QEXPECT_THAT(keys, JsonArrayContains(QJsonValue("Blue")));
   }
-  QVERIFY2(foundColor, "enum 'color' property not found");
+  QEXPECT_THAT(foundColor, IsTrue());
 }
 
 void TestMetaInspector::testNotifySignalMetadata() {
@@ -711,16 +710,15 @@ void TestMetaInspector::testNotifySignalMetadata() {
       foundIntValue = true;
       // intValue has NOTIFY intValueChanged — surfaced so callers know what
       // signal to subscribe to instead of polling.
-      QCOMPARE(prop[QStringLiteral("notifySignal")].toString(),
-               QStringLiteral("intValueChanged"));
+      QEXPECT_THAT(prop, HasJsonField("notifySignal", "intValueChanged"));
     } else if (name == QStringLiteral("stringValue")) {
       foundStringValue = true;
       // No NOTIFY — empty string.
-      QCOMPARE(prop[QStringLiteral("notifySignal")].toString(), QString());
+      QEXPECT_THAT(prop, HasJsonField("notifySignal", ""));
     }
   }
-  QVERIFY(foundIntValue);
-  QVERIFY(foundStringValue);
+  QEXPECT_THAT(foundIntValue, IsTrue());
+  QEXPECT_THAT(foundStringValue, IsTrue());
 }
 
 void TestMetaInspector::testVariantToJsonGadget() {
@@ -731,12 +729,12 @@ void TestMetaInspector::testVariantToJsonGadget() {
   gadget.label = QStringLiteral("hi");
 
   QJsonValue result = variantToJson(QVariant::fromValue(gadget));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("_type")].toString(), QStringLiteral("TestGadget"));
-  QCOMPARE(obj[QStringLiteral("width")].toInt(), 42);
-  QCOMPARE(obj[QStringLiteral("label")].toString(), QStringLiteral("hi"));
+  QEXPECT_THAT(obj, HasJsonField("_type", "TestGadget"));
+  QEXPECT_THAT(obj, HasJsonField("width", 42));
+  QEXPECT_THAT(obj, HasJsonField("label", "hi"));
 }
 
 void TestMetaInspector::testVariantToJsonQObjectRef() {
@@ -745,14 +743,14 @@ void TestMetaInspector::testVariantToJsonQObjectRef() {
   target.setObjectName(QStringLiteral("refTarget"));
 
   QJsonValue result = variantToJson(QVariant::fromValue<QObject*>(&target));
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj[QStringLiteral("className")].toString(), QStringLiteral("TestObject"));
-  QCOMPARE(obj[QStringLiteral("objectName")].toString(), QStringLiteral("refTarget"));
+  QEXPECT_THAT(obj, HasJsonField("className", "TestObject"));
+  QEXPECT_THAT(obj, HasJsonField("objectName", "refTarget"));
 
   // A null QObject* serializes as JSON null.
-  QVERIFY(variantToJson(QVariant::fromValue<QObject*>(nullptr)).isNull());
+  QEXPECT_THAT(variantToJson(QVariant::fromValue<QObject*>(nullptr)).isNull(), IsTrue());
 }
 
 // ============================================================================
@@ -763,7 +761,7 @@ void TestMetaInspector::testInvokeVoidMethod() {
   TestObject obj;
   // doSomething() is a void slot
   QJsonValue result = MetaInspector::invokeMethod(&obj, QStringLiteral("doSomething"));
-  QVERIFY(result.isNull());  // void methods return null
+  QEXPECT_THAT(result.isNull(), IsTrue());  // void methods return null
 }
 
 void TestMetaInspector::testInvokeMethodWithArgs() {
@@ -773,7 +771,7 @@ void TestMetaInspector::testInvokeMethodWithArgs() {
   args.append(32);
 
   QJsonValue result = MetaInspector::invokeMethod(&obj, QStringLiteral("addNumbers"), args);
-  QCOMPARE(result.toInt(), 42);
+  QEXPECT_THAT(result.toInt(), Eq(42));
 }
 
 void TestMetaInspector::testInvokeMethodWithReturnValue() {
@@ -783,7 +781,7 @@ void TestMetaInspector::testInvokeMethodWithReturnValue() {
   args.append(5);
   args.append(7);
   QJsonValue result = MetaInspector::invokeMethod(&obj, QStringLiteral("addNumbers"), args);
-  QCOMPARE(result.toInt(), 12);
+  QEXPECT_THAT(result.toInt(), Eq(12));
 }
 
 void TestMetaInspector::testInvokeMethodNotFound() {
@@ -794,9 +792,9 @@ void TestMetaInspector::testInvokeMethodNotFound() {
   } catch (const std::runtime_error& e) {
     exceptionThrown = true;
     QString msg = QString::fromStdString(e.what());
-    QVERIFY2(msg.contains(QStringLiteral("not found")), qPrintable(msg));
+    QEXPECT_THAT(msg, QStrContains("not found"));
   }
-  QVERIFY2(exceptionThrown, "Expected exception for nonexistent method");
+  QEXPECT_THAT(exceptionThrown, IsTrue());
 }
 
 void TestMetaInspector::testInvokeMethodWrongArgCount() {
@@ -810,11 +808,9 @@ void TestMetaInspector::testInvokeMethodWrongArgCount() {
   } catch (const std::runtime_error& e) {
     exceptionThrown = true;
     QString msg = QString::fromStdString(e.what());
-    QVERIFY2(
-        msg.contains(QStringLiteral("not found")) || msg.contains(QStringLiteral("wrong argument")),
-        qPrintable(msg));
+    QEXPECT_THAT(msg, AnyOf(QStrContains("not found"), QStrContains("wrong argument")));
   }
-  QVERIFY2(exceptionThrown, "Expected exception for wrong argument count");
+  QEXPECT_THAT(exceptionThrown, IsTrue());
 }
 
 QTEST_APPLESS_MAIN(TestMetaInspector)

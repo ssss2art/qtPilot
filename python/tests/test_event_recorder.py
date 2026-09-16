@@ -19,14 +19,12 @@ from qtpilot.event_recorder import (
 )
 
 
-pytestmark = pytest.mark.asyncio
-
-
 # ---------------------------------------------------------------------------
 # Phase 1: Notification routing in ProbeConnection
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 class TestNotificationRouting:
     async def test_handler_receives_signal_notification(self, mock_probe):
         """Notification with method field is routed to the handler."""
@@ -133,6 +131,7 @@ class TestNotificationRouting:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 class TestEventRecorder:
     async def test_start_stop_basic(self, mock_probe):
         """Start and stop recording with a target."""

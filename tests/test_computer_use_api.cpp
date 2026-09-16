@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "api/computer_use_mode_api.h"
 #include "api/error_codes.h"
 #include "core/object_registry.h"
@@ -18,6 +19,7 @@
 #include <QtTest>
 
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// @brief Integration tests for the Computer Use Mode API (cu.* methods).
 ///
@@ -200,41 +202,36 @@ void TestComputerUseApi::testScreenshot() {
   if (response.contains("error")) {
     // Error response — expected on minimal platform / no screen capture permission
     QJsonObject error = response["error"].toObject();
-    QVERIFY(error.contains("message"));
+    QEXPECT_THAT(error, HasJsonField("message"));
     QString msg = error["message"].toString();
-    QVERIFY2(msg.contains("null pixmap") || msg.contains("screen capture"),
-             qPrintable("Unexpected error: " + msg));
+    QEXPECT_THAT(msg, AnyOf(QStrContains("null pixmap"), QStrContains("screen capture")));
     qWarning("Screenshot returned error (expected on minimal platform): %s", qPrintable(msg));
     return;
   }
 
   // Success path
   QJsonValue resultVal = response["result"];
-  QVERIFY(resultVal.isObject());
+  QEXPECT_THAT(resultVal.isObject(), IsTrue());
 
   QJsonObject envelope = resultVal.toObject();
   QJsonValue innerResult = envelope["result"];
-  QVERIFY(innerResult.isObject());
+  QEXPECT_THAT(innerResult.isObject(), IsTrue());
 
   QJsonObject obj = innerResult.toObject();
 
   // Must have image, width, height keys in response
-  QVERIFY(obj.contains("image"));
-  QVERIFY(obj.contains("width"));
-  QVERIFY(obj.contains("height"));
+  QEXPECT_THAT(obj, AllOf(
+      HasJsonField("image"),
+      HasJsonField("width"),
+      HasJsonField("height")));
 
   QString image = obj["image"].toString();
   if (!image.isEmpty()) {
-    QVERIFY(obj["width"].toInt() > 0);
-    QVERIFY(obj["height"].toInt() > 0);
+    QEXPECT_THAT(obj["width"].toInt(), Gt(0));
+    QEXPECT_THAT(obj["height"].toInt(), Gt(0));
 
-    // Decode base64 and verify PNG magic bytes
-    QByteArray decoded = QByteArray::fromBase64(image.toLatin1());
-    QVERIFY(decoded.size() >= 4);
-    QCOMPARE(static_cast<unsigned char>(decoded[0]), static_cast<unsigned char>(0x89));
-    QCOMPARE(static_cast<unsigned char>(decoded[1]), static_cast<unsigned char>(0x50));
-    QCOMPARE(static_cast<unsigned char>(decoded[2]), static_cast<unsigned char>(0x4E));
-    QCOMPARE(static_cast<unsigned char>(decoded[3]), static_cast<unsigned char>(0x47));
+    // Verify PNG format
+    QEXPECT_THAT(image, IsValidPng());
   } else {
     qWarning("Screenshot returned empty image (expected on minimal platform)");
   }
@@ -255,9 +252,9 @@ void TestComputerUseApi::testClick() {
       callResult("cu.click", QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
-  QVERIFY(clicked);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(clicked, IsTrue());
 }
 
 void TestComputerUseApi::testRightClick() {
@@ -267,8 +264,8 @@ void TestComputerUseApi::testRightClick() {
       callResult("cu.rightClick", QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 void TestComputerUseApi::testMiddleClick() {
@@ -278,8 +275,8 @@ void TestComputerUseApi::testMiddleClick() {
       callResult("cu.middleClick", QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 void TestComputerUseApi::testDoubleClick() {
@@ -289,8 +286,8 @@ void TestComputerUseApi::testDoubleClick() {
       callResult("cu.doubleClick", QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 // ========================================================================
@@ -300,8 +297,8 @@ void TestComputerUseApi::testDoubleClick() {
 void TestComputerUseApi::testMouseMove() {
   QJsonValue result = callResult("cu.mouseMove", QJsonObject{{"x", 100}, {"y", 100}});
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 // ========================================================================
@@ -312,8 +309,8 @@ void TestComputerUseApi::testDrag() {
   QJsonValue result = callResult(
       "cu.drag", QJsonObject{{"startX", 10}, {"startY", 10}, {"endX", 100}, {"endY", 100}});
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 // ========================================================================
@@ -327,8 +324,8 @@ void TestComputerUseApi::testMouseDown() {
       callResult("cu.mouseDown", QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 void TestComputerUseApi::testMouseUp() {
@@ -338,8 +335,8 @@ void TestComputerUseApi::testMouseUp() {
       callResult("cu.mouseUp", QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 // ========================================================================
@@ -354,9 +351,9 @@ void TestComputerUseApi::testType() {
   QJsonValue result = callResult("cu.type", QJsonObject{{"text", "Hello"}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
-  QCOMPARE(m_testLineEdit->text(), QString("Hello"));
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_testLineEdit->text(), QStrEq("Hello"));
 }
 
 // ========================================================================
@@ -375,16 +372,16 @@ void TestComputerUseApi::testKey() {
   // Select all with ctrl+a
   QJsonValue result1 = callResult("cu.key", QJsonObject{{"key", "ctrl+a"}});
   QApplication::processEvents();
-  QVERIFY(result1.isObject());
-  QCOMPARE(result1.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result1.isObject(), IsTrue());
+  QEXPECT_THAT(result1.toObject(), HasJsonField("success", Eq(true)));
 
   // Delete selected text
   QJsonValue result2 = callResult("cu.key", QJsonObject{{"key", "Delete"}});
   QApplication::processEvents();
-  QVERIFY(result2.isObject());
-  QCOMPARE(result2.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result2.isObject(), IsTrue());
+  QEXPECT_THAT(result2.toObject(), HasJsonField("success", Eq(true)));
 
-  QCOMPARE(m_testLineEdit->text(), QString(""));
+  QEXPECT_THAT(m_testLineEdit->text(), QIsEmpty());
 }
 
 void TestComputerUseApi::testKeyChromeNames() {
@@ -394,16 +391,16 @@ void TestComputerUseApi::testKeyChromeNames() {
 
   // Chrome key names should not error
   QJsonValue result1 = callResult("cu.key", QJsonObject{{"key", "Return"}});
-  QVERIFY(result1.isObject());
-  QCOMPARE(result1.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result1.isObject(), IsTrue());
+  QEXPECT_THAT(result1.toObject(), HasJsonField("success", Eq(true)));
 
   QJsonValue result2 = callResult("cu.key", QJsonObject{{"key", "Escape"}});
-  QVERIFY(result2.isObject());
-  QCOMPARE(result2.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result2.isObject(), IsTrue());
+  QEXPECT_THAT(result2.toObject(), HasJsonField("success", Eq(true)));
 
   QJsonValue result3 = callResult("cu.key", QJsonObject{{"key", "ArrowUp"}});
-  QVERIFY(result3.isObject());
-  QCOMPARE(result3.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result3.isObject(), IsTrue());
+  QEXPECT_THAT(result3.toObject(), HasJsonField("success", Eq(true)));
 }
 
 void TestComputerUseApi::testKeyActivatesNamedPunctuationShortcuts() {
@@ -421,13 +418,13 @@ void TestComputerUseApi::testKeyActivatesNamedPunctuationShortcuts() {
   m_testButton->setFocus();
   QApplication::processEvents();
 
-  QVERIFY(callResult("cu.key", QJsonObject{{"key", "meta+Plus"}}).isObject());
+  QEXPECT_THAT(callResult("cu.key", QJsonObject{{"key", "meta+Plus"}}).isObject(), IsTrue());
   QTRY_COMPARE(metaPlusSpy.size(), 1);
 
-  QVERIFY(callResult("cu.key", QJsonObject{{"key", "ctrl+Minus"}}).isObject());
+  QEXPECT_THAT(callResult("cu.key", QJsonObject{{"key", "ctrl+Minus"}}).isObject(), IsTrue());
   QTRY_COMPARE(controlMinusSpy.size(), 1);
 
-  QVERIFY(callResult("cu.key", QJsonObject{{"key", "QuestionMark"}}).isObject());
+  QEXPECT_THAT(callResult("cu.key", QJsonObject{{"key", "QuestionMark"}}).isObject(), IsTrue());
   QTRY_COMPARE(questionMarkSpy.size(), 1);
 }
 
@@ -440,8 +437,8 @@ void TestComputerUseApi::testScroll() {
   QJsonValue result = callResult(
       "cu.scroll", QJsonObject{{"x", 200}, {"y", 150}, {"direction", "down"}, {"amount", 3}});
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
 }
 
 // ========================================================================
@@ -450,16 +447,17 @@ void TestComputerUseApi::testScroll() {
 
 void TestComputerUseApi::testCursorPosition() {
   QJsonValue result = callResult("cu.cursorPosition", QJsonObject());
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QVERIFY(obj.contains("x"));
-  QVERIFY(obj.contains("y"));
-  QVERIFY(obj.contains("className"));
+  QEXPECT_THAT(obj, AllOf(
+      HasJsonField("x"),
+      HasJsonField("y"),
+      HasJsonField("className")));
 
   // x and y should be numbers
-  QVERIFY(obj["x"].isDouble());
-  QVERIFY(obj["y"].isDouble());
+  QEXPECT_THAT(obj["x"].isDouble(), IsTrue());
+  QEXPECT_THAT(obj["y"].isDouble(), IsTrue());
 }
 
 // ========================================================================
@@ -469,8 +467,9 @@ void TestComputerUseApi::testCursorPosition() {
 void TestComputerUseApi::testClickOutOfBounds() {
   QJsonObject error = callExpectError("cu.click", QJsonObject{{"x", 9999}, {"y", 9999}});
 
-  QCOMPARE(error["code"].toInt(), ErrorCode::kCoordinateOutOfBounds);
-  QVERIFY(!error["message"].toString().isEmpty());
+  QEXPECT_THAT(error, AllOf(
+      HasJsonField("code", Eq(static_cast<int>(ErrorCode::kCoordinateOutOfBounds))),
+      HasJsonField("message", QIsNotEmpty())));
 }
 
 void TestComputerUseApi::testTypeNoFocusedWidget() {
@@ -490,8 +489,8 @@ void TestComputerUseApi::testTypeNoFocusedWidget() {
 
   // Either error is acceptable: no active window (-32060) or no focused widget (-32062)
   int code = error["code"].toInt();
-  QVERIFY(code == ErrorCode::kNoFocusedWidget || code == ErrorCode::kNoActiveWindow);
-  QVERIFY(!error["message"].toString().isEmpty());
+  QEXPECT_THAT(code, AnyOf(Eq(static_cast<int>(ErrorCode::kNoFocusedWidget)), Eq(static_cast<int>(ErrorCode::kNoActiveWindow))));
+  QEXPECT_THAT(error, HasJsonField("message", QIsNotEmpty()));
 }
 
 void TestComputerUseApi::testIncludeScreenshot() {
@@ -507,8 +506,7 @@ void TestComputerUseApi::testIncludeScreenshot() {
   if (response.contains("error")) {
     // Error from screenshot capture — expected on minimal platform
     QString msg = response["error"].toObject()["message"].toString();
-    QVERIFY2(msg.contains("null pixmap") || msg.contains("screen capture"),
-             qPrintable("Unexpected error: " + msg));
+    QEXPECT_THAT(msg, AnyOf(QStrContains("null pixmap"), QStrContains("screen capture")));
     qWarning("include_screenshot returned error (expected on minimal platform): %s",
              qPrintable(msg));
     return;
@@ -516,11 +514,11 @@ void TestComputerUseApi::testIncludeScreenshot() {
 
   QJsonObject envelope = response["result"].toObject();
   QJsonValue result = envelope["result"];
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj["success"].toBool(), true);
-  // On minimal platform, screenshot may be empty string. Verify key exists.
-  QVERIFY(obj.contains("screenshot"));
+  QEXPECT_THAT(obj, AllOf(
+      HasJsonField("success", Eq(true)),
+      HasJsonField("screenshot")));
 }
 
 // cu.key on a Widgets app where nothing has been clicked yet.
@@ -538,14 +536,10 @@ void TestComputerUseApi::keyReachesWidgetAppWithoutExplicitFocus() {
     focused->clearFocus();
   }
   QApplication::processEvents();
-  QVERIFY2(!QApplication::focusWidget(), "precondition: no widget should hold focus");
+  QEXPECT_THAT(QApplication::focusWidget(), IsNull());
 
   QJsonObject response = callRaw(QStringLiteral("cu.key"), QJsonObject{{"key", "ctrl+a"}});
-  QVERIFY2(!response.contains(QStringLiteral("error")),
-           qPrintable(QStringLiteral("cu.key failed with no widget focused: %1")
-                          .arg(QString::fromUtf8(
-                              QJsonDocument(response[QStringLiteral("error")].toObject())
-                                  .toJson(QJsonDocument::Compact)))));
+  QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
 }
 
 QTEST_MAIN(TestComputerUseApi)

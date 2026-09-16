@@ -5,7 +5,10 @@
 
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// The probe reported a hardcoded "0.1.0" from two handlers while the project
 /// was at 0.3.1. These tests pin the properties that made that possible: the
@@ -18,24 +21,24 @@ class TestProbeVersion : public QObject {
   /// QTPILOT_EXPECTED_VERSION is passed from CMake's PROJECT_VERSION, so this
   /// fails if the generated header ever stops tracking the project.
   void versionMatchesProjectVersion() {
-    QCOMPARE(QString::fromUtf8(kVersion), QStringLiteral(QTPILOT_EXPECTED_VERSION));
+    QEXPECT_THAT(QString::fromUtf8(kVersion), QStrEq(QTPILOT_EXPECTED_VERSION));
   }
 
   void versionIsNotTheOldHardcodedValue() {
-    QVERIFY2(QString::fromUtf8(kVersion) != QStringLiteral("0.1.0"),
-             "kVersion is the stale literal the generated header exists to remove");
+    QEXPECT_THAT(QString::fromUtf8(kVersion), Not(QStrEq("0.1.0")));
   }
 
   void versionIsNonEmptyAndDotted() {
     const QString v = QString::fromUtf8(kVersion);
-    QVERIFY(!v.isEmpty());
-    QVERIFY2(v.contains(QLatin1Char('.')), qPrintable("not a dotted version: " + v));
+    QEXPECT_THAT(v, AllOf(QIsNotEmpty(), QStrContains(".")));
   }
 
   /// Pinned so that bumping it is a deliberate edit with a failing test to
   /// update, rather than something that drifts silently away from the Python
   /// client's SUPPORTED_PROTOCOL_VERSION.
-  void protocolVersionIsPinned() { QCOMPARE(kProtocolVersion, 1); }
+  void protocolVersionIsPinned() {
+    QEXPECT_THAT(kProtocolVersion, Eq(1));
+  }
 };
 
 QTEST_MAIN(TestProbeVersion)

@@ -111,6 +111,9 @@ class TestChecksumHexValidation:
 class TestTarFilterFallback:
     """Python 3.11.0-3.11.3 lack the `filter=` kwarg; extraction must not crash."""
 
+    @pytest.mark.filterwarnings(
+        "ignore:.*filter extracted tar archives.*:DeprecationWarning"
+    )
     def test_extract_without_filter_kwarg(self, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
         archive = tmp_path / "a.tar.gz"
         _make_targz(archive, [("probe.so", b"payload")])

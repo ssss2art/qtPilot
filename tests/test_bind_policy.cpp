@@ -5,7 +5,10 @@
 
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// Tests for the network exposure policy.
 ///
@@ -27,16 +30,16 @@ class TestBindPolicy : public QObject {
 
   /// The core requirement: unconfigured means reachable across the network.
   void defaultsToLanWhenUnset() {
-    QCOMPARE(configuredExposure(), NetworkExposure::Lan);
-    QCOMPARE(listenAddress(), QHostAddress(QHostAddress::Any));
+    QEXPECT_THAT(configuredExposure(), Eq(NetworkExposure::Lan));
+    QEXPECT_THAT(listenAddress(), Eq(QHostAddress(QHostAddress::Any)));
   }
 
   /// An empty value is "unset", not "invalid" -- shells export empty strings
   /// readily, and that must not quietly cut the probe off the network.
   void emptyValueIsTreatedAsUnset() {
     qputenv("QTPILOT_BIND_ADDRESS", QByteArray(""));
-    QCOMPARE(configuredExposure(), NetworkExposure::Lan);
-    QCOMPARE(listenAddress(), QHostAddress(QHostAddress::Any));
+    QEXPECT_THAT(configuredExposure(), Eq(NetworkExposure::Lan));
+    QEXPECT_THAT(listenAddress(), Eq(QHostAddress(QHostAddress::Any)));
   }
 
   void lanSpellings_data() {
@@ -53,8 +56,8 @@ class TestBindPolicy : public QObject {
   void lanSpellings() {
     QFETCH(QByteArray, value);
     qputenv("QTPILOT_BIND_ADDRESS", value);
-    QCOMPARE(configuredExposure(), NetworkExposure::Lan);
-    QCOMPARE(listenAddress(), QHostAddress(QHostAddress::Any));
+    QEXPECT_THAT(configuredExposure(), Eq(NetworkExposure::Lan));
+    QEXPECT_THAT(listenAddress(), Eq(QHostAddress(QHostAddress::Any)));
   }
 
   void loopbackSpellings_data() {
@@ -70,8 +73,8 @@ class TestBindPolicy : public QObject {
   void loopbackSpellings() {
     QFETCH(QByteArray, value);
     qputenv("QTPILOT_BIND_ADDRESS", value);
-    QCOMPARE(configuredExposure(), NetworkExposure::Loopback);
-    QCOMPARE(listenAddress(), QHostAddress(QHostAddress::LocalHost));
+    QEXPECT_THAT(configuredExposure(), Eq(NetworkExposure::Loopback));
+    QEXPECT_THAT(listenAddress(), Eq(QHostAddress(QHostAddress::LocalHost)));
   }
 
   /// A typo must not be resolved as "wide open". This is the one case that
@@ -90,17 +93,17 @@ class TestBindPolicy : public QObject {
   void unrecognisedValuesRestrictRatherThanWiden() {
     QFETCH(QByteArray, value);
     qputenv("QTPILOT_BIND_ADDRESS", value);
-    QCOMPARE(configuredExposure(), NetworkExposure::Loopback);
-    QCOMPARE(listenAddress(), QHostAddress(QHostAddress::LocalHost));
+    QEXPECT_THAT(configuredExposure(), Eq(NetworkExposure::Loopback));
+    QEXPECT_THAT(listenAddress(), Eq(QHostAddress(QHostAddress::LocalHost)));
   }
 
   /// Discovery is how remote instances are found, so a LAN-bound probe has to
   /// broadcast. A loopback-bound one must not: advertising a process nobody can
   /// connect to is noise that also discloses it.
   void announceFollowsExposure() {
-    QCOMPARE(announceAddress(), QHostAddress(QHostAddress::Broadcast));
+    QEXPECT_THAT(announceAddress(), Eq(QHostAddress(QHostAddress::Broadcast)));
     qputenv("QTPILOT_BIND_ADDRESS", QByteArray("loopback"));
-    QCOMPARE(announceAddress(), QHostAddress(QHostAddress::LocalHost));
+    QEXPECT_THAT(announceAddress(), Eq(QHostAddress(QHostAddress::LocalHost)));
   }
 };
 

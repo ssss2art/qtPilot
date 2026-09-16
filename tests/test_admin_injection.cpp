@@ -18,6 +18,10 @@
 #include <QUdpSocket>
 #include <QWebSocket>
 
+#include "common/qt_matchers.h"
+
+using namespace qtPilot::test;
+
 #ifdef Q_OS_WIN
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -108,13 +112,13 @@ void TestAdminInjection::initTestCase() {
     if (!matches.isEmpty())
       m_launcherPath = exeDir.absoluteFilePath(matches.first());
   }
-  QVERIFY2(!m_launcherPath.isEmpty(), "Could not find qtpilot-launch executable in build output");
+  QEXPECT_THAT(m_launcherPath.isEmpty(), IsFalse());
 
   // Locate the test_app executable
   m_testAppPath = findExecutable(QStringLiteral("qtPilot-test-app"));
   if (m_testAppPath.isEmpty())
     m_testAppPath = findExecutable(QStringLiteral("qtPilot_test_app"));
-  QVERIFY2(!m_testAppPath.isEmpty(), "Could not find test app executable in build output");
+  QEXPECT_THAT(m_testAppPath.isEmpty(), IsFalse());
 
   qDebug() << "Launcher:" << m_launcherPath;
   qDebug() << "Test app:" << m_testAppPath;
@@ -123,8 +127,7 @@ void TestAdminInjection::initTestCase() {
 void TestAdminInjection::testElevatedLaunchAndConnect() {
   // 1. Bind a UDP socket to listen for probe discovery broadcasts
   QUdpSocket udp;
-  QVERIFY2(udp.bind(QHostAddress::Any, 9221, QUdpSocket::ShareAddress),
-           "Failed to bind UDP discovery socket on port 9221");
+  QEXPECT_THAT(udp.bind(QHostAddress::Any, 9221, QUdpSocket::ShareAddress), IsTrue());
 
   // 2. Launch test_app via the launcher with admin elevation
   //    --port 0 : let OS assign an ephemeral port
@@ -139,8 +142,8 @@ void TestAdminInjection::testElevatedLaunchAndConnect() {
       m_testAppPath,
   });
   launcher.start();
-  QVERIFY2(launcher.waitForFinished(30000), "Launcher did not finish within 30 seconds");
-  QCOMPARE(launcher.exitCode(), 0);
+  QEXPECT_THAT(launcher.waitForFinished(30000), IsTrue());
+  QEXPECT_THAT(launcher.exitCode(), Eq(0));
 
   // 3. Wait for UDP discovery announce from the probe (up to 15 seconds)
   QString wsUrl;
@@ -171,7 +174,7 @@ void TestAdminInjection::testElevatedLaunchAndConnect() {
         }
       }
     }
-    QVERIFY2(discovered, "Did not receive probe discovery broadcast within 15 seconds");
+    QEXPECT_THAT(discovered, IsTrue());
   }
 
   // 4. Connect to the probe's WebSocket
@@ -179,7 +182,7 @@ void TestAdminInjection::testElevatedLaunchAndConnect() {
   {
     QSignalSpy connectedSpy(&ws, &QWebSocket::connected);
     ws.open(QUrl(wsUrl));
-    QVERIFY2(connectedSpy.wait(10000), "WebSocket did not connect within 10 seconds");
+    QEXPECT_THAT(connectedSpy.wait(10000), IsTrue());
   }
 
   // 5. Send chr.getPageText and verify a response arrives
@@ -193,15 +196,14 @@ void TestAdminInjection::testElevatedLaunchAndConnect() {
     request[QStringLiteral("params")] = QJsonObject();
     ws.sendTextMessage(QString::fromUtf8(QJsonDocument(request).toJson(QJsonDocument::Compact)));
 
-    QVERIFY2(messageSpy.wait(10000), "No response received within 10 seconds");
+    QEXPECT_THAT(messageSpy.wait(10000), IsTrue());
 
     QString responseStr = messageSpy.first().first().toString();
     QJsonObject response = QJsonDocument::fromJson(responseStr.toUtf8()).object();
 
     // Must have a result (not an error)
-    QVERIFY2(response.contains(QStringLiteral("result")),
-             qPrintable(QStringLiteral("Expected result, got: %1").arg(responseStr)));
-    QVERIFY(!response.contains(QStringLiteral("error")));
+    QEXPECT_THAT(response, HasJsonField("result"));
+    QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
 
     qDebug() << "chr.getPageText response received successfully";
   }

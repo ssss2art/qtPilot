@@ -431,6 +431,7 @@ def download_file(url: str, output_path: Path, *, max_bytes: int = MAX_DOWNLOAD_
         output_path.unlink(missing_ok=True)
         raise
     except urllib.error.HTTPError as e:
+        e.close()
         if e.code == 404:
             raise DownloadError(f"File not found: {url}") from e
         raise DownloadError(f"HTTP error {e.code}: {url}") from e
@@ -611,6 +612,7 @@ def download_and_extract(
                     f"Checksum not found for {archive_filename} in SHA256SUMS"
                 )
         except urllib.error.HTTPError as e:
+            e.close()
             if e.code == 404:
                 raise DownloadError(
                     f"SHA256SUMS not found for release {release_tag}"

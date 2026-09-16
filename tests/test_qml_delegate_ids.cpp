@@ -20,6 +20,7 @@
 
 #include "core/object_registry.h"
 #include "introspection/object_id.h"
+#include "common/qt_matchers.h"
 
 #include <memory>
 
@@ -29,6 +30,7 @@
 #include <QtTest>
 
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 namespace {
 
@@ -179,19 +181,19 @@ class TestQmlDelegateIds : public QObject {
   void delegateIdIsRootedAtVisualParent() {
     QQmlEngine engine;
     auto root = build(&engine, kRepeaterQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
-    QVERIFY(rootItem);
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
-    QVERIFY(strip);
+    QCHECK_THAT(strip, NotNull());
     QQuickItem* tab0 = childItemNamed(strip, QStringLiteral("tab0"));
-    QVERIFY2(tab0, "Repeater delegate missing from its visual parent");
+    QCHECK_THAT(tab0, NotNull());
 
     // Precondition: this is genuinely the parentless-but-visible case.
-    QCOMPARE(tab0->parent(), nullptr);
+    QEXPECT_THAT(tab0->parent(), IsNull());
 
     const QString id = generateObjectId(tab0);
-    QCOMPARE(id, QStringLiteral("root/strip/tab0"));
+    QEXPECT_THAT(id, QStrEq("root/strip/tab0"));
   }
 
   // effectiveParent() and effectiveChildren() have to stay exact inverses, or
@@ -199,20 +201,21 @@ class TestQmlDelegateIds : public QObject {
   void parentAndChildrenAgree() {
     QQmlEngine engine;
     auto root = build(&engine, kRepeaterQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
-    QVERIFY(strip);
+    QCHECK_THAT(strip, NotNull());
 
     const QList<QObject*> children = effectiveChildren(strip);
     int delegatesSeen = 0;
     for (QObject* child : children) {
-      QCOMPARE(effectiveParent(child), strip);
+      QEXPECT_THAT(effectiveParent(child), Eq(strip));
       if (child->objectName().startsWith(QStringLiteral("tab"))) {
         ++delegatesSeen;
       }
     }
-    QCOMPARE(delegatesSeen, 3);
+    QEXPECT_THAT(delegatesSeen, Eq(3));
   }
 
   // The ID a client is handed must resolve back to the same object -- the whole
@@ -220,14 +223,16 @@ class TestQmlDelegateIds : public QObject {
   void delegateIdRoundTrips() {
     QQmlEngine engine;
     auto root = build(&engine, kRepeaterQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
+    QCHECK_THAT(strip, NotNull());
     QQuickItem* tab1 = childItemNamed(strip, QStringLiteral("tab1"));
-    QVERIFY(tab1);
+    QCHECK_THAT(tab1, NotNull());
 
     const QString id = generateObjectId(tab1);
-    QCOMPARE(findByObjectId(id, root.get()), static_cast<QObject*>(tab1));
+    QEXPECT_THAT(findByObjectId(id, root.get()), Eq(static_cast<QObject*>(tab1)));
   }
 
   // Every delegate appears in the serialized tree, and each appears ONCE. A
@@ -236,7 +241,7 @@ class TestQmlDelegateIds : public QObject {
   void treeListsEveryDelegateExactlyOnce() {
     QQmlEngine engine;
     auto root = build(&engine, kRepeaterQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
 
     const QJsonObject tree = serializeObjectTree(root.get());
     QStringList ids;
@@ -244,11 +249,11 @@ class TestQmlDelegateIds : public QObject {
 
     for (int i = 0; i < 3; ++i) {
       const QString expected = QStringLiteral("root/strip/tab%1").arg(i);
-      QCOMPARE(ids.count(expected), 1);
+      QEXPECT_THAT(ids.count(expected), Eq(1));
     }
 
     QSet<QString> unique(ids.begin(), ids.end());
-    QCOMPARE(unique.size(), ids.size());
+    QEXPECT_THAT(unique.size(), Eq(ids.size()));
   }
 
   // Objects that already exist when the probe starts are found only by the
@@ -256,20 +261,21 @@ class TestQmlDelegateIds : public QObject {
   void scanReachesPreExistingDelegates() {
     QQmlEngine engine;
     auto root = build(&engine, kRepeaterQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
+    QCHECK_THAT(strip, NotNull());
     QQuickItem* tab2 = childItemNamed(strip, QStringLiteral("tab2"));
-    QVERIFY(tab2);
+    QCHECK_THAT(tab2, NotNull());
 
     ObjectRegistry::instance()->scanExistingObjects(root.get());
-    QVERIFY2(ObjectRegistry::instance()->contains(tab2),
-             "delegate created before the probe started was never tracked");
+    QEXPECT_THAT(ObjectRegistry::instance()->contains(tab2), IsTrue());
 
     // Tracked objects get a cached ID, which is what makes the ID resolvable
     // rather than transient.
     const QString id = ObjectRegistry::instance()->objectId(tab2);
-    QCOMPARE(ObjectRegistry::instance()->findById(id), static_cast<QObject*>(tab2));
+    QEXPECT_THAT(ObjectRegistry::instance()->findById(id), Eq(static_cast<QObject*>(tab2)));
   }
 
   // The case the objectName-per-index fixture cannot reach: sibling delegates with
@@ -280,11 +286,11 @@ class TestQmlDelegateIds : public QObject {
   void unnamedDelegatesGetDistinctResolvableIds() {
     QQmlEngine engine;
     auto root = build(&engine, kUnnamedDelegateQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
-    QVERIFY(rootItem);
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
-    QVERIFY(strip);
+    QCHECK_THAT(strip, NotNull());
 
     const QList<QObject*> children = effectiveChildren(strip);
     QList<QObject*> delegates;
@@ -295,16 +301,15 @@ class TestQmlDelegateIds : public QObject {
         delegates.append(child);
       }
     }
-    QCOMPARE(delegates.size(), 4);
+    QEXPECT_THAT(delegates.size(), Eq(4));
 
     QSet<QString> ids;
     for (QObject* delegate : delegates) {
       const QString id = generateObjectId(delegate);
-      QVERIFY2(!ids.contains(id),
-               qPrintable(QStringLiteral("duplicate id for sibling delegate: %1").arg(id)));
+      QEXPECT_THAT(ids.contains(id), IsFalse());
       ids.insert(id);
       // Resolvable by path, which is the whole point of handing an id out.
-      QCOMPARE(findByObjectId(id, root.get()), delegate);
+      QEXPECT_THAT(findByObjectId(id, root.get()), Eq(delegate));
     }
   }
 
@@ -314,10 +319,11 @@ class TestQmlDelegateIds : public QObject {
   void delegatesSharingADeclaredNameStillGetDistinctIds() {
     QQmlEngine engine;
     auto root = build(&engine, kSharedNameDelegateQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
-    QVERIFY(strip);
+    QCHECK_THAT(strip, NotNull());
 
     QSet<QString> ids;
     int delegatesSeen = 0;
@@ -328,12 +334,11 @@ class TestQmlDelegateIds : public QObject {
       }
       ++delegatesSeen;
       const QString id = generateObjectId(child);
-      QVERIFY2(!ids.contains(id),
-               qPrintable(QStringLiteral("delegates collided on id: %1").arg(id)));
+      QEXPECT_THAT(ids.contains(id), IsFalse());
       ids.insert(id);
-      QCOMPARE(findByObjectId(id, root.get()), child);
+      QEXPECT_THAT(findByObjectId(id, root.get()), Eq(child));
     }
-    QCOMPARE(delegatesSeen, 3);
+    QEXPECT_THAT(delegatesSeen, Eq(3));
   }
 
   // Renaming a VISUAL ancestor must refresh the ids cached for delegates beneath
@@ -342,21 +347,22 @@ class TestQmlDelegateIds : public QObject {
   void renamingAVisualAncestorRefreshesDelegateIds() {
     QQmlEngine engine;
     auto root = build(&engine, kRepeaterQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
-    QVERIFY(strip);
+    QCHECK_THAT(strip, NotNull());
     QQuickItem* tab0 = childItemNamed(strip, QStringLiteral("tab0"));
-    QVERIFY(tab0);
+    QCHECK_THAT(tab0, NotNull());
 
     auto* registry = ObjectRegistry::instance();
     registry->scanExistingObjects(root.get());
-    QCOMPARE(registry->objectId(tab0), QStringLiteral("root/strip/tab0"));
+    QEXPECT_THAT(registry->objectId(tab0), QStrEq("root/strip/tab0"));
 
     strip->setObjectName(QStringLiteral("navStrip"));
     // The refresh is wired through a queued connection.
     QTRY_COMPARE(registry->objectId(tab0), QStringLiteral("root/navStrip/tab0"));
-    QCOMPARE(registry->findById(QStringLiteral("root/navStrip/tab0")), static_cast<QObject*>(tab0));
+    QEXPECT_THAT(registry->findById(QStringLiteral("root/navStrip/tab0")), Eq(static_cast<QObject*>(tab0)));
   }
 
   // A root-scoped search has to mean the same thing as "under this root in the
@@ -365,19 +371,20 @@ class TestQmlDelegateIds : public QObject {
   void rootScopedLookupsReachDelegates() {
     QQmlEngine engine;
     auto root = build(&engine, kRepeaterQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
     auto* rootItem = qobject_cast<QQuickItem*>(root.get());
+    QCHECK_THAT(rootItem, NotNull());
     QQuickItem* strip = childItemNamed(rootItem, QStringLiteral("strip"));
-    QVERIFY(strip);
+    QCHECK_THAT(strip, NotNull());
     QQuickItem* tab1 = childItemNamed(strip, QStringLiteral("tab1"));
-    QVERIFY(tab1);
+    QCHECK_THAT(tab1, NotNull());
 
     auto* registry = ObjectRegistry::instance();
-    QCOMPARE(registry->findByObjectName(QStringLiteral("tab1"), root.get()),
-             static_cast<QObject*>(tab1));
+    QEXPECT_THAT(registry->findByObjectName(QStringLiteral("tab1"), root.get()),
+                 Eq(static_cast<QObject*>(tab1)));
 
     const QList<QObject*> found = registry->findAllByClassName(QStringLiteral("QQuickItem"), strip);
-    QVERIFY2(found.contains(tab1), "class-name search scoped to a root missed a delegate");
+    QEXPECT_THAT(found, Contains(static_cast<QObject*>(tab1)));
   }
 
   // The effective hierarchy merges two axes that Qt cycle-checks only
@@ -391,14 +398,14 @@ class TestQmlDelegateIds : public QObject {
     outer->setParentItem(mid);  // ...and outer's VISUAL parent
 
     // Precondition: this really is the interlocked shape, accepted by Qt.
-    QCOMPARE(effectiveParent(outer.get()), static_cast<QObject*>(mid));
-    QCOMPARE(effectiveParent(mid), static_cast<QObject*>(outer.get()));
+    QEXPECT_THAT(effectiveParent(outer.get()), Eq(static_cast<QObject*>(mid)));
+    QEXPECT_THAT(effectiveParent(mid), Eq(static_cast<QObject*>(outer.get())));
 
     // Must terminate rather than hang. The id is truncated and useless, which is
     // the correct outcome for a malformed graph -- what matters is that the host
     // application survives.
     const QString id = generateObjectId(outer.get());
-    QVERIFY(!id.isEmpty());
+    QEXPECT_THAT(id, QIsNotEmpty());
   }
 
   // Every id the GENERATOR produces must already be unique, before the registry's
@@ -421,7 +428,7 @@ class TestQmlDelegateIds : public QObject {
     for (const Fixture& fixture : fixtures) {
       QQmlEngine engine;
       auto root = build(&engine, fixture.qml);
-      QVERIFY2(root, fixture.label);
+      QCHECK_THAT(root.get(), NotNull());
 
       QStringList ids;
       collectGeneratedIds(root.get(), ids);
@@ -436,9 +443,7 @@ class TestQmlDelegateIds : public QObject {
       // And no id may depend on the registry suffix, which findByObjectId() cannot
       // reproduce -- that is the whole reason uniqueness has to hold up here.
       for (const QString& id : ids) {
-        QVERIFY2(!id.contains(QLatin1Char('~')),
-                 qPrintable(QStringLiteral("%1: id relies on a registry suffix: %2")
-                                .arg(QLatin1String(fixture.label), id)));
+        QEXPECT_THAT(id.contains(QLatin1Char('~')), IsFalse());
       }
     }
   }
@@ -448,13 +453,13 @@ class TestQmlDelegateIds : public QObject {
   void textKeyedDelegatesKeepContentAddressedIds() {
     QQmlEngine engine;
     auto root = build(&engine, kTextKeyedQml);
-    QVERIFY(root);
+    QCHECK_THAT(root.get(), NotNull());
 
     QStringList ids;
     collectGeneratedIds(root.get(), ids);
     for (const char* label : {"Alpha", "Beta", "Gamma"}) {
       const QString expected = QStringLiteral("root/strip/text_%1").arg(QLatin1String(label));
-      QVERIFY2(ids.contains(expected), qPrintable(QStringLiteral("missing %1").arg(expected)));
+      QEXPECT_THAT(ids, Contains(expected));
     }
   }
 };
