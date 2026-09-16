@@ -128,7 +128,8 @@ endfunction()
 # --- Test definitions ---
 
 qtPilot_add_test(NAME test_qt_matchers SOURCES test_qt_matchers.cpp
-    LIBS Qt${QT_VERSION_MAJOR}::Gui)
+    LIBS Qt${QT_VERSION_MAJOR}::Gui
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
 qtPilot_add_test(NAME test_jsonrpc SOURCES test_jsonrpc.cpp)
 

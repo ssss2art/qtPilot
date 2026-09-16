@@ -257,5 +257,5 @@ class TestQtMatchers : public QObject {
   }
 };
 
-QTEST_MAIN(TestQtMatchers)
+QTEST_GUILESS_MAIN(TestQtMatchers)
 #include "test_qt_matchers.moc"
