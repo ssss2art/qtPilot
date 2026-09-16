@@ -210,9 +210,6 @@ def supports_tool_removal(mcp: FastMCP) -> bool:
     conflicts with the stateless protocol's cacheable, deterministically-ordered
     ``tools/list``. Callers must fall back to visibility filtering.
     """
-    provider = getattr(mcp, "local_provider", None)
-    if provider is not None and callable(getattr(provider, "remove_tool", None)):
-        return True
     return callable(getattr(mcp, "remove_tool", None))
 
 
@@ -224,12 +221,7 @@ def remove_tools(mcp: FastMCP, names: list[str]) -> list[str]:
     skipped rather than aborting the batch, so a partially-renamed tool set
     cannot wedge a mode switch.
     """
-    provider = getattr(mcp, "local_provider", None)
-    if provider is not None and callable(getattr(provider, "remove_tool", None)):
-        remover = provider.remove_tool
-    else:
-        remover = getattr(mcp, "remove_tool", None)
-
+    remover = getattr(mcp, "remove_tool", None)
     if not callable(remover):
         logger.debug(
             "FastMCP %s does not support remove_tool; %d tool(s) left registered",
@@ -237,6 +229,12 @@ def remove_tools(mcp: FastMCP, names: list[str]) -> list[str]:
             len(names),
         )
         return []
+
+    # In FastMCP 3.x, mcp.remove_tool emits FastMCPDeprecationWarning in favor
+    # of mcp.local_provider.remove_tool. Use local_provider if available.
+    provider = getattr(mcp, "local_provider", None)
+    if provider is not None and callable(getattr(provider, "remove_tool", None)):
+        remover = provider.remove_tool
 
     removed: list[str] = []
     for name in names:
