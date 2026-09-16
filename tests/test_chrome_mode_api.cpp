@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "accessibility/console_message_capture.h"
 #include "api/chrome_mode_api.h"
 #include "api/error_codes.h"
@@ -23,6 +24,7 @@
 #include <QtTest>
 
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// @brief Integration tests for the Chrome Mode API (chr.* methods).
 ///
@@ -248,13 +250,9 @@ void TestChromeModeApi::testReadPage_ReturnsTree() {
   QJsonObject result = readPage();
 
   // Must contain tree, totalNodes
-  QVERIFY(result.contains("tree"));
-  QVERIFY(result.contains("totalNodes"));
-  QVERIFY(result["totalNodes"].toInt() > 0);
-
-  QJsonObject tree = result["tree"].toObject();
-  // Tree root must have role
-  QVERIFY(tree.contains("role"));
+  QEXPECT_THAT(result, AllOf(
+      HasJsonField("tree", HasJsonField("role")),
+      HasJsonField("totalNodes", Gt(0))));
 }
 
 void TestChromeModeApi::testReadPage_AllFilter() {
@@ -264,11 +262,11 @@ void TestChromeModeApi::testReadPage_AllFilter() {
   // With all filter, nodes should have refs
   // Find the button ref in the tree
   QString btnRef = findRefByObjectName(tree, "btnTest");
-  QVERIFY2(!btnRef.isEmpty(), "Button should have a ref in 'all' filter mode");
+  QEXPECT_THAT(btnRef, QIsNotEmpty());
 
   // Labels should also have refs in all mode
   QString lblRef = findRefByObjectName(tree, "lblGreeting");
-  QVERIFY2(!lblRef.isEmpty(), "Label should have a ref in 'all' filter mode");
+  QEXPECT_THAT(lblRef, QIsNotEmpty());
 }
 
 void TestChromeModeApi::testReadPage_InteractiveFilter() {
@@ -277,11 +275,11 @@ void TestChromeModeApi::testReadPage_InteractiveFilter() {
 
   // Interactive elements should have refs
   QString btnRef = findRefByObjectName(tree, "btnTest");
-  QVERIFY2(!btnRef.isEmpty(), "Button should have a ref in 'interactive' filter mode");
+  QEXPECT_THAT(btnRef, QIsNotEmpty());
 
   // Labels should NOT have refs in interactive mode
   QString lblRef = findRefByObjectName(tree, "lblGreeting");
-  QVERIFY2(lblRef.isEmpty(), "Label should NOT have a ref in 'interactive' filter mode");
+  QEXPECT_THAT(lblRef, QIsEmpty());
 }
 
 void TestChromeModeApi::testReadPage_MaxDepth() {
@@ -290,16 +288,16 @@ void TestChromeModeApi::testReadPage_MaxDepth() {
   QJsonObject tree = result["tree"].toObject();
 
   // Root should exist
-  QVERIFY(tree.contains("role"));
+  QEXPECT_THAT(tree, HasJsonField("role"));
 
   // At depth 1, should have limited children (if any)
   // The root children count should be reasonable
   int totalNodes = result["totalNodes"].toInt();
-  QVERIFY(totalNodes > 0);
+  QEXPECT_THAT(totalNodes, Gt(0));
   // With depth=1, total nodes should be much less than full tree
   QJsonObject fullResult = readPage(QJsonObject{{"depth", 15}});
   int fullNodes = fullResult["totalNodes"].toInt();
-  QVERIFY2(totalNodes <= fullNodes, "Depth-limited tree should have fewer or equal nodes");
+  QEXPECT_THAT(totalNodes, Le(fullNodes));
 }
 
 void TestChromeModeApi::testReadPage_RefFormat() {
@@ -310,9 +308,7 @@ void TestChromeModeApi::testReadPage_RefFormat() {
   QString btnRef = findRefByObjectName(tree, "btnTest");
   if (!btnRef.isEmpty()) {
     // Refs should follow "ref_N" pattern
-    QRegularExpression refPattern("^ref_\\d+$");
-    QVERIFY2(refPattern.match(btnRef).hasMatch(),
-             qPrintable(QString("Ref '%1' should match ref_N pattern").arg(btnRef)));
+    QEXPECT_THAT(btnRef, QStrStartsWith("ref_"));
   }
 }
 
@@ -337,10 +333,9 @@ void TestChromeModeApi::testReadPage_IncludesQtExtras() {
 
   QJsonObject btnNode = findNode(tree);
   if (!btnNode.isEmpty()) {
-    QVERIFY2(btnNode.contains("objectName"), "Node should include objectName");
-    QVERIFY2(btnNode.contains("className"), "Node should include className");
-    QCOMPARE(btnNode["objectName"].toString(), QString("btnTest"));
-    QCOMPARE(btnNode["className"].toString(), QString("QPushButton"));
+    QEXPECT_THAT(btnNode, AllOf(
+        HasJsonField("objectName", QStrEq("btnTest")),
+        HasJsonField("className", QStrEq("QPushButton"))));
   } else {
     qWarning("btnTest node not found in tree - accessibility may be limited on minimal platform");
   }
@@ -366,20 +361,19 @@ void TestChromeModeApi::testReadPage_RoleMapping() {
 
   QJsonObject btnNode = findNode(tree, "btnTest");
   if (!btnNode.isEmpty()) {
-    QCOMPARE(btnNode["role"].toString(), QString("button"));
+    QEXPECT_THAT(btnNode, HasJsonField("role", QStrEq("button")));
   }
 
   QJsonObject editNode = findNode(tree, "editName");
   if (!editNode.isEmpty()) {
-    QCOMPARE(editNode["role"].toString(), QString("textbox"));
+    QEXPECT_THAT(editNode, HasJsonField("role", QStrEq("textbox")));
   }
 
   QJsonObject lblNode = findNode(tree, "lblGreeting");
   if (!lblNode.isEmpty()) {
     // QLabel maps to "text" via RoleMapper
     QString lblRole = lblNode["role"].toString();
-    QVERIFY2(lblRole == "text" || lblRole == "label" || lblRole == "statictext",
-             qPrintable(QString("Label role '%1' should be a text-type role").arg(lblRole)));
+    QEXPECT_THAT(lblRole, AnyOf(QStrEq("text"), QStrEq("label"), QStrEq("statictext")));
   }
 }
 
@@ -392,21 +386,18 @@ void TestChromeModeApi::testClick_Button() {
   QJsonObject pageResult = readPage();
   QJsonObject tree = pageResult["tree"].toObject();
   QString btnRef = findRefByObjectName(tree, "btnTest");
-  QVERIFY2(!btnRef.isEmpty(), "Must find button ref to test click");
+  QEXPECT_THAT(btnRef, QIsNotEmpty());
 
   // Click the button by ref
   QJsonValue result = callResult("chr.click", QJsonObject{{"ref", btnRef}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
   QJsonObject obj = result.toObject();
-  QCOMPARE(obj["clicked"].toBool(), true);
-  QCOMPARE(obj["ref"].toString(), btnRef);
-  // Verify the click used either accessibility action or mouse click
-  QVERIFY2(obj.contains("method"), "Response must indicate click method used");
-  QString method = obj["method"].toString();
-  QVERIFY2(method == "accessibilityAction" || method == "mouseClick",
-           qPrintable(QString("Unexpected click method: %1").arg(method)));
+  QEXPECT_THAT(obj, AllOf(
+      HasJsonField("clicked", Eq(true)),
+      HasJsonField("ref", QStrEq(btnRef)),
+      HasJsonField("method", AnyOf(QStrEq("accessibilityAction"), QStrEq("mouseClick")))));
 }
 
 void TestChromeModeApi::testClick_CheckablePrefersToggleAction() {
@@ -416,23 +407,24 @@ void TestChromeModeApi::testClick_CheckablePrefersToggleAction() {
   // checkbox on both toolkits, so assert it is the one chosen.
   QJsonObject tree = readPage()["tree"].toObject();
   QString ref = findRefByObjectName(tree, "chkTerms");
-  QVERIFY2(!ref.isEmpty(), "Must find checkbox ref to test click");
+  QEXPECT_THAT(ref, QIsNotEmpty());
 
   const bool before = m_checkBox->isChecked();
   QJsonObject obj = callResult("chr.click", QJsonObject{{"ref", ref}}).toObject();
   QApplication::processEvents();
 
-  QCOMPARE(obj["clicked"].toBool(), true);
-  QCOMPARE(m_checkBox->isChecked(), !before);
+  QEXPECT_THAT(obj, HasJsonField("clicked", Eq(true)));
+  QEXPECT_THAT(m_checkBox->isChecked(), Eq(!before));
   if (obj["method"].toString() == QLatin1String("accessibilityAction")) {
-    QCOMPARE(obj["action"].toString(), QAccessibleActionInterface::toggleAction());
+    QEXPECT_THAT(obj["action"].toString(), QStrEq(QAccessibleActionInterface::toggleAction()));
   }
 }
 
 void TestChromeModeApi::testClick_InvalidRef() {
   QJsonObject error = callExpectError("chr.click", QJsonObject{{"ref", "ref_999"}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kRefNotFound);
-  QVERIFY(!error["message"].toString().isEmpty());
+  QEXPECT_THAT(error, AllOf(
+      HasJsonField("code", Eq(static_cast<int>(ErrorCode::kRefNotFound))),
+      HasJsonField("message", QIsNotEmpty())));
 }
 
 // ========================================================================
@@ -444,76 +436,76 @@ void TestChromeModeApi::testFormInput_LineEdit() {
   QJsonObject pageResult = readPage();
   QJsonObject tree = pageResult["tree"].toObject();
   QString editRef = findRefByObjectName(tree, "editName");
-  QVERIFY2(!editRef.isEmpty(), "Must find line edit ref");
+  QEXPECT_THAT(editRef, QIsNotEmpty());
 
   // Set text value
   QJsonValue result =
       callResult("chr.formInput", QJsonObject{{"ref", editRef}, {"value", "John Doe"}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
-  QCOMPARE(m_lineEdit->text(), QString("John Doe"));
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_lineEdit->text(), QStrEq("John Doe"));
 }
 
 void TestChromeModeApi::testFormInput_SpinBox() {
   QJsonObject pageResult = readPage();
   QJsonObject tree = pageResult["tree"].toObject();
   QString spinRef = findRefByObjectName(tree, "spinAge");
-  QVERIFY2(!spinRef.isEmpty(), "Must find spin box ref");
+  QEXPECT_THAT(spinRef, QIsNotEmpty());
 
   // Set numeric value
   QJsonValue result = callResult("chr.formInput", QJsonObject{{"ref", spinRef}, {"value", 42}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
-  QCOMPARE(m_spinBox->value(), 42);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_spinBox->value(), Eq(42));
 }
 
 void TestChromeModeApi::testFormInput_CheckBox() {
   QJsonObject pageResult = readPage();
   QJsonObject tree = pageResult["tree"].toObject();
   QString chkRef = findRefByObjectName(tree, "chkTerms");
-  QVERIFY2(!chkRef.isEmpty(), "Must find checkbox ref");
+  QEXPECT_THAT(chkRef, QIsNotEmpty());
 
   // Initially unchecked, set to checked
-  QVERIFY(!m_checkBox->isChecked());
+  QEXPECT_THAT(m_checkBox->isChecked(), IsFalse());
 
   QJsonValue result = callResult("chr.formInput", QJsonObject{{"ref", chkRef}, {"value", true}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
-  QVERIFY(m_checkBox->isChecked());
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_checkBox->isChecked(), IsTrue());
 }
 
 void TestChromeModeApi::testFormInput_ComboBox() {
   QJsonObject pageResult = readPage();
   QJsonObject tree = pageResult["tree"].toObject();
   QString comboRef = findRefByObjectName(tree, "comboColor");
-  QVERIFY2(!comboRef.isEmpty(), "Must find combo box ref");
+  QEXPECT_THAT(comboRef, QIsNotEmpty());
 
   // Set to "Green"
   QJsonValue result =
       callResult("chr.formInput", QJsonObject{{"ref", comboRef}, {"value", "Green"}});
   QApplication::processEvents();
 
-  QVERIFY(result.isObject());
-  QCOMPARE(result.toObject()["success"].toBool(), true);
-  QCOMPARE(m_comboBox->currentText(), QString("Green"));
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_comboBox->currentText(), QStrEq("Green"));
 }
 
 void TestChromeModeApi::testFormInput_UnsupportedWidget() {
   QJsonObject pageResult = readPage();
   QJsonObject tree = pageResult["tree"].toObject();
   QString lblRef = findRefByObjectName(tree, "lblGreeting");
-  QVERIFY2(!lblRef.isEmpty(), "Must find label ref");
+  QEXPECT_THAT(lblRef, QIsNotEmpty());
 
   // Attempting formInput on a label should fail
   QJsonObject error =
       callExpectError("chr.formInput", QJsonObject{{"ref", lblRef}, {"value", "new text"}});
-  QCOMPARE(error["code"].toInt(), ErrorCode::kFormInputUnsupported);
+  QEXPECT_THAT(error, HasJsonField("code", Eq(static_cast<int>(ErrorCode::kFormInputUnsupported))));
 }
 
 // ========================================================================
@@ -522,22 +514,18 @@ void TestChromeModeApi::testFormInput_UnsupportedWidget() {
 
 void TestChromeModeApi::testGetPageText_ExtractsText() {
   QJsonValue result = callResult("chr.getPageText", QJsonObject());
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QString text = result.toObject()["text"].toString();
   // Should contain visible text from the widgets
   // On minimal platform, accessibility text extraction may be limited
   // but the call should succeed and return a string
   if (!text.isEmpty()) {
-    // Check for expected text content
-    bool hasClickMe = text.contains("Click Me");
-    bool hasHelloWorld = text.contains("Hello World");
-    bool hasAcceptTerms = text.contains("Accept Terms");
-
     // At least some text should be extracted
-    QVERIFY2(
-        hasClickMe || hasHelloWorld || hasAcceptTerms,
-        qPrintable(QString("Expected some widget text in output. Got: '%1'").arg(text.left(200))));
+    QEXPECT_THAT(text, AnyOf(
+        QStrContains("Click Me"),
+        QStrContains("Hello World"),
+        QStrContains("Accept Terms")));
   } else {
     qWarning("getPageText returned empty text (may be expected on minimal platform)");
   }
@@ -549,13 +537,12 @@ void TestChromeModeApi::testGetPageText_SkipsInvisible() {
   QApplication::processEvents();
 
   QJsonValue result = callResult("chr.getPageText", QJsonObject());
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QString text = result.toObject()["text"].toString();
   // "Hello World" from the hidden label should NOT appear
   if (!text.isEmpty()) {
-    QVERIFY2(!text.contains("Hello World"),
-             "Hidden label text should not appear in getPageText output");
+    QEXPECT_THAT(text, Not(QStrContains("Hello World")));
   }
 }
 
@@ -565,53 +552,44 @@ void TestChromeModeApi::testGetPageText_SkipsInvisible() {
 
 void TestChromeModeApi::testFind_ByName() {
   QJsonValue result = callResult("chr.find", QJsonObject{{"query", "Click Me"}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
   QJsonArray matches = obj["matches"].toArray();
-  QVERIFY2(matches.size() > 0, "Should find at least one match for 'Click Me'");
+  QEXPECT_THAT(matches.size(), Gt(0));
 
   // First match should have a ref
   QJsonObject firstMatch = matches[0].toObject();
-  QVERIFY(!firstMatch["ref"].toString().isEmpty());
+  QEXPECT_THAT(firstMatch, HasJsonField("ref", QIsNotEmpty()));
 }
 
 void TestChromeModeApi::testFind_CaseInsensitive() {
   QJsonValue result = callResult("chr.find", QJsonObject{{"query", "click me"}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
   QJsonArray matches = obj["matches"].toArray();
-  QVERIFY2(matches.size() > 0, "Case-insensitive search for 'click me' should find button");
+  QEXPECT_THAT(matches.size(), Gt(0));
 }
 
 void TestChromeModeApi::testFind_ByRole() {
   QJsonValue result = callResult("chr.find", QJsonObject{{"query", "button"}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
   QJsonArray matches = obj["matches"].toArray();
-  QVERIFY2(matches.size() > 0, "Search for 'button' should find at least one element");
-
-  // At least one match should have role "button"
-  bool foundButton = false;
-  for (const QJsonValue& match : matches) {
-    if (match.toObject()["role"].toString() == "button") {
-      foundButton = true;
-      break;
-    }
-  }
-  QVERIFY2(foundButton, "At least one match should be a button");
+  QEXPECT_THAT(matches.size(), Gt(0));
+  QEXPECT_THAT(matches, JsonArrayContains(HasJsonField("role", QStrEq("button"))));
 }
 
 void TestChromeModeApi::testFind_NoResults() {
   QJsonValue result = callResult("chr.find", QJsonObject{{"query", "nonexistent_xyz_12345"}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QJsonArray matches = obj["matches"].toArray();
-  QCOMPARE(matches.size(), 0);
-  QCOMPARE(obj["count"].toInt(), 0);
+  QEXPECT_THAT(obj, AllOf(
+      HasJsonField("matches", QIsEmpty()),
+      HasJsonField("count", Eq(0))));
 }
 
 // ========================================================================
@@ -620,24 +598,16 @@ void TestChromeModeApi::testFind_NoResults() {
 
 void TestChromeModeApi::testTabsContext_ListsWindows() {
   QJsonValue result = callResult("chr.tabsContext", QJsonObject());
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
   QJsonArray windows = obj["windows"].toArray();
-  QVERIFY2(windows.size() > 0, "Should list at least one window");
+  QEXPECT_THAT(windows.size(), Gt(0));
 
-  // Find our test window
-  bool foundTestWindow = false;
-  for (const QJsonValue& win : windows) {
-    QJsonObject w = win.toObject();
-    if (w["windowTitle"].toString() == "Test Window") {
-      foundTestWindow = true;
-      QVERIFY(w.contains("className"));
-      QVERIFY(w.contains("geometry"));
-      break;
-    }
-  }
-  QVERIFY2(foundTestWindow, "Should find 'Test Window' in tabsContext");
+  QEXPECT_THAT(windows, JsonArrayContains(AllOf(
+      HasJsonField("windowTitle", QStrEq("Test Window")),
+      HasJsonField("className"),
+      HasJsonField("geometry"))));
 }
 
 // ========================================================================
@@ -651,21 +621,14 @@ void TestChromeModeApi::testReadConsoleMessages_CapturesDebug() {
   QApplication::processEvents();
 
   QJsonValue result = callResult("chr.readConsoleMessages", QJsonObject());
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
   QJsonArray messages = obj["messages"].toArray();
 
-  // Find our specific test message
-  bool found = false;
-  for (const QJsonValue& msg : messages) {
-    if (msg.toObject()["message"].toString().contains("chrome_test_message_12345")) {
-      found = true;
-      QCOMPARE(msg.toObject()["type"].toString(), QString("warning"));
-      break;
-    }
-  }
-  QVERIFY2(found, "Should capture qWarning message");
+  QEXPECT_THAT(messages, JsonArrayContains(AllOf(
+      HasJsonField("message", QStrContains("chrome_test_message_12345")),
+      HasJsonField("type", QStrEq("warning")))));
 }
 
 void TestChromeModeApi::testReadConsoleMessages_PatternFilter() {
@@ -677,17 +640,15 @@ void TestChromeModeApi::testReadConsoleMessages_PatternFilter() {
   QApplication::processEvents();
 
   QJsonValue result = callResult("chr.readConsoleMessages", QJsonObject{{"pattern", "alpha"}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
   QJsonArray messages = obj["messages"].toArray();
+  QEXPECT_THAT(messages.size(), Ge(2));
 
-  // All returned messages should match "alpha" pattern
   for (const QJsonValue& msg : messages) {
-    QVERIFY2(msg.toObject()["message"].toString().contains("alpha"),
-             "Filtered messages should all match pattern");
+    QEXPECT_THAT(msg.toObject(), HasJsonField("message", QStrContains("alpha")));
   }
-  QVERIFY2(messages.size() >= 2, "Should find at least 2 alpha messages");
 }
 
 void TestChromeModeApi::testReadConsoleMessages_OnlyErrors() {
@@ -698,28 +659,16 @@ void TestChromeModeApi::testReadConsoleMessages_OnlyErrors() {
   QApplication::processEvents();
 
   QJsonValue result = callResult("chr.readConsoleMessages", QJsonObject{{"onlyErrors", true}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
   QJsonArray messages = obj["messages"].toArray();
 
-  // Should only contain warnings/errors, not info
   for (const QJsonValue& msg : messages) {
-    QString type = msg.toObject()["type"].toString();
-    QVERIFY2(
-        type != "info",
-        qPrintable(QString("onlyErrors should not include info messages, got type: %1").arg(type)));
+    QEXPECT_THAT(msg.toObject()["type"].toString(), Ne("info"));
   }
 
-  // Should have at least the warning
-  bool foundWarning = false;
-  for (const QJsonValue& msg : messages) {
-    if (msg.toObject()["message"].toString().contains("warning_only_msg")) {
-      foundWarning = true;
-      break;
-    }
-  }
-  QVERIFY2(foundWarning, "Should find the warning message with onlyErrors=true");
+  QEXPECT_THAT(messages, JsonArrayContains(HasJsonField("message", QStrContains("warning_only_msg"))));
 }
 
 void TestChromeModeApi::testReadConsoleMessages_Clear() {
@@ -728,24 +677,16 @@ void TestChromeModeApi::testReadConsoleMessages_Clear() {
 
   // Read with clear=true
   QJsonValue result1 = callResult("chr.readConsoleMessages", QJsonObject{{"clear", true}});
-  QVERIFY(result1.isObject());
-  QVERIFY(result1.toObject()["count"].toInt() > 0);
+  QEXPECT_THAT(result1.isObject(), IsTrue());
+  QEXPECT_THAT(result1.toObject()["count"].toInt(), Gt(0));
 
   // Read again - should be empty (or at least not contain our message)
   QJsonValue result2 = callResult("chr.readConsoleMessages", QJsonObject());
-  QVERIFY(result2.isObject());
+  QEXPECT_THAT(result2.isObject(), IsTrue());
 
   QJsonObject obj2 = result2.toObject();
   QJsonArray messages2 = obj2["messages"].toArray();
-  // After clear, the clearable_message should not be present
-  bool found = false;
-  for (const QJsonValue& msg : messages2) {
-    if (msg.toObject()["message"].toString().contains("clearable_message")) {
-      found = true;
-      break;
-    }
-  }
-  QVERIFY2(!found, "After clear=true, old messages should be gone");
+  QEXPECT_THAT(messages2, Not(JsonArrayContains(HasJsonField("message", QStrContains("clearable_message")))));
 }
 
 // ========================================================================
@@ -757,7 +698,7 @@ void TestChromeModeApi::testStaleRef_ProducesClearError() {
   QJsonObject pageResult = readPage();
   QJsonObject tree = pageResult["tree"].toObject();
   QString btnRef = findRefByObjectName(tree, "btnTest");
-  QVERIFY2(!btnRef.isEmpty(), "Must find button ref");
+  QEXPECT_THAT(btnRef, QIsNotEmpty());
 
   // Destroy the button
   delete m_button;
@@ -769,9 +710,8 @@ void TestChromeModeApi::testStaleRef_ProducesClearError() {
 
   // Should get stale ref error
   int code = error["code"].toInt();
-  QVERIFY2(code == ErrorCode::kRefStale || code == ErrorCode::kRefNotFound,
-           qPrintable(QString("Expected stale/not-found error, got code %1").arg(code)));
-  QVERIFY(!error["message"].toString().isEmpty());
+  QEXPECT_THAT(code, AnyOf(Eq(static_cast<int>(ErrorCode::kRefStale)), Eq(static_cast<int>(ErrorCode::kRefNotFound))));
+  QEXPECT_THAT(error, HasJsonField("message", QIsNotEmpty()));
 }
 
 // ========================================================================
@@ -791,84 +731,66 @@ void TestChromeModeApi::testFind_MultipleCallsPreserveRefs() {
 
   // First find: locate nameEdit
   QJsonValue result1 = callResult("chr.find", QJsonObject{{"query", "nameEdit"}});
-  QVERIFY(result1.isObject());
+  QEXPECT_THAT(result1.isObject(), IsTrue());
   QJsonArray matches1 = result1.toObject()["matches"].toArray();
-  QVERIFY2(matches1.size() > 0, "Should find nameEdit");
+  QEXPECT_THAT(matches1.size(), Gt(0));
   QString nameRef = matches1[0].toObject()["ref"].toString();
-  QVERIFY(!nameRef.isEmpty());
+  QEXPECT_THAT(nameRef, QIsNotEmpty());
 
   // Second find: locate emailEdit
   QJsonValue result2 = callResult("chr.find", QJsonObject{{"query", "emailEdit"}});
-  QVERIFY(result2.isObject());
+  QEXPECT_THAT(result2.isObject(), IsTrue());
   QJsonArray matches2 = result2.toObject()["matches"].toArray();
-  QVERIFY2(matches2.size() > 0, "Should find emailEdit");
+  QEXPECT_THAT(matches2.size(), Gt(0));
   QString emailRef = matches2[0].toObject()["ref"].toString();
-  QVERIFY(!emailRef.isEmpty());
+  QEXPECT_THAT(emailRef, QIsNotEmpty());
 
   // Refs must not collide
-  QVERIFY2(
-      nameRef != emailRef,
-      qPrintable(QString("Refs must not collide: nameRef=%1, emailRef=%2").arg(nameRef, emailRef)));
+  QEXPECT_THAT(nameRef, Ne(emailRef));
 
   // Use the FIRST ref (from first find) to set value on nameEdit
   QJsonValue formResult =
       callResult("chr.formInput", QJsonObject{{"ref", nameRef}, {"value", "John"}});
   QApplication::processEvents();
 
-  QVERIFY2(formResult.isObject() && formResult.toObject()["success"].toBool(),
-           "formInput with first find's ref should succeed");
-  QCOMPARE(nameEdit->text(), QString("John"));
+  QEXPECT_THAT(formResult.isObject(), IsTrue());
+  QEXPECT_THAT(formResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(nameEdit->text(), QStrEq("John"));
   // emailEdit should NOT have been modified
-  QCOMPARE(emailEdit->text(), QString());
+  QEXPECT_THAT(emailEdit->text(), QIsEmpty());
 }
 
 void TestChromeModeApi::testFind_ReadPageClearsAllRefs() {
-  // Use a high ref number by calling find multiple times to push counter up.
-  // Then call readPage which resets refs starting from ref_1.
-  // A ref with a high number (e.g., ref_50) should not survive readPage.
-
   // First, call find to get refs assigned
   QJsonValue findResult = callResult("chr.find", QJsonObject{{"query", "editName"}});
-  QVERIFY(findResult.isObject());
+  QEXPECT_THAT(findResult.isObject(), IsTrue());
   QJsonArray matches = findResult.toObject()["matches"].toArray();
-  QVERIFY(matches.size() > 0);
+  QEXPECT_THAT(matches.size(), Gt(0));
   QString findRef = matches[0].toObject()["ref"].toString();
-  QVERIFY(!findRef.isEmpty());
+  QEXPECT_THAT(findRef, QIsNotEmpty());
 
   // Verify the find ref works
   QJsonValue inputResult =
       callResult("chr.formInput", QJsonObject{{"ref", findRef}, {"value", "test_value"}});
-  QVERIFY(inputResult.isObject());
-  QCOMPARE(inputResult.toObject()["success"].toBool(), true);
+  QEXPECT_THAT(inputResult.isObject(), IsTrue());
+  QEXPECT_THAT(inputResult.toObject(), HasJsonField("success", Eq(true)));
 
   // Now call readPage - this calls clearRefsInternal() and rebuilds tree
   QJsonObject pageResult = readPage();
-
-  // readPage clears ALL refs and reassigns from ref_1.
-  // The find ref we got should now either:
-  // (a) point to a different widget (readPage reassigned that ref number), or
-  // (b) not exist (if tree has fewer nodes)
-  // Either way, the semantic binding to our original find target is broken.
-  // We verify this by checking that readPage produced its own refs
-  // and the tree is valid (proves clearRefsInternal was called).
-  QVERIFY(pageResult.contains("tree"));
-  QVERIFY(pageResult["totalNodes"].toInt() > 0);
+  QEXPECT_THAT(pageResult, AllOf(
+      HasJsonField("tree"),
+      HasJsonField("totalNodes", Gt(0))));
 
   // Additionally verify the ref namespace was reset:
-  // readPage refs start at ref_1, so if find had pushed counter higher,
-  // readPage should still produce ref_1 (proving it cleared and reset).
   QJsonObject tree = pageResult["tree"].toObject();
   QString btnRef = findRefByObjectName(tree, "btnTest");
   if (!btnRef.isEmpty()) {
-    // readPage refs should start from ref_1 (counter reset via clearRefsInternal)
-    QVERIFY2(btnRef.startsWith("ref_"),
-             qPrintable(QString("readPage ref format unexpected: %1").arg(btnRef)));
+    QEXPECT_THAT(btnRef, QStrStartsWith("ref_"));
   }
 }
 
 void TestChromeModeApi::testFind_NameFallbackToObjectName() {
   // Create a QLineEdit with objectName but no explicit accessible name
-  // (QLineEdit default: accessible name comes from buddy label or is empty)
   QLineEdit* input = new QLineEdit(m_mainWindow);
   input->setObjectName("mySpecialInput");
   m_mainWindow->layout()->addWidget(input);
@@ -876,19 +798,14 @@ void TestChromeModeApi::testFind_NameFallbackToObjectName() {
 
   // Find by objectName
   QJsonValue result = callResult("chr.find", QJsonObject{{"query", "mySpecialInput"}});
-  QVERIFY(result.isObject());
+  QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonArray matches = result.toObject()["matches"].toArray();
-  QVERIFY2(matches.size() > 0, "Should find widget by objectName");
+  QEXPECT_THAT(matches.size(), Gt(0));
 
   QJsonObject matchNode = matches[0].toObject();
-  // The node must have a "name" field (from objectName fallback)
-  QVERIFY2(matchNode.contains("name"),
-           qPrintable(QString("Find result should include 'name' field. Got keys: %1")
-                          .arg(QString::fromUtf8(
-                              QJsonDocument(matchNode).toJson(QJsonDocument::Compact)))));
   // Name should be the objectName (since accessible name is empty)
-  QCOMPARE(matchNode["name"].toString(), QString("mySpecialInput"));
+  QEXPECT_THAT(matchNode, HasJsonField("name", QStrEq("mySpecialInput")));
 }
 
 QTEST_MAIN(TestChromeModeApi)

@@ -99,4 +99,3 @@ version-file = "src/qtpilot/_version.py"
 filterwarnings = [
     "error",
 ]
-

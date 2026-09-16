@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "introspection/signal_monitor.h"
 
@@ -11,6 +12,7 @@
 #include <QtTest>
 
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// @brief Unit tests for SignalMonitor class.
 ///
@@ -78,7 +80,7 @@ void TestSignalMonitor::testSubscribeReturnsValidId() {
 
   // Get object ID
   QString objId = ObjectRegistry::instance()->objectId(btn);
-  QVERIFY2(!objId.isEmpty(), "Object ID should not be empty");
+  QEXPECT_THAT(objId, QIsNotEmpty());
 
   // Subscribe to clicked signal
   QString subId;
@@ -89,10 +91,10 @@ void TestSignalMonitor::testSubscribeReturnsValidId() {
   }
 
   // Verify subscription ID format
-  QVERIFY2(subId.startsWith("sub_"), "Subscription ID should start with 'sub_'");
+  QEXPECT_THAT(subId, QStrStartsWith("sub_"));
 
   // Verify subscription count increased
-  QVERIFY(SignalMonitor::instance()->subscriptionCount() >= 1);
+  QEXPECT_THAT(SignalMonitor::instance()->subscriptionCount(), Ge(1));
 
   // Cleanup
   SignalMonitor::instance()->unsubscribe(subId);
@@ -109,13 +111,13 @@ void TestSignalMonitor::testUnsubscribe() {
   QString subId = SignalMonitor::instance()->subscribe(objId, "clicked");
 
   int countBefore = SignalMonitor::instance()->subscriptionCount();
-  QVERIFY(countBefore >= 1);
+  QEXPECT_THAT(countBefore, Ge(1));
 
   // Unsubscribe
   SignalMonitor::instance()->unsubscribe(subId);
 
   int countAfter = SignalMonitor::instance()->subscriptionCount();
-  QCOMPARE(countAfter, countBefore - 1);
+  QEXPECT_THAT(countAfter, Eq(countBefore - 1));
 }
 
 void TestSignalMonitor::testSignalEmission() {
@@ -130,24 +132,25 @@ void TestSignalMonitor::testSignalEmission() {
 
   // Set up spy for signalEmitted
   QSignalSpy spy(SignalMonitor::instance(), &SignalMonitor::signalEmitted);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   // Trigger the signal
   btn->click();
 
   // Verify notification was emitted
-  QCOMPARE(spy.count(), 1);
+  QEXPECT_THAT(spy.count(), Eq(1));
 
   // Verify notification content
   QJsonObject notification = spy.at(0).at(0).toJsonObject();
-  QCOMPARE(notification["subscriptionId"].toString(), subId);
-  QCOMPARE(notification["objectId"].toString(), objId);
-  QCOMPARE(notification["signal"].toString(), QString("clicked"));
+  QEXPECT_THAT(notification, AllOf(
+      HasJsonField("subscriptionId", QStrEq(subId)),
+      HasJsonField("objectId", QStrEq(objId)),
+      HasJsonField("signal", QStrEq("clicked")),
+      HasJsonField("arguments")));
   // clicked(bool checked) emits its argument value (false for a plain click).
-  QVERIFY(notification.contains("arguments"));
   QJsonArray args = notification["arguments"].toArray();
-  QCOMPARE(args.size(), 1);
-  QCOMPARE(args.at(0).toBool(), false);
+  QEXPECT_THAT(args.size(), Eq(1));
+  QEXPECT_THAT(args.at(0).toBool(), IsFalse());
 
   // Cleanup
   SignalMonitor::instance()->unsubscribe(subId);
@@ -166,16 +169,15 @@ void TestSignalMonitor::testSignalArgumentValues() {
   QString subId = SignalMonitor::instance()->subscribe(objId, "textChanged");
 
   QSignalSpy spy(SignalMonitor::instance(), &SignalMonitor::signalEmitted);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   edit->setText(QStringLiteral("hello"));
 
-  QCOMPARE(spy.count(), 1);
+  QEXPECT_THAT(spy.count(), Eq(1));
   QJsonObject notification = spy.at(0).at(0).toJsonObject();
-  QCOMPARE(notification["signal"].toString(), QString("textChanged"));
-  QJsonArray args = notification["arguments"].toArray();
-  QCOMPARE(args.size(), 1);
-  QCOMPARE(args.at(0).toString(), QStringLiteral("hello"));
+  QEXPECT_THAT(notification, AllOf(
+      HasJsonField("signal", QStrEq("textChanged")),
+      HasJsonField("arguments", JsonArrayContains(QStrEq("hello")))));
 
   SignalMonitor::instance()->unsubscribe(subId);
 }
@@ -191,7 +193,7 @@ void TestSignalMonitor::testAutoUnsubscribeOnDestruction() {
   QString subId = SignalMonitor::instance()->subscribe(objId, "clicked");
 
   int countBefore = SignalMonitor::instance()->subscriptionCount();
-  QVERIFY(countBefore >= 1);
+  QEXPECT_THAT(countBefore, Ge(1));
 
   // Delete the object
   delete btn;
@@ -201,7 +203,7 @@ void TestSignalMonitor::testAutoUnsubscribeOnDestruction() {
 
   // Subscription should have been auto-removed
   int countAfter = SignalMonitor::instance()->subscriptionCount();
-  QCOMPARE(countAfter, countBefore - 1);
+  QEXPECT_THAT(countAfter, Eq(countBefore - 1));
 }
 
 void TestSignalMonitor::testLifecycleCreated() {
@@ -213,7 +215,7 @@ void TestSignalMonitor::testLifecycleCreated() {
 
   // Set up spy
   QSignalSpy spy(SignalMonitor::instance(), &SignalMonitor::objectCreated);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   // Create an object
   auto* obj = new QObject();
@@ -225,20 +227,19 @@ void TestSignalMonitor::testLifecycleCreated() {
 
   // Should have received at least one objectCreated notification
   // (might get more from internal Qt objects)
-  QVERIFY2(spy.count() >= 1,
-           qPrintable(QString("Expected >= 1 created events, got %1").arg(spy.count())));
+  QEXPECT_THAT(spy.count(), Ge(1));
 
   // Find our notification
   bool found = false;
   for (int i = 0; i < spy.count(); ++i) {
     QJsonObject notification = spy.at(i).at(0).toJsonObject();
     if (notification["className"].toString() == "QObject") {
-      QCOMPARE(notification["event"].toString(), QString("created"));
+      QEXPECT_THAT(notification, HasJsonField("event", QStrEq("created")));
       found = true;
       break;
     }
   }
-  QVERIFY2(found, "Should have received created notification for QObject");
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestSignalMonitor::testLifecycleDestroyed() {
@@ -260,7 +261,7 @@ void TestSignalMonitor::testLifecycleDestroyed() {
 
   // Set up spy
   QSignalSpy spy(SignalMonitor::instance(), &SignalMonitor::objectDestroyed);
-  QVERIFY(spy.isValid());
+  QEXPECT_THAT(spy.isValid(), IsTrue());
 
   // Delete the object
   delete obj;
@@ -269,20 +270,19 @@ void TestSignalMonitor::testLifecycleDestroyed() {
   QCoreApplication::processEvents();
 
   // Should have received at least one objectDestroyed notification
-  QVERIFY2(spy.count() >= 1,
-           qPrintable(QString("Expected >= 1 destroyed events, got %1").arg(spy.count())));
+  QEXPECT_THAT(spy.count(), Ge(1));
 
   // Find our notification (with cached objectId since we subscribed)
   bool found = false;
   for (int i = 0; i < spy.count(); ++i) {
     QJsonObject notification = spy.at(i).at(0).toJsonObject();
     if (notification["objectId"].toString() == objId) {
-      QCOMPARE(notification["event"].toString(), QString("destroyed"));
+      QEXPECT_THAT(notification, HasJsonField("event", QStrEq("destroyed")));
       found = true;
       break;
     }
   }
-  QVERIFY2(found, "Should have received destroyed notification for our object");
+  QEXPECT_THAT(found, IsTrue());
 }
 
 void TestSignalMonitor::testSubscribeNonexistentObject() {
@@ -292,9 +292,9 @@ void TestSignalMonitor::testSubscribeNonexistentObject() {
   } catch (const std::runtime_error& e) {
     threw = true;
     QString msg = QString::fromStdString(e.what());
-    QVERIFY2(msg.contains("Object not found"), qPrintable(msg));
+    QEXPECT_THAT(msg, QStrContains("Object not found"));
   }
-  QVERIFY2(threw, "Should throw when object not found");
+  QEXPECT_THAT(threw, IsTrue());
 }
 
 void TestSignalMonitor::testSubscribeNonexistentSignal() {
@@ -312,9 +312,9 @@ void TestSignalMonitor::testSubscribeNonexistentSignal() {
   } catch (const std::runtime_error& e) {
     threw = true;
     QString msg = QString::fromStdString(e.what());
-    QVERIFY2(msg.contains("Signal not found"), qPrintable(msg));
+    QEXPECT_THAT(msg, QStrContains("Signal not found"));
   }
-  QVERIFY2(threw, "Should throw when signal not found");
+  QEXPECT_THAT(threw, IsTrue());
 }
 
 QTEST_MAIN(TestSignalMonitor)
