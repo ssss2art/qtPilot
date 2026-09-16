@@ -122,6 +122,8 @@ def live_app():
             proc.wait(timeout=10)
         if proc.poll() is None:
             proc.kill()
+        if proc.stdout:
+            proc.stdout.close()
 
 
 @contextlib.asynccontextmanager

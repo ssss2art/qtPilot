@@ -22,7 +22,10 @@
 
 #include <memory>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 namespace {
 
@@ -126,20 +129,20 @@ void TestQmlInteraction::testGeometryOfQuickItem() {
       callWithId(QStringLiteral("qtpilot.getGeometry"),
                  ObjectRegistry::instance()->objectId(item))[QStringLiteral("result")]
           .toObject();
-  QVERIFY2(!result.isEmpty(), "getGeometry returned no result for a QQuickItem");
+  QEXPECT_THAT(result.isEmpty(), IsFalse());
 
   const QJsonObject local = result[QStringLiteral("local")].toObject();
-  QCOMPARE(local[QStringLiteral("x")].toDouble(), 20.0);
-  QCOMPARE(local[QStringLiteral("y")].toDouble(), 30.0);
-  QCOMPARE(local[QStringLiteral("width")].toDouble(), 60.0);
-  QCOMPARE(local[QStringLiteral("height")].toDouble(), 40.0);
+  QEXPECT_THAT(local, HasJsonField("x", 20.0));
+  QEXPECT_THAT(local, HasJsonField("y", 30.0));
+  QEXPECT_THAT(local, HasJsonField("width", 60.0));
+  QEXPECT_THAT(local, HasJsonField("height", 40.0));
 
   // Scene coords are what Qt Quick input events use, so they must be present
   // and must account for the item's offset within the scene.
   const QJsonObject scene = result[QStringLiteral("scene")].toObject();
-  QCOMPARE(scene[QStringLiteral("x")].toDouble(), 20.0);
-  QCOMPARE(scene[QStringLiteral("y")].toDouble(), 30.0);
-  QCOMPARE(scene[QStringLiteral("width")].toDouble(), 60.0);
+  QEXPECT_THAT(scene, HasJsonField("x", 20.0));
+  QEXPECT_THAT(scene, HasJsonField("y", 30.0));
+  QEXPECT_THAT(scene, HasJsonField("width", 60.0));
 }
 
 void TestQmlInteraction::testGeometryOfQuickWindow() {
@@ -153,15 +156,15 @@ void TestQmlInteraction::testGeometryOfQuickWindow() {
       callWithId(QStringLiteral("qtpilot.getGeometry"),
                  ObjectRegistry::instance()->objectId(&window))[QStringLiteral("result")]
           .toObject();
-  QVERIFY2(!result.isEmpty(), "getGeometry returned no result for a QQuickWindow");
+  QEXPECT_THAT(result.isEmpty(), IsFalse());
 
   // A window's local rect sits at the origin -- it has no parent to offset from.
   const QJsonObject local = result[QStringLiteral("local")].toObject();
-  QCOMPARE(local[QStringLiteral("x")].toDouble(), 0.0);
-  QCOMPARE(local[QStringLiteral("y")].toDouble(), 0.0);
-  QCOMPARE(local[QStringLiteral("width")].toDouble(), 240.0);
-  QCOMPARE(local[QStringLiteral("height")].toDouble(), 180.0);
-  QVERIFY(result.contains(QStringLiteral("devicePixelRatio")));
+  QEXPECT_THAT(local, HasJsonField("x", 0.0));
+  QEXPECT_THAT(local, HasJsonField("y", 0.0));
+  QEXPECT_THAT(local, HasJsonField("width", 240.0));
+  QEXPECT_THAT(local, HasJsonField("height", 180.0));
+  QEXPECT_THAT(result, HasJsonField("devicePixelRatio"));
 }
 
 void TestQmlInteraction::testGeometryRejectsNonVisualObject() {
@@ -169,8 +172,7 @@ void TestQmlInteraction::testGeometryRejectsNonVisualObject() {
   object.setObjectName(QStringLiteral("nonVisualGeometryObject"));
   const QString message = errorOf(callWithId(QStringLiteral("qtpilot.getGeometry"),
                                              ObjectRegistry::instance()->objectId(&object)));
-  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
-           qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("not a widget, window, or QML item"));
 }
 
 void TestQmlInteraction::testGeometryOfUnrenderedItemHasNullGlobal() {
@@ -184,8 +186,8 @@ void TestQmlInteraction::testGeometryOfUnrenderedItemHasNullGlobal() {
       callWithId(QStringLiteral("qtpilot.getGeometry"),
                  ObjectRegistry::instance()->objectId(&item))[QStringLiteral("result")]
           .toObject();
-  QVERIFY2(!result.isEmpty(), "getGeometry returned no result for an unrendered QQuickItem");
-  QVERIFY(result[QStringLiteral("global")].isNull());
+  QEXPECT_THAT(result.isEmpty(), IsFalse());
+  QEXPECT_THAT(result[QStringLiteral("global")].isNull(), IsTrue());
 }
 
 // --- hitTest ----------------------------------------------------------------
@@ -209,7 +211,7 @@ void TestQmlInteraction::testHitTestFindsItemInWindow() {
                        {QStringLiteral("y"), 70}})[QStringLiteral("result")]
           .toObject();
 
-  QCOMPARE(result[QStringLiteral("id")].toString(), expected);
+  QEXPECT_THAT(result, HasJsonField("id", expected));
 }
 
 void TestQmlInteraction::testHitTestRejectsNonVisualParent() {
@@ -220,8 +222,7 @@ void TestQmlInteraction::testHitTestRejectsNonVisualParent() {
            QJsonObject{{QStringLiteral("parentId"), ObjectRegistry::instance()->objectId(&object)},
                        {QStringLiteral("x"), 1},
                        {QStringLiteral("y"), 1}}));
-  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
-           qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("not a widget, window, or QML item"));
 }
 
 // --- click ------------------------------------------------------------------
@@ -238,8 +239,8 @@ void TestQmlInteraction::testClickOnQuickItemIsAccepted() {
 
   const QJsonObject response =
       callWithId(QStringLiteral("qtpilot.click"), ObjectRegistry::instance()->objectId(item));
-  QVERIFY2(!response.contains(QStringLiteral("error")), qPrintable(errorOf(response)));
-  QVERIFY(response[QStringLiteral("result")].toObject()[QStringLiteral("success")].toBool());
+  QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
+  QEXPECT_THAT(response[QStringLiteral("result")].toObject(), HasJsonField("success", true));
 }
 
 void TestQmlInteraction::testClickOnQuickWindowIsAccepted() {
@@ -251,8 +252,8 @@ void TestQmlInteraction::testClickOnQuickWindowIsAccepted() {
 
   const QJsonObject response =
       callWithId(QStringLiteral("qtpilot.click"), ObjectRegistry::instance()->objectId(&window));
-  QVERIFY2(!response.contains(QStringLiteral("error")), qPrintable(errorOf(response)));
-  QVERIFY(response[QStringLiteral("result")].toObject()[QStringLiteral("success")].toBool());
+  QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
+  QEXPECT_THAT(response[QStringLiteral("result")].toObject(), HasJsonField("success", true));
 }
 
 void TestQmlInteraction::testClickRejectsNonVisualObject() {
@@ -260,8 +261,7 @@ void TestQmlInteraction::testClickRejectsNonVisualObject() {
   object.setObjectName(QStringLiteral("nonVisualClickObject"));
   const QString message = errorOf(
       callWithId(QStringLiteral("qtpilot.click"), ObjectRegistry::instance()->objectId(&object)));
-  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
-           qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("not a widget, window, or QML item"));
 }
 
 void TestQmlInteraction::testClickOnUnattachedItemIsRejected() {
@@ -269,7 +269,7 @@ void TestQmlInteraction::testClickOnUnattachedItemIsRejected() {
   item.setObjectName(QStringLiteral("unattachedClickItem"));
   const QString message = errorOf(
       callWithId(QStringLiteral("qtpilot.click"), ObjectRegistry::instance()->objectId(&item)));
-  QVERIFY2(message.contains(QStringLiteral("not on a window")), qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("not on a window"));
 }
 
 // --- sendKeys ---------------------------------------------------------------
@@ -288,8 +288,8 @@ void TestQmlInteraction::testSendKeysOnQuickItemIsAccepted() {
       call(QStringLiteral("qtpilot.sendKeys"),
            QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(item)},
                        {QStringLiteral("text"), QStringLiteral("hi")}});
-  QVERIFY2(!response.contains(QStringLiteral("error")), qPrintable(errorOf(response)));
-  QVERIFY(response[QStringLiteral("result")].toObject()[QStringLiteral("success")].toBool());
+  QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
+  QEXPECT_THAT(response[QStringLiteral("result")].toObject(), HasJsonField("success", true));
 }
 
 void TestQmlInteraction::testSendKeysRejectsNonVisualObject() {
@@ -299,8 +299,7 @@ void TestQmlInteraction::testSendKeysRejectsNonVisualObject() {
       call(QStringLiteral("qtpilot.sendKeys"),
            QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(&object)},
                        {QStringLiteral("text"), QStringLiteral("x")}}));
-  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
-           qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("not a widget, window, or QML item"));
 }
 
 void TestQmlInteraction::testSendKeysStopsWhenItemIsDestroyedByText() {
@@ -320,7 +319,7 @@ void TestQmlInteraction::testSendKeysStopsWhenItemIsDestroyedByText() {
                        {QStringLiteral("sequence"), QStringLiteral("Ctrl+A")}});
 
   const QString message = errorOf(response);
-  QVERIFY2(message.contains(QStringLiteral("destroyed while typing")), qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("destroyed while typing"));
 }
 
 void TestQmlInteraction::testComputerUseKeyActivatesQuickShortcuts() {
@@ -342,12 +341,12 @@ void TestQmlInteraction::testComputerUseKeyActivatesQuickShortcuts() {
     }
   )",
                     QUrl());
-  QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+  QEXPECT_THAT(component.isReady(), IsTrue());
 
   std::unique_ptr<QObject> object(component.create());
-  QVERIFY2(object, qPrintable(component.errorString()));
+  QEXPECT_THAT(object != nullptr, IsTrue());
   auto* item = qobject_cast<QQuickItem*>(object.get());
-  QVERIFY(item);
+  QEXPECT_THAT(item != nullptr, IsTrue());
 
   QQuickWindow window;
   window.setGeometry(0, 0, 200, 150);
@@ -380,13 +379,13 @@ void TestQmlInteraction::testComputerUseKeyActivatesQuickShortcuts() {
     return responseDocument.object();
   };
 
-  QVERIFY(!callComputerUseKey(QStringLiteral("meta+Plus")).contains(QStringLiteral("error")));
+  QEXPECT_THAT(callComputerUseKey(QStringLiteral("meta+Plus")), DoesNotHaveJsonField("error"));
   QTRY_COMPARE(item->property("metaPlusCount").toInt(), 1);
 
-  QVERIFY(!callComputerUseKey(QStringLiteral("ctrl+Minus")).contains(QStringLiteral("error")));
+  QEXPECT_THAT(callComputerUseKey(QStringLiteral("ctrl+Minus")), DoesNotHaveJsonField("error"));
   QTRY_COMPARE(item->property("controlMinusCount").toInt(), 1);
 
-  QVERIFY(!callComputerUseKey(QStringLiteral("QuestionMark")).contains(QStringLiteral("error")));
+  QEXPECT_THAT(callComputerUseKey(QStringLiteral("QuestionMark")), DoesNotHaveJsonField("error"));
   QTRY_COMPARE(item->property("questionMarkCount").toInt(), 1);
 }
 
@@ -416,7 +415,7 @@ void TestQmlInteraction::testEventCaptureSeesQuickTargets() {
   capture->stopCapture();
   disconnect(conn);
 
-  QVERIFY2(captured > 0, "EventCapture saw no events for a QQuickItem target");
+  QEXPECT_THAT(captured, Gt(0));
 }
 
 void TestQmlInteraction::testEventCaptureIgnoresNonVisualObjects() {
@@ -434,7 +433,7 @@ void TestQmlInteraction::testEventCaptureIgnoresNonVisualObjects() {
   capture->stopCapture();
   disconnect(conn);
 
-  QCOMPARE(captured, 0);
+  QEXPECT_THAT(captured, Eq(0));
 }
 
 void TestQmlInteraction::testEventCaptureDoesNotDoubleReportQuickInput() {
@@ -464,7 +463,7 @@ void TestQmlInteraction::testEventCaptureDoesNotDoubleReportQuickInput() {
   disconnect(conn);
 
   // Only the item-level dispatch is reported.
-  QCOMPARE(captured, 1);
+  QEXPECT_THAT(captured, Eq(1));
 }
 
 void TestQmlInteraction::testEventCaptureSeesTapHandlerInput() {
@@ -484,9 +483,9 @@ void TestQmlInteraction::testEventCaptureSeesTapHandlerInput() {
   )",
                     QUrl());
   QObject* object = component.create();
-  QVERIFY2(object, qPrintable(component.errorString()));
+  QEXPECT_THAT(object != nullptr, IsTrue());
   auto* item = qobject_cast<QQuickItem*>(object);
-  QVERIFY(item);
+  QEXPECT_THAT(item != nullptr, IsTrue());
   item->setParent(window.contentItem());
   item->setParentItem(window.contentItem());
 
@@ -520,9 +519,8 @@ void TestQmlInteraction::testEventCaptureSeesTapHandlerInput() {
 
   capture->stopCapture();
   disconnect(conn);
-  QVERIFY2(capturedMouseEvents == 2,
-           qPrintable(QStringLiteral("observed: %1").arg(observedEvents.join(", "))));
-  QCOMPARE(capturedItemPresses, 1);
+  QEXPECT_THAT(capturedMouseEvents, Eq(2));
+  QEXPECT_THAT(capturedItemPresses, Eq(1));
 }
 
 void TestQmlInteraction::testHitTestOutsideSceneReportsMiss() {
@@ -541,10 +539,7 @@ void TestQmlInteraction::testHitTestOutsideSceneReportsMiss() {
                        {QStringLiteral("y"), -5000}})[QStringLiteral("result")]
           .toObject();
 
-  QVERIFY2(
-      result[QStringLiteral("id")].isNull(),
-      qPrintable(
-          QStringLiteral("expected null, got: %1").arg(result[QStringLiteral("id")].toString())));
+  QEXPECT_THAT(result[QStringLiteral("id")].isNull(), IsTrue());
 }
 
 void TestQmlInteraction::testHitTestRespectsZOrder() {
@@ -572,7 +567,7 @@ void TestQmlInteraction::testHitTestRespectsZOrder() {
                        {QStringLiteral("y"), 50}})[QStringLiteral("result")]
           .toObject();
 
-  QCOMPARE(result[QStringLiteral("id")].toString(), ObjectRegistry::instance()->objectId(raised));
+  QEXPECT_THAT(result, HasJsonField("id", ObjectRegistry::instance()->objectId(raised)));
 }
 
 void TestQmlInteraction::testSendKeysWithoutTextOrSequenceIsRejected() {
@@ -591,8 +586,8 @@ void TestQmlInteraction::testSendKeysWithoutTextOrSequenceIsRejected() {
            QJsonObject{{QStringLiteral("id"), ObjectRegistry::instance()->objectId(item)}});
   const QJsonObject error = response[QStringLiteral("error")].toObject();
   const QString message = error[QStringLiteral("message")].toString();
-  QCOMPARE(error[QStringLiteral("code")].toInt(), JsonRpcError::kInvalidParams);
-  QVERIFY2(message.contains(QStringLiteral("non-empty")), qPrintable(message));
+  QEXPECT_THAT(error, HasJsonField("code", JsonRpcError::kInvalidParams));
+  QEXPECT_THAT(message, QStrContains("non-empty"));
 }
 
 QTEST_MAIN(TestQmlInteraction)

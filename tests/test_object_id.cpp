@@ -14,7 +14,10 @@
 #include <QWidget>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// @brief Unit tests for Object ID generation and tree serialization.
 ///
@@ -85,14 +88,14 @@ void TestObjectId::testIdWithObjectName() {
 
   // ID should use objectNames throughout
   QString id = generateObjectId(button);
-  QVERIFY(id.endsWith(QStringLiteral("submitBtn")));
-  QVERIFY(id.contains(QStringLiteral("centralWidget")));
-  QVERIFY(id.contains(QStringLiteral("mainWindow")));
+  QEXPECT_THAT(id, AllOf(QStrEndsWith("submitBtn"),
+                         QStrContains("centralWidget"),
+                         QStrContains("mainWindow")));
 
   // Verify format is "parent/child/grandchild"
   QStringList segments = id.split(QLatin1Char('/'));
-  QVERIFY(segments.size() >= 3);
-  QCOMPARE(segments.last(), QStringLiteral("submitBtn"));
+  QEXPECT_THAT(segments, SizeIs(Ge(3)));
+  QEXPECT_THAT(segments.last(), QStrEq("submitBtn"));
 }
 
 void TestObjectId::testIdWithTextProperty() {
@@ -107,19 +110,19 @@ void TestObjectId::testIdWithTextProperty() {
 
   QString id = generateObjectId(button);
   // Should contain "text_OK"
-  QVERIFY(id.contains(QStringLiteral("text_OK")));
+  QEXPECT_THAT(id, QStrContains("text_OK"));
 
   // Test text sanitization
   QPushButton* longTextButton = new QPushButton(
       QStringLiteral("This is a very long button label that exceeds twenty characters"), &parent);
   id = generateObjectId(longTextButton);
   // Should be truncated and sanitized
-  QVERIFY(id.contains(QStringLiteral("text_")));
+  QEXPECT_THAT(id, QStrContains("text_"));
   // Segment should be <= 25 chars ("text_" + 20 chars max)
   QStringList segments = id.split(QLatin1Char('/'));
   QString lastSegment = segments.last();
-  QVERIFY(lastSegment.startsWith(QStringLiteral("text_")));
-  QVERIFY(lastSegment.length() <= 25);
+  QEXPECT_THAT(lastSegment, QStrStartsWith("text_"));
+  QEXPECT_THAT(lastSegment.length(), Le(25));
 }
 
 void TestObjectId::testIdWithClassName() {
@@ -133,7 +136,7 @@ void TestObjectId::testIdWithClassName() {
   QCoreApplication::processEvents();
 
   QString id = generateObjectId(child);
-  QVERIFY(id.contains(QStringLiteral("QObject")));
+  QEXPECT_THAT(id, QStrContains("QObject"));
 }
 
 void TestObjectId::testIdSiblingDisambiguation() {
@@ -157,9 +160,9 @@ void TestObjectId::testIdSiblingDisambiguation() {
   QString id3 = generateObjectId(btn3);
 
   // All IDs should be different
-  QVERIFY(id1 != id2);
-  QVERIFY(id2 != id3);
-  QVERIFY(id1 != id3);
+  QEXPECT_THAT(id1, Ne(id2));
+  QEXPECT_THAT(id2, Ne(id3));
+  QEXPECT_THAT(id1, Ne(id3));
 
   // Should contain disambiguation suffixes
   QStringList segments1 = id1.split(QLatin1Char('/'));
@@ -167,16 +170,17 @@ void TestObjectId::testIdSiblingDisambiguation() {
   QStringList segments3 = id3.split(QLatin1Char('/'));
 
   // Each should end with QPushButton#N
-  QVERIFY(segments1.last().startsWith(QStringLiteral("QPushButton")));
-  QVERIFY(segments2.last().startsWith(QStringLiteral("QPushButton")));
-  QVERIFY(segments3.last().startsWith(QStringLiteral("QPushButton")));
+  QEXPECT_THAT(segments1.last(), QStrStartsWith("QPushButton"));
+  QEXPECT_THAT(segments2.last(), QStrStartsWith("QPushButton"));
+  QEXPECT_THAT(segments3.last(), QStrStartsWith("QPushButton"));
 
   // Check for #N suffixes (order may vary)
   QStringList endings;
   endings << segments1.last() << segments2.last() << segments3.last();
-  QVERIFY(endings.contains(QStringLiteral("QPushButton#1")));
-  QVERIFY(endings.contains(QStringLiteral("QPushButton#2")));
-  QVERIFY(endings.contains(QStringLiteral("QPushButton#3")));
+  QEXPECT_THAT(endings, UnorderedElementsAre(
+      QStrEq("QPushButton#1"),
+      QStrEq("QPushButton#2"),
+      QStrEq("QPushButton#3")));
 }
 
 void TestObjectId::testFindById() {
@@ -197,11 +201,11 @@ void TestObjectId::testFindById() {
 
   // Find by ID starting from parent
   QObject* found = findByObjectId(id, &parent);
-  QCOMPARE(found, button);
+  QEXPECT_THAT(found, Eq(button));
 
   // Search for non-existent ID
   QObject* notFound = findByObjectId(QStringLiteral("nonexistent/path/here"), &parent);
-  QVERIFY(notFound == nullptr);
+  QEXPECT_THAT(notFound, IsNull());
 }
 
 void TestObjectId::testFindByIdGlobal() {
@@ -220,20 +224,18 @@ void TestObjectId::testFindByIdGlobal() {
 
   // The ID should contain the application class name as the first segment
   QStringList segments = childId.split(QLatin1Char('/'));
-  QVERIFY(segments.size() >= 3);  // App/globalTestRoot/globalTestChild
+  QEXPECT_THAT(segments, SizeIs(Ge(3)));  // App/globalTestRoot/globalTestChild
 
   // Critical test: findByObjectId with NO root must resolve the full path
   QObject* found = findByObjectId(childId);
-  QVERIFY2(found != nullptr,
-           qPrintable(QStringLiteral("findByObjectId failed for global ID: ") + childId));
-  QCOMPARE(found, child);
+  QEXPECT_THAT(found, NotNull());
+  QEXPECT_THAT(found, Eq(child));
 
   // Also verify finding the top-level object itself
   QString topLevelId = generateObjectId(topLevel);
   QObject* foundTopLevel = findByObjectId(topLevelId);
-  QVERIFY2(foundTopLevel != nullptr,
-           qPrintable(QStringLiteral("findByObjectId failed for top-level ID: ") + topLevelId));
-  QCOMPARE(foundTopLevel, topLevel);
+  QEXPECT_THAT(foundTopLevel, NotNull());
+  QEXPECT_THAT(foundTopLevel, Eq(topLevel));
 
   // Clean up
   delete topLevel;
@@ -264,7 +266,7 @@ void TestObjectId::testRegistryFindById() {
 
   // Get cached ID via registry
   QString id = registry->objectId(button);
-  QVERIFY(!id.isEmpty());
+  QEXPECT_THAT(id, QIsNotEmpty());
   qDebug() << "Button ID from registry:" << id;
 
   // The cached ID was generated at construction time, so it won't
@@ -272,10 +274,10 @@ void TestObjectId::testRegistryFindById() {
 
   // Find via registry using the cached ID
   QObject* found = registry->findById(id);
-  QCOMPARE(found, button);
+  QEXPECT_THAT(found, Eq(button));
 
   // Verify registry contains the object
-  QVERIFY(registry->contains(button));
+  QEXPECT_THAT(registry->contains(button), IsTrue());
 
   // Clean up
   delete parent;
@@ -283,7 +285,7 @@ void TestObjectId::testRegistryFindById() {
 
   // After deletion, findById should return nullptr (QPointer detected deletion)
   QObject* deleted = registry->findById(id);
-  QVERIFY(deleted == nullptr);
+  QEXPECT_THAT(deleted, IsNull());
 }
 
 void TestObjectId::testVisibleTopLevelWindowIncludedAndHiddenExcluded() {
@@ -297,16 +299,8 @@ void TestObjectId::testVisibleTopLevelWindowIncludedAndHiddenExcluded() {
   QCoreApplication::processEvents();
 
   const QJsonArray roots = serializeObjectTree(nullptr, 0)[QStringLiteral("children")].toArray();
-  bool foundVisible = false;
-  bool foundHidden = false;
-  for (const QJsonValue& value : roots) {
-    const QString objectName = value.toObject()[QStringLiteral("objectName")].toString();
-    foundVisible |= objectName == QStringLiteral("visibleTopLevelWindow");
-    foundHidden |= objectName == QStringLiteral("hiddenTopLevelWindow");
-  }
-
-  QVERIFY(foundVisible);
-  QVERIFY(!foundHidden);
+  QEXPECT_THAT(roots, JsonArrayContains(HasJsonField("objectName", "visibleTopLevelWindow")));
+  QEXPECT_THAT(roots, Not(JsonArrayContains(HasJsonField("objectName", "hiddenTopLevelWindow"))));
 }
 
 void TestObjectId::testTopLevelWindowIdsAreUniqueAndRoundTrip() {
@@ -320,11 +314,11 @@ void TestObjectId::testTopLevelWindowIdsAreUniqueAndRoundTrip() {
 
   const QString firstId = generateObjectId(&first);
   const QString secondId = generateObjectId(&second);
-  QVERIFY(!firstId.isEmpty());
-  QVERIFY(!secondId.isEmpty());
-  QVERIFY(firstId != secondId);
-  QCOMPARE(findByObjectId(firstId), &first);
-  QCOMPARE(findByObjectId(secondId), &second);
+  QEXPECT_THAT(firstId, QIsNotEmpty());
+  QEXPECT_THAT(secondId, QIsNotEmpty());
+  QEXPECT_THAT(firstId, Ne(secondId));
+  QEXPECT_THAT(findByObjectId(firstId), Eq(&first));
+  QEXPECT_THAT(findByObjectId(secondId), Eq(&second));
 }
 
 void TestObjectId::testSerializeObjectInfo() {
@@ -337,21 +331,16 @@ void TestObjectId::testSerializeObjectInfo() {
 
   QJsonObject info = serializeObjectInfo(&widget);
 
-  // Check required fields
-  QVERIFY(info.contains(QStringLiteral("id")));
-  QVERIFY(info.contains(QStringLiteral("className")));
-  QCOMPARE(info[QStringLiteral("className")].toString(), QStringLiteral("QWidget"));
-  QCOMPARE(info[QStringLiteral("objectName")].toString(), QStringLiteral("serializeInfoWidget"));
-
-  // Widget-specific fields
-  QVERIFY(info.contains(QStringLiteral("visible")));
-  QVERIFY(info.contains(QStringLiteral("geometry")));
-
-  QJsonObject geom = info[QStringLiteral("geometry")].toObject();
-  QCOMPARE(geom[QStringLiteral("x")].toInt(), 10);
-  QCOMPARE(geom[QStringLiteral("y")].toInt(), 20);
-  QCOMPARE(geom[QStringLiteral("width")].toInt(), 300);
-  QCOMPARE(geom[QStringLiteral("height")].toInt(), 200);
+  QEXPECT_THAT(info, AllOf(
+      HasJsonField("id"),
+      HasJsonField("className", "QWidget"),
+      HasJsonField("objectName", "serializeInfoWidget"),
+      HasJsonField("visible", true),
+      HasJsonField("geometry", AllOf(
+          HasJsonField("x", 10),
+          HasJsonField("y", 20),
+          HasJsonField("width", 300),
+          HasJsonField("height", 200)))));
 }
 
 void TestObjectId::testSerializeTree() {
@@ -373,30 +362,19 @@ void TestObjectId::testSerializeTree() {
   // Serialize the tree
   QJsonObject tree = serializeObjectTree(&parent);
 
-  // Verify root
-  QVERIFY(tree.contains(QStringLiteral("id")));
-  QCOMPARE(tree[QStringLiteral("className")].toString(), QStringLiteral("QWidget"));
-  QCOMPARE(tree[QStringLiteral("objectName")].toString(), QStringLiteral("treeRoot"));
-
-  // Verify children exist
-  QVERIFY(tree.contains(QStringLiteral("children")));
-  QJsonArray children = tree[QStringLiteral("children")].toArray();
-  QCOMPARE(children.size(), 2);
-
-  // Find child1 and verify its grandchild
-  bool foundChild1WithGrandchild = false;
-  for (int i = 0; i < children.size(); ++i) {
-    QJsonObject child = children[i].toObject();
-    if (child[QStringLiteral("objectName")].toString() == QStringLiteral("child1")) {
-      QJsonArray grandchildren = child[QStringLiteral("children")].toArray();
-      QCOMPARE(grandchildren.size(), 1);
-      QJsonObject gc = grandchildren[0].toObject();
-      QCOMPARE(gc[QStringLiteral("objectName")].toString(), QStringLiteral("leafButton"));
-      QCOMPARE(gc[QStringLiteral("text")].toString(), QStringLiteral("Leaf"));
-      foundChild1WithGrandchild = true;
-    }
-  }
-  QVERIFY(foundChild1WithGrandchild);
+  QEXPECT_THAT(tree, AllOf(
+      HasJsonField("id"),
+      HasJsonField("className", "QWidget"),
+      HasJsonField("objectName", "treeRoot"),
+      HasJsonField("children", AllOf(
+          JsonArraySize(2),
+          JsonArrayContains(AllOf(
+              HasJsonField("objectName", "child1"),
+              HasJsonField("children", AllOf(
+                  JsonArraySize(1),
+                  JsonArrayContains(AllOf(
+                      HasJsonField("objectName", "leafButton"),
+                      HasJsonField("text", "Leaf")))))))))));
 
   // Debug output
   qDebug() << "Serialized tree:" << QJsonDocument(tree).toJson(QJsonDocument::Indented);
@@ -421,25 +399,21 @@ void TestObjectId::testSerializeTreeDepthLimit() {
   // Serialize with depth limit of 1 (root + one level of children)
   QJsonObject tree = serializeObjectTree(&parent, 1);
 
-  // Root should have children
-  QVERIFY(tree.contains(QStringLiteral("children")));
-  QJsonArray children = tree[QStringLiteral("children")].toArray();
-  QCOMPARE(children.size(), 1);
-
-  // Level1 should NOT have children due to depth limit
-  QJsonObject level1Obj = children[0].toObject();
-  QCOMPARE(level1Obj[QStringLiteral("objectName")].toString(), QStringLiteral("level1"));
-  QVERIFY(!level1Obj.contains(QStringLiteral("children")));
+  QEXPECT_THAT(tree, HasJsonField("children", AllOf(
+      JsonArraySize(1),
+      JsonArrayContains(AllOf(
+          HasJsonField("objectName", "level1"),
+          DoesNotHaveJsonField("children"))))));
 
   // Serialize with no limit
   QJsonObject fullTree = serializeObjectTree(&parent, -1);
-  QJsonArray fullChildren = fullTree[QStringLiteral("children")].toArray();
-  QJsonObject fullLevel1 = fullChildren[0].toObject();
-  QVERIFY(fullLevel1.contains(QStringLiteral("children")));  // Should have children
-
-  QJsonArray level2Children = fullLevel1[QStringLiteral("children")].toArray();
-  QJsonObject fullLevel2 = level2Children[0].toObject();
-  QVERIFY(fullLevel2.contains(QStringLiteral("children")));  // Should have grandchildren
+  QEXPECT_THAT(fullTree, HasJsonField("children",
+      JsonArrayContains(AllOf(
+          HasJsonField("objectName", "level1"),
+          HasJsonField("children",
+              JsonArrayContains(AllOf(
+                  HasJsonField("objectName", "level2"),
+                  HasJsonField("children"))))))));
 }
 
 QTEST_MAIN(TestObjectId)

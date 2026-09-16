@@ -11,7 +11,10 @@
 #include <QWidget>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 /// @brief Unit tests for Object ID refresh when objectName changes post-construction.
 ///
@@ -55,7 +58,7 @@ void TestObjectIdRefresh::testIdRefreshOnObjectNameSet() {
   QString staleId = registry->objectId(widget);
   qDebug() << "Stale ID:" << staleId;
   // Stale ID should NOT contain "myWidget" since objectName wasn't set yet
-  QVERIFY(!staleId.contains(QStringLiteral("myWidget")));
+  QEXPECT_THAT(staleId, Not(QStrContains("myWidget")));
 
   // Now set objectName — triggers objectNameChanged signal
   widget->setObjectName(QStringLiteral("myWidget"));
@@ -64,8 +67,7 @@ void TestObjectIdRefresh::testIdRefreshOnObjectNameSet() {
   // After processEvents, the queued refresh should have fired
   QString refreshedId = registry->objectId(widget);
   qDebug() << "Refreshed ID:" << refreshedId;
-  QVERIFY(refreshedId.contains(QStringLiteral("myWidget")));
-  QVERIFY(refreshedId != staleId);
+  QEXPECT_THAT(refreshedId, AllOf(QStrContains("myWidget"), Ne(staleId)));
 
   delete widget;
   QCoreApplication::processEvents();
@@ -89,7 +91,7 @@ void TestObjectIdRefresh::testIdRefreshCascadesToChildren() {
   QString childRefreshedId = registry->objectId(child);
   qDebug() << "Child refreshed ID:" << childRefreshedId;
   // Child's path should now include parent's objectName
-  QVERIFY(childRefreshedId.contains(QStringLiteral("parentWidget")));
+  QEXPECT_THAT(childRefreshedId, QStrContains("parentWidget"));
 
   // Also set child's name
   child->setObjectName(QStringLiteral("childButton"));
@@ -97,8 +99,7 @@ void TestObjectIdRefresh::testIdRefreshCascadesToChildren() {
 
   QString childFinalId = registry->objectId(child);
   qDebug() << "Child final ID:" << childFinalId;
-  QVERIFY(childFinalId.contains(QStringLiteral("parentWidget")));
-  QVERIFY(childFinalId.contains(QStringLiteral("childButton")));
+  QEXPECT_THAT(childFinalId, AllOf(QStrContains("parentWidget"), QStrContains("childButton")));
 
   delete parent;
   QCoreApplication::processEvents();
@@ -118,16 +119,16 @@ void TestObjectIdRefresh::testOldIdStillResolvable() {
   QCoreApplication::processEvents();
 
   QString newId = registry->objectId(widget);
-  QVERIFY(newId != staleId);
+  QEXPECT_THAT(newId, Ne(staleId));
   qDebug() << "New ID:" << newId;
 
   // The stale ID should still resolve to the same object via alias map
   QObject* found = registry->findById(staleId);
-  QCOMPARE(found, widget);
+  QEXPECT_THAT(found, Eq(widget));
 
   // The new ID should also resolve
   QObject* foundNew = registry->findById(newId);
-  QCOMPARE(foundNew, widget);
+  QEXPECT_THAT(foundNew, Eq(widget));
 
   delete widget;
   QCoreApplication::processEvents();
@@ -145,19 +146,18 @@ void TestObjectIdRefresh::testMultipleNameChanges() {
   widget->setObjectName(QStringLiteral("firstName"));
   QCoreApplication::processEvents();
   QString id1 = registry->objectId(widget);
-  QVERIFY(id1.contains(QStringLiteral("firstName")));
+  QEXPECT_THAT(id1, QStrContains("firstName"));
 
   // Second name change
   widget->setObjectName(QStringLiteral("secondName"));
   QCoreApplication::processEvents();
   QString id2 = registry->objectId(widget);
-  QVERIFY(id2.contains(QStringLiteral("secondName")));
-  QVERIFY(!id2.contains(QStringLiteral("firstName")));
+  QEXPECT_THAT(id2, AllOf(QStrContains("secondName"), Not(QStrContains("firstName"))));
 
   // All previous IDs should still resolve
-  QCOMPARE(registry->findById(id0), widget);
-  QCOMPARE(registry->findById(id1), widget);
-  QCOMPARE(registry->findById(id2), widget);
+  QEXPECT_THAT(registry->findById(id0), Eq(widget));
+  QEXPECT_THAT(registry->findById(id1), Eq(widget));
+  QEXPECT_THAT(registry->findById(id2), Eq(widget));
 
   delete widget;
   QCoreApplication::processEvents();

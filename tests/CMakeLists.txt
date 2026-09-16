@@ -42,22 +42,47 @@ if(WIN32)
     endif()
 endif()
 
+# GoogleTest / GoogleMock for expressive test assertions and matchers
+include(FetchContent)
+
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        v1.15.2
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(googletest)
+
+if(TARGET gmock)
+    target_compile_options(gmock PRIVATE -w)
+endif()
+if(TARGET gtest)
+    target_compile_options(gtest PRIVATE -w)
+endif()
+
 # Helper function to reduce boilerplate for test definitions
 function(qtPilot_add_test)
     cmake_parse_arguments(ARG "" "NAME" "SOURCES;LIBS;ENV" ${ARGN})
 
     add_executable(${ARG_NAME} ${ARG_SOURCES})
 
-    # Core libraries: probe + Qt Core + Qt Test
+    # Core libraries: probe + Qt Core + Qt Test + GMock
     if(QT_VERSION_MAJOR EQUAL 6)
         target_link_libraries(${ARG_NAME} PRIVATE
-            qtPilot_probe Qt6::Core Qt6::Test ${ARG_LIBS})
+            qtPilot_probe gmock Qt6::Core Qt6::Test ${ARG_LIBS})
     else()
         target_link_libraries(${ARG_NAME} PRIVATE
-            qtPilot_probe Qt5::Core Qt5::Test ${ARG_LIBS})
+            qtPilot_probe gmock Qt5::Core Qt5::Test ${ARG_LIBS})
     endif()
 
-    target_include_directories(${ARG_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src/probe)
+    target_include_directories(${ARG_NAME} PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/probe
+        ${CMAKE_SOURCE_DIR}/tests)
 
     add_test(NAME ${ARG_NAME} COMMAND ${ARG_NAME}
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:${ARG_NAME}>")
@@ -101,6 +126,10 @@ function(qtPilot_add_test)
 endfunction()
 
 # --- Test definitions ---
+
+qtPilot_add_test(NAME test_qt_matchers SOURCES test_qt_matchers.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Gui
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
 qtPilot_add_test(NAME test_jsonrpc SOURCES test_jsonrpc.cpp)
 

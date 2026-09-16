@@ -10,7 +10,10 @@
 #include <QQuickWindow>
 #include <QtTest>
 
+#include "common/qt_matchers.h"
+
 using namespace qtPilot;
+using namespace qtPilot::test;
 
 class TestQmlScreenshot : public QObject {
   Q_OBJECT
@@ -61,15 +64,14 @@ void TestQmlScreenshot::testQuickWindowUsesQmlCapturePath() {
   if (response.contains(QStringLiteral("error"))) {
     const QString message =
         response[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
-    QVERIFY2(!message.contains(QStringLiteral("not a widget, window, or QML item")),
-             qPrintable(message));
-    QVERIFY2(!message.contains(QStringLiteral("not rendered")), qPrintable(message));
+    QEXPECT_THAT(message, Not(QStrContains("not a widget, window, or QML item")));
+    QEXPECT_THAT(message, Not(QStrContains("not rendered")));
     return;
   }
 
   const QString image =
       response[QStringLiteral("result")].toObject()[QStringLiteral("image")].toString();
-  QVERIFY(QByteArray::fromBase64(image.toLatin1()).startsWith("\x89PNG"));
+  QEXPECT_THAT(QByteArray::fromBase64(image.toLatin1()).startsWith("\x89PNG"), IsTrue());
 }
 
 void TestQmlScreenshot::testUnattachedQuickItemIsRejected() {
@@ -79,7 +81,7 @@ void TestQmlScreenshot::testUnattachedQuickItemIsRejected() {
 
   const QString message =
       callScreenshot(id)[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
-  QVERIFY2(message.contains(QStringLiteral("not on a window")), qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("not on a window"));
 }
 
 void TestQmlScreenshot::testDestroyedQuickItemIsNotFound() {
@@ -91,7 +93,7 @@ void TestQmlScreenshot::testDestroyedQuickItemIsNotFound() {
 
   const QString message =
       callScreenshot(id)[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
-  QVERIFY2(message.contains(QStringLiteral("Object not found")), qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("Object not found"));
 }
 
 void TestQmlScreenshot::testNonVisualObjectIsRejected() {
@@ -101,8 +103,7 @@ void TestQmlScreenshot::testNonVisualObjectIsRejected() {
 
   const QString message =
       callScreenshot(id)[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
-  QVERIFY2(message.contains(QStringLiteral("not a widget, window, or QML item")),
-           qPrintable(message));
+  QEXPECT_THAT(message, QStrContains("not a widget, window, or QML item"));
 }
 
 QTEST_MAIN(TestQmlScreenshot)

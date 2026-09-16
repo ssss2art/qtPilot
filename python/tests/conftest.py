@@ -4,7 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import json
+import warnings
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Filter third-party deprecation warnings inside older FastMCP/Authlib packages
+try:
+    from authlib.deprecate import AuthlibDeprecationWarning
+
+    warnings.filterwarnings("ignore", category=AuthlibDeprecationWarning)
+except ImportError:
+    pass
+
+try:
+    from fastmcp.exceptions import FastMCPDeprecationWarning
+
+    warnings.filterwarnings("ignore", category=FastMCPDeprecationWarning)
+except ImportError:
+    pass
 
 import pytest
 import pytest_asyncio

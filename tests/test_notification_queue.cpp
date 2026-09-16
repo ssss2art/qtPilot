@@ -9,6 +9,10 @@
 #include <QTimer>
 #include <QWebSocket>
 
+#include "common/qt_matchers.h"
+
+using namespace qtPilot::test;
+
 class TestNotificationQueue : public QObject {
   Q_OBJECT
 
@@ -33,15 +37,15 @@ class TestNotificationQueue : public QObject {
       queue.enqueue(QString("msg_%1").arg(i));
     }
 
-    QCOMPARE(queue.queueSize(), count);
-    QCOMPARE(queue.dropCount(), 0);
+    QEXPECT_THAT(queue.queueSize(), Eq(count));
+    QEXPECT_THAT(queue.dropCount(), Eq(0));
 
     // Process events to let drain timer fire
     QCoreApplication::processEvents();
 
     // After drain, queue should be empty (all 10 < batchSize of 50)
-    QCOMPARE(queue.queueSize(), 0);
-    QCOMPARE(queue.dropCount(), 0);
+    QEXPECT_THAT(queue.queueSize(), Eq(0));
+    QEXPECT_THAT(queue.dropCount(), Eq(0));
   }
 
   /// Exceed capacity and verify oldest dropped and dropCount increments.
@@ -56,8 +60,8 @@ class TestNotificationQueue : public QObject {
     }
 
     // Should have dropped 3 oldest messages
-    QCOMPARE(queue.queueSize(), capacity);
-    QCOMPARE(queue.dropCount(), 3);
+    QEXPECT_THAT(queue.queueSize(), Eq(capacity));
+    QEXPECT_THAT(queue.dropCount(), Eq(3));
   }
 
   /// Verify batch size limits messages per drain cycle.
@@ -71,27 +75,27 @@ class TestNotificationQueue : public QObject {
       queue.enqueue(QString("msg_%1").arg(i));
     }
 
-    QCOMPARE(queue.queueSize(), 10);
+    QEXPECT_THAT(queue.queueSize(), Eq(10));
 
     // One drain cycle should only take batchSize messages
     QCoreApplication::processEvents();
 
     // After one drain cycle, 10 - 3 = 7 remaining
-    QCOMPARE(queue.queueSize(), 7);
+    QEXPECT_THAT(queue.queueSize(), Eq(7));
 
     // Process more events until all drained
     for (int i = 0; i < 5; ++i) {
       QCoreApplication::processEvents();
     }
 
-    QCOMPARE(queue.queueSize(), 0);
+    QEXPECT_THAT(queue.queueSize(), Eq(0));
   }
 
   /// Verify capacity() returns the configured capacity.
   void testCapacityAccessor() {
     QWebSocket socket;
     qtPilot::NotificationQueue queue(&socket, 500, 50);
-    QCOMPARE(queue.capacity(), 500);
+    QEXPECT_THAT(queue.capacity(), Eq(500));
   }
 
  private:
