@@ -375,6 +375,9 @@ def create_server(
     from qtpilot.tools.logging_tools import register_logging_tools
     register_logging_tools(mcp)
 
+    from qtpilot.tools.replay_tools import register_replay_tools
+    register_replay_tools(mcp)
+
     # Register mode-specific tools
     _register_tools_for_mode(mcp, mode)
 
