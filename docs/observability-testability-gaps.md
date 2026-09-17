@@ -100,6 +100,7 @@ NOTIFY-watch (the rest of `feat/sync-and-signals`, not yet implemented).
 | T7 | Screenshots can't support **golden/diff** (no hash/diff/mask); huge inline payload | visual regression infeasible; payload instability | `screenshot.cpp` | M |
 | T8 | **HiDPI/Retina coordinate ambiguity** — physical-pixel mode returns no DPR | clicks off by 2× with no scale info | `computer_use_mode_api.cpp` | S |
 | T9 | No **focus/activation** ops or focus assertion | Tab-order / focus tests can't be set up or verified | `input_simulator.cpp` (focus is a side effect) | S/M |
+| T10 | ~~**`QGraphicsView` scene items are discoverable but not addressable**~~ **DONE** -- `qt.ui.geometry` maps a `QGraphicsObject` through the view(s) rendering it (scene/viewport/global rects, `visible`, one entry per view), `qt.ui.hitTest` descends into the scene instead of stopping at the viewport, and `qt.objects.inspect` reports a scene-space geometry part. Found driving a widgets + QGraphicsView desktop app: an item knew it was at scene (300,300) and nothing could turn that into a screen point, so the caller had to guess the zoom scale by dragging a known distance and dividing | `hit_test.cpp`, `native_mode_api.cpp` | M |
 
 ## Reliability / quality — trusting the tool
 
