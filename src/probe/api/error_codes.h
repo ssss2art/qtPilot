@@ -10,6 +10,14 @@ namespace ErrorCode {
 constexpr int kObjectNotFound = -32001;
 constexpr int kObjectStale = -32002;
 constexpr int kObjectNotWidget = -32003;
+/// @brief Object resolved, but it is not a QGraphicsView.
+///
+/// Distinct from kObjectNotWidget: a QGraphicsView *is* a widget, so reusing
+/// that code would tell a client "not a widget" about an object that is one,
+/// and would make the two failures indistinguishable programmatically. Mirrors
+/// kNotQmlItem / kNotAModel, which exist for the same "right object, wrong
+/// type" reason.
+constexpr int kNotGraphicsView = -32004;
 constexpr int kInvalidField =
     -32004;  // Unknown value for a `parts` / `fields` / similar enum param
 

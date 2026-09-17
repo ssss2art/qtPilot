@@ -304,14 +304,19 @@ def register_native_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def qt_ui_hitTest(
-        x: int, y: int, viewObjectId: str | None = None, ctx: Context = None
+        x: float, y: float, viewObjectId: str | None = None, ctx: Context = None
     ) -> dict:
         """Find the widget -- or QGraphicsView scene item -- at the given coordinates.
 
         Without viewObjectId, x/y are screen coordinates; a hit landing on a
-        QGraphicsView continues into its scene and reports the item, not the
-        viewport. With viewObjectId, x/y are that view's viewport coordinates and
-        the search runs inside its scene only.
+        QGraphicsView's viewport continues into its scene and reports the item,
+        not the viewport widget. With viewObjectId, x/y are that view's viewport
+        coordinates and the search runs inside its scene only.
+
+        Coordinates may be fractional -- qt_ui_geometry reports scene geometry as
+        qreal, so the centre of a rect it returns can be fed straight back here.
+        A point outside the view's viewport is a miss, not a hit on whatever the
+        view would project it onto.
 
         Example: qt_ui_hitTest(x=100, y=200)
         Example: qt_ui_hitTest(viewObjectId="...planView", x=175, y=175)

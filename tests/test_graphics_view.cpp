@@ -47,6 +47,19 @@ class TestSceneItem : public QGraphicsObject {
   void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override {}
 };
 
+/// @brief An item with an empty bounding rect, positioning children instead.
+///
+/// A grouping item that exists only to hold its children -- ordinary in a
+/// scene, not a corner case. Its rect is 0x0 rather than merely flat on one
+/// axis, and that distinction is the whole point: QRect::intersects() handles a
+/// zero-height rect correctly and reports no overlap only for a null one.
+class GroupingSceneItem : public QGraphicsObject {
+  Q_OBJECT
+ public:
+  QRectF boundingRect() const override { return QRectF(0, 0, 0, 0); }
+  void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override {}
+};
+
 }  // namespace
 
 class TestGraphicsView : public QObject {
@@ -74,6 +87,7 @@ class TestGraphicsView : public QObject {
   void geometryComposesNestedItemPositions();
   void geometryReportsHiddenViewAsNotVisible();
   void geometryRejectsANullItem();
+  void geometryReportsAnEmptyRectItemOnScreenAsVisible();
 
   // HitTest::graphicsItemIdAt
   void hitTestDescendsIntoTheScene();
@@ -82,10 +96,13 @@ class TestGraphicsView : public QObject {
   void hitTestMissesItemWithNoGraphicsObjectAncestor();
   void hitTestReturnsTopmostOfOverlappingItems();
   void hitTestRejectsANullView();
+  void hitTestSeesPastABareItemStackedOnTop();
 
   // HitTest::widgetIdAt -- global-coordinate descent into a scene
   void widgetIdAtDescendsIntoTheSceneFromAGlobalPoint();
   void widgetIdAtFallsBackToTheViewOnEmptyCanvas();
+  void widgetIdAtDoesNotDescendFromAScrollBar();
+  void hitTestIgnoresPointsOutsideTheViewport();
 
   // qt.ui.* wiring
   void uiGeometryAcceptsAGraphicsObject();
@@ -95,6 +112,11 @@ class TestGraphicsView : public QObject {
   void uiGeometryRejectsAnUnknownViewObjectId();
   void uiGeometryRejectsAViewObjectIdThatIsNotAView();
   void uiHitTestScopedReportsAMissAsAnError();
+  void uiHitTestRejectsAbsentCoordinates();
+  void uiHitTestRejectsNonNumericCoordinates();
+  void uiHitTestAcceptsFractionalCoordinates();
+  void uiHitTestRejectsAMalformedViewObjectId();
+  void uiGeometryRejectsAViewObjectIdOnAWidgetTarget();
   void inspectGeometryPartCoversGraphicsObjects();
   void inspectGeometryPartNamesTheCoordinateSpace();
 
@@ -211,15 +233,11 @@ void TestGraphicsView::geometryReportsItemLocalAndSceneRects() {
   const QJsonObject geo = HitTest::graphicsItemGeometry(m_item);
 
   // Local is the item's own boundingRect, in item coordinates.
-  QEXPECT_THAT(geo[QStringLiteral("local")],
-               AllOf(JsonField("x", 0.0), JsonField("y", 0.0), JsonField("width", 40.0),
-                     JsonField("height", 20.0)));
+  QEXPECT_THAT(geo[QStringLiteral("local")], JsonRectEq(0, 0, 40, 20));
 
   // Scene is that rect mapped through the item's own transform/position -- the
   // number `pos` already told callers, but as a rect.
-  QEXPECT_THAT(geo[QStringLiteral("scene")],
-               AllOf(JsonField("x", 300.0), JsonField("y", 300.0), JsonField("width", 40.0),
-                     JsonField("height", 20.0)));
+  QEXPECT_THAT(geo[QStringLiteral("scene")], JsonRectEq(300, 300, 40, 20));
 
   QEXPECT_THAT(geo, AllOf(JsonField("visible", true), HasJsonField("devicePixelRatio")));
 }
@@ -236,14 +254,11 @@ void TestGraphicsView::geometryMapsThroughViewTransformAndScroll() {
   QEXPECT_THAT(m_view->verticalScrollBar()->value(), Eq(200));
   // 40 scene units at 1.25x is 50 pixels, not 40 -- and exactly 50: mapping a
   // rect through integer polygon corners would report 51.
-  QEXPECT_THAT(geo[QStringLiteral("viewport")],
-               AllOf(JsonField("x", 175.0), JsonField("y", 175.0), JsonField("width", 50.0),
-                     JsonField("height", 25.0)));
+  QEXPECT_THAT(geo[QStringLiteral("viewport")], JsonRectEq(175, 175, 50, 25));
 
   // Global is the same rect, offset by the viewport's origin on screen.
   const QPoint origin = m_view->viewport()->mapToGlobal(QPoint(0, 0));
-  QEXPECT_THAT(global, AllOf(JsonField("x", 175.0 + origin.x()), JsonField("y", 175.0 + origin.y()),
-                             JsonField("width", 50.0), JsonField("height", 25.0)));
+  QEXPECT_THAT(global, JsonRectEq(175.0 + origin.x(), 175.0 + origin.y(), 50, 25));
 }
 
 void TestGraphicsView::geometryRoundTripsToTheItemUnderThatPoint() {
@@ -299,8 +314,8 @@ void TestGraphicsView::geometryMirrorsRequestedViewAtTopLevel() {
 
   const QJsonObject geo = HitTest::graphicsItemGeometry(m_item, &second);
   // 40 scene units at 0.5x -- the second view's scale, not the first view's.
-  QEXPECT_THAT(geo, AllOf(JsonField("global", JsonField("width", 20.0)),
-                          JsonField("viewport", JsonField("width", 20.0))));
+  QEXPECT_THAT(geo, AllOf(JsonField("global", JsonRectSize(20, 10)),
+                          JsonField("viewport", JsonRectSize(20, 10))));
 }
 
 void TestGraphicsView::geometryReportsScrolledOutItemAsNotVisible() {
@@ -383,8 +398,7 @@ void TestGraphicsView::geometrySurvivesARotatedViewTransform() {
   const QJsonObject geo = HitTest::graphicsItemGeometry(m_item);
 
   // A 40x20 item under a quarter turn presents as 20x40 on screen.
-  QEXPECT_THAT(geo[QStringLiteral("viewport")],
-               AllOf(JsonField("width", 20.0), JsonField("height", 40.0)));
+  QEXPECT_THAT(geo[QStringLiteral("viewport")], JsonRectSize(20, 40));
   QEXPECT_THAT(geo, JsonField("visible", true));
 
   // And the acceptance property still holds: the reported centre hits the item.
@@ -401,12 +415,9 @@ void TestGraphicsView::geometryFollowsTheItemsOwnTransform() {
   const QJsonObject geo = HitTest::graphicsItemGeometry(m_item);
 
   // local is untouched -- it is the item's own space.
-  QEXPECT_THAT(geo[QStringLiteral("local")],
-               AllOf(JsonField("width", 40.0), JsonField("height", 20.0)));
+  QEXPECT_THAT(geo[QStringLiteral("local")], JsonRectSize(40, 20));
   // Rotated a quarter turn about its origin, then offset by pos(300, 300).
-  QEXPECT_THAT(geo[QStringLiteral("scene")],
-               AllOf(JsonField("x", 280.0), JsonField("y", 300.0), JsonField("width", 20.0),
-                     JsonField("height", 40.0)));
+  QEXPECT_THAT(geo[QStringLiteral("scene")], JsonRectEq(280, 300, 20, 40));
 }
 
 void TestGraphicsView::geometryComposesNestedItemPositions() {
@@ -417,9 +428,7 @@ void TestGraphicsView::geometryComposesNestedItemPositions() {
   child->setPos(10, 5);
 
   const QJsonObject geo = HitTest::graphicsItemGeometry(child);
-  QEXPECT_THAT(geo[QStringLiteral("scene")],
-               AllOf(JsonField("x", 310.0), JsonField("y", 305.0), JsonField("width", 40.0),
-                     JsonField("height", 20.0)));
+  QEXPECT_THAT(geo[QStringLiteral("scene")], JsonRectEq(310, 305, 40, 20));
 }
 
 void TestGraphicsView::geometryReportsHiddenViewAsNotVisible() {
@@ -445,6 +454,22 @@ void TestGraphicsView::geometryRejectsANullItem() {
     threw = true;
   }
   QEXPECT_THAT(threw, IsTrue());
+}
+
+void TestGraphicsView::geometryReportsAnEmptyRectItemOnScreenAsVisible() {
+  // A grouping item's rect is null, and QRect::intersects() reports no overlap
+  // for a null rect however well placed it is. Testing overlap that way calls
+  // such an item invisible wherever it sits, and a caller acting on that would
+  // scroll to reveal something already on screen.
+  auto* group = new GroupingSceneItem();
+  group->setObjectName(QStringLiteral("groupingItem"));
+  group->setPos(240, 240);  // 240 * 1.25 - 200 == viewport 100, well inside
+  m_scene->addItem(group);
+
+  const QJsonObject geo = HitTest::graphicsItemGeometry(group);
+  QEXPECT_THAT(geo[QStringLiteral("scene")], JsonRectEq(240, 240, 0, 0));
+  QEXPECT_THAT(geo[QStringLiteral("viewport")], JsonRectEq(100, 100, 0, 0));
+  QEXPECT_THAT(geo, JsonField("visible", true));
 }
 
 // === HitTest::graphicsItemIdAt ==============================================
@@ -515,6 +540,25 @@ void TestGraphicsView::hitTestRejectsANullView() {
   QEXPECT_THAT(threw, IsTrue());
 }
 
+void TestGraphicsView::hitTestSeesPastABareItemStackedOnTop() {
+  // Scene decorations -- grid lines, overlays, rubber bands -- are routinely
+  // parentless bare QGraphicsItems drawn over the content. itemAt() returns
+  // only the topmost, so consulting it alone lets a decoration swallow every
+  // addressable item beneath it. The parent-chain walk does not help: the
+  // decoration is a sibling, not a child.
+  auto* decoration = new QGraphicsRectItem(QRectF(0, 0, 200, 200));
+  decoration->setPos(250, 250);  // covers m_item at (300, 300)
+  decoration->setZValue(10);
+  m_scene->addItem(decoration);
+
+  const QPoint viewportPos = m_view->mapFromScene(QPointF(320, 310));
+  QEXPECT_THAT(m_view->itemAt(viewportPos), Eq(static_cast<QGraphicsItem*>(decoration)));
+
+  // The addressable item underneath is what the caller can actually act on.
+  QEXPECT_THAT(HitTest::graphicsItemIdAt(m_view, viewportPos),
+               QStrEq(ObjectRegistry::instance()->objectId(m_item)));
+}
+
 // === HitTest::widgetIdAt -- global descent ==================================
 
 void TestGraphicsView::widgetIdAtDescendsIntoTheSceneFromAGlobalPoint() {
@@ -549,6 +593,54 @@ void TestGraphicsView::widgetIdAtFallsBackToTheViewOnEmptyCanvas() {
   QEXPECT_THAT(m_view->itemAt(viewportPos), IsNull());
   QEXPECT_THAT(HitTest::widgetIdAt(globalPos),
                QStrEq(ObjectRegistry::instance()->objectId(m_view->viewport())));
+}
+
+void TestGraphicsView::hitTestIgnoresPointsOutsideTheViewport() {
+  // A scroll bar is a child of the view, not of its viewport, so a point on it
+  // maps to viewport coordinates beyond the visible extent -- which the view
+  // will still happily project into scene space and answer for. Anything
+  // outside the viewport is not a hit on the canvas.
+  auto* blanket = new TestSceneItem();
+  blanket->setObjectName(QStringLiteral("blanketItem"));
+  blanket->setPos(0, 0);
+  blanket->setScale(100);  // covers the whole scene, so any point would "hit"
+  m_scene->addItem(blanket);
+
+  const QRect viewportRect = m_view->viewport()->rect();
+  QEXPECT_THAT(HitTest::graphicsItemIdAt(m_view, QPointF(viewportRect.right() + 20, 50)),
+               QIsEmpty());
+  QEXPECT_THAT(HitTest::graphicsItemIdAt(m_view, QPointF(50, viewportRect.bottom() + 20)),
+               QIsEmpty());
+  QEXPECT_THAT(HitTest::graphicsItemIdAt(m_view, QPointF(-5, 50)), QIsEmpty());
+
+  // A point inside still resolves, so the guard has not simply disabled it.
+  QEXPECT_THAT(HitTest::graphicsItemIdAt(m_view, QPointF(50, 50)), QIsNotEmpty());
+}
+
+void TestGraphicsView::widgetIdAtDoesNotDescendFromAScrollBar() {
+  // Scroll bars are children of the QGraphicsView, not of its viewport, so a
+  // parent-cast alone treats a click on the scroll bar as a click on the
+  // canvas. mapFromGlobal then yields a point outside the viewport, which
+  // itemAt happily maps into scene space and answers with a real item.
+  QScrollBar* bar = m_view->verticalScrollBar();
+  if (!bar->isVisible() || bar->width() <= 0) {
+    QSKIP("no visible vertical scroll bar to test against");
+  }
+
+  // Cover the whole scene so that *any* mapped point would find an item --
+  // the assertion then isolates the descent decision rather than the geometry.
+  auto* blanket = new TestSceneItem();
+  blanket->setObjectName(QStringLiteral("blanketItem"));
+  blanket->setPos(0, 0);
+  blanket->setScale(100);
+  m_scene->addItem(blanket);
+
+  const QPoint globalPos = bar->mapToGlobal(bar->rect().center());
+  if (QApplication::widgetAt(globalPos) != bar) {
+    QSKIP("platform hit testing unavailable: QApplication::widgetAt missed the scroll bar");
+  }
+
+  QEXPECT_THAT(HitTest::widgetIdAt(globalPos), QStrEq(ObjectRegistry::instance()->objectId(bar)));
 }
 
 // === qt.ui.* wiring =========================================================
@@ -628,7 +720,7 @@ void TestGraphicsView::uiGeometryHonoursViewObjectId() {
           .toObject();
 
   // 40 scene units at the second view's 0.5x, not the first view's 1.25x.
-  QEXPECT_THAT(geo, AllOf(JsonField("viewport", JsonField("width", 20.0)),
+  QEXPECT_THAT(geo, AllOf(JsonField("viewport", JsonRectSize(20, 10)),
                           JsonField("views", JsonArraySize(Eq(2)))));
 }
 
@@ -649,7 +741,7 @@ void TestGraphicsView::uiGeometryRejectsAViewObjectIdThatIsNotAView() {
            QJsonObject{
                {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
                {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(&button)}}),
-      IsJsonRpcError(Eq(ErrorCode::kObjectNotWidget)));
+      IsJsonRpcError(Eq(ErrorCode::kNotGraphicsView)));
 }
 
 void TestGraphicsView::uiHitTestScopedReportsAMissAsAnError() {
@@ -683,8 +775,76 @@ void TestGraphicsView::inspectGeometryPartNamesTheCoordinateSpace() {
           QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_view)},
                       {QStringLiteral("parts"), QJsonArray{QStringLiteral("geometry")}}})
           .toObject();
-  QEXPECT_THAT(viewResult[QStringLiteral("geometry")].toObject(),
-               DoesNotHaveJsonField("coordinateSpace"));
+  // Present on both branches, so it is a usable discriminator rather than a
+  // presence test that cannot tell "widget" from "older probe build".
+  QEXPECT_THAT(viewResult[QStringLiteral("geometry")], JsonField("coordinateSpace", "parent"));
+}
+
+void TestGraphicsView::uiHitTestRejectsAbsentCoordinates() {
+  // toInt() yields 0 for an absent key, and viewport (0, 0) is the top-left of
+  // a rendered scene -- very often a real item. Without validation the caller
+  // gets a confident, successful, wrong answer instead of an error.
+  QEXPECT_THAT(call(QStringLiteral("qt.ui.hitTest"),
+                    QJsonObject{{QStringLiteral("viewObjectId"),
+                                 ObjectRegistry::instance()->objectId(m_view)}}),
+               IsJsonRpcError(Eq(JsonRpcError::kInvalidParams)));
+}
+
+void TestGraphicsView::uiHitTestRejectsNonNumericCoordinates() {
+  QEXPECT_THAT(call(QStringLiteral("qt.ui.hitTest"),
+                    QJsonObject{{QStringLiteral("viewObjectId"),
+                                 ObjectRegistry::instance()->objectId(m_view)},
+                                {QStringLiteral("x"), QStringLiteral("175")},
+                                {QStringLiteral("y"), 175}}),
+               IsJsonRpcError(Eq(JsonRpcError::kInvalidParams)));
+}
+
+void TestGraphicsView::uiHitTestAcceptsFractionalCoordinates() {
+  // The geometry this API hands back is fractional by design, so the hit test
+  // that consumes it must accept fractional input rather than truncating it to
+  // zero. A coordinate round trip has to close.
+  const QJsonObject geo =
+      callResult(
+          QStringLiteral("qt.ui.geometry"),
+          QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)}})
+          .toObject();
+  const QJsonObject viewport = geo[QStringLiteral("viewport")].toObject();
+  const double centreX =
+      viewport[QStringLiteral("x")].toDouble() + viewport[QStringLiteral("width")].toDouble() / 2.0;
+  const double centreY = viewport[QStringLiteral("y")].toDouble() +
+                         viewport[QStringLiteral("height")].toDouble() / 2.0;
+
+  const QJsonObject result = callResult(QStringLiteral("qt.ui.hitTest"),
+                                        QJsonObject{{QStringLiteral("viewObjectId"),
+                                                     ObjectRegistry::instance()->objectId(m_view)},
+                                                    {QStringLiteral("x"), centreX + 0.5},
+                                                    {QStringLiteral("y"), centreY + 0.5}})
+                                 .toObject();
+
+  QEXPECT_THAT(result, JsonField("objectId", QStrEq(ObjectRegistry::instance()->objectId(m_item))));
+}
+
+void TestGraphicsView::uiHitTestRejectsAMalformedViewObjectId() {
+  // A non-string viewObjectId reads back as an empty QString, which silently
+  // selects the global-screen branch -- so x/y quietly change coordinate space
+  // and the caller is told about whatever widget sits near the screen origin.
+  QEXPECT_THAT(
+      call(QStringLiteral("qt.ui.hitTest"), QJsonObject{{QStringLiteral("viewObjectId"), 123},
+                                                        {QStringLiteral("x"), 175},
+                                                        {QStringLiteral("y"), 175}}),
+      IsJsonRpcError(Eq(JsonRpcError::kInvalidParams)));
+}
+
+void TestGraphicsView::uiGeometryRejectsAViewObjectIdOnAWidgetTarget() {
+  // viewObjectId is meaningless when objectId names a widget. Dropping it
+  // silently returns a differently-shaped payload with no hint that half the
+  // request was discarded.
+  QEXPECT_THAT(
+      call(QStringLiteral("qt.ui.geometry"),
+           QJsonObject{
+               {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_view)},
+               {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(m_view)}}),
+      IsJsonRpcError(Eq(JsonRpcError::kInvalidParams)));
 }
 
 void TestGraphicsView::inspectGeometryPartCoversGraphicsObjects() {
@@ -698,8 +858,7 @@ void TestGraphicsView::inspectGeometryPartCoversGraphicsObjects() {
           .toObject();
 
   QEXPECT_THAT(result[QStringLiteral("geometry")],
-               AllOf(JsonField("x", 300.0), JsonField("y", 300.0), JsonField("width", 40.0),
-                     JsonField("visible", true)));
+               AllOf(JsonRectEq(300, 300, 40, 20), JsonField("visible", true)));
 }
 
 QTEST_MAIN(TestGraphicsView)

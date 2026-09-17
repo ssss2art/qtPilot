@@ -65,9 +65,15 @@ class QTPILOT_EXPORT HitTest {
   /// @return Deepest visible child at position, or parent if none
   static QWidget* childAt(QWidget* parent, const QPoint& localPos);
 
-  /// @brief Find widget at global coordinates and return its ID.
+  /// @brief Find the object at global coordinates and return its ID.
+  ///
+  /// Usually a QWidget, but NOT always: when the point falls on a
+  /// QGraphicsView's viewport, the search continues into that view's scene and
+  /// the ID returned is the scene item's -- a QGraphicsObject, never a QWidget.
+  /// Callers that feed this ID straight into a widget-only API must be prepared
+  /// for that. On empty canvas it falls back to the viewport, as before.
   /// @param globalPos Screen coordinates
-  /// @return Object ID of widget at position, or empty string if none
+  /// @return Object ID of the object at that position, or empty string if none
   static QString widgetIdAt(const QPoint& globalPos);
 
   // --- QGraphicsView scene items ---
@@ -118,15 +124,32 @@ class QTPILOT_EXPORT HitTest {
   static QJsonObject graphicsItemGeometry(QGraphicsObject* item,
                                           QGraphicsView* preferredView = nullptr);
 
-  /// @brief Find the topmost scene item at a viewport position and return its ID.
+  /// @brief Find the topmost *addressable* scene item at a viewport position.
   ///
-  /// A hit on a plain QGraphicsItem (not a QObject, so it has no ID of its own)
-  /// walks up to the nearest QGraphicsObject ancestor rather than reporting a
-  /// miss -- decorations drawn as bare items are extremely common.
+  /// Bare QGraphicsItems are not QObjects and have no ID of their own, and
+  /// decorations drawn as bare items are extremely common. Two things follow,
+  /// and both are deliberate:
+  /// - a hit on a bare item walks up to the nearest QGraphicsObject ancestor;
+  /// - a bare item that has no such ancestor does not mask what is underneath.
+  ///   The whole stack at the point is walked in descending order, so a
+  ///   parentless grid line or overlay cannot swallow the item below it.
+  ///
+  /// A position outside the viewport is a miss, not an answer: the view would
+  /// otherwise project it into scene space and name an item for a point that is
+  /// not on the canvas at all (a scroll bar, say).
+  /// @param view View to hit test within
+  /// @param viewportPos Position in the view's *viewport* coordinates
+  /// @return The item at that position, or nullptr on a miss
+  static QGraphicsObject* graphicsItemAt(QGraphicsView* view, const QPointF& viewportPos);
+
+  /// @brief graphicsItemAt() as an object ID.
+  ///
+  /// Prefer graphicsItemAt() when the caller also needs the object -- looking
+  /// the ID back up costs a registry search and can fail for an untracked item.
   /// @param view View to hit test within
   /// @param viewportPos Position in the view's *viewport* coordinates
   /// @return Object ID of the item at that position, or empty string on a miss
-  static QString graphicsItemIdAt(QGraphicsView* view, const QPoint& viewportPos);
+  static QString graphicsItemIdAt(QGraphicsView* view, const QPointF& viewportPos);
 
   // --- QWindow / Qt Quick equivalents ---
   //

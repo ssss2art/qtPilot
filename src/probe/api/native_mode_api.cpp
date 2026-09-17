@@ -95,14 +95,31 @@ QWidget* resolveWidgetParam(const QJsonObject& params, const QString& methodName
 
 /// @brief Resolve an optional view id param to a QGraphicsView*.
 ///
-/// Absent means "no preference"; present but not a view is a caller error worth
+/// Absent means "no preference"; present but unusable is a caller error worth
 /// reporting rather than silently ignoring.
+///
+/// The distinction matters more than it looks. toString() yields an empty
+/// QString for a number, a bool, null, an object and an array alike, so
+/// collapsing "absent" with "present but not a string" would let a mistyped id
+/// silently select a different code path -- in qt.ui.hitTest, one that reads
+/// x/y in an entirely different coordinate space and answers confidently about
+/// the wrong object.
 QGraphicsView* resolveViewParam(const QJsonObject& params, const QString& key,
                                 const QString& methodName) {
-  const QString viewId = params[key].toString();
-  if (viewId.isEmpty()) {
+  const QJsonValue raw = params.value(key);
+  if (raw.isUndefined() || raw.isNull()) {
     return nullptr;
   }
+  if (!raw.isString() || raw.toString().isEmpty()) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameter '%1' must be a non-empty object id string").arg(key),
+        QJsonObject{{QStringLiteral("method"), methodName},
+                    {key, raw},
+                    {QStringLiteral("hint"),
+                     QStringLiteral("Use qt.objects.search to discover a QGraphicsView id")}});
+  }
+  const QString viewId = raw.toString();
 
   QObject* obj = ObjectResolver::resolve(viewId);
   if (!obj) {
@@ -113,7 +130,7 @@ QGraphicsView* resolveViewParam(const QJsonObject& params, const QString& key,
 
   auto* view = qobject_cast<QGraphicsView*>(obj);
   if (!view) {
-    throw JsonRpcException(ErrorCode::kObjectNotWidget,
+    throw JsonRpcException(ErrorCode::kNotGraphicsView,
                            QStringLiteral("Object is not a QGraphicsView: %1").arg(viewId),
                            QJsonObject{{QStringLiteral("method"), methodName},
                                        {key, viewId},
@@ -121,6 +138,24 @@ QGraphicsView* resolveViewParam(const QJsonObject& params, const QString& key,
                                         QString::fromUtf8(obj->metaObject()->className())}});
   }
   return view;
+}
+
+/// @brief Read a required numeric coordinate from params.
+///
+/// QJsonValue::toInt() returns 0 for an absent key, a string, a bool, a
+/// non-whole double and an out-of-range integer alike. Viewport (0, 0) is the
+/// top-left of a rendered scene and very often holds a real item, so silently
+/// defaulting turns a malformed request into a confident wrong answer instead
+/// of an error. Fractional values are legitimate -- the geometry this API hands
+/// back is fractional by design -- so they are rounded, not truncated.
+double requireCoordinate(const QJsonObject& params, const QString& key, const QString& methodName) {
+  const QJsonValue raw = params.value(key);
+  if (!raw.isDouble()) {
+    throw JsonRpcException(JsonRpcError::kInvalidParams,
+                           QStringLiteral("Parameter '%1' must be a number").arg(key),
+                           QJsonObject{{QStringLiteral("method"), methodName}, {key, raw}});
+  }
+  return raw.toDouble();
 }
 
 }  // anonymous namespace
@@ -274,12 +309,18 @@ void NativeModeApi::registerObjectMethods() {
           if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
             // Scene coordinates, matching what "pos" already reports. Doubles,
             // not ints: graphics coordinates are qreal.
-            const QRectF sceneRect = item->mapToScene(item->boundingRect()).boundingRect();
+            //
+            // Taken from HitTest::graphicsItemGeometry rather than recomputed,
+            // so the boundingRect()-not-childrenBoundingRect() decision lives
+            // in exactly one place. The shape here stays flat to match the
+            // widget branch below.
+            const QJsonObject sceneRect =
+                HitTest::graphicsItemGeometry(item)[QStringLiteral("scene")].toObject();
             QJsonObject geom;
-            geom[QStringLiteral("x")] = sceneRect.x();
-            geom[QStringLiteral("y")] = sceneRect.y();
-            geom[QStringLiteral("width")] = sceneRect.width();
-            geom[QStringLiteral("height")] = sceneRect.height();
+            geom[QStringLiteral("x")] = sceneRect.value(QStringLiteral("x"));
+            geom[QStringLiteral("y")] = sceneRect.value(QStringLiteral("y"));
+            geom[QStringLiteral("width")] = sceneRect.value(QStringLiteral("width"));
+            geom[QStringLiteral("height")] = sceneRect.value(QStringLiteral("height"));
             geom[QStringLiteral("visible")] = item->isVisible();
             geom[QStringLiteral("coordinateSpace")] = QStringLiteral("scene");
             result[QStringLiteral("geometry")] = geom;
@@ -290,6 +331,10 @@ void NativeModeApi::registerObjectMethods() {
             geom[QStringLiteral("width")] = widget->width();
             geom[QStringLiteral("height")] = widget->height();
             geom[QStringLiteral("visible")] = widget->isVisible();
+            // Emitted on both branches so it is a discriminator a client can
+            // switch on, rather than a presence test that cannot tell a widget
+            // from an older probe build.
+            geom[QStringLiteral("coordinateSpace")] = QStringLiteral("parent");
             result[QStringLiteral("geometry")] = geom;
           } else {
             result[QStringLiteral("geometry")] = QJsonValue();
@@ -944,10 +989,12 @@ void NativeModeApi::registerUiMethods() {
     // path used to reject it -- leaving its on-screen position knowable only by
     // calibrating the view transform by hand. Map it through its view(s) instead.
     QObject* obj = resolveObjectParam(p, QStringLiteral("qt.ui.geometry"));
-    if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
-      QGraphicsView* view =
-          resolveViewParam(p, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.geometry"));
+    // Resolved up front on both paths: a viewObjectId that the widget path
+    // cannot use is a caller error, not something to drop on the floor.
+    QGraphicsView* view =
+        resolveViewParam(p, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.geometry"));
 
+    if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
       // A view that does not render this item's scene would silently produce a
       // null rect -- indistinguishable from "not on screen yet". Name the views
       // the item does have instead.
@@ -973,7 +1020,29 @@ void NativeModeApi::registerUiMethods() {
       return envelopeToString(ResponseEnvelope::wrap(geo, objectId));
     }
 
-    QWidget* widget = resolveWidgetParam(p, QStringLiteral("qt.ui.geometry"));
+    if (view) {
+      throw JsonRpcException(
+          JsonRpcError::kInvalidParams,
+          QStringLiteral("viewObjectId is only meaningful when objectId names a "
+                         "QGraphicsObject; %1 is not one")
+              .arg(objectId),
+          QJsonObject{
+              {QStringLiteral("method"), QStringLiteral("qt.ui.geometry")},
+              {QStringLiteral("objectId"), objectId},
+              {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+    }
+
+    // Cast the object already in hand rather than re-resolving the same id:
+    // a registry miss falls back to a full tree search, so resolving twice can
+    // mean walking the tree twice for every widget geometry call.
+    auto* widget = qobject_cast<QWidget*>(obj);
+    if (!widget) {
+      throw JsonRpcException(
+          ErrorCode::kObjectNotWidget, QStringLiteral("Object is not a widget: %1").arg(objectId),
+          QJsonObject{
+              {QStringLiteral("objectId"), objectId},
+              {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+    }
     QJsonObject geo = HitTest::widgetGeometry(widget);
     return envelopeToString(ResponseEnvelope::wrap(geo, objectId));
   });
@@ -981,17 +1050,22 @@ void NativeModeApi::registerUiMethods() {
   // qt.ui.hitTest
   m_handler->RegisterMethod(QStringLiteral("qt.ui.hitTest"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
 
     // Scoped form: x/y are viewport coordinates of the named QGraphicsView, and
     // the search runs inside its scene. Callers that already know the view want
     // this; it also avoids QApplication::widgetAt, which is unreliable headless.
     QGraphicsView* view =
         resolveViewParam(p, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.hitTest"));
+
+    const double x = requireCoordinate(p, QStringLiteral("x"), QStringLiteral("qt.ui.hitTest"));
+    const double y = requireCoordinate(p, QStringLiteral("y"), QStringLiteral("qt.ui.hitTest"));
+
     if (view) {
-      const QString itemId = HitTest::graphicsItemIdAt(view, QPoint(x, y));
-      if (itemId.isEmpty()) {
+      // Keep the object, do not look it up again by id: the round trip costs a
+      // registry search that can miss for an untracked item, which is the only
+      // reason a "className": "unknown" was ever reachable here.
+      QGraphicsObject* item = HitTest::graphicsItemAt(view, QPointF(x, y));
+      if (!item) {
         throw JsonRpcException(
             ErrorCode::kObjectNotFound,
             QStringLiteral("No scene item found at viewport point (%1, %2)").arg(x).arg(y),
@@ -1000,16 +1074,17 @@ void NativeModeApi::registerUiMethods() {
                 {QStringLiteral("y"), y},
                 {QStringLiteral("viewObjectId"), p[QStringLiteral("viewObjectId")].toString()}});
       }
-      QObject* item = ObjectRegistry::instance()->findById(itemId);
       QJsonObject result;
-      result[QStringLiteral("objectId")] = itemId;
-      result[QStringLiteral("className")] =
-          item ? QString::fromUtf8(item->metaObject()->className()) : QStringLiteral("unknown");
+      result[QStringLiteral("objectId")] = ObjectRegistry::instance()->objectId(item);
+      result[QStringLiteral("className")] = QString::fromUtf8(item->metaObject()->className());
       result[QStringLiteral("viewObjectId")] = p[QStringLiteral("viewObjectId")].toString();
       return envelopeToString(ResponseEnvelope::wrap(result));
     }
 
-    QString foundId = HitTest::widgetIdAt(QPoint(x, y));
+    // Global form: screen coordinates, rounded to the pixel grid the widget
+    // hit test works in.
+    const QPoint globalPos(qRound(x), qRound(y));
+    QString foundId = HitTest::widgetIdAt(globalPos);
     if (foundId.isEmpty()) {
       throw JsonRpcException(ErrorCode::kObjectNotFound,
                              QStringLiteral("No widget found at point (%1, %2)").arg(x).arg(y),

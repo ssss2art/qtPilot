@@ -17,11 +17,14 @@
 #include <QObject>
 #include <QPoint>
 #include <QRect>
+#include <QRectF>
 #include <QSize>
 #include <QString>
 #include <QTest>
 #include <QVariant>
 
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <type_traits>
@@ -1015,6 +1018,139 @@ inline auto RectEq(int x, int y, int w, int h) {
 }
 inline auto RectEq(const QRect& r) {
   return ::testing::MakePolymorphicMatcher(RectEqMatcher(r));
+}
+
+/// @brief Matches a JSON rect {x, y, width, height} against qreal values.
+///
+/// The qreal counterpart to RectEq. RectEq reads JSON with toInt(), which
+/// returns 0 for any non-integral number, so a fractional rect silently
+/// compares equal to the origin instead of failing. Scene geometry is qreal and
+/// any scaled or rotated view makes fractional values normal, so graphics rects
+/// must be read with toDouble() -- that is what this matcher is for.
+///
+/// Comparison allows a few ULPs of slop, because mapping a rect through a
+/// QTransform rarely lands on exact binary values (a quarter turn yields
+/// 279.99999999999994, not 280). The tolerance is far below the one-pixel drift
+/// that real coordinate bugs produce, so it costs nothing in rigour.
+class JsonRectEqMatcher {
+ public:
+  JsonRectEqMatcher(qreal x, qreal y, qreal w, qreal h)
+      : x_(x), y_(y), width_(w), height_(h) {}
+  explicit JsonRectEqMatcher(const QRectF& r)
+      : x_(r.x()), y_(r.y()), width_(r.width()), height_(r.height()) {}
+
+  template <typename JsonContainer>
+  bool MatchAndExplain(const JsonContainer& arg,
+                       ::testing::MatchResultListener* listener) const {
+    QJsonObject obj;
+    if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
+      return false;
+    }
+    for (const char* key : {"x", "y", "width", "height"}) {
+      if (!obj.value(QLatin1String(key)).isDouble()) {
+        *listener << "has no numeric '" << key << "' field (got: "
+                  << ::testing::PrintToString(obj) << ")";
+        return false;
+      }
+    }
+    const double actualX = obj.value(QStringLiteral("x")).toDouble();
+    const double actualY = obj.value(QStringLiteral("y")).toDouble();
+    const double actualW = obj.value(QStringLiteral("width")).toDouble();
+    const double actualH = obj.value(QStringLiteral("height")).toDouble();
+    if (!close(actualX, x_) || !close(actualY, y_) || !close(actualW, width_) ||
+        !close(actualH, height_)) {
+      *listener << "has rect (x: " << actualX << ", y: " << actualY << ", width: " << actualW
+                << ", height: " << actualH << ")";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os) const {
+    *os << "has rect (x: " << x_ << ", y: " << y_ << ", width: " << width_
+        << ", height: " << height_ << ")";
+  }
+
+  void DescribeNegationTo(std::ostream* os) const { *os << "does not have matching rect"; }
+
+  template <typename T>
+  operator ::testing::Matcher<T>() const {
+    return ::testing::MakePolymorphicMatcher(*this);
+  }
+
+ private:
+  /// @brief Equal to within a few ULPs, scaled to the magnitude compared.
+  static bool close(double actual, double expected) {
+    const double scale = std::max({1.0, std::abs(actual), std::abs(expected)});
+    return std::abs(actual - expected) <= 1e-9 * scale;
+  }
+
+  qreal x_;
+  qreal y_;
+  qreal width_;
+  qreal height_;
+};
+
+inline auto JsonRectEq(qreal x, qreal y, qreal w, qreal h) {
+  return ::testing::MakePolymorphicMatcher(JsonRectEqMatcher(x, y, w, h));
+}
+inline auto JsonRectEq(const QRectF& r) {
+  return ::testing::MakePolymorphicMatcher(JsonRectEqMatcher(r));
+}
+
+/// @brief Matches only the size of a JSON rect, in qreal terms.
+///
+/// For the many assertions where the on-screen *extent* is the claim being made
+/// and the position is incidental -- a 40-unit item under a 1.25x view is 50
+/// pixels wide wherever it happens to sit.
+class JsonRectSizeMatcher {
+ public:
+  JsonRectSizeMatcher(qreal w, qreal h) : width_(w), height_(h) {}
+
+  template <typename JsonContainer>
+  bool MatchAndExplain(const JsonContainer& arg,
+                       ::testing::MatchResultListener* listener) const {
+    QJsonObject obj;
+    if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
+      return false;
+    }
+    for (const char* key : {"width", "height"}) {
+      if (!obj.value(QLatin1String(key)).isDouble()) {
+        *listener << "has no numeric '" << key << "' field (got: "
+                  << ::testing::PrintToString(obj) << ")";
+        return false;
+      }
+    }
+    const double actualW = obj.value(QStringLiteral("width")).toDouble();
+    const double actualH = obj.value(QStringLiteral("height")).toDouble();
+    const double scaleW = std::max({1.0, std::abs(actualW), std::abs(width_)});
+    const double scaleH = std::max({1.0, std::abs(actualH), std::abs(height_)});
+    if (std::abs(actualW - width_) > 1e-9 * scaleW ||
+        std::abs(actualH - height_) > 1e-9 * scaleH) {
+      *listener << "has size (width: " << actualW << ", height: " << actualH << ")";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os) const {
+    *os << "has size (width: " << width_ << ", height: " << height_ << ")";
+  }
+
+  void DescribeNegationTo(std::ostream* os) const { *os << "does not have matching size"; }
+
+  template <typename T>
+  operator ::testing::Matcher<T>() const {
+    return ::testing::MakePolymorphicMatcher(*this);
+  }
+
+ private:
+  qreal width_;
+  qreal height_;
+};
+
+inline auto JsonRectSize(qreal w, qreal h) {
+  return ::testing::MakePolymorphicMatcher(JsonRectSizeMatcher(w, h));
 }
 
 class RectContainsPointMatcher {
