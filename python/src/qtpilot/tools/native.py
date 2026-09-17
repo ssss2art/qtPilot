@@ -309,22 +309,55 @@ def register_native_tools(mcp: FastMCP) -> None:
         return await require_probe().call("qt.ui.screenshot", params)
 
     @mcp.tool
-    async def qt_ui_geometry(objectId: str, ctx: Context = None) -> dict:
-        """Get the geometry (position, size) of a widget.
+    async def qt_ui_geometry(
+        objectId: str, viewObjectId: str | None = None, ctx: Context = None
+    ) -> dict:
+        """Get the geometry (position, size) of a widget or QGraphicsView scene item.
+
+        Widgets return {local, global, devicePixelRatio} with integer values.
+
+        A QGraphicsObject (anything in a QGraphicsView scene) additionally returns
+        {scene, viewport, visible, views}, with double values, already carrying the
+        view's zoom and scroll -- pass global's centre straight to cu_drag/cu_click.
+        One scene can be rendered into several views; "views" has one entry each,
+        and viewObjectId picks which one the top-level rect mirrors. An item
+        scrolled out of the viewport reports visible=false rather than an error.
+
         Example: qt_ui_geometry(objectId="MainWindow")
+        Example: qt_ui_geometry(objectId="...sceneItem_a1b2c3", viewObjectId="...planView")
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call("qt.ui.geometry", {"objectId": objectId})
+        params: dict = {"objectId": objectId}
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        return await require_probe().call("qt.ui.geometry", params)
 
     @mcp.tool
-    async def qt_ui_hitTest(x: int, y: int, ctx: Context = None) -> dict:
-        """Find the widget at the given screen coordinates.
+    async def qt_ui_hitTest(
+        x: float, y: float, viewObjectId: str | None = None, ctx: Context = None
+    ) -> dict:
+        """Find the widget -- or QGraphicsView scene item -- at the given coordinates.
+
+        Without viewObjectId, x/y are screen coordinates; a hit landing on a
+        QGraphicsView's viewport continues into its scene and reports the item,
+        not the viewport widget. With viewObjectId, x/y are that view's viewport
+        coordinates and the search runs inside its scene only.
+
+        Coordinates may be fractional -- qt_ui_geometry reports scene geometry as
+        qreal, so the centre of a rect it returns can be fed straight back here.
+        A point outside the view's viewport is a miss, not a hit on whatever the
+        view would project it onto.
+
         Example: qt_ui_hitTest(x=100, y=200)
+        Example: qt_ui_hitTest(viewObjectId="...planView", x=175, y=175)
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call("qt.ui.hitTest", {"x": x, "y": y})
+        params: dict = {"x": x, "y": y}
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        return await require_probe().call("qt.ui.hitTest", params)
 
     # -- Named objects ------------------------------------------------------
 
