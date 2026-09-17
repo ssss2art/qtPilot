@@ -9,7 +9,11 @@
 #include <stdexcept>
 
 #include <QApplication>
+#include <QGraphicsObject>
+#include <QGraphicsScene>
+#include <QGraphicsView>
 #include <QGuiApplication>
+#include <QJsonArray>
 #include <QWindow>
 
 #ifdef QTPILOT_HAS_QML
@@ -63,8 +67,198 @@ QString HitTest::widgetIdAt(const QPoint& globalPos) {
     return QString();
   }
 
+  // A QGraphicsView is one opaque widget to the widget tree, so stopping here
+  // would report the viewport for every point in a plan and never the product
+  // under the cursor. Carry on into the scene when the point is on the canvas.
+  //
+  // The canvas is the *viewport*, and the test is pointer identity, not a cast
+  // of the parent: QAbstractScrollArea parents its scroll bars and corner
+  // widget to the view itself, so a parent-cast would treat a click on the
+  // scroll bar as a click on the canvas, map it to a point outside the viewport
+  // and answer with whatever item that projects onto.
+  if (QWidget* parent = widget->parentWidget()) {
+    if (auto* view = qobject_cast<QGraphicsView*>(parent); view && view->viewport() == widget) {
+      const QString itemId =
+          graphicsItemIdAt(view, QPointF(view->viewport()->mapFromGlobal(globalPos)));
+      if (!itemId.isEmpty()) {
+        return itemId;
+      }
+      // Empty canvas: fall through and report the viewport, as before.
+    }
+  }
+
   // Use ObjectRegistry to get hierarchical ID
   return ObjectRegistry::instance()->objectId(widget);
+}
+
+namespace {
+
+/// @brief JSON rect from a QRectF, as doubles.
+///
+/// Graphics coordinates are qreal and a scaled view makes fractional values the
+/// norm, so these stay double throughout -- toInt() on them yields 0.
+QJsonObject rectToJson(const QRectF& rect) {
+  return QJsonObject{
+      {"x", rect.x()}, {"y", rect.y()}, {"width", rect.width()}, {"height", rect.height()}};
+}
+
+/// @brief Nearest QGraphicsObject at or above @a item in the parent chain.
+///
+/// A QGraphicsItem is not a QObject, so it has no objectId. Decorations drawn
+/// as bare items are common, and reporting a miss for one would be useless --
+/// the addressable thing is the QGraphicsObject that owns it.
+QGraphicsObject* nearestGraphicsObject(QGraphicsItem* item) {
+  for (QGraphicsItem* cursor = item; cursor; cursor = cursor->parentItem()) {
+    if (QGraphicsObject* object = cursor->toGraphicsObject()) {
+      return object;
+    }
+  }
+  return nullptr;
+}
+
+/// @brief Map @a sceneRect through @a view into viewport and global rects.
+/// @param itemVisible The item's own visibility, folded into the entry's "visible"
+QJsonObject viewEntry(QGraphicsView* view, const QRectF& sceneRect, bool itemVisible) {
+  // viewportTransform() carries the view transform (scale, rotation, shear) and
+  // the scroll offset in one matrix. That composite is precisely what a caller
+  // used to have to recover by dragging a known distance and dividing.
+  //
+  // Not mapFromScene(QRectF): that returns a QPolygon, i.e. integer corners, so
+  // a 40-unit item at 1.25x came back 51px wide instead of 50. Rounding twice
+  // over is exactly the kind of drift the caller is being spared here.
+  const QRectF viewportRect = view->viewportTransform().mapRect(sceneRect);
+
+  // Take the QPointF overload where it exists. Rounding the origin while
+  // width/height stay fractional would put the four fields of "global" in two
+  // different precision domains, so global.x + global.width/2 would drift from
+  // the viewport rect -- the very calibration error this API exists to remove.
+  // itemGeometry() makes the same choice for the same reason.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  const QPointF origin = view->viewport()->mapToGlobal(QPointF(0, 0));
+#else
+  const QPointF origin = QPointF(view->viewport()->mapToGlobal(QPoint(0, 0)));
+#endif
+
+  QJsonObject entry;
+  entry["viewObjectId"] = ObjectRegistry::instance()->objectId(view);
+  entry["viewport"] = rectToJson(viewportRect);
+  entry["global"] = rectToJson(viewportRect.translated(origin));
+  // Being scrolled out is not an error -- a caller may want to scroll to it --
+  // but clicking the reported point would hit whatever is on screen there
+  // instead, so say so. An item can also be hidden outright.
+  //
+  // Overlap is tested in QRectF space, not via QRect::intersects(): that is
+  // false whenever *either* rect is empty, and a zero-width or zero-height item
+  // is ordinary in a scene (a horizontal line with a cosmetic pen, a grouping
+  // item that only holds children). Those would be called invisible wherever
+  // they sat, and a caller would scroll to reveal something already on screen.
+  const QRectF viewportBounds = QRectF(view->viewport()->rect());
+  const bool overlaps = viewportRect.left() <= viewportBounds.right() &&
+                        viewportRect.right() >= viewportBounds.left() &&
+                        viewportRect.top() <= viewportBounds.bottom() &&
+                        viewportRect.bottom() >= viewportBounds.top();
+  entry["visible"] = itemVisible && view->isVisible() && overlaps;
+  entry["devicePixelRatio"] = view->viewport()->devicePixelRatioF();
+  return entry;
+}
+
+}  // namespace
+
+QJsonObject HitTest::graphicsItemGeometry(QGraphicsObject* item, QGraphicsView* preferredView) {
+  if (!item) {
+    throw std::invalid_argument("graphicsItemGeometry: item cannot be null");
+  }
+
+  QJsonObject result;
+
+  // boundingRect(), not childrenBoundingRect(): a scene item is often a group
+  // whose clickable body is the item itself, with a label hanging outside it.
+  const QRectF localRect = item->boundingRect();
+  result["local"] = rectToJson(localRect);
+
+  const QRectF sceneRect = item->mapToScene(localRect).boundingRect();
+  result["scene"] = rectToJson(sceneRect);
+
+  QJsonArray views;
+  QJsonObject mirrored;
+  bool haveMirror = false;
+
+  QGraphicsScene* scene = item->scene();
+  const QList<QGraphicsView*> sceneViews = scene ? scene->views() : QList<QGraphicsView*>();
+  for (QGraphicsView* view : sceneViews) {
+    if (!view) {
+      continue;
+    }
+    const QJsonObject entry = viewEntry(view, sceneRect, item->isVisible());
+    views.append(entry);
+
+    // The top level mirrors the requested view, or the first one when the
+    // caller did not name one. With several views at different scales there is
+    // no defensible "the" answer, so the array is the real result.
+    const bool isPreferred = preferredView ? (view == preferredView) : !haveMirror;
+    if (isPreferred) {
+      mirrored = entry;
+      haveMirror = true;
+    }
+  }
+
+  result["views"] = views;
+  if (haveMirror) {
+    // value(), not operator[]: the non-const overload detaches this shared copy
+    // and would insert a null for any key that went missing.
+    result["viewport"] = mirrored.value(QStringLiteral("viewport"));
+    result["global"] = mirrored.value(QStringLiteral("global"));
+    result["visible"] = mirrored.value(QStringLiteral("visible"));
+    result["devicePixelRatio"] = mirrored.value(QStringLiteral("devicePixelRatio"));
+  } else {
+    // In a scene nobody renders (or a preferredView that does not render this
+    // scene): local and scene still mean something, a screen position does not.
+    result["viewport"] = QJsonValue::Null;
+    result["global"] = QJsonValue::Null;
+    result["visible"] = false;
+    result["devicePixelRatio"] = 1.0;
+  }
+
+  return result;
+}
+
+QGraphicsObject* HitTest::graphicsItemAt(QGraphicsView* view, const QPointF& viewportPos) {
+  if (!view) {
+    throw std::invalid_argument("graphicsItemAt: view cannot be null");
+  }
+
+  // Outside the canvas is not a hit on the canvas. The view would gladly
+  // project such a point into scene space and name an item for it, which is how
+  // a click on a scroll bar or a frame could come back as a scene item.
+  if (!QRectF(view->viewport()->rect()).contains(viewportPos)) {
+    return nullptr;
+  }
+
+  // The whole stack at the point, not just itemAt()'s topmost one.
+  //
+  // Scene decorations -- grid lines, overlays, rubber bands -- are routinely
+  // parentless bare QGraphicsItems drawn above the content. They are not
+  // QObjects, so they have no id of their own, and walking their parent chain
+  // rescues nothing because they are siblings of the content rather than its
+  // children. Consulting only the topmost item would let any such decoration
+  // swallow every addressable item beneath it. items() is documented to return
+  // descending stacking order, so the first entry that resolves is the topmost
+  // thing the caller can actually address.
+  const QList<QGraphicsItem*> stack = view->items(viewportPos.toPoint());
+  for (QGraphicsItem* candidate : stack) {
+    if (QGraphicsObject* object = nearestGraphicsObject(candidate)) {
+      return object;
+    }
+  }
+  return nullptr;
+}
+
+QString HitTest::graphicsItemIdAt(QGraphicsView* view, const QPointF& viewportPos) {
+  QGraphicsObject* object = graphicsItemAt(view, viewportPos);
+  if (!object) {
+    return QString();
+  }
+  return ObjectRegistry::instance()->objectId(object);
 }
 
 QJsonObject HitTest::windowGeometry(QWindow* window) {

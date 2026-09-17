@@ -187,6 +187,10 @@ qtPilot_add_test(NAME test_native_mode_api SOURCES test_native_mode_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+qtPilot_add_test(NAME test_graphics_view SOURCES test_graphics_view.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
 qtPilot_add_test(NAME test_key_name_mapper SOURCES test_key_name_mapper.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")

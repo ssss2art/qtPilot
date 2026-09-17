@@ -9,6 +9,8 @@
 #include <QObject>
 #include <QPoint>
 #include <QRect>
+#include <QRectF>
+#include <QTransform>
 #include <QSize>
 #include <QString>
 #include <QtTest>
@@ -205,6 +207,93 @@ class TestQtMatchers : public QObject {
         {QStringLiteral("height"), 200},
     };
     QEXPECT_THAT(rectObj, RectEq(10, 20, 300, 200));
+  }
+
+  // =========================================================================
+  // Domain Matchers: fractional (qreal) JSON rects
+  // =========================================================================
+  void testJsonRectEqMatchesFractionalRects() {
+    // Graphics-scene geometry is qreal, and any scaled or rotated view makes
+    // fractional values the norm rather than the exception.
+    const QJsonObject rect{
+        {QStringLiteral("x"), 175.5},
+        {QStringLiteral("y"), 20.25},
+        {QStringLiteral("width"), 50.5},
+        {QStringLiteral("height"), 25.125},
+    };
+
+    QEXPECT_THAT(rect, JsonRectEq(175.5, 20.25, 50.5, 25.125));
+    QEXPECT_THAT(rect, JsonRectEq(QRectF(175.5, 20.25, 50.5, 25.125)));
+    QEXPECT_THAT(rect, JsonRectSize(50.5, 25.125));
+
+    // Whole numbers still read correctly -- JSON has one number type, so an
+    // integral value arrives as a double either way.
+    const QJsonObject whole{
+        {QStringLiteral("x"), 10},
+        {QStringLiteral("y"), 20},
+        {QStringLiteral("width"), 300},
+        {QStringLiteral("height"), 200},
+    };
+    QEXPECT_THAT(whole, JsonRectEq(10, 20, 300, 200));
+  }
+
+  void testJsonRectEqRejectsWrongValues() {
+    // A matcher that cannot fail is worse than no matcher, so pin the negative.
+    const QJsonObject rect{
+        {QStringLiteral("x"), 175.0},
+        {QStringLiteral("y"), 175.0},
+        {QStringLiteral("width"), 50.0},
+        {QStringLiteral("height"), 25.0},
+    };
+
+    // One pixel wide is exactly the drift that integer polygon corners produce.
+    QEXPECT_THAT(rect, ::testing::Not(JsonRectEq(175.0, 175.0, 51.0, 25.0)));
+    QEXPECT_THAT(rect, ::testing::Not(JsonRectEq(0.0, 175.0, 50.0, 25.0)));
+    QEXPECT_THAT(rect, ::testing::Not(JsonRectSize(51.0, 25.0)));
+
+    // Not a rect at all, and a rect missing a key, are both mismatches rather
+    // than a crash or a default-zero pass.
+    QEXPECT_THAT(QJsonValue(42), ::testing::Not(JsonRectEq(0.0, 0.0, 0.0, 0.0)));
+
+    // Named local, not an inline literal: the preprocessor splits macro
+    // arguments on commas inside braces, so QJsonObject{{...}, {...}} as a
+    // macro argument does not compile.
+    const QJsonObject partial{{QStringLiteral("x"), 1.0}};
+    QEXPECT_THAT(partial, ::testing::Not(JsonRectEq(1.0, 0.0, 0.0, 0.0)));
+  }
+
+  void testJsonRectEqToleratesTransformRoundingButNotRealDrift() {
+    // Rotating a rect through QTransform rarely lands on exact binary values,
+    // so the matcher allows a hair of floating-point slop...
+    const QJsonObject rotated{
+        {QStringLiteral("x"), 279.99999999999994},
+        {QStringLiteral("y"), 300.0},
+        {QStringLiteral("width"), 20.000000000000004},
+        {QStringLiteral("height"), 40.0},
+    };
+    QEXPECT_THAT(rotated, JsonRectEq(280.0, 300.0, 20.0, 40.0));
+
+    // ...while still catching a genuine off-by-one.
+    QEXPECT_THAT(rotated, ::testing::Not(JsonRectEq(280.0, 300.0, 21.0, 40.0)));
+  }
+
+  // RectEq is int-valued and reads JSON with toInt(), which yields 0 for any
+  // non-integral number. Pinned so nobody reaches for it on scene geometry and
+  // gets a silent all-zero comparison instead of a failure.
+  void testRectEqIsIntegerOnlyAndNotForSceneGeometry() {
+    const QJsonObject fractional{
+        {QStringLiteral("x"), 175.5},
+        {QStringLiteral("y"), 20.25},
+        {QStringLiteral("width"), 50.5},
+        {QStringLiteral("height"), 25.125},
+    };
+
+    // Every field reads back as 0, so this fractional rect "equals" the origin.
+    QEXPECT_THAT(fractional, RectEq(0, 0, 0, 0));
+    QEXPECT_THAT(fractional, ::testing::Not(RectEq(175, 20, 50, 25)));
+
+    // JsonRectEq is the matcher that tells the truth about the same object.
+    QEXPECT_THAT(fractional, JsonRectEq(175.5, 20.25, 50.5, 25.125));
   }
 
   // =========================================================================
