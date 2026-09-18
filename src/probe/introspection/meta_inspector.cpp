@@ -5,14 +5,74 @@
 
 #include "compat/compat_core.h"
 #include "compat/compat_variant.h"
+#include "core/object_resolver.h"
 #include "variant_json.h"
 
 #include <QMetaMethod>
 #include <QMetaObject>
 #include <QMetaProperty>
+#include <QMetaType>
 #include <QWidget>
 
 namespace qtPilot {
+
+namespace {
+
+/// @brief Whether @p typeId is a pointer to a QObject-derived type.
+bool isQObjectPointerType(int typeId) {
+  const QMetaType metaType(typeId);
+  return metaType.flags().testFlag(QMetaType::PointerToQObject);
+}
+
+/// @brief Turn a JSON argument into a QObject pointer for a pointer parameter.
+///
+/// Only two shapes can produce a pointer the callee may safely dereference: an
+/// explicit null, and an object id naming a live object of a compatible type.
+/// Anything else - a number, a bool, an unregistered id - is a caller mistake,
+/// and the alternative to rejecting it is handing the host application a
+/// fabricated address to dereference.
+QObject* resolvePointerArgument(const QJsonValue& value, int typeId, const QString& methodName,
+                                int argIndex) {
+  if (value.isNull() || value.isUndefined()) {
+    return nullptr;
+  }
+
+  if (!value.isString()) {
+    throw std::runtime_error(
+        QStringLiteral("Argument %1 of '%2' is a pointer parameter, which takes an object id "
+                       "string or null")
+            .arg(argIndex)
+            .arg(methodName)
+            .toStdString());
+  }
+
+  const QString objectId = value.toString();
+  QObject* resolved = ObjectResolver::resolve(objectId);
+  if (!resolved) {
+    throw std::runtime_error(QStringLiteral("Argument %1 of '%2' names an object that does not "
+                                            "exist: '%3'")
+                                 .arg(argIndex)
+                                 .arg(methodName, objectId)
+                                 .toStdString());
+  }
+
+  // The id resolved, but to the wrong kind of object; passing it on would let
+  // the callee's own qobject_cast hand back garbage rather than nullptr.
+  const QMetaType metaType(typeId);
+  const QMetaObject* required = metaType.metaObject();
+  if (required && !resolved->metaObject()->inherits(required)) {
+    throw std::runtime_error(
+        QStringLiteral("Argument %1 of '%2' resolved to a %3, which is not a %4")
+            .arg(argIndex)
+            .arg(methodName, QString::fromUtf8(resolved->metaObject()->className()),
+                 QString::fromUtf8(required->className()))
+            .toStdString());
+  }
+
+  return resolved;
+}
+
+}  // namespace
 
 QJsonObject MetaInspector::objectInfo(QObject* obj) {
   if (!obj) {
@@ -332,6 +392,15 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
 
   for (int i = 0; i < args.count(); ++i) {
     int paramType = foundMethod.parameterType(i);
+    if (isQObjectPointerType(paramType)) {
+      // jsonToVariant would happily coerce a number into a pointer-sized value
+      // and the callee would dereference it, so pointers are resolved here
+      // instead of being converted.
+      QObject* target = resolvePointerArgument(args[i], paramType, methodName, i);
+      QVariant var(QMetaType(paramType), &target);
+      variantArgs.append(var);
+      continue;
+    }
     QVariant var = jsonToVariant(args[i], paramType);
     variantArgs.append(var);
   }

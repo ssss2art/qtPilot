@@ -1,6 +1,8 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
+#include "core/object_registry.h"
 #include "introspection/meta_inspector.h"
 #include "introspection/variant_json.h"
 
@@ -13,8 +15,6 @@
 #include <QSize>
 #include <QWidget>
 #include <QtTest>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot;
 using namespace qtPilot::test;
@@ -64,6 +64,16 @@ class TestObject : public QObject {
  public slots:
   void doSomething() {}
   int addNumbers(int a, int b) { return a + b; }
+
+  /// Takes a pointer, like the app-side helpers a caller drives by object id.
+  /// Dereferencing whatever the caller sent is how the probe used to crash its
+  /// host, so these are the methods the pointer-argument tests aim at.
+  QString describeObject(QObject* target) const {
+    return target ? QString::fromUtf8(target->metaObject()->className()) : QStringLiteral("<null>");
+  }
+  int countChildren(QObject* target) const {
+    return target ? static_cast<int>(target->children().size()) : -1;
+  }
 
  signals:
   void intValueChanged(int newValue);
@@ -131,6 +141,12 @@ class TestMetaInspector : public QObject {
   void testInvokeMethodWithReturnValue();
   void testInvokeMethodNotFound();
   void testInvokeMethodWrongArgCount();
+  void testInvokePointerArgRejectsNumber();
+  void testInvokePointerArgRejectsBool();
+  void testInvokePointerArgRejectsArbitraryString();
+  void testInvokePointerArgAcceptsNull();
+  void testInvokePointerArgResolvesRegisteredObjectId();
+  void testInvokePointerArgRejectsUnknownObjectId();
 
  private:
   QApplication* m_app = nullptr;
@@ -168,7 +184,8 @@ void TestMetaInspector::testVariantToJsonNumbers() {
 }
 
 void TestMetaInspector::testVariantToJsonString() {
-  QEXPECT_THAT(variantToJson(QVariant(QStringLiteral("hello"))), Eq(QJsonValue(QStringLiteral("hello"))));
+  QEXPECT_THAT(variantToJson(QVariant(QStringLiteral("hello"))),
+               Eq(QJsonValue(QStringLiteral("hello"))));
   QEXPECT_THAT(variantToJson(QVariant(QString())), Eq(QJsonValue(QString())));
 }
 
@@ -811,6 +828,77 @@ void TestMetaInspector::testInvokeMethodWrongArgCount() {
     QEXPECT_THAT(msg, AnyOf(QStrContains("not found"), QStrContains("wrong argument")));
   }
   QEXPECT_THAT(exceptionThrown, IsTrue());
+}
+
+// ---------------------------------------------------------------------------
+// Pointer arguments
+//
+// A Q_INVOKABLE taking a pointer used to receive whatever the JSON value
+// happened to coerce to, so `describeObject(1)` handed the app the address 1
+// and segfaulted it. The probe must never crash its host over a bad parameter:
+// every one of these has to come back as an error instead.
+// ---------------------------------------------------------------------------
+
+void TestMetaInspector::testInvokePointerArgRejectsNumber() {
+  TestObject obj;
+  QJsonArray args;
+  args.append(1);
+  QVERIFY_THROWS_EXCEPTION(std::runtime_error, MetaInspector::invokeMethod(
+                                                   &obj, QStringLiteral("describeObject"), args));
+}
+
+void TestMetaInspector::testInvokePointerArgRejectsBool() {
+  TestObject obj;
+  QJsonArray args;
+  args.append(true);
+  QVERIFY_THROWS_EXCEPTION(
+      std::runtime_error, MetaInspector::invokeMethod(&obj, QStringLiteral("countChildren"), args));
+}
+
+void TestMetaInspector::testInvokePointerArgRejectsArbitraryString() {
+  TestObject obj;
+  QJsonArray args;
+  args.append(QStringLiteral("not-an-object-id"));
+  QVERIFY_THROWS_EXCEPTION(std::runtime_error, MetaInspector::invokeMethod(
+                                                   &obj, QStringLiteral("describeObject"), args));
+}
+
+void TestMetaInspector::testInvokePointerArgAcceptsNull() {
+  TestObject obj;
+  QJsonArray args;
+  args.append(QJsonValue(QJsonValue::Null));
+  // A deliberate null is a legitimate argument; the method decides what it means.
+  const QJsonValue result =
+      MetaInspector::invokeMethod(&obj, QStringLiteral("describeObject"), args);
+  QEXPECT_THAT(result.toString(), QStrEq("<null>"));
+}
+
+void TestMetaInspector::testInvokePointerArgResolvesRegisteredObjectId() {
+  TestObject obj;
+  obj.setObjectName(QStringLiteral("pointerArgRoot"));
+  auto* child = new QObject(&obj);
+  child->setObjectName(QStringLiteral("pointerArgChild"));
+
+  // In a live probe the registry has already seen the tree; make that true here
+  // so the id the test hands in is one the resolver can actually look up.
+  ObjectRegistry::instance()->scanExistingObjects(&obj);
+  const QString childId = ObjectRegistry::instance()->objectId(child);
+
+  QJsonArray args;
+  args.append(childId);
+  const QJsonValue result =
+      MetaInspector::invokeMethod(&obj, QStringLiteral("describeObject"), args);
+
+  // Resolving the id is what makes pointer-taking helpers callable at all.
+  QEXPECT_THAT(result.toString(), QStrEq("QObject"));
+}
+
+void TestMetaInspector::testInvokePointerArgRejectsUnknownObjectId() {
+  TestObject obj;
+  QJsonArray args;
+  args.append(QStringLiteral("MainWindow/NoSuchThing/AtAll"));
+  QVERIFY_THROWS_EXCEPTION(std::runtime_error, MetaInspector::invokeMethod(
+                                                   &obj, QStringLiteral("describeObject"), args));
 }
 
 QTEST_APPLESS_MAIN(TestMetaInspector)
