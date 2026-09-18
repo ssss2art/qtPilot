@@ -401,17 +401,13 @@ void TestInputModifiers::testParseIsIdempotentOnRepeats() {
 
 void TestInputModifiers::testAcceptedNamesCoversEveryAlias() {
   const QStringList accepted = ModifierParser::acceptedNames();
-  // Every name the parser documents must actually parse, and the list must be
-  // the single source of truth used by the error payload.
   QEXPECT_THAT(accepted, QIsNotEmpty());
+
+  // The documented list is also the list the error payload advertises, so every
+  // name on it has to actually parse.
   for (const QString& name : accepted) {
-    bool threw = false;
-    try {
-      ModifierParser::parse(QJsonValue(name), QStringLiteral("t"));
-    } catch (const JsonRpcException&) {
-      threw = true;
-    }
-    QVERIFY2(!threw, qPrintable(QStringLiteral("accepted name rejected: %1").arg(name)));
+    QEXPECT_THAT([name] { ModifierParser::parse(QJsonValue(name), QStringLiteral("t")); },
+                 Not(Throws<JsonRpcException>()));
   }
 }
 
@@ -420,52 +416,58 @@ void TestInputModifiers::testAcceptedNamesCoversEveryAlias() {
 // ============================================================================
 
 void TestInputModifiers::testParseRejectsUnknownName() {
-  QVERIFY_THROWS_EXCEPTION(
-      JsonRpcException,
-      ModifierParser::parse(QJsonValue(QStringLiteral("hyper")), QStringLiteral("t")));
+  QEXPECT_THAT(
+      [] { ModifierParser::parse(QJsonValue(QStringLiteral("hyper")), QStringLiteral("t")); },
+      Throws<JsonRpcException>(AllOf(WithRpcCode(static_cast<int>(JsonRpcError::kInvalidParams)),
+                                     WithRpcMessage(QStrContains("hyper")))));
 }
 
 void TestInputModifiers::testParseRejectsNumber() {
-  QVERIFY_THROWS_EXCEPTION(JsonRpcException,
-                           ModifierParser::parse(QJsonValue(4), QStringLiteral("t")));
+  QEXPECT_THAT(
+      [] { ModifierParser::parse(QJsonValue(4), QStringLiteral("t")); },
+      Throws<JsonRpcException>(WithRpcCode(static_cast<int>(JsonRpcError::kInvalidParams))));
 }
 
 void TestInputModifiers::testParseRejectsBool() {
-  QVERIFY_THROWS_EXCEPTION(JsonRpcException,
-                           ModifierParser::parse(QJsonValue(true), QStringLiteral("t")));
+  QEXPECT_THAT(
+      [] { ModifierParser::parse(QJsonValue(true), QStringLiteral("t")); },
+      Throws<JsonRpcException>(WithRpcCode(static_cast<int>(JsonRpcError::kInvalidParams))));
 }
 
 void TestInputModifiers::testParseRejectsObject() {
   QJsonObject obj;
   obj[QStringLiteral("ctrl")] = true;
-  QVERIFY_THROWS_EXCEPTION(JsonRpcException,
-                           ModifierParser::parse(QJsonValue(obj), QStringLiteral("t")));
+  QEXPECT_THAT(
+      [obj] { ModifierParser::parse(QJsonValue(obj), QStringLiteral("t")); },
+      Throws<JsonRpcException>(WithRpcCode(static_cast<int>(JsonRpcError::kInvalidParams))));
 }
 
 void TestInputModifiers::testParseRejectsNonStringArrayElement() {
   const QJsonArray names{QStringLiteral("ctrl"), 7};
-  QVERIFY_THROWS_EXCEPTION(JsonRpcException,
-                           ModifierParser::parse(QJsonValue(names), QStringLiteral("t")));
+  QEXPECT_THAT(
+      [names] { ModifierParser::parse(QJsonValue(names), QStringLiteral("t")); },
+      Throws<JsonRpcException>(AllOf(WithRpcCode(static_cast<int>(JsonRpcError::kInvalidParams)),
+                                     WithRpcMessage(QStrContains("strings")))));
 }
 
 void TestInputModifiers::testParseRejectsEmptySegmentInJoinedString() {
-  QVERIFY_THROWS_EXCEPTION(
-      JsonRpcException,
-      ModifierParser::parse(QJsonValue(QStringLiteral("ctrl++shift")), QStringLiteral("t")));
+  QEXPECT_THAT(
+      [] { ModifierParser::parse(QJsonValue(QStringLiteral("ctrl++shift")), QStringLiteral("t")); },
+      Throws<JsonRpcException>(AllOf(WithRpcCode(static_cast<int>(JsonRpcError::kInvalidParams)),
+                                     WithRpcMessage(QStrContains("empty")))));
 }
 
 void TestInputModifiers::testRejectionNamesTheOffendingValue() {
-  bool sawPayload = false;
-  try {
-    ModifierParser::parse(QJsonValue(QStringLiteral("hyper")), QStringLiteral("qt.ui.click"));
-  } catch (const JsonRpcException& ex) {
-    const QJsonObject data = ex.data();
-    QEXPECT_THAT(data, HasJsonField(QStringLiteral("modifiers")));
-    QEXPECT_THAT(data, HasJsonField(QStringLiteral("accepted")));
-    QEXPECT_THAT(data.value(QStringLiteral("method")).toString(), QStrEq("qt.ui.click"));
-    sawPayload = true;
-  }
-  QVERIFY2(sawPayload, "expected a JsonRpcException carrying a diagnostic payload");
+  // The payload is the part a caller acts on: what was rejected, and what it
+  // could have said instead.
+  QEXPECT_THAT(
+      [] {
+        ModifierParser::parse(QJsonValue(QStringLiteral("hyper")), QStringLiteral("qt.ui.click"));
+      },
+      Throws<JsonRpcException>(
+          WithRpcData(AllOf(HasJsonField(QStringLiteral("modifiers"), QStringLiteral("hyper")),
+                            HasJsonField(QStringLiteral("method"), QStringLiteral("qt.ui.click")),
+                            HasJsonField(QStringLiteral("accepted"))))));
 }
 
 // ============================================================================

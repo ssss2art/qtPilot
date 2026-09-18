@@ -18,12 +18,6 @@ namespace qtPilot {
 
 namespace {
 
-/// @brief Whether @p typeId is a pointer to a QObject-derived type.
-bool isQObjectPointerType(int typeId) {
-  const QMetaType metaType(typeId);
-  return metaType.flags().testFlag(QMetaType::PointerToQObject);
-}
-
 /// @brief Turn a JSON argument into a QObject pointer for a pointer parameter.
 ///
 /// Only two shapes can produce a pointer the callee may safely dereference: an
@@ -58,8 +52,7 @@ QObject* resolvePointerArgument(const QJsonValue& value, int typeId, const QStri
 
   // The id resolved, but to the wrong kind of object; passing it on would let
   // the callee's own qobject_cast hand back garbage rather than nullptr.
-  const QMetaType metaType(typeId);
-  const QMetaObject* required = metaType.metaObject();
+  const QMetaObject* required = qtPilot::compat::metaObjectForType(typeId);
   if (required && !resolved->metaObject()->inherits(required)) {
     throw std::runtime_error(
         QStringLiteral("Argument %1 of '%2' resolved to a %3, which is not a %4")
@@ -392,12 +385,12 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
 
   for (int i = 0; i < args.count(); ++i) {
     int paramType = foundMethod.parameterType(i);
-    if (isQObjectPointerType(paramType)) {
+    if (qtPilot::compat::isQObjectPointerType(paramType)) {
       // jsonToVariant would happily coerce a number into a pointer-sized value
       // and the callee would dereference it, so pointers are resolved here
       // instead of being converted.
       QObject* target = resolvePointerArgument(args[i], paramType, methodName, i);
-      QVariant var(QMetaType(paramType), &target);
+      QVariant var = qtPilot::compat::variantFromValue(paramType, &target);
       variantArgs.append(var);
       continue;
     }

@@ -843,24 +843,24 @@ void TestMetaInspector::testInvokePointerArgRejectsNumber() {
   TestObject obj;
   QJsonArray args;
   args.append(1);
-  QVERIFY_THROWS_EXCEPTION(std::runtime_error, MetaInspector::invokeMethod(
-                                                   &obj, QStringLiteral("describeObject"), args));
+  QEXPECT_THAT([&] { MetaInspector::invokeMethod(&obj, QStringLiteral("describeObject"), args); },
+               Throws<std::runtime_error>(WhatContains("pointer parameter")));
 }
 
 void TestMetaInspector::testInvokePointerArgRejectsBool() {
   TestObject obj;
   QJsonArray args;
   args.append(true);
-  QVERIFY_THROWS_EXCEPTION(
-      std::runtime_error, MetaInspector::invokeMethod(&obj, QStringLiteral("countChildren"), args));
+  QEXPECT_THAT([&] { MetaInspector::invokeMethod(&obj, QStringLiteral("countChildren"), args); },
+               Throws<std::runtime_error>(WhatContains("pointer parameter")));
 }
 
 void TestMetaInspector::testInvokePointerArgRejectsArbitraryString() {
   TestObject obj;
   QJsonArray args;
   args.append(QStringLiteral("not-an-object-id"));
-  QVERIFY_THROWS_EXCEPTION(std::runtime_error, MetaInspector::invokeMethod(
-                                                   &obj, QStringLiteral("describeObject"), args));
+  QEXPECT_THAT([&] { MetaInspector::invokeMethod(&obj, QStringLiteral("describeObject"), args); },
+               Throws<std::runtime_error>(WhatContains("does not exist")));
 }
 
 void TestMetaInspector::testInvokePointerArgAcceptsNull() {
@@ -897,8 +897,8 @@ void TestMetaInspector::testInvokePointerArgRejectsUnknownObjectId() {
   TestObject obj;
   QJsonArray args;
   args.append(QStringLiteral("MainWindow/NoSuchThing/AtAll"));
-  QVERIFY_THROWS_EXCEPTION(std::runtime_error, MetaInspector::invokeMethod(
-                                                   &obj, QStringLiteral("describeObject"), args));
+  QEXPECT_THAT([&] { MetaInspector::invokeMethod(&obj, QStringLiteral("describeObject"), args); },
+               Throws<std::runtime_error>(WhatContains("does not exist")));
 }
 
 QTEST_APPLESS_MAIN(TestMetaInspector)
