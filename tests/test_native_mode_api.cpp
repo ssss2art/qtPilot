@@ -22,6 +22,25 @@
 using namespace qtPilot;
 using namespace qtPilot::test;
 
+namespace {
+
+class DoubleClickProbeWidget : public QWidget {
+  Q_OBJECT
+ public:
+  using QWidget::QWidget;
+
+ signals:
+  void doubleClicked();
+
+ protected:
+  void mouseDoubleClickEvent(QMouseEvent* event) override {
+    emit doubleClicked();
+    QWidget::mouseDoubleClickEvent(event);
+  }
+};
+
+}  // namespace
+
 /// @brief Integration tests for the complete Native Mode API (qt.* methods).
 ///
 /// Tests all 7 API domains end-to-end through the JSON-RPC handler:
@@ -74,6 +93,7 @@ class TestNativeModeApi : public QObject {
   void testUiGeometry();
   void testUiScreenshot();
   void testUiClick();
+  void testUiDoubleClick();
   void testUiSendKeys();
 
   // Name map (qt.names.*)
@@ -605,6 +625,26 @@ void TestNativeModeApi::testUiClick() {
   QEXPECT_THAT(result.isObject(), IsTrue());
   QEXPECT_THAT(result.toObject(), HasJsonField("ok", Eq(true)));
   QEXPECT_THAT(spy.count(), Eq(1));
+}
+
+void TestNativeModeApi::testUiDoubleClick() {
+  auto* probe = new DoubleClickProbeWidget(m_testWindow);
+  probe->setObjectName(QStringLiteral("doubleClickProbe"));
+  probe->setFixedSize(80, 30);
+  m_testWindow->layout()->addWidget(probe);
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(probe);
+
+  QString objectId = ObjectRegistry::instance()->objectId(probe);
+  QSignalSpy spy(probe, &DoubleClickProbeWidget::doubleClicked);
+
+  QJsonValue result = callResult("qt.ui.doubleClick", QJsonObject{{"objectId", objectId}});
+  QApplication::processEvents();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("ok", Eq(true)));
+  QEXPECT_THAT(spy.size(), Eq(1));
 }
 
 void TestNativeModeApi::testUiSendKeys() {

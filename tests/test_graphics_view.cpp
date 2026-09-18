@@ -41,10 +41,33 @@ namespace {
 class TestSceneItem : public QGraphicsObject {
   Q_OBJECT
  public:
-  explicit TestSceneItem(QGraphicsItem* parent = nullptr) : QGraphicsObject(parent) {}
+  explicit TestSceneItem(QGraphicsItem* parent = nullptr) : QGraphicsObject(parent) {
+    setFlag(QGraphicsItem::ItemIsFocusable);
+  }
 
   QRectF boundingRect() const override { return QRectF(0, 0, 40, 20); }
   void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override {}
+
+ signals:
+  void clicked();
+  void doubleClicked();
+  void keyText(const QString& text);
+
+ protected:
+  void mousePressEvent(QGraphicsSceneMouseEvent* event) override {
+    emit clicked();
+    QGraphicsObject::mousePressEvent(event);
+  }
+
+  void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override {
+    emit doubleClicked();
+    QGraphicsObject::mouseDoubleClickEvent(event);
+  }
+
+  void keyPressEvent(QKeyEvent* event) override {
+    emit keyText(event->text());
+    QGraphicsObject::keyPressEvent(event);
+  }
 };
 
 /// @brief An item with an empty bounding rect, positioning children instead.
@@ -119,6 +142,11 @@ class TestGraphicsView : public QObject {
   void uiGeometryRejectsAViewObjectIdOnAWidgetTarget();
   void inspectGeometryPartCoversGraphicsObjects();
   void inspectGeometryPartNamesTheCoordinateSpace();
+  void uiClickAcceptsAGraphicsObject();
+  void uiClickRejectsAViewObjectIdOnAnotherScene();
+  void uiClickRejectsAnOffViewportGraphicsObject();
+  void uiDoubleClickAcceptsAGraphicsObject();
+  void uiSendKeysAcceptsAGraphicsObject();
 
  private:
   QJsonObject call(const QString& method, const QJsonObject& params);
@@ -845,6 +873,93 @@ void TestGraphicsView::uiGeometryRejectsAViewObjectIdOnAWidgetTarget() {
                {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_view)},
                {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(m_view)}}),
       IsJsonRpcError(Eq(JsonRpcError::kInvalidParams)));
+}
+
+void TestGraphicsView::uiClickAcceptsAGraphicsObject() {
+  QSignalSpy spy(m_item, &TestSceneItem::clicked);
+
+  const QJsonObject result =
+      callResult(
+          QStringLiteral("qt.ui.click"),
+          QJsonObject{
+              {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
+              {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(m_view)}})
+          .toObject();
+  QApplication::processEvents();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(
+      result,
+      AllOf(JsonField("ok", true), JsonField("target", QStrEq(QStringLiteral("graphicsItem"))),
+            JsonField("viewObjectId", QStrEq(ObjectRegistry::instance()->objectId(m_view)))));
+  QEXPECT_THAT(spy.size(), Eq(1));
+}
+
+void TestGraphicsView::uiClickRejectsAViewObjectIdOnAnotherScene() {
+  QGraphicsScene otherScene;
+  QGraphicsView strangerView(&otherScene);
+  strangerView.setObjectName(QStringLiteral("strangerView"));
+  strangerView.resize(200, 200);
+  strangerView.show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(&strangerView);
+
+  QEXPECT_THAT(
+      call(QStringLiteral("qt.ui.click"),
+           QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
+                       {QStringLiteral("viewObjectId"),
+                        ObjectRegistry::instance()->objectId(&strangerView)}}),
+      IsJsonRpcError(Eq(JsonRpcError::kInvalidParams)));
+}
+
+void TestGraphicsView::uiClickRejectsAnOffViewportGraphicsObject() {
+  m_item->setPos(5000, 5000);
+  QApplication::processEvents();
+
+  QEXPECT_THAT(
+      call(QStringLiteral("qt.ui.click"),
+           QJsonObject{
+               {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
+               {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(m_view)}}),
+      IsJsonRpcError(Eq(ErrorCode::kCoordinateOutOfBounds)));
+}
+
+void TestGraphicsView::uiDoubleClickAcceptsAGraphicsObject() {
+  QSignalSpy spy(m_item, &TestSceneItem::doubleClicked);
+
+  const QJsonObject result =
+      callResult(
+          QStringLiteral("qt.ui.doubleClick"),
+          QJsonObject{
+              {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
+              {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(m_view)}})
+          .toObject();
+  QApplication::processEvents();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result, AllOf(JsonField("ok", true),
+                             JsonField("target", QStrEq(QStringLiteral("graphicsItem")))));
+  QEXPECT_THAT(spy.size(), Eq(1));
+}
+
+void TestGraphicsView::uiSendKeysAcceptsAGraphicsObject() {
+  QSignalSpy spy(m_item, &TestSceneItem::keyText);
+
+  const QJsonObject result =
+      callResult(QStringLiteral("qt.ui.sendKeys"),
+                 QJsonObject{
+                     {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
+                     {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(m_view)},
+                     {QStringLiteral("text"), QStringLiteral("abc")}})
+          .toObject();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result, AllOf(JsonField("ok", true),
+                             JsonField("target", QStrEq(QStringLiteral("graphicsItem")))));
+  QEXPECT_THAT(spy.size(), Eq(3));
+  QEXPECT_THAT(spy.at(0).at(0).toString(), QStrEq(QStringLiteral("a")));
+  QEXPECT_THAT(spy.at(1).at(0).toString(), QStrEq(QStringLiteral("b")));
+  QEXPECT_THAT(spy.at(2).at(0).toString(), QStrEq(QStringLiteral("c")));
 }
 
 void TestGraphicsView::inspectGeometryPartCoversGraphicsObjects() {
