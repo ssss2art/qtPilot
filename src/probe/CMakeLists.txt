@@ -12,6 +12,7 @@ set(PROBE_SOURCES
     introspection/model_navigator.cpp
     interaction/input_simulator.cpp
     interaction/modifier_parser.cpp
+    interaction/item_targeting.cpp
     interaction/screenshot.cpp
     interaction/hit_test.cpp
     transport/websocket_server.cpp
@@ -47,6 +48,7 @@ set(PROBE_HEADERS
     introspection/model_navigator.h
     interaction/input_simulator.h
     interaction/modifier_parser.h
+    interaction/item_targeting.h
     interaction/screenshot.h
     interaction/hit_test.h
     transport/websocket_server.h
