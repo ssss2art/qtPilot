@@ -43,6 +43,7 @@
 # Build directories
 build/
 build_*/
+build-*/
 dist/
 install/
 

@@ -41,3 +41,15 @@ if(QTPILOT_HAS_QML)
 endif()
 
 target_include_directories(qtPilot_bench_object_id PRIVATE ${CMAKE_SOURCE_DIR}/src/probe)
+
+add_executable(qtPilot_bench_item_targeting bench_item_targeting.cpp)
+
+target_link_libraries(qtPilot_bench_item_targeting PRIVATE
+    qtPilot_probe
+    benchmark::benchmark
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Widgets
+)
+
+target_include_directories(qtPilot_bench_item_targeting PRIVATE ${CMAKE_SOURCE_DIR}/src/probe)
