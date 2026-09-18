@@ -77,6 +77,9 @@ class QTPILOT_EXPORT InputSimulator {
   /// @param widget Target widget
   /// @param sequence Key sequence string (e.g., "Ctrl+S", "Alt+F4")
   ///        Accepts standard QKeySequence format strings
+  /// @note Only the first key combination is sent. A multi-chord sequence such
+  ///       as "Ctrl+K, Ctrl+S" delivers Ctrl+K and reports success; see T11 in
+  ///       docs/observability-testability-gaps.md.
   static void sendKeySequence(QWidget* widget, const QString& sequence);
 
   /// @brief Simulate individual key press.

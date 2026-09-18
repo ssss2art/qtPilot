@@ -105,7 +105,11 @@ void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
   widget->setFocus();
   QApplication::processEvents();
 
-  // Extract key and modifiers from first key combination
+  // Only the first key combination is sent: a multi-chord sequence such as
+  // "Ctrl+K, Ctrl+S" delivers Ctrl+K and reports success. Tracked as T11 in
+  // docs/observability-testability-gaps.md -- no app we drive uses chorded
+  // shortcuts yet, and closing it means deciding inter-chord timing and what a
+  // partial failure reports.
   Qt::Key extractedKey;
   Qt::KeyboardModifiers mods;
   qtPilot::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);
@@ -437,7 +441,9 @@ void InputSimulator::sendKeySequence(QWindow* window, const QString& sequence) {
                                 "'");
   }
 
-  // Mirrors the QWidget overload: only the first key combination is sent.
+  // Mirrors the QWidget overload: only the first key combination is sent, so a
+  // multi-chord sequence is silently half-delivered (T11 in
+  // docs/observability-testability-gaps.md).
   Qt::Key extractedKey;
   Qt::KeyboardModifiers mods;
   qtPilot::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);
