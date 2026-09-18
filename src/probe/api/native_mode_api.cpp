@@ -158,6 +158,198 @@ double requireCoordinate(const QJsonObject& params, const QString& key, const QS
   return raw.toDouble();
 }
 
+InputSimulator::MouseButton parseMouseButton(const QString& button) {
+  if (button == QStringLiteral("right"))
+    return InputSimulator::MouseButton::Right;
+  if (button == QStringLiteral("middle"))
+    return InputSimulator::MouseButton::Middle;
+  return InputSimulator::MouseButton::Left;
+}
+
+QGraphicsView* resolveGraphicsItemView(QGraphicsObject* item, QGraphicsView* requestedView,
+                                       const QString& methodName) {
+  QGraphicsScene* scene = item->scene();
+  if (!scene) {
+    throw JsonRpcException(
+        ErrorCode::kObjectNotFound, QStringLiteral("Graphics item is not in a scene"),
+        QJsonObject{{QStringLiteral("method"), methodName},
+                    {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(item)}});
+  }
+
+  if (requestedView) {
+    if (scene->views().contains(requestedView)) {
+      return requestedView;
+    }
+
+    QJsonArray candidates;
+    const QList<QGraphicsView*> sceneViews = scene->views();
+    for (QGraphicsView* view : sceneViews) {
+      candidates.append(ObjectRegistry::instance()->objectId(view));
+    }
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("viewObjectId does not render this item's scene"),
+        QJsonObject{{QStringLiteral("method"), methodName}, {QStringLiteral("views"), candidates}});
+  }
+
+  const QList<QGraphicsView*> sceneViews = scene->views();
+  for (QGraphicsView* view : sceneViews) {
+    if (view && view->isVisible()) {
+      return view;
+    }
+  }
+  for (QGraphicsView* view : sceneViews) {
+    if (view) {
+      return view;
+    }
+  }
+
+  throw JsonRpcException(ErrorCode::kObjectNotFound,
+                         QStringLiteral("Graphics item has no rendering QGraphicsView"),
+                         QJsonObject{{QStringLiteral("method"), methodName}});
+}
+
+QPoint graphicsClickPoint(QGraphicsObject* item, QGraphicsView* view, const QJsonObject& params,
+                          const QString& methodName) {
+  QPointF localPoint = item->boundingRect().center();
+  const QJsonValue rawPosition = params.value(QStringLiteral("position"));
+  if (!rawPosition.isUndefined() && !rawPosition.isNull()) {
+    if (!rawPosition.isObject()) {
+      throw JsonRpcException(
+          JsonRpcError::kInvalidParams,
+          QStringLiteral("Parameter 'position' must be an object with numeric x/y fields"),
+          QJsonObject{{QStringLiteral("method"), methodName},
+                      {QStringLiteral("position"), rawPosition}});
+    }
+    const QJsonObject position = rawPosition.toObject();
+    localPoint = QPointF(requireCoordinate(position, QStringLiteral("x"), methodName),
+                         requireCoordinate(position, QStringLiteral("y"), methodName));
+  }
+
+  return view->mapFromScene(item->mapToScene(localPoint));
+}
+
+void queueWidgetClick(QWidget* widget, InputSimulator::MouseButton button, const QPoint& point,
+                      bool doubleClick) {
+  QPointer<QWidget> safeWidget(widget);
+  QMetaObject::invokeMethod(
+      widget,
+      [safeWidget, button, point, doubleClick]() {
+        if (!safeWidget) {
+          return;
+        }
+        if (doubleClick) {
+          InputSimulator::mouseDoubleClick(safeWidget, button, point);
+        } else {
+          InputSimulator::mouseClick(safeWidget, button, point);
+        }
+      },
+      Qt::QueuedConnection);
+}
+
+QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodName,
+                              bool doubleClick) {
+  QObject* obj = resolveObjectParam(params, methodName);
+  const QString objectId = params[QStringLiteral("objectId")].toString();
+  const InputSimulator::MouseButton button =
+      parseMouseButton(params[QStringLiteral("button")].toString(QStringLiteral("left")));
+
+  if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+    QGraphicsView* requestedView =
+        resolveViewParam(params, QStringLiteral("viewObjectId"), methodName);
+    QGraphicsView* view = resolveGraphicsItemView(item, requestedView, methodName);
+    const QPoint point = graphicsClickPoint(item, view, params, methodName);
+    if (!QRect(QPoint(0, 0), view->viewport()->size()).contains(point)) {
+      throw JsonRpcException(
+          ErrorCode::kCoordinateOutOfBounds,
+          QStringLiteral("Graphics item click point is outside the view viewport"),
+          QJsonObject{{QStringLiteral("method"), methodName},
+                      {QStringLiteral("objectId"), objectId},
+                      {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)},
+                      {QStringLiteral("x"), point.x()},
+                      {QStringLiteral("y"), point.y()}});
+    }
+
+    queueWidgetClick(view->viewport(), button, point, doubleClick);
+    return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("deferred"), true},
+                       {QStringLiteral("target"), QStringLiteral("graphicsItem")},
+                       {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)},
+                       {QStringLiteral("position"), QJsonObject{{QStringLiteral("x"), point.x()},
+                                                                {QStringLiteral("y"), point.y()}}}};
+  }
+
+  auto* widget = qobject_cast<QWidget*>(obj);
+  if (!widget) {
+    throw JsonRpcException(
+        ErrorCode::kObjectNotWidget, QStringLiteral("Object is not a widget: %1").arg(objectId),
+        QJsonObject{
+            {QStringLiteral("objectId"), objectId},
+            {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+  }
+
+  QPoint point;
+  const QJsonValue rawPosition = params.value(QStringLiteral("position"));
+  if (!rawPosition.isUndefined() && !rawPosition.isNull()) {
+    if (!rawPosition.isObject()) {
+      throw JsonRpcException(
+          JsonRpcError::kInvalidParams,
+          QStringLiteral("Parameter 'position' must be an object with numeric x/y fields"),
+          QJsonObject{{QStringLiteral("method"), methodName},
+                      {QStringLiteral("position"), rawPosition}});
+    }
+    const QJsonObject position = rawPosition.toObject();
+    point = QPoint(qRound(requireCoordinate(position, QStringLiteral("x"), methodName)),
+                   qRound(requireCoordinate(position, QStringLiteral("y"), methodName)));
+  }
+
+  queueWidgetClick(widget, button, point, doubleClick);
+  return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deferred"), true}};
+}
+
+QJsonObject handleUiSendKeys(const QJsonObject& params) {
+  QObject* obj = resolveObjectParam(params, QStringLiteral("qt.ui.sendKeys"));
+  const QString objectId = params[QStringLiteral("objectId")].toString();
+  const QString text = params[QStringLiteral("text")].toString();
+  const QString sequence = params[QStringLiteral("sequence")].toString();
+
+  if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+    QGraphicsView* requestedView =
+        resolveViewParam(params, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.sendKeys"));
+    QGraphicsView* view =
+        resolveGraphicsItemView(item, requestedView, QStringLiteral("qt.ui.sendKeys"));
+    item->setFocus(Qt::OtherFocusReason);
+    view->viewport()->setFocus(Qt::OtherFocusReason);
+    if (!text.isEmpty()) {
+      InputSimulator::sendText(view->viewport(), text);
+    }
+    if (!sequence.isEmpty()) {
+      InputSimulator::sendKeySequence(view->viewport(), sequence);
+    }
+    return QJsonObject{
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("target"), QStringLiteral("graphicsItem")},
+        {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)}};
+  }
+
+  auto* widget = qobject_cast<QWidget*>(obj);
+  if (!widget) {
+    throw JsonRpcException(
+        ErrorCode::kObjectNotWidget, QStringLiteral("Object is not a widget: %1").arg(objectId),
+        QJsonObject{
+            {QStringLiteral("objectId"), objectId},
+            {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+  }
+
+  if (!text.isEmpty()) {
+    InputSimulator::sendText(widget, text);
+  }
+  if (!sequence.isEmpty()) {
+    InputSimulator::sendKeySequence(widget, sequence);
+  }
+  return QJsonObject{{QStringLiteral("ok"), true}};
+}
+
 }  // anonymous namespace
 
 // ============================================================================
@@ -673,22 +865,7 @@ void NativeModeApi::registerUiMethods() {
   // qt.ui.click
   m_handler->RegisterMethod(QStringLiteral("qt.ui.click"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* widget = resolveWidgetParam(p, QStringLiteral("qt.ui.click"));
     QString objectId = p[QStringLiteral("objectId")].toString();
-
-    QString button = p[QStringLiteral("button")].toString(QStringLiteral("left"));
-    QJsonObject pos = p[QStringLiteral("position")].toObject();
-
-    InputSimulator::MouseButton btn = InputSimulator::MouseButton::Left;
-    if (button == QStringLiteral("right"))
-      btn = InputSimulator::MouseButton::Right;
-    else if (button == QStringLiteral("middle"))
-      btn = InputSimulator::MouseButton::Middle;
-
-    QPoint clickPos;
-    if (!pos.isEmpty()) {
-      clickPos = QPoint(pos[QStringLiteral("x")].toInt(), pos[QStringLiteral("y")].toInt());
-    }
 
     // Defer the actual click. This handler runs inside the WebSocket message dispatch
     // (QWebSocketPrivate::processData). Clicking synchronously runs the target's slot
@@ -697,40 +874,27 @@ void NativeModeApi::registerUiMethods() {
     // re-enters WebSocket frame processing. QtWebSockets is not reentrant, so processData
     // dereferences a half-updated state and SIGSEGVs. Queuing the click makes it run from
     // the top of the event loop after processData has fully unwound. QPointer guards
-    // against the widget being destroyed before the queued call fires.
-    QPointer<QWidget> safeWidget(widget);
-    QMetaObject::invokeMethod(
-        widget,
-        [safeWidget, btn, clickPos]() {
-          if (safeWidget)
-            InputSimulator::mouseClick(safeWidget, btn, clickPos);
-        },
-        Qt::QueuedConnection);
-
-    QJsonObject result;
-    result[QStringLiteral("ok")] = true;
-    result[QStringLiteral("deferred")] = true;
+    // against the widget being destroyed before the queued call fires. Graphics
+    // items use the same queued path, targeted at the rendering view's viewport.
+    QJsonObject result = handleUiClickLike(p, QStringLiteral("qt.ui.click"), false);
     return envelopeToString(ResponseEnvelope::wrap(result, objectId));
   });
+
+  // qt.ui.doubleClick
+  m_handler->RegisterMethod(
+      QStringLiteral("qt.ui.doubleClick"), [](const QString& params) -> QString {
+        auto p = parseParams(params);
+        QString objectId = p[QStringLiteral("objectId")].toString();
+        QJsonObject result = handleUiClickLike(p, QStringLiteral("qt.ui.doubleClick"), true);
+        return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+      });
 
   // qt.ui.sendKeys
   m_handler->RegisterMethod(QStringLiteral("qt.ui.sendKeys"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QWidget* widget = resolveWidgetParam(p, QStringLiteral("qt.ui.sendKeys"));
     QString objectId = p[QStringLiteral("objectId")].toString();
 
-    QString text = p[QStringLiteral("text")].toString();
-    QString sequence = p[QStringLiteral("sequence")].toString();
-
-    if (!text.isEmpty()) {
-      InputSimulator::sendText(widget, text);
-    }
-    if (!sequence.isEmpty()) {
-      InputSimulator::sendKeySequence(widget, sequence);
-    }
-
-    QJsonObject result;
-    result[QStringLiteral("ok")] = true;
+    QJsonObject result = handleUiSendKeys(p);
     return envelopeToString(ResponseEnvelope::wrap(result, objectId));
   });
 

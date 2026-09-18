@@ -225,10 +225,17 @@ def register_native_tools(mcp: FastMCP) -> None:
         objectId: str,
         button: str | None = None,
         position: dict | None = None,
+        viewObjectId: str | None = None,
         ctx: Context = None,
     ) -> dict:
-        """Click on a widget, optionally specifying button and position.
+        """Click on a widget or QGraphicsView scene item.
+
+        For QGraphicsObject scene items, pass viewObjectId when the scene has
+        more than one rendering view. The optional position is local to the
+        target object; omitted means the target center.
+
         Example: qt_ui_click(objectId="submitButton")
+        Example: qt_ui_click(objectId="TextBox_...", viewObjectId="layoutView")
         """
         from qtpilot.server import require_probe
 
@@ -237,17 +244,53 @@ def register_native_tools(mcp: FastMCP) -> None:
             params["button"] = button
         if position is not None:
             params["position"] = position
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
         return await require_probe().call("qt.ui.click", params)
+
+    @mcp.tool
+    async def qt_ui_doubleClick(
+        objectId: str,
+        button: str | None = None,
+        position: dict | None = None,
+        viewObjectId: str | None = None,
+        ctx: Context = None,
+    ) -> dict:
+        """Double-click on a widget or QGraphicsView scene item.
+
+        For QGraphicsObject scene items, pass viewObjectId when the scene has
+        more than one rendering view. The optional position is local to the
+        target object; omitted means the target center.
+
+        Example: qt_ui_doubleClick(objectId="lineEdit")
+        Example: qt_ui_doubleClick(objectId="TextBox_...", viewObjectId="layoutView")
+        """
+        from qtpilot.server import require_probe
+
+        params: dict = {"objectId": objectId}
+        if button is not None:
+            params["button"] = button
+        if position is not None:
+            params["position"] = position
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        return await require_probe().call("qt.ui.doubleClick", params)
 
     @mcp.tool
     async def qt_ui_sendKeys(
         objectId: str,
         text: str | None = None,
         sequence: str | None = None,
+        viewObjectId: str | None = None,
         ctx: Context = None,
     ) -> dict:
-        """Send key input to a widget (text or key sequence).
+        """Send key input to a widget or QGraphicsView scene item.
+
+        For QGraphicsObject scene items, pass viewObjectId when the scene has
+        more than one rendering view.
+
         Example: qt_ui_sendKeys(objectId="lineEdit", text="hello")
+        Example: qt_ui_sendKeys(objectId="TextBox_...", text="hello", viewObjectId="layoutView")
         """
         from qtpilot.server import require_probe
 
@@ -256,6 +299,8 @@ def register_native_tools(mcp: FastMCP) -> None:
             params["text"] = text
         if sequence is not None:
             params["sequence"] = sequence
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
         return await require_probe().call("qt.ui.sendKeys", params)
 
     @mcp.tool

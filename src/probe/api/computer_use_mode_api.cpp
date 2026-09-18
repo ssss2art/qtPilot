@@ -122,6 +122,17 @@ ResolvedTarget resolveWindowCoordinate(QWidget* window, int x, int y, bool scree
       target = QApplication::widgetAt(globalPos);
     }
     if (!target) {
+      if (window) {
+        const QPoint windowLocal = window->mapFromGlobal(globalPos);
+        const QSize winSize = window->size();
+        if (windowLocal.x() >= 0 && windowLocal.y() >= 0 && windowLocal.x() < winSize.width() &&
+            windowLocal.y() < winSize.height()) {
+          if (QWidget* child = window->childAt(windowLocal)) {
+            return {child, child->mapFrom(window, windowLocal)};
+          }
+          return {window, windowLocal};
+        }
+      }
       throw JsonRpcException(
           ErrorCode::kCoordinateOutOfBounds,
           QStringLiteral("No widget found at screen coordinates (%1, %2)").arg(x).arg(y),
