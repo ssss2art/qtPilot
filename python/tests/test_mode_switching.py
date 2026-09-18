@@ -84,7 +84,7 @@ class TestSetMode:
 class TestCreateServerModes:
     @pytest.mark.parametrize(
         ("mode", "expected_count"),
-        [("native", 38), ("cu", 23), ("chrome", 18), ("all", 59)],
+        [("native", 41), ("cu", 23), ("chrome", 18), ("all", 62)],
     )
     def test_public_tool_counts(self, mode, expected_count):
         """Keep the documented MCP surface counts in sync with registration."""
