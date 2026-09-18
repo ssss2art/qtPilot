@@ -127,6 +127,44 @@ through ctest to child processes. You **must** use one of these approaches:
 Env vars set inline (e.g., `PATH=... ctest ...`) do **not** work because ctest spawns
 child processes that inherit the Windows environment, not the bash-local overrides.
 
+## Confidentiality — this is a public repository
+
+qtPilot is open source and published on GitHub. The applications it gets used
+against are often **not** — they are internal products, unreleased work, or
+customer projects. Nothing about them belongs in this repo.
+
+**Generalize every reference to a driven application.** Describe it by its
+shape, not its identity: "a large widgets + QGraphicsView desktop app", "a
+design-system gallery app", "a CAD-style plan view". That is also the more
+useful description, because it tells the reader which *kind* of app reproduces
+the behaviour.
+
+This applies everywhere, not just source comments: code, tests, fixtures,
+sample data, docs, commit messages, PR titles and descriptions, issue text,
+benchmark names, log output, and screenshots.
+
+**Never commit:**
+
+- Product or application names, internal or customer-facing
+- Project codenames, programme names, or team names
+- Issue keys and tracker URLs from a private tracker (e.g. `ABC-1234`), or
+  internal branch names that embed them
+- Employer, customer or partner names, internal hostnames, and internal URLs or
+  IP addresses
+- Real file paths that carry any of the above (`/Users/<name>/src/<product>/...`)
+- Domain vocabulary specific enough to identify the product — a feature name
+  from its UI is as identifying as the product name itself
+- Real user data, project files, part numbers, or screenshots of a private app
+
+**Writing a test that reproduces something found in a private app:** keep the
+*mechanism*, drop the *identity*. An item whose `shape()` excludes its interior
+is the thing worth testing; what that item is called in some product is not. Name
+fixtures after the behaviour they exercise (`HollowItem`, `OverlappingItems`),
+never after the feature that prompted them.
+
+**Before pushing**, check the diff for the above, including commit messages.
+A leaked name in a public commit is not something a later commit can take back.
+
 ## Development Conventions
 
 ### C++ Code Style
