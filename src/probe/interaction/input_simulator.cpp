@@ -74,7 +74,8 @@ void InputSimulator::mouseDoubleClick(QWidget* widget, MouseButton button, const
   QTest::mouseDClick(widget, toQtButton(button), modifiers, clickPos);
 }
 
-void InputSimulator::sendText(QWidget* widget, const QString& text) {
+void InputSimulator::sendText(QWidget* widget, const QString& text,
+                              Qt::KeyboardModifiers modifiers) {
   if (!widget) {
     throw std::invalid_argument("sendText: widget cannot be null");
   }
@@ -83,8 +84,9 @@ void InputSimulator::sendText(QWidget* widget, const QString& text) {
   widget->setFocus();
   QApplication::processEvents();
 
-  // QTest::keyClicks sends each character as a key event
-  QTest::keyClicks(widget, text);
+  // QTest::keyClicks sends each character as a key event, holding the
+  // modifiers down across the whole string.
+  QTest::keyClicks(widget, text, modifiers);
 }
 
 void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
@@ -372,7 +374,8 @@ void InputSimulator::mouseDrag(QWindow* window, const QPoint& startPos, const QP
   sendMouseToWindow(window, QEvent::MouseButtonRelease, endPos, qtButton, Qt::NoButton, modifiers);
 }
 
-void InputSimulator::sendText(QWindow* window, const QString& text) {
+void InputSimulator::sendText(QWindow* window, const QString& text,
+                              Qt::KeyboardModifiers modifiers) {
   if (!window) {
     throw std::invalid_argument("sendText: window cannot be null");
   }
@@ -404,9 +407,9 @@ void InputSimulator::sendText(QWindow* window, const QString& text) {
         key = ch.toUpper().unicode();
         break;
     }
-    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, s);
+    QKeyEvent press(QEvent::KeyPress, key, modifiers, s);
     QCoreApplication::sendEvent(window, &press);
-    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, s);
+    QKeyEvent release(QEvent::KeyRelease, key, modifiers, s);
     QCoreApplication::sendEvent(window, &release);
   }
   QCoreApplication::processEvents();

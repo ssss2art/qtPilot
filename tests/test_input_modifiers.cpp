@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -75,6 +76,32 @@ class ModifierRecordingWidget : public QWidget {
   void wheelEvent(QWheelEvent* event) override {
     lastWheelModifiers = event->modifiers();
     QWidget::wheelEvent(event);
+  }
+};
+
+/// @brief A widget that remembers the key events it receives.
+class KeyRecordingWidget : public QWidget {
+  Q_OBJECT
+
+ public:
+  using QWidget::QWidget;
+
+  Qt::KeyboardModifiers lastKeyModifiers = Qt::NoModifier;
+  QString typedText;
+  int keyPressCount = 0;
+
+  void forget() {
+    lastKeyModifiers = Qt::NoModifier;
+    typedText.clear();
+    keyPressCount = 0;
+  }
+
+ protected:
+  void keyPressEvent(QKeyEvent* event) override {
+    lastKeyModifiers = event->modifiers();
+    typedText += event->text();
+    ++keyPressCount;
+    QWidget::keyPressEvent(event);
   }
 };
 
@@ -163,6 +190,13 @@ class TestInputModifiers : public QObject {
   void testUiDoubleClickDeliversModifiers();
   void testUiClickRejectsBadModifiers();
 
+  // --- qt.ui.sendKeys ---
+  void testSendKeysTextCarriesModifiers();
+  void testSendKeysTextWithoutModifiersIsNoModifier();
+  void testSendKeysSequenceStillCarriesItsOwnModifiers();
+  void testSendKeysRejectsModifiersCombinedWithSequence();
+  void testSendKeysRejectsBadModifiers();
+
   // --- cu.* delivery ---
   void testCuClickDeliversModifiers();
   void testCuRightClickDeliversModifiers();
@@ -184,6 +218,7 @@ class TestInputModifiers : public QObject {
   ComputerUseModeApi* m_cuApi = nullptr;
   QWidget* m_window = nullptr;
   ModifierRecordingWidget* m_target = nullptr;
+  KeyRecordingWidget* m_keyTarget = nullptr;
   int m_requestId = 1;
 };
 
@@ -198,6 +233,12 @@ void TestInputModifiers::initTestCase() {
   m_target->setMinimumSize(200, 150);
   m_target->setMouseTracking(true);
   layout->addWidget(m_target);
+
+  m_keyTarget = new KeyRecordingWidget(m_window);
+  m_keyTarget->setObjectName(QStringLiteral("keyTarget"));
+  m_keyTarget->setFocusPolicy(Qt::StrongFocus);
+  m_keyTarget->setMinimumSize(200, 60);
+  layout->addWidget(m_keyTarget);
 
   m_window->show();
   QVERIFY(QTest::qWaitForWindowExposed(m_window));
@@ -216,6 +257,9 @@ void TestInputModifiers::cleanupTestCase() {
 void TestInputModifiers::init() {
   if (m_target) {
     m_target->forget();
+  }
+  if (m_keyTarget) {
+    m_keyTarget->forget();
   }
 }
 
@@ -476,6 +520,70 @@ void TestInputModifiers::testUiClickRejectsBadModifiers() {
   params[QStringLiteral("modifiers")] = QStringLiteral("hyper");
 
   QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.click"), params),
+               IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
+}
+
+// ============================================================================
+// qt.ui.sendKeys
+//
+// `sequence` already spells its own modifiers ("Ctrl+S"), so `modifiers` exists
+// for `text`, which had no way to say them at all. Supplying both is refused
+// rather than merged: two sources for the same thing is a silent-conflict bug
+// waiting to happen, and the caller almost certainly meant one or the other.
+// ============================================================================
+
+void TestInputModifiers::testSendKeysTextCarriesModifiers() {
+  const QString objectId = ObjectRegistry::instance()->objectId(m_keyTarget);
+  QJsonObject params;
+  params[QStringLiteral("objectId")] = objectId;
+  params[QStringLiteral("text")] = QStringLiteral("a");
+  params[QStringLiteral("modifiers")] = QStringLiteral("ctrl");
+  callOk(QStringLiteral("qt.ui.sendKeys"), params);
+
+  QEXPECT_THAT(m_keyTarget->lastKeyModifiers, HasModifiers(Qt::ControlModifier));
+}
+
+void TestInputModifiers::testSendKeysTextWithoutModifiersIsNoModifier() {
+  const QString objectId = ObjectRegistry::instance()->objectId(m_keyTarget);
+  QJsonObject params;
+  params[QStringLiteral("objectId")] = objectId;
+  params[QStringLiteral("text")] = QStringLiteral("a");
+  callOk(QStringLiteral("qt.ui.sendKeys"), params);
+
+  QEXPECT_THAT(m_keyTarget->lastKeyModifiers, HasModifiers(Qt::NoModifier));
+}
+
+void TestInputModifiers::testSendKeysSequenceStillCarriesItsOwnModifiers() {
+  const QString objectId = ObjectRegistry::instance()->objectId(m_keyTarget);
+  QJsonObject params;
+  params[QStringLiteral("objectId")] = objectId;
+  params[QStringLiteral("sequence")] = QStringLiteral("Ctrl+Shift+A");
+  callOk(QStringLiteral("qt.ui.sendKeys"), params);
+
+  // Unchanged behaviour: the sequence string is the source of truth here.
+  QEXPECT_THAT(m_keyTarget->lastKeyModifiers,
+               HasModifiers(Qt::ControlModifier | Qt::ShiftModifier));
+}
+
+void TestInputModifiers::testSendKeysRejectsModifiersCombinedWithSequence() {
+  const QString objectId = ObjectRegistry::instance()->objectId(m_keyTarget);
+  QJsonObject params;
+  params[QStringLiteral("objectId")] = objectId;
+  params[QStringLiteral("sequence")] = QStringLiteral("Ctrl+S");
+  params[QStringLiteral("modifiers")] = QStringLiteral("shift");
+
+  QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.sendKeys"), params),
+               IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
+}
+
+void TestInputModifiers::testSendKeysRejectsBadModifiers() {
+  const QString objectId = ObjectRegistry::instance()->objectId(m_keyTarget);
+  QJsonObject params;
+  params[QStringLiteral("objectId")] = objectId;
+  params[QStringLiteral("text")] = QStringLiteral("a");
+  params[QStringLiteral("modifiers")] = QStringLiteral("hyper");
+
+  QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.sendKeys"), params),
                IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
 }
 
