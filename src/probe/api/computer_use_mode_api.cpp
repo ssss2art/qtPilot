@@ -8,6 +8,7 @@
 #include "interaction/hit_test.h"
 #include "interaction/input_simulator.h"
 #include "interaction/key_name_mapper.h"
+#include "interaction/modifier_parser.h"
 #include "interaction/screenshot.h"
 
 #include <QApplication>
@@ -227,53 +228,60 @@ void maybeAddScreenshot(QJsonObject& result, const QJsonObject& params, const Cu
 }
 
 /// @brief Dispatch a click (press+release) to a widget or window target.
-void dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa) {
+void dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
+                   Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
-    InputSimulator::mouseClick(t.window, button, resolveWindowLocal(t.window, x, y, sa));
+    InputSimulator::mouseClick(t.window, button, resolveWindowLocal(t.window, x, y, sa), modifiers);
   } else {
     auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::mouseClick(r.widget, button, r.localPos);
+    InputSimulator::mouseClick(r.widget, button, r.localPos, modifiers);
   }
 }
 
 /// @brief Dispatch a double-click to a widget or window target.
-void dispatchDoubleClick(const CuTarget& t, int x, int y, bool sa) {
+void dispatchDoubleClick(const CuTarget& t, int x, int y, bool sa,
+                         Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
     InputSimulator::mouseDoubleClick(t.window, InputSimulator::MouseButton::Left,
-                                     resolveWindowLocal(t.window, x, y, sa));
+                                     resolveWindowLocal(t.window, x, y, sa), modifiers);
   } else {
     auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::mouseDoubleClick(r.widget, InputSimulator::MouseButton::Left, r.localPos);
+    InputSimulator::mouseDoubleClick(r.widget, InputSimulator::MouseButton::Left, r.localPos,
+                                     modifiers);
   }
 }
 
 /// @brief Dispatch a mouse-button press to a widget or window target.
-void dispatchPress(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa) {
+void dispatchPress(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
+                   Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
-    InputSimulator::mousePress(t.window, button, resolveWindowLocal(t.window, x, y, sa));
+    InputSimulator::mousePress(t.window, button, resolveWindowLocal(t.window, x, y, sa), modifiers);
   } else {
     auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::mousePress(r.widget, button, r.localPos);
+    InputSimulator::mousePress(r.widget, button, r.localPos, modifiers);
   }
 }
 
 /// @brief Dispatch a mouse-button release to a widget or window target.
-void dispatchRelease(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa) {
+void dispatchRelease(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
+                     Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
-    InputSimulator::mouseRelease(t.window, button, resolveWindowLocal(t.window, x, y, sa));
+    InputSimulator::mouseRelease(t.window, button, resolveWindowLocal(t.window, x, y, sa),
+                                 modifiers);
   } else {
     auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::mouseRelease(r.widget, button, r.localPos);
+    InputSimulator::mouseRelease(r.widget, button, r.localPos, modifiers);
   }
 }
 
 /// @brief Dispatch a scroll to a widget or window target.
-void dispatchScroll(const CuTarget& t, int x, int y, bool sa, int dx, int dy) {
+void dispatchScroll(const CuTarget& t, int x, int y, bool sa, int dx, int dy,
+                    Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
-    InputSimulator::scroll(t.window, resolveWindowLocal(t.window, x, y, sa), dx, dy);
+    InputSimulator::scroll(t.window, resolveWindowLocal(t.window, x, y, sa), dx, dy, modifiers);
   } else {
     auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::scroll(r.widget, r.localPos, dx, dy);
+    InputSimulator::scroll(r.widget, r.localPos, dx, dy, modifiers);
   }
 }
 
@@ -387,7 +395,9 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    dispatchClick(t, parseMouseButton(buttonStr), x, y, screenAbsolute);
+    const Qt::KeyboardModifiers modifiers =
+        ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.click"));
+    dispatchClick(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -411,7 +421,9 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    dispatchClick(t, InputSimulator::MouseButton::Right, x, y, screenAbsolute);
+    const Qt::KeyboardModifiers modifiers = ModifierParser::parse(
+        p.value(QStringLiteral("modifiers")), QStringLiteral("cu.rightClick"));
+    dispatchClick(t, InputSimulator::MouseButton::Right, x, y, screenAbsolute, modifiers);
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -435,7 +447,9 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    dispatchClick(t, InputSimulator::MouseButton::Middle, x, y, screenAbsolute);
+    const Qt::KeyboardModifiers modifiers = ModifierParser::parse(
+        p.value(QStringLiteral("modifiers")), QStringLiteral("cu.middleClick"));
+    dispatchClick(t, InputSimulator::MouseButton::Middle, x, y, screenAbsolute, modifiers);
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -459,7 +473,9 @@ void ComputerUseModeApi::registerMouseMethods() {
       QThread::msleep(static_cast<unsigned long>(delayMs));
     }
 
-    dispatchDoubleClick(t, x, y, screenAbsolute);
+    const Qt::KeyboardModifiers modifiers = ModifierParser::parse(
+        p.value(QStringLiteral("modifiers")), QStringLiteral("cu.doubleClick"));
+    dispatchDoubleClick(t, x, y, screenAbsolute, modifiers);
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -477,14 +493,17 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const Qt::KeyboardModifiers modifiers =
+        ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseMove"));
 
     if (screenAbsolute) {
       QCursor::setPos(QPoint(x, y));
     } else if (t.isWindow()) {
-      InputSimulator::mouseMove(t.window, resolveWindowLocal(t.window, x, y, false));
+      InputSimulator::mouseMove(t.window, resolveWindowLocal(t.window, x, y, false), Qt::NoButton,
+                                modifiers);
     } else {
       auto target = resolveWindowCoordinate(t.widget, x, y, false);
-      InputSimulator::mouseMove(target.widget, target.localPos);
+      InputSimulator::mouseMove(target.widget, target.localPos, Qt::NoButton, modifiers);
     }
 
     trackPosition(t, x, y, screenAbsolute);
@@ -505,12 +524,15 @@ void ComputerUseModeApi::registerMouseMethods() {
     int endX = p[QStringLiteral("endX")].toInt();
     int endY = p[QStringLiteral("endY")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const Qt::KeyboardModifiers modifiers =
+        ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.drag"));
 
     if (t.isWindow()) {
       // resolveWindowLocal bounds-checks and maps screen-absolute coords.
       QPoint startPos = resolveWindowLocal(t.window, startX, startY, screenAbsolute);
       QPoint endPos = resolveWindowLocal(t.window, endX, endY, screenAbsolute);
-      InputSimulator::mouseDrag(t.window, startPos, endPos, InputSimulator::MouseButton::Left);
+      InputSimulator::mouseDrag(t.window, startPos, endPos, InputSimulator::MouseButton::Left,
+                                modifiers);
     } else {
       QWidget* window = t.widget;
       QPoint startPos, endPos;
@@ -543,7 +565,8 @@ void ComputerUseModeApi::registerMouseMethods() {
       checkBounds(startPos, QStringLiteral("start"));
       checkBounds(endPos, QStringLiteral("end"));
 
-      InputSimulator::mouseDrag(window, startPos, endPos, InputSimulator::MouseButton::Left);
+      InputSimulator::mouseDrag(window, startPos, endPos, InputSimulator::MouseButton::Left,
+                                modifiers);
     }
 
     // Track the END position (where the cursor ends up after drag)
@@ -565,7 +588,9 @@ void ComputerUseModeApi::registerMouseMethods() {
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
-    dispatchPress(t, parseMouseButton(buttonStr), x, y, screenAbsolute);
+    const Qt::KeyboardModifiers modifiers =
+        ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseDown"));
+    dispatchPress(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -585,7 +610,9 @@ void ComputerUseModeApi::registerMouseMethods() {
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
-    dispatchRelease(t, parseMouseButton(buttonStr), x, y, screenAbsolute);
+    const Qt::KeyboardModifiers modifiers =
+        ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseUp"));
+    dispatchRelease(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -742,7 +769,9 @@ void ComputerUseModeApi::registerScrollMethod() {
                       {QStringLiteral("method"), QStringLiteral("cu.scroll")}});
     }
 
-    dispatchScroll(t, x, y, screenAbsolute, dx, dy);
+    const Qt::KeyboardModifiers modifiers =
+        ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.scroll"));
+    dispatchScroll(t, x, y, screenAbsolute, dx, dy, modifiers);
 
     trackPosition(t, x, y, screenAbsolute);
 

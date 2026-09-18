@@ -3,8 +3,13 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <iostream>
+#include <string>
+#include <type_traits>
 
 #include <QByteArray>
 #include <QColor>
@@ -22,12 +27,6 @@
 #include <QString>
 #include <QTest>
 #include <QVariant>
-
-#include <algorithm>
-#include <cmath>
-#include <iostream>
-#include <string>
-#include <type_traits>
 
 // ============================================================================
 // GoogleTest Pretty-Printers for Qt Types
@@ -137,78 +136,233 @@ inline void PrintTo(const QVariant& v, std::ostream* os) {
 // Comparison operators for QJsonValue with numeric types (enables Gt, Lt, etc.)
 // ============================================================================
 
-inline bool operator>(const QJsonValue& lhs, int rhs) { return lhs.isDouble() && lhs.toInt() > rhs; }
-inline bool operator>=(const QJsonValue& lhs, int rhs) { return lhs.isDouble() && lhs.toInt() >= rhs; }
-inline bool operator<(const QJsonValue& lhs, int rhs) { return lhs.isDouble() && lhs.toInt() < rhs; }
-inline bool operator<=(const QJsonValue& lhs, int rhs) { return lhs.isDouble() && lhs.toInt() <= rhs; }
+inline bool operator>(const QJsonValue& lhs, int rhs) {
+  return lhs.isDouble() && lhs.toInt() > rhs;
+}
+inline bool operator>=(const QJsonValue& lhs, int rhs) {
+  return lhs.isDouble() && lhs.toInt() >= rhs;
+}
+inline bool operator<(const QJsonValue& lhs, int rhs) {
+  return lhs.isDouble() && lhs.toInt() < rhs;
+}
+inline bool operator<=(const QJsonValue& lhs, int rhs) {
+  return lhs.isDouble() && lhs.toInt() <= rhs;
+}
 
-inline bool operator>(const QJsonValue& lhs, qint64 rhs) { return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) > rhs; }
-inline bool operator>=(const QJsonValue& lhs, qint64 rhs) { return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) >= rhs; }
-inline bool operator<(const QJsonValue& lhs, qint64 rhs) { return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) < rhs; }
-inline bool operator<=(const QJsonValue& lhs, qint64 rhs) { return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) <= rhs; }
+inline bool operator>(const QJsonValue& lhs, qint64 rhs) {
+  return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) > rhs;
+}
+inline bool operator>=(const QJsonValue& lhs, qint64 rhs) {
+  return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) >= rhs;
+}
+inline bool operator<(const QJsonValue& lhs, qint64 rhs) {
+  return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) < rhs;
+}
+inline bool operator<=(const QJsonValue& lhs, qint64 rhs) {
+  return lhs.isDouble() && static_cast<qint64>(lhs.toDouble()) <= rhs;
+}
 
-inline bool operator>(const QJsonValue& lhs, double rhs) { return lhs.isDouble() && lhs.toDouble() > rhs; }
-inline bool operator>=(const QJsonValue& lhs, double rhs) { return lhs.isDouble() && lhs.toDouble() >= rhs; }
-inline bool operator<(const QJsonValue& lhs, double rhs) { return lhs.isDouble() && lhs.toDouble() < rhs; }
-inline bool operator<=(const QJsonValue& lhs, double rhs) { return lhs.isDouble() && lhs.toDouble() <= rhs; }
+inline bool operator>(const QJsonValue& lhs, double rhs) {
+  return lhs.isDouble() && lhs.toDouble() > rhs;
+}
+inline bool operator>=(const QJsonValue& lhs, double rhs) {
+  return lhs.isDouble() && lhs.toDouble() >= rhs;
+}
+inline bool operator<(const QJsonValue& lhs, double rhs) {
+  return lhs.isDouble() && lhs.toDouble() < rhs;
+}
+inline bool operator<=(const QJsonValue& lhs, double rhs) {
+  return lhs.isDouble() && lhs.toDouble() <= rhs;
+}
 
-inline bool operator>(int lhs, const QJsonValue& rhs) { return rhs < lhs; }
-inline bool operator>=(int lhs, const QJsonValue& rhs) { return rhs <= lhs; }
-inline bool operator<(int lhs, const QJsonValue& rhs) { return rhs > lhs; }
-inline bool operator<=(int lhs, const QJsonValue& rhs) { return rhs >= lhs; }
+inline bool operator>(int lhs, const QJsonValue& rhs) {
+  return rhs < lhs;
+}
+inline bool operator>=(int lhs, const QJsonValue& rhs) {
+  return rhs <= lhs;
+}
+inline bool operator<(int lhs, const QJsonValue& rhs) {
+  return rhs > lhs;
+}
+inline bool operator<=(int lhs, const QJsonValue& rhs) {
+  return rhs >= lhs;
+}
 
-inline bool operator>(double lhs, const QJsonValue& rhs) { return rhs < lhs; }
-inline bool operator>=(double lhs, const QJsonValue& rhs) { return rhs <= lhs; }
-inline bool operator<(double lhs, const QJsonValue& rhs) { return rhs > lhs; }
-inline bool operator<=(double lhs, const QJsonValue& rhs) { return rhs >= lhs; }
+inline bool operator>(double lhs, const QJsonValue& rhs) {
+  return rhs < lhs;
+}
+inline bool operator>=(double lhs, const QJsonValue& rhs) {
+  return rhs <= lhs;
+}
+inline bool operator<(double lhs, const QJsonValue& rhs) {
+  return rhs > lhs;
+}
+inline bool operator<=(double lhs, const QJsonValue& rhs) {
+  return rhs >= lhs;
+}
 
 // ============================================================================
 // Assertion Macros: QEXPECT_THAT / QCHECK_THAT
 // ============================================================================
 
 /// @brief Fatal assertion combining GMock matchers with QTest.
-/// When the matcher fails, prints the formatted failure details and immediately fails the test slot.
-#define QEXPECT_THAT(actual, matcher)                                                        \
-  do {                                                                                      \
-    const auto& _actual_val = (actual);                                                     \
-    const auto& _m = (matcher);                                                             \
-    ::testing::StringMatchResultListener _listener;                                         \
-    if (!::testing::ExplainMatchResult(_m, _actual_val, &_listener)) {                      \
-      std::string _expected = ::testing::DescribeMatcher<decltype(_actual_val)>(_m);       \
-      std::string _actual_str = ::testing::PrintToString(_actual_val);                      \
-      std::string _details = _listener.str();                                               \
-      QString _fail_msg = QStringLiteral("Value of: %1\nExpected: %2\n  Actual: %3")        \
-                              .arg(QStringLiteral(#actual),                                 \
-                                   QString::fromStdString(_expected),                       \
-                                   QString::fromStdString(_actual_str));                    \
-      if (!_details.empty()) {                                                              \
-        _fail_msg += QStringLiteral("\n Details: ") + QString::fromStdString(_details);     \
-      }                                                                                     \
-      QTest::qFail(qPrintable(_fail_msg), __FILE__, __LINE__);                               \
-      return;                                                                               \
-    }                                                                                       \
+/// When the matcher fails, prints the formatted failure details and immediately fails the test
+/// slot.
+#define QEXPECT_THAT(actual, matcher)                                                          \
+  do {                                                                                         \
+    const auto& _actual_val = (actual);                                                        \
+    const auto& _m = (matcher);                                                                \
+    ::testing::StringMatchResultListener _listener;                                            \
+    if (!::testing::ExplainMatchResult(_m, _actual_val, &_listener)) {                         \
+      std::string _expected = ::testing::DescribeMatcher<decltype(_actual_val)>(_m);           \
+      std::string _actual_str = ::testing::PrintToString(_actual_val);                         \
+      std::string _details = _listener.str();                                                  \
+      QString _fail_msg = QStringLiteral("Value of: %1\nExpected: %2\n  Actual: %3")           \
+                              .arg(QStringLiteral(#actual), QString::fromStdString(_expected), \
+                                   QString::fromStdString(_actual_str));                       \
+      if (!_details.empty()) {                                                                 \
+        _fail_msg += QStringLiteral("\n Details: ") + QString::fromStdString(_details);        \
+      }                                                                                        \
+      QTest::qFail(qPrintable(_fail_msg), __FILE__, __LINE__);                                 \
+      return;                                                                                  \
+    }                                                                                          \
   } while (0)
 
-/// @brief Non-fatal assertion: records verification failure in QTest but does not return immediately.
-#define QCHECK_THAT(actual, matcher)                                                         \
-  do {                                                                                      \
-    const auto& _actual_val = (actual);                                                     \
-    const auto& _m = (matcher);                                                             \
-    ::testing::StringMatchResultListener _listener;                                         \
-    if (!::testing::ExplainMatchResult(_m, _actual_val, &_listener)) {                      \
-      std::string _expected = ::testing::DescribeMatcher<decltype(_actual_val)>(_m);       \
-      std::string _actual_str = ::testing::PrintToString(_actual_val);                      \
-      std::string _details = _listener.str();                                               \
-      QString _fail_msg = QStringLiteral("Value of: %1\nExpected: %2\n  Actual: %3")        \
-                              .arg(QStringLiteral(#actual),                                 \
-                                   QString::fromStdString(_expected),                       \
-                                   QString::fromStdString(_actual_str));                    \
-      if (!_details.empty()) {                                                              \
-        _fail_msg += QStringLiteral("\n Details: ") + QString::fromStdString(_details);     \
-      }                                                                                     \
-      QTest::qVerify(false, qPrintable(_fail_msg), "", __FILE__, __LINE__);                 \
-    }                                                                                       \
+/// @brief Non-fatal assertion: records verification failure in QTest but does not return
+/// immediately.
+#define QCHECK_THAT(actual, matcher)                                                           \
+  do {                                                                                         \
+    const auto& _actual_val = (actual);                                                        \
+    const auto& _m = (matcher);                                                                \
+    ::testing::StringMatchResultListener _listener;                                            \
+    if (!::testing::ExplainMatchResult(_m, _actual_val, &_listener)) {                         \
+      std::string _expected = ::testing::DescribeMatcher<decltype(_actual_val)>(_m);           \
+      std::string _actual_str = ::testing::PrintToString(_actual_val);                         \
+      std::string _details = _listener.str();                                                  \
+      QString _fail_msg = QStringLiteral("Value of: %1\nExpected: %2\n  Actual: %3")           \
+                              .arg(QStringLiteral(#actual), QString::fromStdString(_expected), \
+                                   QString::fromStdString(_actual_str));                       \
+      if (!_details.empty()) {                                                                 \
+        _fail_msg += QStringLiteral("\n Details: ") + QString::fromStdString(_details);        \
+      }                                                                                        \
+      QTest::qVerify(false, qPrintable(_fail_msg), "", __FILE__, __LINE__);                    \
+    }                                                                                          \
   } while (0)
+
+// ============================================================================
+// Matchers: thrown exceptions
+// ============================================================================
+//
+// QVERIFY_THROWS_EXCEPTION only exists from Qt 6.3 and CI builds Qt 5.15.2, so
+// these do the same job portably -- and as matchers rather than a bare macro,
+// so a test can say what the exception has to *contain* instead of only that
+// one arrived.
+
+namespace qtPilot {
+namespace test {
+
+/// @brief Matches a zero-argument callable that throws @c ExceptionType.
+///
+/// The thrown object is handed to an inner matcher, so the code and payload of
+/// a structured error are assertable in the same expression that pins the throw.
+template <typename ExceptionType, typename InnerMatcher>
+class ThrowsMatcher {
+ public:
+  explicit ThrowsMatcher(InnerMatcher inner) : inner_(std::move(inner)) {}
+
+  template <typename Callable>
+  bool MatchAndExplain(Callable&& callable, ::testing::MatchResultListener* listener) const {
+    try {
+      callable();
+    } catch (const ExceptionType& ex) {
+      ::testing::StringMatchResultListener innerListener;
+      if (!::testing::ExplainMatchResult(inner_, ex, &innerListener)) {
+        *listener << "threw the expected type, but " << innerListener.str();
+        return false;
+      }
+      *listener << "threw as expected";
+      return true;
+    } catch (const std::exception& other) {
+      *listener << "threw a different exception type: " << other.what();
+      return false;
+    } catch (...) {
+      *listener << "threw a non-std exception";
+      return false;
+    }
+    *listener << "returned without throwing";
+    return false;
+  }
+
+  void DescribeTo(std::ostream* os) const {
+    *os << "throws an exception that ";
+    ::testing::DescribeMatcher<const ExceptionType&>(inner_, false);
+  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "does not throw a matching exception"; }
+
+  template <typename T>
+  operator ::testing::Matcher<T>() const {
+    return ::testing::MakePolymorphicMatcher(*this);
+  }
+
+ private:
+  InnerMatcher inner_;
+};
+
+/// @brief `Throws<E>(inner)` -- the callable throws an `E` satisfying `inner`.
+template <typename ExceptionType, typename InnerMatcher>
+inline auto Throws(InnerMatcher&& inner) {
+  return ::testing::MakePolymorphicMatcher(
+      ThrowsMatcher<ExceptionType, std::decay_t<InnerMatcher>>(std::forward<InnerMatcher>(inner)));
+}
+
+/// @brief `Throws<E>()` -- the callable throws an `E`, contents unexamined.
+template <typename ExceptionType>
+inline auto Throws() {
+  return Throws<ExceptionType>(::testing::_);
+}
+
+}  // namespace test
+}  // namespace qtPilot
+
+/// @brief Matches any std::exception whose what() contains @p substr.
+MATCHER_P(WhatContains, substr, "") {
+  const std::string what = arg.what();
+  const std::string needle = std::string(substr);
+  if (what.find(needle) == std::string::npos) {
+    *result_listener << "what() was \"" << what << "\"";
+    return false;
+  }
+  return true;
+}
+
+/// @brief Matches a JsonRpcException carrying the given error code.
+MATCHER_P(WithRpcCode, expectedCode, "") {
+  if (arg.code() != expectedCode) {
+    *result_listener << "error code was " << arg.code() << ", expected " << expectedCode;
+    return false;
+  }
+  return true;
+}
+
+/// @brief Matches a JsonRpcException whose structured data satisfies a matcher.
+MATCHER_P(WithRpcData, dataMatcher, "") {
+  ::testing::StringMatchResultListener inner;
+  if (!::testing::ExplainMatchResult(dataMatcher, arg.data(), &inner)) {
+    *result_listener << "error data did not match: " << inner.str();
+    return false;
+  }
+  return true;
+}
+
+/// @brief Matches a JsonRpcException whose message satisfies a matcher.
+MATCHER_P(WithRpcMessage, messageMatcher, "") {
+  ::testing::StringMatchResultListener inner;
+  if (!::testing::ExplainMatchResult(messageMatcher, arg.errorMessage(), &inner)) {
+    *result_listener << "error message did not match: " << inner.str();
+    return false;
+  }
+  return true;
+}
 
 // ============================================================================
 // Matchers: QString & QJsonValue strings
@@ -237,7 +391,8 @@ inline bool toQString(const std::string& s, QString& out) {
 }
 
 inline bool toQString(const char* s, QString& out) {
-  if (!s) return false;
+  if (!s)
+    return false;
   out = QString::fromUtf8(s);
   return true;
 }
@@ -256,8 +411,7 @@ MATCHER_P(QStrEq, expected,
   return actual == QString(expected);
 }
 
-MATCHER_P(QStrContains, substr,
-          std::string("contains \"") + QString(substr).toStdString() + "\"") {
+MATCHER_P(QStrContains, substr, std::string("contains \"") + QString(substr).toStdString() + "\"") {
   QString actual;
   if (!qtPilot::test::internal::toQString(arg, actual)) {
     *result_listener << "is not a string (value: " << ::testing::PrintToString(arg) << ")";
@@ -299,9 +453,12 @@ MATCHER_P(QStrNe, expected,
 /// @brief Matches any Qt container, QJsonValue, or string that is empty.
 MATCHER(QIsEmpty, "is empty") {
   if constexpr (std::is_same_v<std::decay_t<decltype(arg)>, QJsonValue>) {
-    if (arg.isString()) return arg.toString().isEmpty();
-    if (arg.isArray()) return arg.toArray().isEmpty();
-    if (arg.isObject()) return arg.toObject().isEmpty();
+    if (arg.isString())
+      return arg.toString().isEmpty();
+    if (arg.isArray())
+      return arg.toArray().isEmpty();
+    if (arg.isObject())
+      return arg.toObject().isEmpty();
     return arg.isNull() || arg.isUndefined();
   } else {
     return arg.isEmpty();
@@ -311,9 +468,12 @@ MATCHER(QIsEmpty, "is empty") {
 /// @brief Matches any Qt container, QJsonValue, or string that is not empty.
 MATCHER(QIsNotEmpty, "is not empty") {
   if constexpr (std::is_same_v<std::decay_t<decltype(arg)>, QJsonValue>) {
-    if (arg.isString()) return !arg.toString().isEmpty();
-    if (arg.isArray()) return !arg.toArray().isEmpty();
-    if (arg.isObject()) return !arg.toObject().isEmpty();
+    if (arg.isString())
+      return !arg.toString().isEmpty();
+    if (arg.isArray())
+      return !arg.toArray().isEmpty();
+    if (arg.isObject())
+      return !arg.toObject().isEmpty();
     return !arg.isNull() && !arg.isUndefined();
   } else {
     return !arg.isEmpty();
@@ -355,13 +515,13 @@ namespace test {
 namespace internal {
 
 inline bool extractJsonObject(const QJsonObject& obj, QJsonObject& out,
-                             ::testing::MatchResultListener*) {
+                              ::testing::MatchResultListener*) {
   out = obj;
   return true;
 }
 
 inline bool extractJsonObject(const QJsonValue& val, QJsonObject& out,
-                             ::testing::MatchResultListener* listener) {
+                              ::testing::MatchResultListener* listener) {
   if (!val.isObject()) {
     *listener << "is not a JSON object";
     return false;
@@ -371,13 +531,13 @@ inline bool extractJsonObject(const QJsonValue& val, QJsonObject& out,
 }
 
 inline bool extractJsonArray(const QJsonArray& arr, QJsonArray& out,
-                            ::testing::MatchResultListener*) {
+                             ::testing::MatchResultListener*) {
   out = arr;
   return true;
 }
 
 inline bool extractJsonArray(const QJsonValue& val, QJsonArray& out,
-                            ::testing::MatchResultListener* listener) {
+                             ::testing::MatchResultListener* listener) {
   if (!val.isArray()) {
     *listener << "is not a JSON array";
     return false;
@@ -387,8 +547,7 @@ inline bool extractJsonArray(const QJsonValue& val, QJsonArray& out,
 }
 
 template <typename M>
-bool matchJsonValue(const QJsonValue& val, const M& m,
-                    ::testing::MatchResultListener* listener) {
+bool matchJsonValue(const QJsonValue& val, const M& m, ::testing::MatchResultListener* listener) {
   if constexpr (std::is_same_v<std::decay_t<M>, const char*> ||
                 std::is_same_v<std::decay_t<M>, char*> ||
                 std::is_same_v<std::decay_t<M>, std::string> ||
@@ -404,11 +563,11 @@ bool matchJsonValue(const QJsonValue& val, const M& m,
       return false;
     }
     return true;
-  } else if constexpr (std::is_integral_v<std::decay_t<M>> && !std::is_same_v<std::decay_t<M>, bool>) {
+  } else if constexpr (std::is_integral_v<std::decay_t<M>> &&
+                       !std::is_same_v<std::decay_t<M>, bool>) {
     int expectedInt = static_cast<int>(m);
     if (!val.isDouble() || val.toInt() != expectedInt) {
-      *listener << "expected integer " << expectedInt << ", got "
-                << ::testing::PrintToString(val);
+      *listener << "expected integer " << expectedInt << ", got " << ::testing::PrintToString(val);
       return false;
     }
     return true;
@@ -437,8 +596,7 @@ bool matchJsonValue(const QJsonValue& val, const M& m,
 }  // namespace qtPilot
 
 /// @brief Matches a QJsonObject or QJsonValue (object) having the specified key.
-MATCHER_P(HasJsonField, key,
-          std::string("has field '") + QString(key).toStdString() + "'") {
+MATCHER_P(HasJsonField, key, std::string("has field '") + QString(key).toStdString() + "'") {
   QJsonObject obj;
   if (!qtPilot::test::internal::extractJsonObject(arg, obj, result_listener)) {
     return false;
@@ -466,7 +624,8 @@ MATCHER_P(DoesNotHaveJsonField, key,
   return true;
 }
 
-/// @brief Matches a field value in a QJsonObject or QJsonValue with another matcher or primitive value.
+/// @brief Matches a field value in a QJsonObject or QJsonValue with another matcher or primitive
+/// value.
 template <typename KeyType, typename ValueMatcher>
 class HasJsonFieldValueMatcher {
  public:
@@ -474,8 +633,7 @@ class HasJsonFieldValueMatcher {
       : key_(QString(key)), valueMatcher_(std::move(vm)) {}
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -489,9 +647,7 @@ class HasJsonFieldValueMatcher {
     return qtPilot::test::internal::matchJsonValue(val, valueMatcher_, listener);
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "has field '" << key_.toStdString() << "'";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "has field '" << key_.toStdString() << "'"; }
 
   void DescribeNegationTo(std::ostream* os) const {
     *os << "does not have field '" << key_.toStdString() << "'";
@@ -525,16 +681,15 @@ inline auto JsonField(KeyType&& key, ValueMatcher&& valMatcher) {
 // Matchers: QJsonArray
 // ============================================================================
 
-/// @brief Matches a QJsonArray or QJsonValue (array) containing at least one element matching elemMatcher.
+/// @brief Matches a QJsonArray or QJsonValue (array) containing at least one element matching
+/// elemMatcher.
 template <typename ElemMatcher>
 class JsonArrayContainsMatcher {
  public:
-  explicit JsonArrayContainsMatcher(ElemMatcher matcher)
-      : elemMatcher_(std::move(matcher)) {}
+  explicit JsonArrayContainsMatcher(ElemMatcher matcher) : elemMatcher_(std::move(matcher)) {}
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonArray arr;
     if (!qtPilot::test::internal::extractJsonArray(arg, arr, listener)) {
       return false;
@@ -552,13 +707,9 @@ class JsonArrayContainsMatcher {
     return false;
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "array contains element";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "array contains element"; }
 
-  void DescribeNegationTo(std::ostream* os) const {
-    *os << "array does not contain element";
-  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "array does not contain element"; }
 
   template <typename T>
   operator ::testing::Matcher<T>() const {
@@ -572,8 +723,7 @@ class JsonArrayContainsMatcher {
 template <typename ElemMatcher>
 inline auto JsonArrayContains(ElemMatcher&& matcher) {
   return ::testing::MakePolymorphicMatcher(
-      JsonArrayContainsMatcher<std::decay_t<ElemMatcher>>(
-          std::forward<ElemMatcher>(matcher)));
+      JsonArrayContainsMatcher<std::decay_t<ElemMatcher>>(std::forward<ElemMatcher>(matcher)));
 }
 
 /// @brief Matches the size of a QJsonArray or QJsonValue (array).
@@ -599,8 +749,7 @@ class IsJsonRpcSuccessMatcher {
   explicit IsJsonRpcSuccessMatcher(ResultMatcher rm) : resultMatcher_(std::move(rm)) {}
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -621,7 +770,8 @@ class IsJsonRpcSuccessMatcher {
     }
     QJsonValue resultVal = obj.value(QStringLiteral("result"));
     ::testing::StringMatchResultListener innerListener;
-    bool matched = qtPilot::test::internal::matchJsonValue(resultVal, resultMatcher_, &innerListener);
+    bool matched =
+        qtPilot::test::internal::matchJsonValue(resultVal, resultMatcher_, &innerListener);
     if (!matched) {
       std::string innerDetails = innerListener.str();
       *listener << "result does not match";
@@ -653,8 +803,7 @@ class IsJsonRpcSuccessMatcher {
 class IsJsonRpcSuccessAnyMatcher {
  public:
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -676,9 +825,7 @@ class IsJsonRpcSuccessAnyMatcher {
     return true;
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "is a JSON-RPC 2.0 success response";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "is a JSON-RPC 2.0 success response"; }
 
   void DescribeNegationTo(std::ostream* os) const {
     *os << "is not a JSON-RPC 2.0 success response";
@@ -697,8 +844,7 @@ inline auto IsJsonRpcSuccess() {
 template <typename ResultMatcher>
 inline auto IsJsonRpcSuccess(ResultMatcher&& rm) {
   return ::testing::MakePolymorphicMatcher(
-      IsJsonRpcSuccessMatcher<std::decay_t<ResultMatcher>>(
-          std::forward<ResultMatcher>(rm)));
+      IsJsonRpcSuccessMatcher<std::decay_t<ResultMatcher>>(std::forward<ResultMatcher>(rm)));
 }
 
 template <typename CodeMatcher, typename MessageMatcher>
@@ -708,15 +854,13 @@ class IsJsonRpcErrorMatcher {
       : codeMatcher_(std::move(cm)), messageMatcher_(std::move(mm)) {}
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
     }
     if (!obj.contains(QStringLiteral("error"))) {
-      *listener << "response has no 'error' field (was: "
-                << ::testing::PrintToString(obj) << ")";
+      *listener << "response has no 'error' field (was: " << ::testing::PrintToString(obj) << ")";
       return false;
     }
     QJsonObject errObj = obj.value(QStringLiteral("error")).toObject();
@@ -783,8 +927,7 @@ class IsJsonRpcNotificationMatcher {
       : methodMatcher_(std::move(mm)), paramsMatcher_(std::move(pm)) {}
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -816,13 +959,9 @@ class IsJsonRpcNotificationMatcher {
     return true;
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "is a JSON-RPC 2.0 notification";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "is a JSON-RPC 2.0 notification"; }
 
-  void DescribeNegationTo(std::ostream* os) const {
-    *os << "is not a JSON-RPC 2.0 notification";
-  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "is not a JSON-RPC 2.0 notification"; }
 
   template <typename T>
   operator ::testing::Matcher<T>() const {
@@ -864,8 +1003,7 @@ class PointEqMatcher {
   }
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -918,8 +1056,7 @@ class SizeEqMatcher {
   }
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -966,16 +1103,15 @@ class RectEqMatcher {
 
   bool MatchAndExplain(const QRect& r, ::testing::MatchResultListener* listener) const {
     if (r.x() != x_ || r.y() != y_ || r.width() != width_ || r.height() != height_) {
-      *listener << "has rect (x: " << r.x() << ", y: " << r.y()
-                << ", width: " << r.width() << ", height: " << r.height() << ")";
+      *listener << "has rect (x: " << r.x() << ", y: " << r.y() << ", width: " << r.width()
+                << ", height: " << r.height() << ")";
       return false;
     }
     return true;
   }
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -985,21 +1121,19 @@ class RectEqMatcher {
     int actualW = obj.value(QStringLiteral("width")).toInt();
     int actualH = obj.value(QStringLiteral("height")).toInt();
     if (actualX != x_ || actualY != y_ || actualW != width_ || actualH != height_) {
-      *listener << "has rect (x: " << actualX << ", y: " << actualY
-                << ", width: " << actualW << ", height: " << actualH << ")";
+      *listener << "has rect (x: " << actualX << ", y: " << actualY << ", width: " << actualW
+                << ", height: " << actualH << ")";
       return false;
     }
     return true;
   }
 
   void DescribeTo(std::ostream* os) const {
-    *os << "has rect (x: " << x_ << ", y: " << y_
-        << ", width: " << width_ << ", height: " << height_ << ")";
+    *os << "has rect (x: " << x_ << ", y: " << y_ << ", width: " << width_
+        << ", height: " << height_ << ")";
   }
 
-  void DescribeNegationTo(std::ostream* os) const {
-    *os << "does not have matching rect";
-  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "does not have matching rect"; }
 
   template <typename T>
   operator ::testing::Matcher<T>() const {
@@ -1034,22 +1168,20 @@ inline auto RectEq(const QRect& r) {
 /// that real coordinate bugs produce, so it costs nothing in rigour.
 class JsonRectEqMatcher {
  public:
-  JsonRectEqMatcher(qreal x, qreal y, qreal w, qreal h)
-      : x_(x), y_(y), width_(w), height_(h) {}
+  JsonRectEqMatcher(qreal x, qreal y, qreal w, qreal h) : x_(x), y_(y), width_(w), height_(h) {}
   explicit JsonRectEqMatcher(const QRectF& r)
       : x_(r.x()), y_(r.y()), width_(r.width()), height_(r.height()) {}
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
     }
     for (const char* key : {"x", "y", "width", "height"}) {
       if (!obj.value(QLatin1String(key)).isDouble()) {
-        *listener << "has no numeric '" << key << "' field (got: "
-                  << ::testing::PrintToString(obj) << ")";
+        *listener << "has no numeric '" << key << "' field (got: " << ::testing::PrintToString(obj)
+                  << ")";
         return false;
       }
     }
@@ -1108,16 +1240,15 @@ class JsonRectSizeMatcher {
   JsonRectSizeMatcher(qreal w, qreal h) : width_(w), height_(h) {}
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
     }
     for (const char* key : {"width", "height"}) {
       if (!obj.value(QLatin1String(key)).isDouble()) {
-        *listener << "has no numeric '" << key << "' field (got: "
-                  << ::testing::PrintToString(obj) << ")";
+        *listener << "has no numeric '" << key << "' field (got: " << ::testing::PrintToString(obj)
+                  << ")";
         return false;
       }
     }
@@ -1125,8 +1256,7 @@ class JsonRectSizeMatcher {
     const double actualH = obj.value(QStringLiteral("height")).toDouble();
     const double scaleW = std::max({1.0, std::abs(actualW), std::abs(width_)});
     const double scaleH = std::max({1.0, std::abs(actualH), std::abs(height_)});
-    if (std::abs(actualW - width_) > 1e-9 * scaleW ||
-        std::abs(actualH - height_) > 1e-9 * scaleH) {
+    if (std::abs(actualW - width_) > 1e-9 * scaleW || std::abs(actualH - height_) > 1e-9 * scaleH) {
       *listener << "has size (width: " << actualW << ", height: " << actualH << ")";
       return false;
     }
@@ -1160,8 +1290,8 @@ class RectContainsPointMatcher {
 
   bool MatchAndExplain(const QRect& r, ::testing::MatchResultListener* listener) const {
     if (!r.contains(pt_)) {
-      *listener << "rect " << ::testing::PrintToString(r) << " does not contain point ("
-                << pt_.x() << ", " << pt_.y() << ")";
+      *listener << "rect " << ::testing::PrintToString(r) << " does not contain point (" << pt_.x()
+                << ", " << pt_.y() << ")";
       return false;
     }
     return true;
@@ -1208,7 +1338,8 @@ class HasObjectNameMatcher {
     }
     QString actualName = obj->objectName();
     ::testing::StringMatchResultListener innerListener;
-    bool matched = qtPilot::test::internal::matchJsonValue(actualName, nameMatcher_, &innerListener);
+    bool matched =
+        qtPilot::test::internal::matchJsonValue(actualName, nameMatcher_, &innerListener);
     if (!matched) {
       *listener << "objectName is \"" << actualName.toStdString() << "\"";
       std::string details = innerListener.str();
@@ -1220,13 +1351,9 @@ class HasObjectNameMatcher {
     return true;
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "has matching objectName";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "has matching objectName"; }
 
-  void DescribeNegationTo(std::ostream* os) const {
-    *os << "does not have matching objectName";
-  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "does not have matching objectName"; }
 
   template <typename T>
   operator ::testing::Matcher<T>() const {
@@ -1256,7 +1383,8 @@ class HasClassNameMatcher {
     }
     QString actualClass = QString::fromLatin1(obj->metaObject()->className());
     ::testing::StringMatchResultListener innerListener;
-    bool matched = qtPilot::test::internal::matchJsonValue(actualClass, classMatcher_, &innerListener);
+    bool matched =
+        qtPilot::test::internal::matchJsonValue(actualClass, classMatcher_, &innerListener);
     if (!matched) {
       *listener << "className is \"" << actualClass.toStdString() << "\"";
       std::string details = innerListener.str();
@@ -1268,13 +1396,9 @@ class HasClassNameMatcher {
     return true;
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "has matching className";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "has matching className"; }
 
-  void DescribeNegationTo(std::ostream* os) const {
-    *os << "does not have matching className";
-  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "does not have matching className"; }
 
   template <typename T>
   operator ::testing::Matcher<T>() const {
@@ -1324,8 +1448,7 @@ class HasPropertyMatcher {
   }
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (!qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       return false;
@@ -1344,9 +1467,7 @@ class HasPropertyMatcher {
     return qtPilot::test::internal::matchJsonValue(val, valueMatcher_, listener);
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "has property '" << name_.toStdString() << "'";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "has property '" << name_.toStdString() << "'"; }
 
   void DescribeNegationTo(std::ostream* os) const {
     *os << "does not have property '" << name_.toStdString() << "'";
@@ -1375,8 +1496,7 @@ inline auto HasProperty(NameType&& name, ValueMatcher&& vm) {
 
 class IsValidPngMatcher {
  public:
-  bool MatchAndExplain(const QByteArray& bytes,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const QByteArray& bytes, ::testing::MatchResultListener* listener) const {
     static const char kPngMagic[] = "\x89PNG\r\n\x1a\n";
     if (bytes.size() < 8) {
       *listener << "byte array is only " << bytes.size() << " bytes (too short for PNG)";
@@ -1390,8 +1510,7 @@ class IsValidPngMatcher {
     return true;
   }
 
-  bool MatchAndExplain(const QString& str,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const QString& str, ::testing::MatchResultListener* listener) const {
     QByteArray decoded = QByteArray::fromBase64(str.toLatin1());
     if (decoded.isEmpty()) {
       *listener << "string could not be decoded as base64";
@@ -1401,8 +1520,7 @@ class IsValidPngMatcher {
   }
 
   template <typename JsonContainer>
-  bool MatchAndExplain(const JsonContainer& arg,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const JsonContainer& arg, ::testing::MatchResultListener* listener) const {
     QJsonObject obj;
     if (qtPilot::test::internal::extractJsonObject(arg, obj, listener)) {
       if (obj.contains(QStringLiteral("data"))) {
@@ -1424,13 +1542,9 @@ class IsValidPngMatcher {
     return false;
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "is valid PNG data or base64 PNG string";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "is valid PNG data or base64 PNG string"; }
 
-  void DescribeNegationTo(std::ostream* os) const {
-    *os << "is not valid PNG data";
-  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "is not valid PNG data"; }
 
   template <typename T>
   operator ::testing::Matcher<T>() const {
@@ -1444,8 +1558,7 @@ inline auto IsValidPng() {
 
 class IsValidBase64Matcher {
  public:
-  bool MatchAndExplain(const QString& str,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const QString& str, ::testing::MatchResultListener* listener) const {
     if (str.isEmpty()) {
       *listener << "string is empty";
       return false;
@@ -1458,8 +1571,7 @@ class IsValidBase64Matcher {
     return true;
   }
 
-  bool MatchAndExplain(const QByteArray& bytes,
-                       ::testing::MatchResultListener* listener) const {
+  bool MatchAndExplain(const QByteArray& bytes, ::testing::MatchResultListener* listener) const {
     if (bytes.isEmpty()) {
       *listener << "byte array is empty";
       return false;
@@ -1472,13 +1584,9 @@ class IsValidBase64Matcher {
     return true;
   }
 
-  void DescribeTo(std::ostream* os) const {
-    *os << "is non-empty valid base64 data";
-  }
+  void DescribeTo(std::ostream* os) const { *os << "is non-empty valid base64 data"; }
 
-  void DescribeNegationTo(std::ostream* os) const {
-    *os << "is not valid base64 data";
-  }
+  void DescribeNegationTo(std::ostream* os) const { *os << "is not valid base64 data"; }
 
   template <typename T>
   operator ::testing::Matcher<T>() const {

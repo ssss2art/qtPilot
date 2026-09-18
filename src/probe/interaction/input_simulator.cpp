@@ -74,7 +74,8 @@ void InputSimulator::mouseDoubleClick(QWidget* widget, MouseButton button, const
   QTest::mouseDClick(widget, toQtButton(button), modifiers, clickPos);
 }
 
-void InputSimulator::sendText(QWidget* widget, const QString& text) {
+void InputSimulator::sendText(QWidget* widget, const QString& text,
+                              Qt::KeyboardModifiers modifiers) {
   if (!widget) {
     throw std::invalid_argument("sendText: widget cannot be null");
   }
@@ -83,8 +84,9 @@ void InputSimulator::sendText(QWidget* widget, const QString& text) {
   widget->setFocus();
   QApplication::processEvents();
 
-  // QTest::keyClicks sends each character as a key event
-  QTest::keyClicks(widget, text);
+  // QTest::keyClicks sends each character as a key event, holding the
+  // modifiers down across the whole string.
+  QTest::keyClicks(widget, text, modifiers);
 }
 
 void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
@@ -103,7 +105,11 @@ void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
   widget->setFocus();
   QApplication::processEvents();
 
-  // Extract key and modifiers from first key combination
+  // Only the first key combination is sent: a multi-chord sequence such as
+  // "Ctrl+K, Ctrl+S" delivers Ctrl+K and reports success. Tracked as T11 in
+  // docs/observability-testability-gaps.md -- no app we drive uses chorded
+  // shortcuts yet, and closing it means deciding inter-chord timing and what a
+  // partial failure reports.
   Qt::Key extractedKey;
   Qt::KeyboardModifiers mods;
   qtPilot::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);
@@ -372,7 +378,8 @@ void InputSimulator::mouseDrag(QWindow* window, const QPoint& startPos, const QP
   sendMouseToWindow(window, QEvent::MouseButtonRelease, endPos, qtButton, Qt::NoButton, modifiers);
 }
 
-void InputSimulator::sendText(QWindow* window, const QString& text) {
+void InputSimulator::sendText(QWindow* window, const QString& text,
+                              Qt::KeyboardModifiers modifiers) {
   if (!window) {
     throw std::invalid_argument("sendText: window cannot be null");
   }
@@ -404,9 +411,9 @@ void InputSimulator::sendText(QWindow* window, const QString& text) {
         key = ch.toUpper().unicode();
         break;
     }
-    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, s);
+    QKeyEvent press(QEvent::KeyPress, key, modifiers, s);
     QCoreApplication::sendEvent(window, &press);
-    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, s);
+    QKeyEvent release(QEvent::KeyRelease, key, modifiers, s);
     QCoreApplication::sendEvent(window, &release);
   }
   QCoreApplication::processEvents();
@@ -434,7 +441,9 @@ void InputSimulator::sendKeySequence(QWindow* window, const QString& sequence) {
                                 "'");
   }
 
-  // Mirrors the QWidget overload: only the first key combination is sent.
+  // Mirrors the QWidget overload: only the first key combination is sent, so a
+  // multi-chord sequence is silently half-delivered (T11 in
+  // docs/observability-testability-gaps.md).
   Qt::Key extractedKey;
   Qt::KeyboardModifiers mods;
   qtPilot::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);

@@ -11,6 +11,7 @@
 #include "core/version.h"
 #include "interaction/hit_test.h"
 #include "interaction/input_simulator.h"
+#include "interaction/modifier_parser.h"
 #include "interaction/screenshot.h"
 #include "introspection/event_capture.h"
 #include "introspection/meta_inspector.h"
@@ -230,18 +231,18 @@ QPoint graphicsClickPoint(QGraphicsObject* item, QGraphicsView* view, const QJso
 }
 
 void queueWidgetClick(QWidget* widget, InputSimulator::MouseButton button, const QPoint& point,
-                      bool doubleClick) {
+                      bool doubleClick, Qt::KeyboardModifiers modifiers) {
   QPointer<QWidget> safeWidget(widget);
   QMetaObject::invokeMethod(
       widget,
-      [safeWidget, button, point, doubleClick]() {
+      [safeWidget, button, point, doubleClick, modifiers]() {
         if (!safeWidget) {
           return;
         }
         if (doubleClick) {
-          InputSimulator::mouseDoubleClick(safeWidget, button, point);
+          InputSimulator::mouseDoubleClick(safeWidget, button, point, modifiers);
         } else {
-          InputSimulator::mouseClick(safeWidget, button, point);
+          InputSimulator::mouseClick(safeWidget, button, point, modifiers);
         }
       },
       Qt::QueuedConnection);
@@ -253,6 +254,8 @@ QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodNa
   const QString objectId = params[QStringLiteral("objectId")].toString();
   const InputSimulator::MouseButton button =
       parseMouseButton(params[QStringLiteral("button")].toString(QStringLiteral("left")));
+  const Qt::KeyboardModifiers modifiers =
+      ModifierParser::parse(params.value(QStringLiteral("modifiers")), methodName);
 
   if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
     QGraphicsView* requestedView =
@@ -270,7 +273,7 @@ QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodNa
                       {QStringLiteral("y"), point.y()}});
     }
 
-    queueWidgetClick(view->viewport(), button, point, doubleClick);
+    queueWidgetClick(view->viewport(), button, point, doubleClick, modifiers);
     return QJsonObject{{QStringLiteral("ok"), true},
                        {QStringLiteral("deferred"), true},
                        {QStringLiteral("target"), QStringLiteral("graphicsItem")},
@@ -303,7 +306,7 @@ QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodNa
                    qRound(requireCoordinate(position, QStringLiteral("y"), methodName)));
   }
 
-  queueWidgetClick(widget, button, point, doubleClick);
+  queueWidgetClick(widget, button, point, doubleClick, modifiers);
   return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deferred"), true}};
 }
 
@@ -312,6 +315,23 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
   const QString objectId = params[QStringLiteral("objectId")].toString();
   const QString text = params[QStringLiteral("text")].toString();
   const QString sequence = params[QStringLiteral("sequence")].toString();
+  const QJsonValue rawModifiers = params.value(QStringLiteral("modifiers"));
+
+  // A sequence already spells its own modifiers ("Ctrl+S"), so accepting both
+  // would leave two sources for one thing and no obvious winner. Refusing the
+  // combination keeps the caller's intent unambiguous.
+  if (!sequence.isEmpty() && !rawModifiers.isUndefined() && !rawModifiers.isNull()) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameters 'sequence' and 'modifiers' cannot be combined; spell the "
+                       "modifiers inside the sequence, or use 'text' with 'modifiers'"),
+        QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.ui.sendKeys")},
+                    {QStringLiteral("sequence"), sequence},
+                    {QStringLiteral("modifiers"), rawModifiers}});
+  }
+
+  const Qt::KeyboardModifiers modifiers =
+      ModifierParser::parse(rawModifiers, QStringLiteral("qt.ui.sendKeys"));
 
   if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
     QGraphicsView* requestedView =
@@ -321,7 +341,7 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
     item->setFocus(Qt::OtherFocusReason);
     view->viewport()->setFocus(Qt::OtherFocusReason);
     if (!text.isEmpty()) {
-      InputSimulator::sendText(view->viewport(), text);
+      InputSimulator::sendText(view->viewport(), text, modifiers);
     }
     if (!sequence.isEmpty()) {
       InputSimulator::sendKeySequence(view->viewport(), sequence);
@@ -342,7 +362,7 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
   }
 
   if (!text.isEmpty()) {
-    InputSimulator::sendText(widget, text);
+    InputSimulator::sendText(widget, text, modifiers);
   }
   if (!sequence.isEmpty()) {
     InputSimulator::sendKeySequence(widget, sequence);

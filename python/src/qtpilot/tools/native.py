@@ -226,6 +226,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         button: str | None = None,
         position: dict | None = None,
         viewObjectId: str | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Click on a widget or QGraphicsView scene item.
@@ -234,8 +235,15 @@ def register_native_tools(mcp: FastMCP) -> None:
         more than one rendering view. The optional position is local to the
         target object; omitted means the target center.
 
+        Keyboard modifiers may be given as "ctrl", "ctrl+shift", or
+        ["ctrl", "shift"]. Accepted names: alt, cmd, command, control, ctrl,
+        keypad, meta, option, shift, super, win. Note that Qt reports macOS
+        Command as ControlModifier, so "ctrl" is Command there and "meta"
+        reaches the physical Control key.
+
         Example: qt_ui_click(objectId="submitButton")
         Example: qt_ui_click(objectId="TextBox_...", viewObjectId="layoutView")
+        Example: qt_ui_click(objectId="productA", modifiers="ctrl")
         """
         from qtpilot.server import require_probe
 
@@ -246,6 +254,8 @@ def register_native_tools(mcp: FastMCP) -> None:
             params["position"] = position
         if viewObjectId is not None:
             params["viewObjectId"] = viewObjectId
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("qt.ui.click", params)
 
     @mcp.tool
@@ -254,6 +264,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         button: str | None = None,
         position: dict | None = None,
         viewObjectId: str | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Double-click on a widget or QGraphicsView scene item.
@@ -274,6 +285,8 @@ def register_native_tools(mcp: FastMCP) -> None:
             params["position"] = position
         if viewObjectId is not None:
             params["viewObjectId"] = viewObjectId
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("qt.ui.doubleClick", params)
 
     @mcp.tool
@@ -282,6 +295,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         text: str | None = None,
         sequence: str | None = None,
         viewObjectId: str | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Send key input to a widget or QGraphicsView scene item.
@@ -289,8 +303,14 @@ def register_native_tools(mcp: FastMCP) -> None:
         For QGraphicsObject scene items, pass viewObjectId when the scene has
         more than one rendering view.
 
+        `modifiers` applies to `text` only and cannot be combined with
+        `sequence`, which already spells its own ("Ctrl+S"); passing both is an
+        error rather than a merge.
+
         Example: qt_ui_sendKeys(objectId="lineEdit", text="hello")
         Example: qt_ui_sendKeys(objectId="TextBox_...", text="hello", viewObjectId="layoutView")
+        Example: qt_ui_sendKeys(objectId="canvas", text="a", modifiers="ctrl")
+        Example: qt_ui_sendKeys(objectId="canvas", sequence="Ctrl+Shift+A")
         """
         from qtpilot.server import require_probe
 
@@ -301,6 +321,8 @@ def register_native_tools(mcp: FastMCP) -> None:
             params["sequence"] = sequence
         if viewObjectId is not None:
             params["viewObjectId"] = viewObjectId
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("qt.ui.sendKeys", params)
 
     @mcp.tool

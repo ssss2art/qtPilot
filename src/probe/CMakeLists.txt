@@ -11,6 +11,7 @@ set(PROBE_SOURCES
     introspection/qml_inspector.cpp
     introspection/model_navigator.cpp
     interaction/input_simulator.cpp
+    interaction/modifier_parser.cpp
     interaction/screenshot.cpp
     interaction/hit_test.cpp
     transport/websocket_server.cpp
@@ -45,6 +46,7 @@ set(PROBE_HEADERS
     introspection/qml_inspector.h
     introspection/model_navigator.h
     interaction/input_simulator.h
+    interaction/modifier_parser.h
     interaction/screenshot.h
     interaction/hit_test.h
     transport/websocket_server.h
