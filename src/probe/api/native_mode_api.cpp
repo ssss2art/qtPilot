@@ -21,7 +21,10 @@
 #include "introspection/signal_monitor.h"
 
 #include <QAbstractItemView>
+#include <QAction>
+#include <QApplication>
 #include <QComboBox>
+#include <QContextMenuEvent>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -32,6 +35,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMenu>
 #include <QPointer>
 #include <QTreeView>
 #include <QWidget>
@@ -210,11 +214,81 @@ QGraphicsView* resolveGraphicsItemView(QGraphicsObject* item, QGraphicsView* req
                          QJsonObject{{QStringLiteral("method"), methodName}});
 }
 
-QPoint graphicsClickPoint(QGraphicsObject* item, QGraphicsView* view, const QJsonObject& params,
-                          const QString& methodName) {
-  QPointF localPoint = item->boundingRect().center();
+/// @brief Where a click aimed at @p item should land, and whether it moved.
+struct ItemTarget {
+  QPoint viewportPoint;   ///< Point in the view's viewport coordinates.
+  bool adjusted = false;  ///< True when the preferred point was unusable.
+};
+
+/// @brief The topmost item at @p viewportPoint, or nullptr.
+QGraphicsItem* topItemAt(QGraphicsView* view, const QPoint& viewportPoint) {
+  return view->itemAt(viewportPoint);
+}
+
+/// @brief Whether a press at that point would reach @p item.
+///
+/// A child counts: pressing a label that belongs to the item is still pressing
+/// the item, and callers address the parent.
+bool reaches(QGraphicsItem* top, QGraphicsObject* item) {
+  for (QGraphicsItem* cursor = top; cursor; cursor = cursor->parentItem()) {
+    if (cursor == item) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// @brief Name the topmost item at a point, for an error a caller can act on.
+QString describeOccluder(QGraphicsView* view, const QPoint& viewportPoint) {
+  QGraphicsItem* top = topItemAt(view, viewportPoint);
+  if (!top) {
+    return QStringLiteral("<nothing>");
+  }
+  if (auto* asObject = dynamic_cast<QGraphicsObject*>(top)) {
+    const QString id = ObjectRegistry::instance()->objectId(asObject);
+    if (!id.isEmpty()) {
+      return id;
+    }
+  }
+  return QStringLiteral("<a %1>").arg(QString::fromUtf8(typeid(*top).name()));
+}
+
+/// @brief Candidate points inside @p item, preferred first.
+///
+/// The centre of the bounding rect is what a caller means by "click it", so it
+/// is tried first. It is not always usable: something can be drawn over it, and
+/// an item's own shape() can exclude it -- an outline whose interior is
+/// click-through has no centre to press. The rest of the rect is then sampled
+/// so those items stay addressable instead of becoming unreachable.
+QList<QPointF> candidateLocalPoints(QGraphicsObject* item) {
+  const QRectF rect = item->boundingRect();
+  QList<QPointF> points;
+  points.append(rect.center());
+
+  constexpr int kSteps = 9;  // 9x9 lattice: fine enough for a thin border band.
+  for (int row = 0; row < kSteps; ++row) {
+    for (int col = 0; col < kSteps; ++col) {
+      const qreal fx = (col + 0.5) / kSteps;
+      const qreal fy = (row + 0.5) / kSteps;
+      points.append(QPointF(rect.left() + rect.width() * fx, rect.top() + rect.height() * fy));
+    }
+  }
+  return points;
+}
+
+/// @brief Resolve where to click @p item, or refuse.
+///
+/// @throws JsonRpcException kItemOccluded when no point on the item would
+///         receive the press -- naming what is in the way. Refusing is the
+///         point: dispatching at a coordinate that belongs to something else
+///         presses the wrong object while reporting success, and the caller's
+///         assertion then measures the wrong object and passes.
+ItemTarget resolveItemTarget(QGraphicsObject* item, QGraphicsView* view, const QJsonObject& params,
+                             const QString& methodName) {
   const QJsonValue rawPosition = params.value(QStringLiteral("position"));
-  if (!rawPosition.isUndefined() && !rawPosition.isNull()) {
+  const bool callerChosePoint = !rawPosition.isUndefined() && !rawPosition.isNull();
+
+  if (callerChosePoint) {
     if (!rawPosition.isObject()) {
       throw JsonRpcException(
           JsonRpcError::kInvalidParams,
@@ -223,11 +297,65 @@ QPoint graphicsClickPoint(QGraphicsObject* item, QGraphicsView* view, const QJso
                       {QStringLiteral("position"), rawPosition}});
     }
     const QJsonObject position = rawPosition.toObject();
-    localPoint = QPointF(requireCoordinate(position, QStringLiteral("x"), methodName),
-                         requireCoordinate(position, QStringLiteral("y"), methodName));
+    const QPointF localPoint(requireCoordinate(position, QStringLiteral("x"), methodName),
+                             requireCoordinate(position, QStringLiteral("y"), methodName));
+    const QPoint viewportPoint = view->mapFromScene(item->mapToScene(localPoint));
+
+    // The caller named this exact point. Sliding off it quietly would answer a
+    // question they did not ask, so an obstructed point is refused instead.
+    if (!reaches(topItemAt(view, viewportPoint), item)) {
+      throw JsonRpcException(
+          ErrorCode::kItemOccluded,
+          QStringLiteral("The requested position does not belong to this item"),
+          QJsonObject{{QStringLiteral("method"), methodName},
+                      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(item)},
+                      {QStringLiteral("occludedBy"), describeOccluder(view, viewportPoint)},
+                      {QStringLiteral("x"), viewportPoint.x()},
+                      {QStringLiteral("y"), viewportPoint.y()}});
+    }
+    return ItemTarget{viewportPoint, false};
   }
 
-  return view->mapFromScene(item->mapToScene(localPoint));
+  const QRect viewportRect(QPoint(0, 0), view->viewport()->size());
+  const QList<QPointF> candidates = candidateLocalPoints(item);
+  const QPoint centre = view->mapFromScene(item->mapToScene(item->boundingRect().center()));
+  bool first = true;
+  bool anyPointOnScreen = false;
+  for (const QPointF& localPoint : candidates) {
+    const QPoint viewportPoint = view->mapFromScene(item->mapToScene(localPoint));
+    const bool wasFirst = first;
+    first = false;
+    if (!viewportRect.contains(viewportPoint)) {
+      continue;
+    }
+    anyPointOnScreen = true;
+    if (reaches(topItemAt(view, viewportPoint), item)) {
+      return ItemTarget{viewportPoint, !wasFirst};
+    }
+  }
+
+  // Scrolled or panned out of sight is a different problem from covered up, and
+  // the caller does something different about each: scroll to it, or deal with
+  // what is on top of it.
+  if (!anyPointOnScreen) {
+    throw JsonRpcException(
+        ErrorCode::kCoordinateOutOfBounds,
+        QStringLiteral("Graphics item click point is outside the view viewport"),
+        QJsonObject{{QStringLiteral("method"), methodName},
+                    {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(item)},
+                    {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)},
+                    {QStringLiteral("x"), centre.x()},
+                    {QStringLiteral("y"), centre.y()}});
+  }
+
+  throw JsonRpcException(
+      ErrorCode::kItemOccluded,
+      QStringLiteral("No point on this item would receive the event; something is drawn over it, "
+                     "or its shape() excludes the points tried"),
+      QJsonObject{{QStringLiteral("method"), methodName},
+                  {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(item)},
+                  {QStringLiteral("occludedBy"), describeOccluder(view, centre)},
+                  {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)}});
 }
 
 void queueWidgetClick(QWidget* widget, InputSimulator::MouseButton button, const QPoint& point,
@@ -261,7 +389,8 @@ QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodNa
     QGraphicsView* requestedView =
         resolveViewParam(params, QStringLiteral("viewObjectId"), methodName);
     QGraphicsView* view = resolveGraphicsItemView(item, requestedView, methodName);
-    const QPoint point = graphicsClickPoint(item, view, params, methodName);
+    const ItemTarget target = resolveItemTarget(item, view, params, methodName);
+    const QPoint point = target.viewportPoint;
     if (!QRect(QPoint(0, 0), view->viewport()->size()).contains(point)) {
       throw JsonRpcException(
           ErrorCode::kCoordinateOutOfBounds,
@@ -277,6 +406,7 @@ QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodNa
     return QJsonObject{{QStringLiteral("ok"), true},
                        {QStringLiteral("deferred"), true},
                        {QStringLiteral("target"), QStringLiteral("graphicsItem")},
+                       {QStringLiteral("adjusted"), target.adjusted},
                        {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)},
                        {QStringLiteral("position"), QJsonObject{{QStringLiteral("x"), point.x()},
                                                                 {QStringLiteral("y"), point.y()}}}};
@@ -308,6 +438,170 @@ QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodNa
 
   queueWidgetClick(widget, button, point, doubleClick, modifiers);
   return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deferred"), true}};
+}
+
+/// @brief The context menu currently on screen, or nullptr.
+///
+/// A popped-up QMenu is the active popup widget; when several are stacked (a
+/// submenu over its parent) the active one is the innermost, which is what a
+/// caller is looking at.
+QMenu* activeContextMenu() {
+  if (auto* popup = qobject_cast<QMenu*>(QApplication::activePopupWidget())) {
+    return popup;
+  }
+  const QWidgetList widgets = QApplication::topLevelWidgets();
+  for (QWidget* widget : widgets) {
+    if (auto* menu = qobject_cast<QMenu*>(widget)) {
+      if (menu->isVisible()) {
+        return menu;
+      }
+    }
+  }
+  return nullptr;
+}
+
+/// @brief The open menu, or a structured "nothing is open" error.
+QMenu* requireActiveMenu(const QString& methodName) {
+  QMenu* menu = activeContextMenu();
+  if (!menu) {
+    throw JsonRpcException(ErrorCode::kNoActiveMenu, QStringLiteral("No context menu is open"),
+                           QJsonObject{{QStringLiteral("method"), methodName}});
+  }
+  return menu;
+}
+
+/// @brief Describe a menu's entries in the order they are shown.
+QJsonArray describeMenuItems(QMenu* menu) {
+  QJsonArray items;
+  const QList<QAction*> actions = menu->actions();
+  for (QAction* action : actions) {
+    QJsonObject entry;
+    entry[QStringLiteral("text")] = action->text();
+    entry[QStringLiteral("enabled")] = action->isEnabled();
+    entry[QStringLiteral("visible")] = action->isVisible();
+    entry[QStringLiteral("checkable")] = action->isCheckable();
+    entry[QStringLiteral("checked")] = action->isChecked();
+    entry[QStringLiteral("separator")] = action->isSeparator();
+    entry[QStringLiteral("hasSubmenu")] = action->menu() != nullptr;
+    entry[QStringLiteral("objectId")] = ObjectRegistry::instance()->objectId(action);
+    items.append(entry);
+  }
+  return items;
+}
+
+/// @brief Post a context-menu event to @p widget at @p point.
+///
+/// Posted rather than sent: a handler that answers with QMenu::exec() spins its
+/// own event loop and would not return until the menu closed, with the RPC
+/// handler -- which runs on the GUI thread -- still inside the call.
+void queueContextMenuEvent(QWidget* widget, const QPoint& point) {
+  QPointer<QWidget> safeWidget(widget);
+  QMetaObject::invokeMethod(
+      widget,
+      [safeWidget, point]() {
+        if (!safeWidget) {
+          return;
+        }
+        QContextMenuEvent event(QContextMenuEvent::Mouse, point, safeWidget->mapToGlobal(point));
+        QCoreApplication::sendEvent(safeWidget, &event);
+      },
+      Qt::QueuedConnection);
+}
+
+QJsonObject handleUiContextMenu(const QJsonObject& params) {
+  const QString kMethod = QStringLiteral("qt.ui.contextMenu");
+  QObject* obj = resolveObjectParam(params, kMethod);
+  const QString objectId = params[QStringLiteral("objectId")].toString();
+
+  if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+    QGraphicsView* requestedView =
+        resolveViewParam(params, QStringLiteral("viewObjectId"), kMethod);
+    QGraphicsView* view = resolveGraphicsItemView(item, requestedView, kMethod);
+    const ItemTarget target = resolveItemTarget(item, view, params, kMethod);
+
+    queueContextMenuEvent(view->viewport(), target.viewportPoint);
+    return QJsonObject{
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("deferred"), true},
+        {QStringLiteral("target"), QStringLiteral("graphicsItem")},
+        {QStringLiteral("adjusted"), target.adjusted},
+        {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)},
+        {QStringLiteral("position"), QJsonObject{{QStringLiteral("x"), target.viewportPoint.x()},
+                                                 {QStringLiteral("y"), target.viewportPoint.y()}}}};
+  }
+
+  auto* widget = qobject_cast<QWidget*>(obj);
+  if (!widget) {
+    throw JsonRpcException(
+        ErrorCode::kObjectNotWidget, QStringLiteral("Object is not a widget: %1").arg(objectId),
+        QJsonObject{
+            {QStringLiteral("objectId"), objectId},
+            {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+  }
+
+  QPoint point = widget->rect().center();
+  const QJsonValue rawPosition = params.value(QStringLiteral("position"));
+  if (rawPosition.isObject()) {
+    const QJsonObject position = rawPosition.toObject();
+    point = QPoint(qRound(requireCoordinate(position, QStringLiteral("x"), kMethod)),
+                   qRound(requireCoordinate(position, QStringLiteral("y"), kMethod)));
+  }
+
+  queueContextMenuEvent(widget, point);
+  return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deferred"), true}};
+}
+
+QJsonObject handleUiActiveMenu() {
+  QMenu* menu = requireActiveMenu(QStringLiteral("qt.ui.activeMenu"));
+  return QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(menu)},
+                     {QStringLiteral("title"), menu->title()},
+                     {QStringLiteral("items"), describeMenuItems(menu)}};
+}
+
+QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
+  const QString kMethod = QStringLiteral("qt.ui.activateMenuItem");
+  const QString text = params.value(QStringLiteral("text")).toString();
+  if (text.isEmpty()) {
+    throw JsonRpcException(JsonRpcError::kInvalidParams,
+                           QStringLiteral("Parameter 'text' is required"),
+                           QJsonObject{{QStringLiteral("method"), kMethod}});
+  }
+
+  QMenu* menu = requireActiveMenu(kMethod);
+  QJsonArray offered;
+  const QList<QAction*> actions = menu->actions();
+  for (QAction* action : actions) {
+    if (action->isSeparator()) {
+      continue;
+    }
+    // Compare with the mnemonic marker removed, so a caller writes what the
+    // entry reads as on screen rather than "&Delete".
+    const QString label = action->text();
+    QString plain = label;
+    plain.remove(QLatin1Char('&'));
+    offered.append(label);
+    if (label == text || plain == text) {
+      if (!action->isEnabled()) {
+        throw JsonRpcException(
+            ErrorCode::kMenuItemNotFound, QStringLiteral("Menu item '%1' is disabled").arg(text),
+            QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("text"), text}});
+      }
+      // Triggering the action is what choosing the entry does. Clicking inside
+      // the menu's own modal loop would be a different and much worse problem.
+      action->trigger();
+      menu->close();
+      return QJsonObject{
+          {QStringLiteral("ok"), true},
+          {QStringLiteral("text"), label},
+          {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(action)}};
+    }
+  }
+
+  throw JsonRpcException(ErrorCode::kMenuItemNotFound,
+                         QStringLiteral("No menu item labelled '%1'").arg(text),
+                         QJsonObject{{QStringLiteral("method"), kMethod},
+                                     {QStringLiteral("text"), text},
+                                     {QStringLiteral("offered"), offered}});
 }
 
 QJsonObject handleUiSendKeys(const QJsonObject& params) {
@@ -908,6 +1202,30 @@ void NativeModeApi::registerUiMethods() {
         QJsonObject result = handleUiClickLike(p, QStringLiteral("qt.ui.doubleClick"), true);
         return envelopeToString(ResponseEnvelope::wrap(result, objectId));
       });
+
+  // qt.ui.contextMenu
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.contextMenu"),
+                            [](const QString& params) -> QString {
+                              auto p = parseParams(params);
+                              QString objectId = p[QStringLiteral("objectId")].toString();
+                              QJsonObject result = handleUiContextMenu(p);
+                              return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+                            });
+
+  // qt.ui.activeMenu
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.activeMenu"),
+                            [](const QString& /*params*/) -> QString {
+                              QJsonObject result = handleUiActiveMenu();
+                              return envelopeToString(ResponseEnvelope::wrap(result));
+                            });
+
+  // qt.ui.activateMenuItem
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.activateMenuItem"),
+                            [](const QString& params) -> QString {
+                              auto p = parseParams(params);
+                              QJsonObject result = handleUiActivateMenuItem(p);
+                              return envelopeToString(ResponseEnvelope::wrap(result));
+                            });
 
   // qt.ui.sendKeys
   m_handler->RegisterMethod(QStringLiteral("qt.ui.sendKeys"), [](const QString& params) -> QString {

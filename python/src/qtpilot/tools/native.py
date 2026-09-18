@@ -290,6 +290,59 @@ def register_native_tools(mcp: FastMCP) -> None:
         return await require_probe().call("qt.ui.doubleClick", params)
 
     @mcp.tool
+    async def qt_ui_contextMenu(
+        objectId: str,
+        position: dict | None = None,
+        viewObjectId: str | None = None,
+        ctx: Context = None,
+    ) -> dict:
+        """Open the context menu for a widget or QGraphicsView scene item.
+
+        A synthesized right-click does not produce the QContextMenuEvent that
+        opens a Qt context menu, so this sends that event instead. It returns
+        as soon as the event is queued -- a handler that answers with
+        QMenu::exec() would otherwise block -- so follow it with
+        qt_ui_activeMenu to see what opened.
+
+        Example: qt_ui_contextMenu(objectId="fileTree")
+        """
+        from qtpilot.server import require_probe
+
+        params: dict = {"objectId": objectId}
+        if position is not None:
+            params["position"] = position
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        return await require_probe().call("qt.ui.contextMenu", params)
+
+    @mcp.tool
+    async def qt_ui_activeMenu(ctx: Context = None) -> dict:
+        """List the entries of the context menu that is currently open.
+
+        Each entry reports text, enabled, visible, checkable, checked,
+        separator and hasSubmenu. Errors when no menu is open.
+
+        Example: qt_ui_activeMenu()
+        """
+        from qtpilot.server import require_probe
+
+        return await require_probe().call("qt.ui.activeMenu", {})
+
+    @mcp.tool
+    async def qt_ui_activateMenuItem(text: str, ctx: Context = None) -> dict:
+        """Choose an entry in the open context menu by its label.
+
+        The label is matched with any mnemonic '&' removed, so pass what the
+        entry reads as on screen. Errors when no menu is open, when nothing
+        carries that label, or when the entry is disabled.
+
+        Example: qt_ui_activateMenuItem(text="Delete")
+        """
+        from qtpilot.server import require_probe
+
+        return await require_probe().call("qt.ui.activateMenuItem", {"text": text})
+
+    @mcp.tool
     async def qt_ui_sendKeys(
         objectId: str,
         text: str | None = None,

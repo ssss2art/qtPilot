@@ -191,6 +191,10 @@ qtPilot_add_test(NAME test_graphics_view SOURCES test_graphics_view.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+qtPilot_add_test(NAME test_item_targeting SOURCES test_item_targeting.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+
 qtPilot_add_test(NAME test_input_modifiers SOURCES test_input_modifiers.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
