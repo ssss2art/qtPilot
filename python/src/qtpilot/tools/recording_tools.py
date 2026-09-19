@@ -12,7 +12,7 @@ def register_recording_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def qtpilot_recording_start(
-        targets: list[dict],
+        targets: list[dict] | list[str] | dict | str,
         include_lifecycle: bool = True,
         capture_events: bool = True,
         ctx: Context = None,
@@ -24,8 +24,9 @@ def register_recording_tools(mcp: FastMCP) -> None:
         qtpilot_recording_stop to retrieve the event log.
 
         Args:
-            targets: List of objects to watch. Each target is a dict with:
-                - object_id (str): Object to watch (e.g. "MainWindow")
+            targets: Object(s) to watch. Can be a list of target dicts or strings,
+                or a single target. Dict keys support both 'objectId' and 'object_id':
+                - objectId / object_id (str): Object to watch (e.g. "MainWindow")
                 - signals (list[str], optional): Specific signals. None = smart defaults
                 - recursive (bool, optional): Also watch children. Default false
             include_lifecycle: Record object creation/destruction events (default true)
@@ -33,21 +34,29 @@ def register_recording_tools(mcp: FastMCP) -> None:
                 focus events (default true). When enabled, the probe installs a
                 global event filter so no per-widget subscription is needed.
 
-        Example: qtpilot_recording_start(targets=[{"object_id": "MainWindow", "recursive": true}])
+        Example: qtpilot_recording_start(targets=[{"objectId": "MainWindow", "recursive": true}])
         """
         from qtpilot.server import get_recorder, require_probe
 
         probe = require_probe()
         recorder = get_recorder()
 
-        specs = [
-            TargetSpec(
-                object_id=t["object_id"],
-                signals=t.get("signals"),
-                recursive=t.get("recursive", False),
-            )
-            for t in targets
-        ]
+        target_list = targets if isinstance(targets, list) else [targets]
+        specs = []
+        for t in target_list:
+            if isinstance(t, str):
+                specs.append(TargetSpec(object_id=t))
+            elif isinstance(t, dict):
+                obj_id = t.get("objectId") or t.get("object_id")
+                if not obj_id:
+                    raise ValueError("Target dict must specify 'objectId' or 'object_id'")
+                specs.append(
+                    TargetSpec(
+                        object_id=obj_id,
+                        signals=t.get("signals"),
+                        recursive=t.get("recursive", False),
+                    )
+                )
 
         return await recorder.start(
             probe, specs, include_lifecycle=include_lifecycle, capture_events=capture_events

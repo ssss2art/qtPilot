@@ -180,7 +180,6 @@ if(QT_VERSION_MAJOR EQUAL 6)
             Qt6::Network
             Qt6::WebSockets
             Qt6::Widgets
-            Qt6::Test
         PRIVATE
             Qt6::CorePrivate
     )
@@ -195,7 +194,6 @@ else()
             Qt5::Network
             Qt5::WebSockets
             Qt5::Widgets
-            Qt5::Test
         PRIVATE
             Qt5::CorePrivate
     )

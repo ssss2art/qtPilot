@@ -4,14 +4,13 @@
 // NOTE: This test requires QTPILOT_ENABLED=0 environment variable to be set
 // to prevent full probe initialization. CTest sets this automatically.
 
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 
 #include <QSignalSpy>
 #include <QThread>
 #include <QTimer>
 #include <QtTest>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot;
 using namespace qtPilot::test;
@@ -41,6 +40,9 @@ class TestObjectRegistry : public QObject {
   void testDisconnectedRegistrationIsLazy();
   void testConnectedRegistrationPublishesObjectAdded();
   void testDestroyedObjectSuppressesQueuedObjectAdded();
+  void testObjectStormRapidCreation();
+  void testScanExistingObjectsIsLazy();
+  void testAllObjectsWithRoot();
   void testThreadSafety();
 
  private:
@@ -63,6 +65,7 @@ void TestObjectRegistry::cleanupTestCase() {
 
 void TestObjectRegistry::init() {
   ObjectRegistry::instance()->setClientConnected(false);
+  ObjectRegistry::instance()->setLifecycleNotificationsEnabled(false);
 }
 
 void TestObjectRegistry::cleanup() {
@@ -163,7 +166,8 @@ void TestObjectRegistry::testFindAllByClassName() {
   // Search is subclass-aware: querying the base class "QObject" matches every
   // tracked object, including the QTimer instances (QTimer derives QObject).
   QList<QObject*> allObjects = registry->findAllByClassName(QStringLiteral("QObject"), parent);
-  QEXPECT_THAT(allObjects, AllOf(Contains(parent), Contains(child), Contains(timer1), Contains(timer2)));
+  QEXPECT_THAT(allObjects,
+               AllOf(Contains(parent), Contains(child), Contains(timer1), Contains(timer2)));
 }
 
 void TestObjectRegistry::testObjectRemoval() {
@@ -208,6 +212,7 @@ void TestObjectRegistry::testDisconnectedRegistrationIsLazy() {
 void TestObjectRegistry::testConnectedRegistrationPublishesObjectAdded() {
   ObjectRegistry* registry = ObjectRegistry::instance();
   registry->setClientConnected(true);
+  registry->setLifecycleNotificationsEnabled(true);
   QSignalSpy addedSpy(registry, &ObjectRegistry::objectAdded);
 
   auto* obj = new QObject(this);
@@ -215,20 +220,22 @@ void TestObjectRegistry::testConnectedRegistrationPublishesObjectAdded() {
 
   bool found = false;
   QTRY_VERIFY_WITH_TIMEOUT(([&]() {
-    for (const auto& emission : addedSpy) {
-      if (qvariant_cast<QObject*>(emission.at(0)) == obj) {
-        found = true;
-        return true;
-      }
-    }
-    return false;
-  })(), 1000);
+                             for (const auto& emission : addedSpy) {
+                               if (qvariant_cast<QObject*>(emission.at(0)) == obj) {
+                                 found = true;
+                                 return true;
+                               }
+                             }
+                             return false;
+                           })(),
+                           1000);
   QEXPECT_THAT(found, IsTrue());
 }
 
 void TestObjectRegistry::testDestroyedObjectSuppressesQueuedObjectAdded() {
   ObjectRegistry* registry = ObjectRegistry::instance();
   registry->setClientConnected(true);
+  registry->setLifecycleNotificationsEnabled(true);
   QSignalSpy addedSpy(registry, &ObjectRegistry::objectAdded);
 
   auto* obj = new QObject();
@@ -239,6 +246,96 @@ void TestObjectRegistry::testDestroyedObjectSuppressesQueuedObjectAdded() {
   for (const auto& emission : addedSpy) {
     QEXPECT_THAT(qvariant_cast<QObject*>(emission.at(0)), Ne(destroyedAddress));
   }
+}
+
+void TestObjectRegistry::testObjectStormRapidCreation() {
+  ObjectRegistry* registry = ObjectRegistry::instance();
+  registry->setClientConnected(true);
+  registry->setLifecycleNotificationsEnabled(false);
+
+  QSignalSpy addedSpy(registry, &ObjectRegistry::objectAdded);
+  QSignalSpy removedSpy(registry, &ObjectRegistry::objectRemoved);
+
+  // Rapidly allocate and delete thousands of objects (object storm simulation)
+  constexpr int kStormCount = 3000;
+  QList<QObject*> batch;
+  batch.reserve(kStormCount);
+  for (int i = 0; i < kStormCount; ++i) {
+    batch.append(new QObject(this));
+  }
+
+  // All objects are tracked immediately
+  QEXPECT_THAT(registry->objectCount(), Ge(kStormCount));
+
+  // Event loop processing should NOT have queued thousands of notifications
+  QCoreApplication::processEvents();
+  QEXPECT_THAT(addedSpy.size(), Eq(0));
+  QEXPECT_THAT(removedSpy.size(), Eq(0));
+
+  // Now enable lifecycle notifications and verify they resume
+  registry->setLifecycleNotificationsEnabled(true);
+  auto* singleObj = new QObject(this);
+  QTRY_VERIFY_WITH_TIMEOUT(addedSpy.size() == 1, 1000);
+  QEXPECT_THAT(qvariant_cast<QObject*>(addedSpy.at(0).at(0)), Eq(singleObj));
+
+  // Deleting an object emits objectRemoved when lifecycle is enabled
+  delete singleObj;
+  QTRY_VERIFY_WITH_TIMEOUT(removedSpy.size() == 1, 1000);
+
+  qDeleteAll(batch);
+  batch.clear();
+}
+
+void TestObjectRegistry::testScanExistingObjectsIsLazy() {
+  ObjectRegistry* registry = ObjectRegistry::instance();
+  uninstallObjectHooks();
+
+  std::unique_ptr<QObject> root(new QObject());
+  root->setObjectName(QStringLiteral("scannedRoot"));
+  auto* child1 = new QObject(root.get());
+  child1->setObjectName(QStringLiteral("scannedChild1"));
+  auto* child2 = new QObject(root.get());
+  child2->setObjectName(QStringLiteral("scannedChild2"));
+
+  registry->scanExistingObjects(root.get());
+
+  // Tracked immediately via pointer set
+  QEXPECT_THAT(registry->contains(root.get()), IsTrue());
+  QEXPECT_THAT(registry->contains(child1), IsTrue());
+  QEXPECT_THAT(registry->contains(child2), IsTrue());
+
+  // Introspection lazily generates and caches IDs on demand
+  QString rootId = registry->objectId(root.get());
+  QEXPECT_THAT(rootId, QIsNotEmpty());
+  QEXPECT_THAT(registry->findById(rootId), Eq(root.get()));
+
+  installObjectHooks();
+}
+
+void TestObjectRegistry::testAllObjectsWithRoot() {
+  ObjectRegistry* registry = ObjectRegistry::instance();
+
+  auto* parentA = new QObject(this);
+  parentA->setObjectName(QStringLiteral("parentA"));
+  auto* childA = new QObject(parentA);
+  childA->setObjectName(QStringLiteral("childA"));
+
+  auto* parentB = new QObject(this);
+  parentB->setObjectName(QStringLiteral("parentB"));
+  auto* childB = new QObject(parentB);
+  childB->setObjectName(QStringLiteral("childB"));
+
+  QCoreApplication::processEvents();
+
+  QList<QObject*> subtreeA = registry->allObjects(parentA);
+  QEXPECT_THAT(subtreeA, AllOf(Contains(parentA), Contains(childA)));
+  QEXPECT_THAT(subtreeA, Not(Contains(parentB)));
+  QEXPECT_THAT(subtreeA, Not(Contains(childB)));
+
+  QList<QObject*> subtreeB = registry->allObjects(parentB);
+  QEXPECT_THAT(subtreeB, AllOf(Contains(parentB), Contains(childB)));
+  QEXPECT_THAT(subtreeB, Not(Contains(parentA)));
+  QEXPECT_THAT(subtreeB, Not(Contains(childA)));
 }
 
 void TestObjectRegistry::testThreadSafety() {
