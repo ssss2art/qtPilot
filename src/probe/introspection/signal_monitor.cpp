@@ -271,6 +271,7 @@ void SignalMonitor::unsubscribeAll(const QString& objectId) {
 void SignalMonitor::setLifecycleNotificationsEnabled(bool enabled) {
   QMutexLocker lock(&m_mutex);
   m_lifecycleEnabled = enabled;
+  ObjectRegistry::instance()->setLifecycleNotificationsEnabled(enabled);
   qDebug() << "[qtPilot] Lifecycle notifications" << (enabled ? "enabled" : "disabled");
 }
 

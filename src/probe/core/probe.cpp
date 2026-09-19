@@ -143,6 +143,10 @@ bool Probe::initialize() {
   // remain fully queryable; only live objectAdded push notifications need this flip.
   connect(m_server, &WebSocketServer::clientConnected, ObjectRegistry::instance(),
           []() { ObjectRegistry::instance()->setClientConnected(true); });
+  connect(m_server, &WebSocketServer::clientDisconnected, ObjectRegistry::instance(), []() {
+    ObjectRegistry::instance()->setClientConnected(false);
+    ObjectRegistry::instance()->setLifecycleNotificationsEnabled(false);
+  });
   connect(m_server, &WebSocketServer::clientDisconnected, this, &Probe::clientDisconnected);
   connect(m_server, &WebSocketServer::errorOccurred, this, &Probe::errorOccurred);
 

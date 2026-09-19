@@ -768,27 +768,7 @@ void NativeModeApi::registerObjectMethods() {
         if (!className.isEmpty()) {
           candidates = ObjectRegistry::instance()->findAllByClassName(className, rootObj);
         } else {
-          candidates = ObjectRegistry::instance()->allObjects();
-          if (rootObj) {
-            QList<QObject*> filtered;
-            for (QObject* obj : candidates) {
-              // effectiveParent(), not parent(): "descendant of root" has to mean
-              // the same thing here as it does in the tree and in generated ids.
-              // The QObject-only walk hit nullptr at every QML delegate, so a
-              // delegate was DROPPED from an otherwise-correct candidate list --
-              // a scoped search returned nothing for rows qt.objects.tree listed
-              // under that same root.
-              QObject* parent = obj;
-              int depth = 0;
-              while (parent && parent != rootObj && depth <= kMaxEffectiveDepth) {
-                parent = effectiveParent(parent);
-                ++depth;
-              }
-              if (parent == rootObj)
-                filtered.append(obj);
-            }
-            candidates = filtered;
-          }
+          candidates = ObjectRegistry::instance()->allObjects(rootObj);
         }
 
         QJsonArray matches;

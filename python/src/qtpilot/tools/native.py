@@ -31,8 +31,8 @@ def register_native_tools(mcp: FastMCP) -> None:
     # -- Object tree --------------------------------------------------------
 
     @mcp.tool
-    async def qt_objects_tree(root: str | None = None, maxDepth: int | None = None, ctx: Context = None) -> dict:
-        """Get the object tree, optionally from a root with limited depth.
+    async def qt_objects_tree(root: str | None = None, maxDepth: int | None = 3, ctx: Context = None) -> dict:
+        """Get the object tree, optionally from a root with limited depth (defaults to maxDepth=3).
         Example: qt_objects_tree(maxDepth=3)
         """
         from qtpilot.server import require_probe

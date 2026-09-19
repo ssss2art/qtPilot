@@ -1,10 +1,10 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
-#include "common/qt_matchers.h"
 #include "api/error_codes.h"
 #include "api/native_mode_api.h"
 #include "api/symbolic_name_map.h"
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "core/object_resolver.h"
 #include "introspection/signal_monitor.h"
@@ -79,6 +79,8 @@ class TestNativeModeApi : public QObject {
   void testObjectsSearchByProperties();
   void testObjectsSearchEmptyFilters();
   void testObjectsSearchByRootOnly();
+  void testObjectsSearchNonExistentRootThrows();
+  void testObjectsSearchByRootOnlySubtreeIsolation();
   void testObjectsSearchParamAliases();
   void testObjectsSearchLimitTruncation();
 
@@ -262,9 +264,7 @@ void TestNativeModeApi::testPing() {
   QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("pong", Eq(true)),
-      HasJsonField("eventLoopLatency")));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("pong", Eq(true)), HasJsonField("eventLoopLatency")));
   QEXPECT_THAT(static_cast<qint64>(obj["timestamp"].toDouble()), Gt(0));
   QEXPECT_THAT(static_cast<qint64>(obj["eventLoopLatency"].toDouble()), Ge(0));
 }
@@ -274,12 +274,11 @@ void TestNativeModeApi::testVersion() {
   QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("version", QIsNotEmpty()),
-      HasJsonField("protocol", QStrEq("jsonrpc-2.0")),
-      HasJsonField("name", QStrEq("qtPilot")),
-      HasJsonField("mode", QStrEq("native")),
-      HasJsonField("deprecated", JsonArrayContains(QStrEq("qtpilot.*")))));
+  QEXPECT_THAT(
+      obj,
+      AllOf(HasJsonField("version", QIsNotEmpty()), HasJsonField("protocol", QStrEq("jsonrpc-2.0")),
+            HasJsonField("name", QStrEq("qtPilot")), HasJsonField("mode", QStrEq("native")),
+            HasJsonField("deprecated", JsonArrayContains(QStrEq("qtpilot.*")))));
 }
 
 // ========================================================================
@@ -292,7 +291,8 @@ void TestNativeModeApi::testObjectsTree() {
 
   QJsonObject tree = result.toObject();
   // Tree should have some structure - at least children or className
-  QEXPECT_THAT(tree, AnyOf(HasJsonField("children"), HasJsonField("className"), HasJsonField("id")));
+  QEXPECT_THAT(tree,
+               AnyOf(HasJsonField("children"), HasJsonField("className"), HasJsonField("id")));
 }
 
 void TestNativeModeApi::testObjectsInspect() {
@@ -306,11 +306,11 @@ void TestNativeModeApi::testObjectsInspect() {
   QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject inspected = result.toObject();
-  QEXPECT_THAT(inspected, AllOf(
-      HasJsonField("info", HasJsonField("className", QStrEq("QPushButton"))),
-      HasJsonField("properties", QIsNotEmpty()),
-      HasJsonField("methods", QIsNotEmpty()),
-      HasJsonField("signals", QIsNotEmpty())));
+  QEXPECT_THAT(
+      inspected,
+      AllOf(HasJsonField("info", HasJsonField("className", QStrEq("QPushButton"))),
+            HasJsonField("properties", QIsNotEmpty()), HasJsonField("methods", QIsNotEmpty()),
+            HasJsonField("signals", QIsNotEmpty())));
 }
 
 void TestNativeModeApi::testInspectDefaultInfoOnly() {
@@ -324,14 +324,10 @@ void TestNativeModeApi::testInspectDefaultInfoOnly() {
   QJsonValue result = callResult("qt.objects.inspect", params);
 
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("info"),
-      DoesNotHaveJsonField("properties"),
-      DoesNotHaveJsonField("methods"),
-      DoesNotHaveJsonField("signals"),
-      DoesNotHaveJsonField("qml"),
-      DoesNotHaveJsonField("geometry"),
-      DoesNotHaveJsonField("model")));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("info"), DoesNotHaveJsonField("properties"),
+                          DoesNotHaveJsonField("methods"), DoesNotHaveJsonField("signals"),
+                          DoesNotHaveJsonField("qml"), DoesNotHaveJsonField("geometry"),
+                          DoesNotHaveJsonField("model")));
 }
 
 void TestNativeModeApi::testInspectPropertiesPart() {
@@ -347,9 +343,7 @@ void TestNativeModeApi::testInspectPropertiesPart() {
   QJsonValue result = callResult("qt.objects.inspect", params);
 
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("properties", QIsNotEmpty()),
-      DoesNotHaveJsonField("info")));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("properties", QIsNotEmpty()), DoesNotHaveJsonField("info")));
 }
 
 void TestNativeModeApi::testInspectAllAlias() {
@@ -363,14 +357,9 @@ void TestNativeModeApi::testInspectAllAlias() {
   QJsonValue result = callResult("qt.objects.inspect", params);
 
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("info"),
-      HasJsonField("properties"),
-      HasJsonField("methods"),
-      HasJsonField("signals"),
-      HasJsonField("qml"),
-      HasJsonField("geometry"),
-      HasJsonField("model")));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("info"), HasJsonField("properties"), HasJsonField("methods"),
+                          HasJsonField("signals"), HasJsonField("qml"), HasJsonField("geometry"),
+                          HasJsonField("model")));
 }
 
 void TestNativeModeApi::testInspectUnknownPartError() {
@@ -418,10 +407,8 @@ void TestNativeModeApi::testInspectGeometryPartOnWidget() {
   QJsonValue result = callResult("qt.objects.inspect", params);
 
   QJsonObject geom = result.toObject()[QStringLiteral("geometry")].toObject();
-  QEXPECT_THAT(geom, AllOf(
-      HasJsonField("width", Eq(100)),
-      HasJsonField("height", Eq(50)),
-      HasJsonField("visible")));
+  QEXPECT_THAT(geom, AllOf(HasJsonField("width", Eq(100)), HasJsonField("height", Eq(50)),
+                           HasJsonField("visible")));
 }
 
 void TestNativeModeApi::testObjectsSearchByClassName() {
@@ -435,18 +422,15 @@ void TestNativeModeApi::testObjectsSearchByClassName() {
 
   QEXPECT_THAT(result.isObject(), IsTrue());
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("objects"),
-      HasJsonField("count"),
-      HasJsonField("truncated")));
+  QEXPECT_THAT(obj,
+               AllOf(HasJsonField("objects"), HasJsonField("count"), HasJsonField("truncated")));
   QJsonArray objects = obj[QStringLiteral("objects")].toArray();
   QEXPECT_THAT(objects.size(), Ge(1));
 
-  QEXPECT_THAT(objects, JsonArrayContains(AllOf(
-      HasJsonField("objectName", QStrEq("searchTarget")),
-      HasJsonField("className", QStrEq("QPushButton")),
-      HasJsonField("objectId"),
-      HasJsonField("numericId"))));
+  QEXPECT_THAT(objects,
+               JsonArrayContains(AllOf(HasJsonField("objectName", QStrEq("searchTarget")),
+                                       HasJsonField("className", QStrEq("QPushButton")),
+                                       HasJsonField("objectId"), HasJsonField("numericId"))));
 }
 
 void TestNativeModeApi::testObjectsSearchByObjectName() {
@@ -485,10 +469,8 @@ void TestNativeModeApi::testObjectsSearchEmptyFilters() {
   QJsonValue result = callResult("qt.objects.search", params);
   QEXPECT_THAT(result.isObject(), IsTrue());
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("objects"),
-      HasJsonField("count"),
-      HasJsonField("truncated")));
+  QEXPECT_THAT(obj,
+               AllOf(HasJsonField("objects"), HasJsonField("count"), HasJsonField("truncated")));
   QEXPECT_THAT(obj[QStringLiteral("count")].toInt(), Gt(0));
 }
 
@@ -504,6 +486,36 @@ void TestNativeModeApi::testObjectsSearchByRootOnly() {
   QEXPECT_THAT(objects.size(), Ge(1));
 
   QEXPECT_THAT(objects, JsonArrayContains(HasJsonField("objectName", QStrEq("testBtn"))));
+}
+
+void TestNativeModeApi::testObjectsSearchNonExistentRootThrows() {
+  QJsonObject error = callExpectError(
+      "qt.objects.search",
+      QJsonObject{{QStringLiteral("root"), QStringLiteral("nonexistent/root/path")}});
+  QEXPECT_THAT(
+      error,
+      AllOf(HasJsonField("code", Eq(static_cast<int>(ErrorCode::kObjectNotFound))),
+            HasJsonField("message", QStrContains("Root object not found")),
+            HasJsonField("data", AllOf(HasJsonField("method", QStrEq("qt.objects.search")),
+                                       HasJsonField("root", QStrEq("nonexistent/root/path"))))));
+}
+
+void TestNativeModeApi::testObjectsSearchByRootOnlySubtreeIsolation() {
+  // Scoping search to m_testButton should only find m_testButton itself and any descendants,
+  // never sibling widgets like m_testLineEdit or m_testButton2.
+  QString buttonId = ObjectRegistry::instance()->objectId(m_testButton);
+  QJsonObject params;
+  params[QStringLiteral("root")] = buttonId;
+  QJsonValue result = callResult("qt.objects.search", params);
+  QEXPECT_THAT(result.isObject(), IsTrue());
+
+  QJsonArray objects = result.toObject()[QStringLiteral("objects")].toArray();
+  QEXPECT_THAT(objects.size(), Ge(1));
+  for (const auto& val : objects) {
+    QString name = val.toObject()[QStringLiteral("objectName")].toString();
+    QEXPECT_THAT(name, Ne(QStringLiteral("testLineEdit")));
+    QEXPECT_THAT(name, Ne(QStringLiteral("otherBtn")));
+  }
 }
 
 void TestNativeModeApi::testObjectsSearchParamAliases() {
@@ -537,9 +549,7 @@ void TestNativeModeApi::testObjectsSearchLimitTruncation() {
   params[QStringLiteral("limit")] = 0;
   QJsonValue result = callResult("qt.objects.search", params);
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("count", Eq(0)),
-      HasJsonField("truncated", Eq(true))));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("count", Eq(0)), HasJsonField("truncated", Eq(true))));
 }
 
 // ========================================================================
@@ -630,10 +640,8 @@ void TestNativeModeApi::testUiGeometry() {
   QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject geo = result.toObject();
-  QEXPECT_THAT(geo, AllOf(
-      HasJsonField("local"),
-      HasJsonField("global"),
-      HasJsonField("devicePixelRatio")));
+  QEXPECT_THAT(
+      geo, AllOf(HasJsonField("local"), HasJsonField("global"), HasJsonField("devicePixelRatio")));
 
   QJsonObject local = geo["local"].toObject();
   QEXPECT_THAT(local["width"].toInt(), Gt(0));
@@ -760,9 +768,11 @@ void TestNativeModeApi::testNamesValidate() {
   QEXPECT_THAT(validations.size(), Ge(2));
 
   // Check that validBtn is valid and invalidBtn is invalid
-  QEXPECT_THAT(validations, AllOf(
-      JsonArrayContains(AllOf(HasJsonField("name", QStrEq("validBtn")), HasJsonField("valid", Eq(true)))),
-      JsonArrayContains(AllOf(HasJsonField("name", QStrEq("invalidBtn")), HasJsonField("valid", Eq(false))))));
+  QEXPECT_THAT(validations,
+               AllOf(JsonArrayContains(AllOf(HasJsonField("name", QStrEq("validBtn")),
+                                             HasJsonField("valid", Eq(true)))),
+                     JsonArrayContains(AllOf(HasJsonField("name", QStrEq("invalidBtn")),
+                                             HasJsonField("valid", Eq(false))))));
 }
 
 // ========================================================================
@@ -805,10 +815,10 @@ void TestNativeModeApi::testStructuredErrorMissingObjectId() {
   // Call qt.properties.get without objectId
   QJsonObject error = callExpectError("qt.properties.get", QJsonObject{{"name", "text"}});
 
-  QEXPECT_THAT(error, AllOf(
-      HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
-      HasJsonField("message", QIsNotEmpty()),
-      HasJsonField("data", HasJsonField("method"))));
+  QEXPECT_THAT(
+      error,
+      AllOf(HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
+            HasJsonField("message", QIsNotEmpty()), HasJsonField("data", HasJsonField("method"))));
 }
 
 void TestNativeModeApi::testStructuredErrorObjectNotFound() {
@@ -816,10 +826,10 @@ void TestNativeModeApi::testStructuredErrorObjectNotFound() {
   QJsonObject error =
       callExpectError("qt.objects.inspect", QJsonObject{{"objectId", "nonexistent/path/xyz"}});
 
-  QEXPECT_THAT(error, AllOf(
-      HasJsonField("code", Eq(static_cast<int>(ErrorCode::kObjectNotFound))),
-      HasJsonField("message", QIsNotEmpty()),
-      HasJsonField("data", AllOf(HasJsonField("objectId"), HasJsonField("hint")))));
+  QEXPECT_THAT(error,
+               AllOf(HasJsonField("code", Eq(static_cast<int>(ErrorCode::kObjectNotFound))),
+                     HasJsonField("message", QIsNotEmpty()),
+                     HasJsonField("data", AllOf(HasJsonField("objectId"), HasJsonField("hint")))));
 }
 
 // A top-level QWidget is parentless, so it is NOT a QObject child of the
@@ -874,9 +884,7 @@ void TestNativeModeApi::treeIncludesTopLevelWidgets() {
       callEnvelope(QStringLiteral("qt.objects.tree"), QJsonObject{{"maxDepth", 6}});
   const QString dumped = QString::fromUtf8(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
 
-  QEXPECT_THAT(dumped, AllOf(
-      QStrContains("treeRootWidget"),
-      QStrContains("treeChildWidget")));
+  QEXPECT_THAT(dumped, AllOf(QStrContains("treeRootWidget"), QStrContains("treeChildWidget")));
 }
 
 QTEST_MAIN(TestNativeModeApi)
