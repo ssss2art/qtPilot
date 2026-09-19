@@ -205,9 +205,9 @@ cloud-cached approval ticket. The `xattr` workaround is not needed by end users.
 
 ---
 
-## Testing Results (DaVinci CAD App, Qt 6.10)
+## Testing Results (large CAD-style desktop app, Qt 6.10)
 
-Tested against a large real-world Qt application (~2300 library types, custom QMainWindow, multiple dock widgets).
+Tested against a large real-world Qt widgets application (~2300 library types, custom QMainWindow, multiple dock widgets).
 
 **Worked:**
 - Probe injection and WebSocket server startup

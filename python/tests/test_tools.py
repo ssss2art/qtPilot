@@ -43,6 +43,7 @@ class TestNativeTools:
             "qt_methods_invoke",
             "qt_signals_subscribe",
             "qt_ui_click",
+            "qt_ui_doubleClick",
             "qt_ui_screenshot",
             "qt_ui_sendKeys",
             "qt_ui_clickItem",

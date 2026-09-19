@@ -13,8 +13,9 @@ inferred Big-O plus an RMS goodness-of-fit.
 
 ```bash
 cmake -B build -DQTPILOT_BUILD_BENCHMARKS=ON
-cmake --build build --target qtPilot_bench_object_id
+cmake --build build --target qtPilot_bench_object_id qtPilot_bench_item_targeting
 ./build/bin/qtPilot_bench_object_id
+./build/bin/qtPilot_bench_item_targeting
 ```
 
 Off by default: the target fetches google/benchmark at configure time, and nothing
@@ -38,6 +39,37 @@ Constants are meaningless across machines; the exponents are the point.
 | `BM_ResolveId_LastOfNSiblings` | O(N) | `findByObjectId()` resolving a single id |
 
 N is the number of eagerly instantiated sibling delegates under one container.
+
+### Item targeting (`qtPilot_bench_item_targeting`)
+
+Here N is the number of **other items in the scene**, and the question is whether
+resolving where to click an item stays cheap as a scene fills up.
+
+| Benchmark | Big-O | Cost | What it covers |
+|---|---|---|---|
+| `BM_MapCentreOnly_NoVerification` | O(1) | ~4 ns | The old behaviour: map the centre and trust it |
+| `BM_ResolveTarget_CentreHits` | O(1) | ~0.6 µs | The common case — one hit-test confirms the centre reaches the item |
+| `BM_ResolveTarget_FallbackScan` | O(1) | ~1.4 µs | The centre misses (a hollow item), lattice scanned until a point lands |
+| `BM_ResolveTarget_FullyOccluded` | O(1) | ~53 µs | The refusal path: all 82 candidates tried, then throws |
+
+**None of them grow with scene size**, which is the property worth defending:
+Qt's hit-test is BSP-indexed, and the candidate scan is bounded by
+`ItemTargeting::candidatePointCount()` rather than by anything about the scene.
+
+The RMS on the three `ResolveTarget` rows sits around 21–24%, above the 10%
+trust threshold above. That is not run-length noise — it does not improve with
+longer runs. The measured times *dip* slightly as N grows rather than staying
+flat, so a constant is an imperfect fit to a mildly decreasing curve. The
+conclusion the rows support is "does not grow with N", which is what they are
+here to catch; treat the constants as approximate.
+
+**On the 4 ns → 0.6 µs step:** verifying the click actually reaches the item
+costs about 170x what trusting the coordinate did. That ratio looks alarming and
+is not, because the absolute number is what matters against what surrounds it —
+a JSON-RPC call parses JSON, resolves an object id, queues an event and crosses
+a WebSocket, which is orders of magnitude more than half a microsecond. The
+alternative to paying it is dispatching at a point that belongs to something
+else and reporting success, which costs a wrong answer.
 
 ## Where the complexity comes from, and how it was removed
 

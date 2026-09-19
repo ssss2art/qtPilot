@@ -44,6 +44,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         screen_absolute: bool | None = None,
         delay_ms: int | None = None,
         delayMs: int | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Left-click at the given coordinates.
@@ -62,6 +63,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["screenAbsolute"] = resolved_screen_abs
         if resolved_delay is not None:
             params["delay_ms"] = resolved_delay
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.click", params)
 
     @mcp.tool
@@ -74,6 +77,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         screen_absolute: bool | None = None,
         delay_ms: int | None = None,
         delayMs: int | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Right-click at the given coordinates.
@@ -92,6 +96,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["screenAbsolute"] = resolved_screen_abs
         if resolved_delay is not None:
             params["delay_ms"] = resolved_delay
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.rightClick", params)
 
     @mcp.tool
@@ -104,6 +110,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         screen_absolute: bool | None = None,
         delay_ms: int | None = None,
         delayMs: int | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Middle-click at the given coordinates.
@@ -122,6 +129,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["screenAbsolute"] = resolved_screen_abs
         if resolved_delay is not None:
             params["delay_ms"] = resolved_delay
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.middleClick", params)
 
     @mcp.tool
@@ -134,6 +143,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         screen_absolute: bool | None = None,
         delay_ms: int | None = None,
         delayMs: int | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Double-click at the given coordinates.
@@ -152,6 +162,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["screenAbsolute"] = resolved_screen_abs
         if resolved_delay is not None:
             params["delay_ms"] = resolved_delay
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.doubleClick", params)
 
     @mcp.tool
@@ -162,6 +174,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         point: dict | None = None,
         screenAbsolute: bool | None = None,
         screen_absolute: bool | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Move the mouse cursor to the given coordinates.
@@ -177,6 +190,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
         params: dict = {"x": rx, "y": ry}
         if resolved_screen_abs is not None:
             params["screenAbsolute"] = resolved_screen_abs
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseMove", params)
 
     @mcp.tool
@@ -189,6 +204,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         coordinate: list[int] | None = None,
         screenAbsolute: bool | None = None,
         screen_absolute: bool | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Drag from start to end coordinates.
@@ -206,6 +222,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
         params: dict = {"startX": sx, "startY": sy, "endX": ex, "endY": ey}
         if resolved_screen_abs is not None:
             params["screenAbsolute"] = resolved_screen_abs
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseDrag", params)
 
     @mcp.tool
@@ -217,6 +235,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         button: str | None = None,
         screenAbsolute: bool | None = None,
         screen_absolute: bool | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Press a mouse button down at the given coordinates.
@@ -234,6 +253,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["button"] = button
         if resolved_screen_abs is not None:
             params["screenAbsolute"] = resolved_screen_abs
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseDown", params)
 
     @mcp.tool
@@ -245,6 +266,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         button: str | None = None,
         screenAbsolute: bool | None = None,
         screen_absolute: bool | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Release a mouse button at the given coordinates.
@@ -262,6 +284,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["button"] = button
         if resolved_screen_abs is not None:
             params["screenAbsolute"] = resolved_screen_abs
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseUp", params)
 
     @mcp.tool
@@ -300,6 +324,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         point: dict | None = None,
         screenAbsolute: bool | None = None,
         screen_absolute: bool | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Scroll at the given coordinates in a direction.
@@ -317,6 +342,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["amount"] = amount
         if resolved_screen_abs is not None:
             params["screenAbsolute"] = resolved_screen_abs
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("cu.scroll", params)
 
     @mcp.tool

@@ -44,6 +44,7 @@ class TestComputerUseApi : public QObject {
 
   // CU-02 through CU-04: Clicks
   void testClick();
+  void testScreenAbsoluteClick();
   void testRightClick();
   void testMiddleClick();
   void testDoubleClick();
@@ -250,6 +251,22 @@ void TestComputerUseApi::testClick() {
 
   QJsonValue result =
       callResult("cu.click", QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}});
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result.isObject(), IsTrue());
+  QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(clicked, IsTrue());
+}
+
+void TestComputerUseApi::testScreenAbsoluteClick() {
+  QPoint btnCenter = m_testButton->mapToGlobal(m_testButton->rect().center());
+
+  bool clicked = false;
+  connect(m_testButton, &QPushButton::clicked, this, [&clicked]() { clicked = true; });
+
+  QJsonValue result =
+      callResult("cu.click",
+                 QJsonObject{{"x", btnCenter.x()}, {"y", btnCenter.y()}, {"screenAbsolute", true}});
   QApplication::processEvents();
 
   QEXPECT_THAT(result.isObject(), IsTrue());

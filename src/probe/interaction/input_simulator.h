@@ -69,12 +69,17 @@ class QTPILOT_EXPORT InputSimulator {
   /// @brief Simulate text input (UI-02).
   /// @param widget Target widget (should be focusable)
   /// @param text Text to type
-  static void sendText(QWidget* widget, const QString& text);
+  /// @param modifiers Keyboard modifiers held down for every character
+  static void sendText(QWidget* widget, const QString& text,
+                       Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
   /// @brief Simulate key sequence (UI-02).
   /// @param widget Target widget
   /// @param sequence Key sequence string (e.g., "Ctrl+S", "Alt+F4")
   ///        Accepts standard QKeySequence format strings
+  /// @note Only the first key combination is sent. A multi-chord sequence such
+  ///       as "Ctrl+K, Ctrl+S" delivers Ctrl+K and reports success; see T11 in
+  ///       docs/observability-testability-gaps.md.
   static void sendKeySequence(QWidget* widget, const QString& sequence);
 
   /// @brief Simulate individual key press.
@@ -172,7 +177,11 @@ class QTPILOT_EXPORT InputSimulator {
                         Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
   /// @brief Type text into the window's focused item (per-character key events).
-  static void sendText(QWindow* window, const QString& text);
+  /// @param window Target window
+  /// @param text Text to type
+  /// @param modifiers Keyboard modifiers held down for every character
+  static void sendText(QWindow* window, const QString& text,
+                       Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
   /// @brief Send a single key (press + release) to the window's focused item.
   static void sendKey(QWindow* window, Qt::Key key,
