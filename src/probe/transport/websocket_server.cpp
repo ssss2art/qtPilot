@@ -203,10 +203,23 @@ void WebSocketServer::onTextMessage(const QString& message) {
   QString response = m_rpcHandler->HandleMessage(message);
 
   // Send response if not a notification (notifications return empty response)
-  if (!response.isEmpty()) {
-    qDebug() << "[qtPilot] Sending:" << response;
-    m_activeClient->sendTextMessage(response);
+  if (response.isEmpty()) {
+    return;
   }
+
+  // Re-check rather than trusting the pointer tested before the call.
+  // HandleMessage() can turn the event loop -- a queued UI event, a popup, a
+  // modal dialog -- and the client may disconnect while it does, at which point
+  // onClientDisconnected() has already cleared m_activeClient. Using the stale
+  // pointer dereferenced null and took the host application down with it.
+  if (!m_activeClient) {
+    qWarning() << "[qtPilot] Client left while its request was being handled; "
+                  "dropping the reply";
+    return;
+  }
+
+  qDebug() << "[qtPilot] Sending:" << response;
+  m_activeClient->sendTextMessage(response);
 }
 
 void WebSocketServer::onClientDisconnected() {

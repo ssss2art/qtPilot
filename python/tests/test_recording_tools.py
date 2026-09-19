@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from fastmcp import FastMCP
+
+from qtpilot import _mcp_compat as mcp_compat
 
 from qtpilot.tools.recording_tools import register_recording_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:
     """Extract registered tool names from a FastMCP instance."""
-    return set(mcp._tool_manager._tools.keys())
+    # Enumeration is async on every FastMCP generation after 2.x; these tests
+    # are sync, so drive the compat accessor on a throwaway loop.
+    return set(asyncio.run(mcp_compat.list_tool_names(mcp)))
 
 
 class TestRecordingTools:

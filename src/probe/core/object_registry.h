@@ -54,6 +54,11 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// The probe flips this on when the first WebSocket client connects.
   void setClientConnected(bool connected);
 
+  /// @brief Enable/disable lifecycle notifications (objectAdded / objectRemoved).
+  /// Off by default: prevents event-loop flooding during object creation storms.
+  void setLifecycleNotificationsEnabled(bool enabled);
+  bool lifecycleNotificationsEnabled() const;
+
   /// @brief Find object by objectName.
   /// @param name The objectName to search for.
   /// @param root Optional root object to search within (nullptr = all objects).
@@ -66,9 +71,10 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// @return List of all matching objects.
   QList<QObject*> findAllByClassName(const QString& className, QObject* root = nullptr);
 
-  /// @brief Get all tracked objects.
-  /// @return List of all objects currently in the registry.
-  QList<QObject*> allObjects();
+  /// @brief Get all tracked objects, optionally within a subtree.
+  /// @param root Optional root object to search within (nullptr = all objects).
+  /// @return List of all objects currently in the registry or subtree.
+  QList<QObject*> allObjects(QObject* root = nullptr);
 
   /// @brief Get the number of tracked objects.
   /// @return Object count.
@@ -195,6 +201,7 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// notification work — only the object pointer is stored. Atomic because the QObject
   /// creation hook can fire from any thread.
   std::atomic<bool> m_clientConnected{false};
+  std::atomic<bool> m_lifecycleNotificationsEnabled{false};
 
   /// @brief Objects whose objectName-change auto-refresh has been wired (see
   /// ensureNameTrackingLocked). Prevents duplicate connections when an object (or an

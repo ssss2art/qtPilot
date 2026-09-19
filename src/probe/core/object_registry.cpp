@@ -99,6 +99,20 @@ QObject* findByObjectNameHelper(QObject* root, const QString& name, int depth = 
   return nullptr;
 }
 
+/// @brief Recursive effective hierarchy collector.
+void collectEffectiveSubtreeHelper(QObject* root, QList<QObject*>& result, QSet<QObject*>& visited,
+                                   int depth = 0) {
+  if (!root || depth > qtPilot::kMaxEffectiveDepth || visited.contains(root)) {
+    return;
+  }
+  visited.insert(root);
+  result.append(root);
+  const QList<QObject*> children = qtPilot::effectiveChildren(root);
+  for (QObject* child : children) {
+    collectEffectiveSubtreeHelper(child, result, visited, depth + 1);
+  }
+}
+
 }  // namespace
 
 // Hook callbacks - these are called by Qt for every QObject creation/destruction
@@ -190,6 +204,14 @@ void ObjectRegistry::setClientConnected(bool connected) {
   m_clientConnected.store(connected, std::memory_order_relaxed);
 }
 
+void ObjectRegistry::setLifecycleNotificationsEnabled(bool enabled) {
+  m_lifecycleNotificationsEnabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool ObjectRegistry::lifecycleNotificationsEnabled() const {
+  return m_lifecycleNotificationsEnabled.load(std::memory_order_relaxed);
+}
+
 ObjectRegistry::ObjectRegistry() : QObject(nullptr) {
   // Log creation for debugging - use fprintf to avoid potential qDebug issues
   // during singleton initialization
@@ -220,21 +242,26 @@ void ObjectRegistry::registerObject(QObject* obj) {
     m_objects.insert(obj);
   }
 
-  // Defer all ID computation and notifications until a client is actually connected.
+  // Defer all ID computation and notifications unless a client is actually connected.
   // Until then the pull-based native API reads m_objects directly and objectId()
   // computes IDs lazily on demand, so injection stays O(1) per object even when the
-  // target builds a very large object graph at startup (thousands of QObjects). Once a
-  // client connects, setClientConnected(true) flips this and newly created objects get
-  // the full eager treatment so live push notifications remain correct.
+  // target builds a very large object graph at startup (thousands of QObjects).
   if (!m_clientConnected.load(std::memory_order_relaxed)) {
     return;
   }
 
-  // A client is connected: push a live objectAdded notification. The hierarchical ID and
-  // objectName-change tracking are established lazily on first objectId() query (see
-  // objectId()), so nothing else is done here. Posted via QueuedConnection because the
-  // hook fires mid-construction — objectName/parent may not be set yet, and slots must run
-  // on the main thread.
+  // Only queue objectAdded if lifecycle notifications are enabled.
+  // This prevents flooding the Qt main-thread event loop with thousands
+  // of lambdas during startup object storms when lifecycle events are disabled.
+  if (!m_lifecycleNotificationsEnabled.load(std::memory_order_relaxed)) {
+    return;
+  }
+
+  // A client is connected and listening: push a live objectAdded notification.
+  // The hierarchical ID and objectName-change tracking are established lazily on
+  // first objectId() query (see objectId()), so nothing else is done here. Posted via
+  // QueuedConnection because the hook fires mid-construction — objectName/parent
+  // may not be set yet, and slots must run on the main thread.
   if (QCoreApplication::instance()) {
     // QPointer safely detects destruction before the queued lambda runs; a raw-pointer
     // m_objects check is insufficient because a freed address can be reused.
@@ -291,8 +318,10 @@ void ObjectRegistry::unregisterObject(QObject* obj) {
     }
   }
 
-  // Emit signal on main thread (skip if no event loop or during shutdown)
-  if (QCoreApplication::instance()) {
+  // Emit signal on main thread (skip if no event loop or during shutdown,
+  // or if lifecycle notifications are disabled to prevent event-loop flooding)
+  if (QCoreApplication::instance() &&
+      m_lifecycleNotificationsEnabled.load(std::memory_order_relaxed)) {
     QMetaObject::invokeMethod(
         this, [this, obj]() { emit objectRemoved(obj); }, Qt::QueuedConnection);
   }
@@ -372,9 +401,15 @@ void ObjectRegistry::ensureNameTrackingLocked(QObject* obj) {
   }
 }
 
-QList<QObject*> ObjectRegistry::allObjects() {
+QList<QObject*> ObjectRegistry::allObjects(QObject* root) {
   std::unique_lock<std::recursive_mutex> lock(m_mutex);
-  return m_objects.values();
+  if (!root) {
+    return m_objects.values();
+  }
+  QList<QObject*> result;
+  QSet<QObject*> visited;
+  collectEffectiveSubtreeHelper(root, result, visited);
+  return result;
 }
 
 int ObjectRegistry::objectCount() const {
@@ -611,34 +646,9 @@ void ObjectRegistry::scanExistingObjectsImpl(QObject* root, QSet<QObject*>& visi
     std::unique_lock<std::recursive_mutex> lock(m_mutex);
     if (!m_objects.contains(root)) {
       m_objects.insert(root);
-
-      // Generate and cache ID for scanned object
-      QString id = generateObjectId(root);
-
-      id = allocateUniqueIdLocked(id, root);
-
-      m_objectToId.insert(root, id);
-      m_idToObject.insert(id, QPointer<QObject>(root));
-
-      // Connect objectNameChanged for future name changes.
-      // scanExistingObjects runs on the main thread during Probe::initialize(),
-      // so we can connect directly without the queued indirection used by
-      // registerObject().
-      connect(
-          root, &QObject::objectNameChanged, this,
-          [this, root]() {
-            std::unique_lock<std::recursive_mutex> lk(m_mutex);
-            if (!m_objects.contains(root)) {
-              return;
-            }
-            lk.unlock();
-            refreshObjectId(root);
-            refreshDescendantIds(root);
-          },
-          Qt::QueuedConnection);
-
-      // Don't emit signal for pre-existing objects to avoid noise
-      // during initialization
+      // Hierarchical ID computation and objectNameChanged tracking are deferred
+      // until the object is actually introspected (via objectId()). This keeps startup
+      // scanning O(1) per object even for applications with tens of thousands of QObjects.
     }
   }
 

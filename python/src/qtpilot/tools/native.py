@@ -31,8 +31,8 @@ def register_native_tools(mcp: FastMCP) -> None:
     # -- Object tree --------------------------------------------------------
 
     @mcp.tool
-    async def qt_objects_tree(root: str | None = None, maxDepth: int | None = None, ctx: Context = None) -> dict:
-        """Get the object tree, optionally from a root with limited depth.
+    async def qt_objects_tree(root: str | None = None, maxDepth: int | None = 3, ctx: Context = None) -> dict:
+        """Get the object tree, optionally from a root with limited depth (defaults to maxDepth=3).
         Example: qt_objects_tree(maxDepth=3)
         """
         from qtpilot.server import require_probe
@@ -48,6 +48,7 @@ def register_native_tools(mcp: FastMCP) -> None:
     async def qt_objects_inspect(
         objectId: str,
         parts: str | list[str] | None = None,
+        part: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
         """Inspect an object with selectable detail sections.
@@ -64,14 +65,27 @@ def register_native_tools(mcp: FastMCP) -> None:
             objectId: The object to inspect
             parts: Sections to include. String "all" includes everything; string "info"
                    (or omitted) returns just info. A list names specific sections.
+                   Comma-separated string like "info,properties" is also accepted.
+            part: Alias for `parts`.
 
         Example: qt_objects_inspect(objectId="MainWindow", parts=["info","geometry"])
         """
         from qtpilot.server import require_probe
 
-        params: dict = {"objectId": objectId}
-        if parts is not None:
-            params["parts"] = parts
+        raw_parts = part if part is not None else parts
+        if isinstance(raw_parts, str):
+            if raw_parts == "all":
+                parsed_parts: str | list[str] = "all"
+            elif "," in raw_parts:
+                parsed_parts = [p.strip() for p in raw_parts.split(",") if p.strip()]
+            else:
+                parsed_parts = [raw_parts.strip()]
+        elif raw_parts is not None:
+            parsed_parts = list(raw_parts)
+        else:
+            parsed_parts = ["info"]
+
+        params: dict = {"objectId": objectId, "parts": parsed_parts}
         return await require_probe().call("qt.objects.inspect", params)
 
     @mcp.tool
@@ -81,6 +95,10 @@ def register_native_tools(mcp: FastMCP) -> None:
         properties: dict | None = None,
         root: str | None = None,
         limit: int | None = None,
+        name: str | None = None,
+        class_name: str | None = None,
+        root_id: str | None = None,
+        rootId: str | None = None,
         ctx: Context = None,
     ) -> dict:
         """Discover objects by name, class, and/or property filters.
@@ -97,20 +115,27 @@ def register_native_tools(mcp: FastMCP) -> None:
             properties: Property-value filters; every listed property must equal the given value
             root: Restrict search to this subtree
             limit: Maximum matches returned (default 50)
+            name: Alias for `objectName`
+            class_name: Alias for `className`
+            root_id / rootId: Alias for `root`
 
         Example: qt_objects_search(className="QPushButton", properties={"enabled": True})
         """
         from qtpilot.server import require_probe
 
+        resolved_name = objectName if objectName is not None else name
+        resolved_class = className if className is not None else class_name
+        resolved_root = root if root is not None else (root_id or rootId)
+
         params: dict = {}
-        if objectName is not None:
-            params["objectName"] = objectName
-        if className is not None:
-            params["className"] = className
+        if resolved_name is not None:
+            params["objectName"] = resolved_name
+        if resolved_class is not None:
+            params["className"] = resolved_class
         if properties is not None:
             params["properties"] = properties
-        if root is not None:
-            params["root"] = root
+        if resolved_root is not None:
+            params["root"] = resolved_root
         if limit is not None:
             params["limit"] = limit
         return await require_probe().call("qt.objects.search", params)
@@ -224,11 +249,26 @@ def register_native_tools(mcp: FastMCP) -> None:
     async def qt_ui_click(
         objectId: str,
         button: str | None = None,
-        position: dict | None = None,
+        position: dict | list | tuple | None = None,
+        viewObjectId: str | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
-        """Click on a widget, optionally specifying button and position.
+        """Click on a widget or QGraphicsView scene item.
+
+        For QGraphicsObject scene items, pass viewObjectId when the scene has
+        more than one rendering view. The optional position is local to the
+        target object; omitted means the target center.
+
+        Keyboard modifiers may be given as "ctrl", "ctrl+shift", or
+        ["ctrl", "shift"]. Accepted names: alt, cmd, command, control, ctrl,
+        keypad, meta, option, shift, super, win. Note that Qt reports macOS
+        Command as ControlModifier, so "ctrl" is Command there and "meta"
+        reaches the physical Control key.
+
         Example: qt_ui_click(objectId="submitButton")
+        Example: qt_ui_click(objectId="TextBox_...", viewObjectId="layoutView")
+        Example: qt_ui_click(objectId="productA", modifiers="ctrl")
         """
         from qtpilot.server import require_probe
 
@@ -236,26 +276,143 @@ def register_native_tools(mcp: FastMCP) -> None:
         if button is not None:
             params["button"] = button
         if position is not None:
-            params["position"] = position
+            if isinstance(position, (list, tuple)) and len(position) >= 2:
+                params["position"] = {"x": position[0], "y": position[1]}
+            else:
+                params["position"] = position
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("qt.ui.click", params)
+
+    @mcp.tool
+    async def qt_ui_doubleClick(
+        objectId: str,
+        button: str | None = None,
+        position: dict | list | tuple | None = None,
+        viewObjectId: str | None = None,
+        modifiers: str | list[str] | None = None,
+        ctx: Context = None,
+    ) -> dict:
+        """Double-click on a widget or QGraphicsView scene item.
+
+        For QGraphicsObject scene items, pass viewObjectId when the scene has
+        more than one rendering view. The optional position is local to the
+        target object; omitted means the target center.
+
+        Example: qt_ui_doubleClick(objectId="lineEdit")
+        Example: qt_ui_doubleClick(objectId="TextBox_...", viewObjectId="layoutView")
+        """
+        from qtpilot.server import require_probe
+
+        params: dict = {"objectId": objectId}
+        if button is not None:
+            params["button"] = button
+        if position is not None:
+            if isinstance(position, (list, tuple)) and len(position) >= 2:
+                params["position"] = {"x": position[0], "y": position[1]}
+            else:
+                params["position"] = position
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        if modifiers is not None:
+            params["modifiers"] = modifiers
+        return await require_probe().call("qt.ui.doubleClick", params)
+
+    @mcp.tool
+    async def qt_ui_contextMenu(
+        objectId: str,
+        position: dict | list | tuple | None = None,
+        viewObjectId: str | None = None,
+        ctx: Context = None,
+    ) -> dict:
+        """Open the context menu for a widget or QGraphicsView scene item.
+
+        A synthesized right-click does not produce the QContextMenuEvent that
+        opens a Qt context menu, so this sends that event instead. It returns
+        as soon as the event is queued -- a handler that answers with
+        QMenu::exec() would otherwise block -- so follow it with
+        qt_ui_activeMenu to see what opened.
+
+        Example: qt_ui_contextMenu(objectId="fileTree")
+        """
+        from qtpilot.server import require_probe
+
+        params: dict = {"objectId": objectId}
+        if position is not None:
+            if isinstance(position, (list, tuple)) and len(position) >= 2:
+                params["position"] = {"x": position[0], "y": position[1]}
+            else:
+                params["position"] = position
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        return await require_probe().call("qt.ui.contextMenu", params)
+
+    @mcp.tool
+    async def qt_ui_activeMenu(ctx: Context = None) -> dict:
+        """List the entries of the context menu that is currently open.
+
+        Each entry reports text, enabled, visible, checkable, checked,
+        separator and hasSubmenu. Errors when no menu is open.
+
+        Example: qt_ui_activeMenu()
+        """
+        from qtpilot.server import require_probe
+
+        return await require_probe().call("qt.ui.activeMenu", {})
+
+    @mcp.tool
+    async def qt_ui_activateMenuItem(text: str, ctx: Context = None) -> dict:
+        """Choose an entry in the open context menu by its label.
+
+        The label is matched with any mnemonic '&' removed, so pass what the
+        entry reads as on screen. Errors when no menu is open, when nothing
+        carries that label, or when the entry is disabled.
+
+        Example: qt_ui_activateMenuItem(text="Delete")
+        """
+        from qtpilot.server import require_probe
+
+        return await require_probe().call("qt.ui.activateMenuItem", {"text": text})
 
     @mcp.tool
     async def qt_ui_sendKeys(
         objectId: str,
         text: str | None = None,
         sequence: str | None = None,
+        key: str | None = None,
+        keys: str | None = None,
+        viewObjectId: str | None = None,
+        modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
-        """Send key input to a widget (text or key sequence).
+        """Send key input to a widget or QGraphicsView scene item.
+
+        For QGraphicsObject scene items, pass viewObjectId when the scene has
+        more than one rendering view.
+
+        `modifiers` applies to `text` only and cannot be combined with
+        `sequence`, which already spells its own ("Ctrl+S"); passing both is an
+        error rather than a merge.
+
         Example: qt_ui_sendKeys(objectId="lineEdit", text="hello")
+        Example: qt_ui_sendKeys(objectId="TextBox_...", text="hello", viewObjectId="layoutView")
+        Example: qt_ui_sendKeys(objectId="canvas", text="a", modifiers="ctrl")
+        Example: qt_ui_sendKeys(objectId="canvas", sequence="Ctrl+Shift+A")
         """
         from qtpilot.server import require_probe
 
+        resolved_sequence = sequence if sequence is not None else (key or keys)
         params: dict = {"objectId": objectId}
         if text is not None:
             params["text"] = text
-        if sequence is not None:
-            params["sequence"] = sequence
+        if resolved_sequence is not None:
+            params["sequence"] = resolved_sequence
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        if modifiers is not None:
+            params["modifiers"] = modifiers
         return await require_probe().call("qt.ui.sendKeys", params)
 
     @mcp.tool
@@ -425,6 +582,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         role: str = "display",
         match: str = "contains",
         max_hits: int = 10,
+        maxHits: int | None = None,
         parent: list[int] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -439,13 +597,14 @@ def register_native_tools(mcp: FastMCP) -> None:
         """
         from qtpilot.server import require_probe
 
+        hits = maxHits if maxHits is not None else max_hits
         params: dict = {
             "objectId": objectId,
             "value": value,
             "column": column,
             "role": role,
             "match": match,
-            "maxHits": max_hits,
+            "maxHits": hits,
         }
         if parent is not None:
             params["parent"] = parent
@@ -454,8 +613,9 @@ def register_native_tools(mcp: FastMCP) -> None:
     @mcp.tool
     async def qt_ui_clickItem(
         objectId: str,
-        itemPath: list[str] | None = None,
+        itemPath: list[str] | str | None = None,
         path: list[int] | None = None,
+        target: list[str] | str | None = None,
         column: int = 0,
         action: str = "click",
         editColumn: int | None = None,
@@ -465,17 +625,28 @@ def register_native_tools(mcp: FastMCP) -> None:
     ) -> dict:
         """Select / click / double-click / edit an item in a view.
 
-        Exactly one of `itemPath` (exact display text per level) or `path`
-        (int[] row path) must be provided. `column` selects which cell of the
-        addressed row is acted on (and, for `itemPath`, which column's text is
-        matched). `action` one of "select", "click", "doubleClick", "edit".
+        Provide either `itemPath` (exact display text per level, or delimited string
+        like "File > Save" / "Menu/File/Save") or `path` (int[] row path).
+        `target` is accepted as an alias for `itemPath`.
+        `column` selects which cell of the addressed row is acted on (and, for
+        `itemPath`, which column's text is matched).
+        `action` one of "select", "click", "doubleClick", "edit".
         Works on QTreeView, QTableView, QListView, QComboBox. For combo boxes,
         paths must be length 1 and `edit` returns kNotEditable.
         Example: qt_ui_clickItem(objectId="treeView", itemPath=["ETC","fos4 Fresnel"])
         """
         from qtpilot.server import require_probe
 
-        if (itemPath is None) == (path is None):
+        resolved_item_path = itemPath if itemPath is not None else target
+        if isinstance(resolved_item_path, str):
+            if ">" in resolved_item_path:
+                resolved_item_path = [p.strip() for p in resolved_item_path.split(">") if p.strip()]
+            elif "/" in resolved_item_path:
+                resolved_item_path = [p.strip() for p in resolved_item_path.split("/") if p.strip()]
+            else:
+                resolved_item_path = [resolved_item_path]
+
+        if (resolved_item_path is None) == (path is None):
             raise ValueError("Exactly one of itemPath or path must be provided")
         params: dict = {
             "objectId": objectId,
@@ -484,8 +655,8 @@ def register_native_tools(mcp: FastMCP) -> None:
             "expand": expand,
             "scroll": scroll,
         }
-        if itemPath is not None:
-            params["itemPath"] = itemPath
+        if resolved_item_path is not None:
+            params["itemPath"] = resolved_item_path
         if path is not None:
             params["path"] = path
         if editColumn is not None:

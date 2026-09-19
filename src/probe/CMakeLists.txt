@@ -11,6 +11,8 @@ set(PROBE_SOURCES
     introspection/qml_inspector.cpp
     introspection/model_navigator.cpp
     interaction/input_simulator.cpp
+    interaction/modifier_parser.cpp
+    interaction/item_targeting.cpp
     interaction/screenshot.cpp
     interaction/hit_test.cpp
     transport/websocket_server.cpp
@@ -45,6 +47,8 @@ set(PROBE_HEADERS
     introspection/qml_inspector.h
     introspection/model_navigator.h
     interaction/input_simulator.h
+    interaction/modifier_parser.h
+    interaction/item_targeting.h
     interaction/screenshot.h
     interaction/hit_test.h
     transport/websocket_server.h
@@ -176,7 +180,6 @@ if(QT_VERSION_MAJOR EQUAL 6)
             Qt6::Network
             Qt6::WebSockets
             Qt6::Widgets
-            Qt6::Test
         PRIVATE
             Qt6::CorePrivate
     )
@@ -191,7 +194,6 @@ else()
             Qt5::Network
             Qt5::WebSockets
             Qt5::Widgets
-            Qt5::Test
         PRIVATE
             Qt5::CorePrivate
     )

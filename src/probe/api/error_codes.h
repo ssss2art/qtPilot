@@ -18,6 +18,13 @@ constexpr int kObjectNotWidget = -32003;
 /// kNotQmlItem / kNotAModel, which exist for the same "right object, wrong
 /// type" reason.
 constexpr int kNotGraphicsView = -32004;
+/// The click point resolves to a different item than the one addressed --
+/// something is drawn over it, or the item's shape() excludes that point.
+constexpr int kItemOccluded = -32005;
+/// No context menu was open when one was required.
+constexpr int kNoActiveMenu = -32006;
+/// The named menu item is not present in the open menu.
+constexpr int kMenuItemNotFound = -32007;
 constexpr int kInvalidField =
     -32004;  // Unknown value for a `parts` / `fields` / similar enum param
 
