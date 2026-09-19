@@ -13,10 +13,11 @@ class QWindow;
 
 namespace qtPilot {
 
-/// @brief Mouse and keyboard input simulation using QTest functions.
+/// @brief Mouse and keyboard input simulation using Qt event system.
 ///
 /// Provides reliable input simulation for UI testing and automation.
-/// Uses Qt's QTest module internally for cross-platform compatibility.
+/// Uses Qt's core event dispatching internally for clean runtime injection without QTest
+/// dependencies.
 ///
 /// All mouse positions are widget-local coordinates. If no position is
 /// specified, the widget center is used.
