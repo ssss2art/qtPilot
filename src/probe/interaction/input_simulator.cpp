@@ -12,7 +12,6 @@
 #include <QKeySequence>
 #include <QMouseEvent>
 #include <QPointer>
-#include <QTest>
 #include <QWheelEvent>
 #include <QWindow>
 
@@ -71,7 +70,38 @@ void InputSimulator::mouseDoubleClick(QWidget* widget, MouseButton button, const
   widget->raise();
   QApplication::processEvents();
 
-  QTest::mouseDClick(widget, toQtButton(button), modifiers, clickPos);
+  QPointer<QWidget> guard(widget);
+  const Qt::MouseButton qtButton = toQtButton(button);
+  const QPoint globalPos = widget->mapToGlobal(clickPos);
+
+  QMouseEvent press(QEvent::MouseButtonPress, QPointF(clickPos), QPointF(globalPos), qtButton,
+                    qtButton, modifiers);
+  QCoreApplication::sendEvent(widget, &press);
+  QCoreApplication::processEvents();
+  if (!guard) {
+    return;
+  }
+
+  QMouseEvent release(QEvent::MouseButtonRelease, QPointF(clickPos), QPointF(globalPos), qtButton,
+                      Qt::NoButton, modifiers);
+  QCoreApplication::sendEvent(widget, &release);
+  QCoreApplication::processEvents();
+  if (!guard) {
+    return;
+  }
+
+  QMouseEvent dblClick(QEvent::MouseButtonDblClick, QPointF(clickPos), QPointF(globalPos), qtButton,
+                       qtButton, modifiers);
+  QCoreApplication::sendEvent(widget, &dblClick);
+  QCoreApplication::processEvents();
+  if (!guard) {
+    return;
+  }
+
+  QMouseEvent release2(QEvent::MouseButtonRelease, QPointF(clickPos), QPointF(globalPos), qtButton,
+                       Qt::NoButton, modifiers);
+  QCoreApplication::sendEvent(widget, &release2);
+  QCoreApplication::processEvents();
 }
 
 void InputSimulator::sendText(QWidget* widget, const QString& text,
@@ -84,9 +114,37 @@ void InputSimulator::sendText(QWidget* widget, const QString& text,
   widget->setFocus();
   QApplication::processEvents();
 
-  // QTest::keyClicks sends each character as a key event, holding the
-  // modifiers down across the whole string.
-  QTest::keyClicks(widget, text, modifiers);
+  QPointer<QWidget> guard(widget);
+  for (const QChar ch : text) {
+    if (!guard) {
+      break;
+    }
+    QString s(ch);
+    int key;
+    switch (ch.unicode()) {
+      case u'\n':
+      case u'\r':
+        key = Qt::Key_Return;
+        break;
+      case u'\t':
+        key = Qt::Key_Tab;
+        break;
+      case u'\b':
+        key = Qt::Key_Backspace;
+        break;
+      default:
+        key = ch.toUpper().unicode();
+        break;
+    }
+    QKeyEvent press(QEvent::KeyPress, key, modifiers, s);
+    QCoreApplication::sendEvent(widget, &press);
+    if (!guard) {
+      break;
+    }
+    QKeyEvent release(QEvent::KeyRelease, key, modifiers, s);
+    QCoreApplication::sendEvent(widget, &release);
+  }
+  QCoreApplication::processEvents();
 }
 
 void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
@@ -114,7 +172,7 @@ void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
   Qt::KeyboardModifiers mods;
   qtPilot::compat::extractKeyCombination(keySeq, 0, extractedKey, mods);
 
-  QTest::keyClick(widget, extractedKey, mods);
+  sendKey(widget, extractedKey, mods);
 }
 
 void InputSimulator::sendKey(QWidget* widget, Qt::Key key, Qt::KeyboardModifiers modifiers) {
@@ -125,7 +183,15 @@ void InputSimulator::sendKey(QWidget* widget, Qt::Key key, Qt::KeyboardModifiers
   widget->setFocus();
   QApplication::processEvents();
 
-  QTest::keyClick(widget, key, modifiers);
+  QPointer<QWidget> guard(widget);
+  QKeyEvent press(QEvent::KeyPress, key, modifiers);
+  QCoreApplication::sendEvent(widget, &press);
+  if (!guard) {
+    return;
+  }
+  QKeyEvent release(QEvent::KeyRelease, key, modifiers);
+  QCoreApplication::sendEvent(widget, &release);
+  QCoreApplication::processEvents();
 }
 
 Qt::MouseButton InputSimulator::toQtButton(MouseButton button) {

@@ -730,17 +730,23 @@ void NativeModeApi::registerObjectMethods() {
       QStringLiteral("qt.objects.search"), [](const QString& params) -> QString {
         auto p = parseParams(params);
         QString objectName = p[QStringLiteral("objectName")].toString();
+        if (objectName.isEmpty()) {
+          objectName = p[QStringLiteral("name")].toString();
+        }
         QString className = p[QStringLiteral("className")].toString();
+        if (className.isEmpty()) {
+          className = p[QStringLiteral("class_name")].toString();
+        }
         QJsonObject propFilters = p[QStringLiteral("properties")].toObject();
         QString rootId = p[QStringLiteral("root")].toString();
+        if (rootId.isEmpty()) {
+          rootId = p[QStringLiteral("rootId")].toString();
+        }
+        if (rootId.isEmpty()) {
+          rootId = p[QStringLiteral("root_id")].toString();
+        }
         int limit = p.contains(QStringLiteral("limit")) ? p[QStringLiteral("limit")].toInt() : 50;
 
-        if (objectName.isEmpty() && className.isEmpty() && propFilters.isEmpty()) {
-          throw JsonRpcException(
-              JsonRpcError::kInvalidParams,
-              QStringLiteral("Specify at least one of objectName, className, properties"),
-              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")}});
-        }
         if (limit < 0) {
           throw JsonRpcException(
               JsonRpcError::kInvalidParams, QStringLiteral("limit must be >= 0"),
@@ -750,33 +756,19 @@ void NativeModeApi::registerObjectMethods() {
         QObject* rootObj = nullptr;
         if (!rootId.isEmpty()) {
           rootObj = ObjectResolver::resolve(rootId);
+          if (!rootObj) {
+            throw JsonRpcException(
+                ErrorCode::kObjectNotFound, QStringLiteral("Root object not found: %1").arg(rootId),
+                QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")},
+                            {QStringLiteral("root"), rootId}});
+          }
         }
 
         QList<QObject*> candidates;
         if (!className.isEmpty()) {
           candidates = ObjectRegistry::instance()->findAllByClassName(className, rootObj);
         } else {
-          candidates = ObjectRegistry::instance()->allObjects();
-          if (rootObj) {
-            QList<QObject*> filtered;
-            for (QObject* obj : candidates) {
-              // effectiveParent(), not parent(): "descendant of root" has to mean
-              // the same thing here as it does in the tree and in generated ids.
-              // The QObject-only walk hit nullptr at every QML delegate, so a
-              // delegate was DROPPED from an otherwise-correct candidate list --
-              // a scoped search returned nothing for rows qt.objects.tree listed
-              // under that same root.
-              QObject* parent = obj;
-              int depth = 0;
-              while (parent && parent != rootObj && depth <= kMaxEffectiveDepth) {
-                parent = effectiveParent(parent);
-                ++depth;
-              }
-              if (parent == rootObj)
-                filtered.append(obj);
-            }
-            candidates = filtered;
-          }
+          candidates = ObjectRegistry::instance()->allObjects(rootObj);
         }
 
         QJsonArray matches;

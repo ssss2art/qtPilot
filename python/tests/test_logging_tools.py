@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from fastmcp import FastMCP
+
+from qtpilot import _mcp_compat as mcp_compat
 
 from qtpilot.tools.logging_tools import register_logging_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:
     """Extract registered tool names from a FastMCP instance."""
-    return set(mcp._tool_manager._tools.keys())
+    # Enumeration is async on every FastMCP generation after 2.x; these tests
+    # are sync, so drive the compat accessor on a throwaway loop.
+    return set(asyncio.run(mcp_compat.list_tool_names(mcp)))
 
 
 class TestLoggingTools:
@@ -42,7 +48,7 @@ class TestLogStatusTail:
         from qtpilot.server import create_server
 
         mcp = create_server(mode="native")
-        status_fn = mcp._tool_manager._tools["qtpilot_log_status"].fn
+        status_fn = (await mcp_compat.find_tool(mcp, "qtpilot_log_status")).fn
         result = await status_fn(ctx=None)
         assert "entries" not in result
         # Count form is still available as entry_count when logging is active;
@@ -60,7 +66,7 @@ class TestLogStatusTail:
             logger.log_mcp_in("qt_ping", {})
             logger.log_mcp_in("qt_version", {})
 
-            status_fn = mcp._tool_manager._tools["qtpilot_log_status"].fn
+            status_fn = (await mcp_compat.find_tool(mcp, "qtpilot_log_status")).fn
             result = await status_fn(tail=5, ctx=None)
             assert "entries" in result
             assert isinstance(result["entries"], list)
@@ -74,6 +80,6 @@ class TestLogStatusTail:
         from qtpilot.server import create_server
 
         mcp = create_server(mode="native")
-        status_fn = mcp._tool_manager._tools["qtpilot_log_status"].fn
+        status_fn = (await mcp_compat.find_tool(mcp, "qtpilot_log_status")).fn
         with pytest.raises(ValueError):
             await status_fn(tail=-1, ctx=None)
