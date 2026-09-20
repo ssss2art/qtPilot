@@ -22,6 +22,7 @@ from qtpilot.replay import (
     ReplayResult,
     Scenario,
     Step,
+    diff_steps,
     load_scenario,
     parse_entries,
 )
@@ -328,6 +329,22 @@ def test_an_abandoned_request_does_not_poison_a_later_one():
     assert targets == ["wanted"], f"an abandoned request supplied the params: {targets}"
 
 
+def test_reused_abandoned_action_id_does_not_shift_notifications():
+    entries = [
+        {"dir": "req", "id": 7, "method": "qt.ui.click", "params": {"objectId": "abandoned"}},
+        {"dir": "req", "id": 7, "method": "qt.ui.click", "params": {"objectId": "wanted"}},
+        {"dir": "res", "id": 7, "method": "qt.ui.click", "result": {"ok": True}},
+        {"dir": "ntf", "method": "qtpilot.signalEmitted", "params": {"signal": "clicked"}},
+        {"dir": "req", "id": 8, "method": "qt.ui.click", "params": {"objectId": "next"}},
+        {"dir": "res", "id": 8, "method": "qt.ui.click", "result": {"ok": True}},
+    ]
+
+    scenario = parse_entries(entries)
+
+    assert [method for method, _ in scenario.steps[1].notifications] == ["qtpilot.signalEmitted"]
+    assert scenario.steps[2].notifications == []
+
+
 def test_deeply_nested_values_do_not_blow_the_stack():
     """qt.objects.tree returns a tree as deep as the widget hierarchy, and
     normalise() recurses over it."""
@@ -386,11 +403,12 @@ def _random_entry(rng: random.Random) -> dict:
     if rng.random() < 0.95:
         entry["dir"] = rng.choice(["req", "res", "err", "ntf", "meta", "bogus"])
     if rng.random() < 0.9:
-        entry["id"] = rng.choice([1, 2, 3, None, "str-id"])
+        entry["id"] = rng.choice([1, 2, 3, None, "str-id", [], {"nested": "id"}])
     if rng.random() < 0.9:
         entry["method"] = rng.choice([
             "qt.ui.click", "qt.ui.sendKeys", "qt.properties.get", "qt.objects.tree",
-            "qt.signals.subscribe", "cu.click", "chr.click", "qt.brand.new", "",
+            "qt.signals.subscribe", "qtpilot.objectDestroyed", "cu.click", "chr.click",
+            "qt.brand.new", "",
         ])
     for key in ("params", "result"):
         if rng.random() < 0.7:
@@ -402,7 +420,7 @@ def _random_entry(rng: random.Random) -> dict:
     return entry
 
 
-@pytest.mark.parametrize("seed", range(60))
+@pytest.mark.parametrize("seed", range(240))
 def test_fuzzed_logs_either_parse_or_raise_valueerror(seed):
     """The parser's contract under garbage: a Scenario, or a ValueError naming the
     problem. Never an AttributeError/TypeError/KeyError from inside the walk, and
@@ -427,3 +445,68 @@ def test_fuzzed_logs_either_parse_or_raise_valueerror(seed):
         for observation in step.observations:
             assert observation.method
             assert isinstance(observation.params, dict)
+
+
+@pytest.mark.parametrize("params", [None, [], "destroyed", 42])
+def test_malformed_notification_params_are_diagnosed(params):
+    """Malformed notification payloads must not leak implementation exceptions."""
+    entries = [{"dir": "ntf", "method": "qtpilot.objectDestroyed", "params": params}]
+
+    with pytest.raises(ValueError, match="notification params"):
+        parse_entries(entries)
+
+
+@pytest.mark.parametrize("request_id", [[], {"nested": "id"}, True])
+def test_invalid_request_ids_are_diagnosed(request_id):
+    """Malformed JSON-RPC IDs cannot corrupt the pending request correlation map."""
+    entries = [{"dir": "req", "id": request_id, "method": "qt.ui.click", "params": {}}]
+
+    with pytest.raises(ValueError, match="request id"):
+        parse_entries(entries)
+
+
+@pytest.mark.parametrize("seed", range(120))
+def test_fuzzed_notification_multisets_are_order_independent_and_strict(seed):
+    """Independent notification order is irrelevant, but multiplicity is not."""
+    rng = random.Random(seed)
+    entries: list[dict] = []
+    request_id = 1
+
+    for index in range(rng.randint(1, 12)):
+        method = rng.choice(["qt.ui.click", "cu.mouseDrag", "chr.click"])
+        entries.append({
+            "dir": "req",
+            "id": request_id,
+            "method": method,
+            "params": {"objectId": f"widget_{index}", "value": _random_value(rng)},
+        })
+        notifications = [
+            {
+                "dir": "ntf",
+                "method": "qtpilot.signalEmitted",
+                "params": {
+                    "objectId": f"widget_{index}",
+                    "signal": f"changed_{notification}",
+                    "value": _random_value(rng),
+                },
+            }
+            for notification in range(rng.randint(0, 4))
+        ]
+        entries.extend(notifications)
+        entries.append({"dir": "res", "id": request_id, "method": method, "result": {"ok": True}})
+        request_id += 1
+
+    recorded = parse_entries(entries)
+    reordered = parse_entries(entries)
+    for step in reordered.steps:
+        rng.shuffle(step.notifications)
+
+    assert diff_steps(recorded.steps, reordered.steps) == []
+
+    reordered.steps[-1].notifications.append(
+        ("qtpilot.signalEmitted", {"objectId": "injected", "signal": "unexpected"})
+    )
+    divergences = diff_steps(recorded.steps, reordered.steps)
+    assert len(divergences) == 1
+    assert divergences[0].kind == "notification"
+    assert divergences[0].expected is None

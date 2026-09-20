@@ -421,14 +421,23 @@ def parse_entries(entries: Iterable[dict]) -> Scenario:
             continue
 
         if direction == "req":
-            pending[raw.get("id")] = raw
+            request_id = raw.get("id")
+            if isinstance(request_id, bool) or not isinstance(request_id, (int, float, str, type(None))):
+                raise ValueError("request id must be a string, number, or null")
+            abandoned = pending.get(request_id)
+            if abandoned and abandoned.get("method", "") in MUTATING_METHODS:
+                mutating_in_flight = max(0, mutating_in_flight - 1)
+            pending[request_id] = raw
             if raw.get("method", "") in MUTATING_METHODS:
                 mutating_in_flight += 1
             continue
 
         if direction == "ntf":
             method = raw.get("method", "")
-            params = normalise(raw.get("params", {}))
+            raw_params = raw.get("params", {})
+            if not isinstance(raw_params, dict):
+                raise ValueError("notification params must be a JSON object")
+            params = normalise(raw_params)
             if method == "qtpilot.objectDestroyed" and not params.get("objectId"):
                 continue
             entry = (method, params)
@@ -443,6 +452,8 @@ def parse_entries(entries: Iterable[dict]) -> Scenario:
 
         method = raw.get("method", "")
         request_id = raw.get("id")
+        if isinstance(request_id, bool) or not isinstance(request_id, (int, float, str, type(None))):
+            raise ValueError("response id must be a string, number, or null")
         if request_id not in pending:
             raise ValueError(f"response id {request_id!r} has no matching request")
         request = pending.pop(request_id)
