@@ -375,18 +375,18 @@ def test_a_shorter_run_reports_the_step_that_never_happened():
 
 
 def test_unsupported_calls_are_counted_rather_than_dropped():
-    """cu.* and chr.* were silently discarded, so a scenario could mean far less
-    than it appeared to with nothing saying so."""
+    """Unrecognized calls are counted rather than dropped, so a scenario cannot
+    silently mean far less than it appeared to."""
     scenario = parse_entries([
-        {"dir": "req", "id": 1, "method": "cu.click", "params": {"x": 1, "y": 2}},
-        {"dir": "res", "id": 1, "method": "cu.click", "result": {"ok": True}},
-        {"dir": "req", "id": 2, "method": "cu.type", "params": {"text": "hi"}},
-        {"dir": "res", "id": 2, "method": "cu.type", "result": {"ok": True}},
-        {"dir": "req", "id": 3, "method": "cu.click", "params": {"x": 3, "y": 4}},
-        {"dir": "res", "id": 3, "method": "cu.click", "result": {"ok": True}},
+        {"dir": "req", "id": 1, "method": "custom.click", "params": {"x": 1, "y": 2}},
+        {"dir": "res", "id": 1, "method": "custom.click", "result": {"ok": True}},
+        {"dir": "req", "id": 2, "method": "custom.type", "params": {"text": "hi"}},
+        {"dir": "res", "id": 2, "method": "custom.type", "result": {"ok": True}},
+        {"dir": "req", "id": 3, "method": "custom.click", "params": {"x": 3, "y": 4}},
+        {"dir": "res", "id": 3, "method": "custom.click", "result": {"ok": True}},
     ])
 
-    assert scenario.unsupported == {"cu.click": 2, "cu.type": 1}
+    assert scenario.unsupported == {"custom.click": 2, "custom.type": 1}
     assert not scenario.is_replayable
 
 
@@ -396,12 +396,12 @@ def test_a_mixed_session_reports_what_it_will_not_drive():
     scenario = parse_entries([
         {"dir": "req", "id": 1, "method": "qt.ui.click", "params": {"objectId": "b"}},
         {"dir": "res", "id": 1, "method": "qt.ui.click", "result": {"ok": True}},
-        {"dir": "req", "id": 2, "method": "cu.type", "params": {"text": "hi"}},
-        {"dir": "res", "id": 2, "method": "cu.type", "result": {"ok": True}},
+        {"dir": "req", "id": 2, "method": "custom.action", "params": {"text": "hi"}},
+        {"dir": "res", "id": 2, "method": "custom.action", "result": {"ok": True}},
     ])
 
     assert scenario.is_replayable
-    assert scenario.unsupported == {"cu.type": 1}
+    assert scenario.unsupported == {"custom.action": 1}
 
 
 def test_a_fully_supported_session_reports_nothing_unsupported():

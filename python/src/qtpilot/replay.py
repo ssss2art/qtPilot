@@ -25,24 +25,47 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from qtpilot.connection import ProbeError
+from qtpilot.result import Err, Ok, Result
 
-# Calls that change the application. These are what a replay re-drives.
-MUTATING_METHODS: frozenset[str] = frozenset({
+# Native Qt methods
+NATIVE_MUTATING_METHODS: frozenset[str] = frozenset({
     "qt.ui.click",
+    "qt.ui.doubleClick",
     "qt.ui.clickItem",
     "qt.ui.sendKeys",
     "qt.properties.set",
     "qt.methods.invoke",
 })
 
-# Calls whose results describe the application, and so are worth asserting on.
-#
-# An allow-list rather than "everything that is not mutating": qt.ping and qt.version describe the
-# harness, the qt.names.* and qt.signals.* families describe the session's own bookkeeping, and
-# qt.ui.screenshot returns image bytes that belong in a visual golden. None of them say anything
-# about the application under test, and asserting on them would fail runs for reasons a reader
-# cannot act on.
-OBSERVING_METHODS: frozenset[str] = frozenset({
+# Computer Use mode methods
+CU_MUTATING_METHODS: frozenset[str] = frozenset({
+    "cu.click",
+    "cu.rightClick",
+    "cu.middleClick",
+    "cu.doubleClick",
+    "cu.mouseMove",
+    "cu.drag",
+    "cu.mouseDown",
+    "cu.mouseUp",
+    "cu.type",
+    "cu.key",
+    "cu.scroll",
+    "cu.action",
+})
+
+# Chrome mode methods
+CHROME_MUTATING_METHODS: frozenset[str] = frozenset({
+    "chr.click",
+    "chr.formInput",
+    "chr.navigate",
+})
+
+# All mutating calls that change the application. These are what a replay re-drives.
+MUTATING_METHODS: frozenset[str] = (
+    NATIVE_MUTATING_METHODS | CU_MUTATING_METHODS | CHROME_MUTATING_METHODS
+)
+
+NATIVE_OBSERVING_METHODS: frozenset[str] = frozenset({
     "qt.objects.tree",
     "qt.objects.inspect",
     "qt.objects.search",
@@ -53,6 +76,23 @@ OBSERVING_METHODS: frozenset[str] = frozenset({
     "qt.ui.geometry",
     "qt.ui.hitTest",
 })
+
+CU_OBSERVING_METHODS: frozenset[str] = frozenset({
+    "cu.cursorPosition",
+})
+
+CHROME_OBSERVING_METHODS: frozenset[str] = frozenset({
+    "chr.readPage",
+    "chr.getPageText",
+    "chr.find",
+    "chr.tabsContext",
+    "chr.readConsoleMessages",
+})
+
+# Calls whose results describe the application, and so are worth asserting on.
+OBSERVING_METHODS: frozenset[str] = (
+    NATIVE_OBSERVING_METHODS | CU_OBSERVING_METHODS | CHROME_OBSERVING_METHODS
+)
 
 # Calls that set up the SESSION rather than drive or describe the application: signal
 # subscriptions, event capture, and the symbolic name map. They are re-issued on replay because
@@ -568,6 +608,12 @@ class ReplayResult:
     def passed(self) -> bool:
         """Whether the application still behaves as recorded."""
         return not self.divergences and self.aborted_at is None
+
+    def to_result(self) -> Result[list[Step], list[Divergence]]:
+        """Return a monadic Result containing either the driven steps (Ok) or the divergences (Err)."""
+        if self.passed:
+            return Result.ok(self.steps)
+        return Result.err(self.divergences)
 
     def as_scenario(self) -> Scenario:
         """Treat this run as the recording to compare future runs against.

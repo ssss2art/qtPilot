@@ -1,13 +1,33 @@
-// Copyright (c) 2024 qtPilot Contributors
+// Copyright (c) 2024-2026 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #include "mainwindow.h"
 
 #include <QCoreApplication>
+#include <QDialog>
+#include <QGraphicsEllipseItem>
+#include <QGraphicsRectItem>
+#include <QGraphicsScene>
+#include <QGraphicsSimpleTextItem>
+#include <QGraphicsView>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QProcess>
 #include <QPushButton>
 #include <QStandardItem>
+#include <QTableView>
+#include <QVBoxLayout>
 
+#if defined(QTPILOT_HAS_QUICKWIDGETS)
+#include <QQmlContext>
+#include <QQmlEngine>
+#include <QQuickWidget>
+#include <QUrl>
+#include "qml_bridge.h"
+#endif
+
+#include "complex_table_model.h"
+#include "custom_gauge.h"
 #include "ui_mainwindow.h"
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui_(new Ui::MainWindow) {
@@ -32,22 +52,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui_(new Ui::MainW
     return row.front();
   };
 
-  QStandardItem* etc = addTopRow("ETC", "Manufacturer", "");
-  QStandardItem* fos4 = addRow(etc, "fos4 Fresnel Lustr X8 direct", "Fixture", "0");
-  addRow(fos4, "Mode 8ch", "Mode", "0");
-  addRow(fos4, "Mode 12ch", "Mode", "0");
-  addRow(etc, "ColorSource PAR", "Fixture", "0");
+  QStandardItem* mfgA = addTopRow("ManufacturerA", "Manufacturer", "");
+  QStandardItem* modelX = addRow(mfgA, "DeviceModelX direct", "Device", "0");
+  addRow(modelX, "Profile 8ch", "Profile", "0");
+  addRow(modelX, "Profile 12ch", "Profile", "0");
+  addRow(mfgA, "DeviceModelY", "Device", "0");
 
-  QStandardItem* martin = addTopRow("Martin", "Manufacturer", "");
-  QStandardItem* aura = addRow(martin, "MAC Aura XB", "Fixture", "0");
-  addRow(aura, "Mode 8ch", "Mode", "0");
-  addRow(aura, "Mode 12ch", "Mode", "0");
+  QStandardItem* mfgB = addTopRow("ManufacturerB", "Manufacturer", "");
+  QStandardItem* modelZ = addRow(mfgB, "DeviceModelZ", "Device", "0");
+  addRow(modelZ, "Profile 8ch", "Profile", "0");
+  addRow(modelZ, "Profile 12ch", "Profile", "0");
 
   // Synthetic 1200-row child set under a dedicated parent to exercise pagination.
   QStandardItem* bulk = addTopRow("BulkManufacturer", "Manufacturer", "");
   for (int i = 0; i < 1200; ++i) {
-    addRow(bulk, QStringLiteral("Fixture %1").arg(i, 4, 10, QChar('0')),
-           "Fixture", QString::number(i));
+    addRow(bulk, QStringLiteral("Device %1").arg(i, 4, 10, QChar('0')),
+           "Device", QString::number(i));
   }
 
   ui_->treeView->setModel(treeModel_);
@@ -58,10 +78,94 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui_(new Ui::MainW
   ui_->emailEdit->setObjectName(QStringLiteral("emailEdit"));
   ui_->messageEdit->setObjectName(QStringLiteral("messageEdit"));
 
+  // Add custom gauge to Form tab
+  customGauge_ = new CustomGaugeWidget(this);
+  customGauge_->setObjectName(QStringLiteral("customGauge"));
+  ui_->inputFormLayout->addRow(new QLabel(QStringLiteral("Custom Gauge:"), this), customGauge_);
+
+  // Populate Table tab with ComplexTableModel
+  complexTableModel_ = new ComplexTableModel(this);
+  complexTableModel_->setObjectName(QStringLiteral("complexTableModel"));
+  complexTableView_ = new QTableView(this);
+  complexTableView_->setObjectName(QStringLiteral("complexTableView"));
+  complexTableView_->setModel(complexTableModel_);
+  ui_->tableLayout->addWidget(complexTableView_);
+
+  // Canvas tab with QGraphicsView and QGraphicsScene
+  graphicsScene_ = new QGraphicsScene(this);
+  graphicsScene_->setObjectName(QStringLiteral("graphicsScene"));
+  graphicsScene_->setSceneRect(0, 0, 400, 300);
+
+  auto* rectItem = graphicsScene_->addRect(20, 20, 100, 60, QPen(Qt::black), QBrush(Qt::cyan));
+  rectItem->setFlag(QGraphicsItem::ItemIsSelectable);
+  rectItem->setFlag(QGraphicsItem::ItemIsMovable);
+
+  auto* ellipseItem = graphicsScene_->addEllipse(150, 40, 80, 80, QPen(Qt::darkBlue), QBrush(Qt::yellow));
+  ellipseItem->setFlag(QGraphicsItem::ItemIsSelectable);
+  ellipseItem->setFlag(QGraphicsItem::ItemIsMovable);
+
+  auto* textItem = graphicsScene_->addSimpleText(QStringLiteral("qtPilot Canvas Item"));
+  textItem->setPos(50, 150);
+
+  graphicsView_ = new QGraphicsView(graphicsScene_, this);
+  graphicsView_->setObjectName(QStringLiteral("graphicsView"));
+
+  auto* canvasTab = new QWidget();
+  canvasTab->setObjectName(QStringLiteral("canvasTab"));
+  auto* canvasLayout = new QVBoxLayout(canvasTab);
+  canvasLayout->addWidget(graphicsView_);
+  ui_->tabWidget->addTab(canvasTab, QStringLiteral("Canvas"));
+
+  // Lifecycle tab for object storm and modal testing
+  auto* lifecycleTab = new QWidget();
+  lifecycleTab->setObjectName(QStringLiteral("lifecycleTab"));
+  auto* lifecycleLayout = new QVBoxLayout(lifecycleTab);
+
+  auto* stormBtnLayout = new QHBoxLayout();
+  auto* spawnStormBtn = new QPushButton(QStringLiteral("Spawn 100 Objects"), lifecycleTab);
+  spawnStormBtn->setObjectName(QStringLiteral("spawnStormButton"));
+  auto* clearStormBtn = new QPushButton(QStringLiteral("Clear Objects"), lifecycleTab);
+  clearStormBtn->setObjectName(QStringLiteral("clearStormButton"));
+  auto* openModalBtn = new QPushButton(QStringLiteral("Open Modal Dialog"), lifecycleTab);
+  openModalBtn->setObjectName(QStringLiteral("openModalButton"));
+
+  stormBtnLayout->addWidget(spawnStormBtn);
+  stormBtnLayout->addWidget(clearStormBtn);
+  stormBtnLayout->addWidget(openModalBtn);
+  lifecycleLayout->addLayout(stormBtnLayout);
+
+  stormContainer_ = new QWidget(lifecycleTab);
+  stormContainer_->setObjectName(QStringLiteral("stormContainer"));
+  new QVBoxLayout(stormContainer_);
+  lifecycleLayout->addWidget(stormContainer_);
+
+  connect(spawnStormBtn, &QPushButton::clicked, this, &MainWindow::OnSpawnStormClicked);
+  connect(clearStormBtn, &QPushButton::clicked, this, &MainWindow::OnClearStormClicked);
+  connect(openModalBtn, &QPushButton::clicked, this, &MainWindow::OnOpenModalClicked);
+
+  ui_->tabWidget->addTab(lifecycleTab, QStringLiteral("Lifecycle"));
+
+#if defined(QTPILOT_HAS_QUICKWIDGETS)
+  quickWidget_ = new QQuickWidget(this);
+  quickWidget_->setObjectName(QStringLiteral("quickWidget"));
+  quickWidget_->setResizeMode(QQuickWidget::SizeRootObjectToView);
+
+  qmlBridge_ = new QmlTestBridge(this);
+  quickWidget_->engine()->rootContext()->setContextProperty(QStringLiteral("qmlBridge"), qmlBridge_);
+  quickWidget_->setSource(QUrl(QStringLiteral("qrc:/qml/EmbeddedScene.qml")));
+
+  auto* qmlTab = new QWidget();
+  qmlTab->setObjectName(QStringLiteral("qmlTab"));
+  auto* qmlLayout = new QVBoxLayout(qmlTab);
+  qmlLayout->addWidget(quickWidget_);
+  ui_->tabWidget->addTab(qmlTab, QStringLiteral("QML"));
+#endif
+
   // Connect signals
   connect(ui_->submitButton, &QPushButton::clicked, this, &MainWindow::OnSubmitClicked);
   connect(ui_->clearButton, &QPushButton::clicked, this, &MainWindow::OnClearClicked);
   connect(ui_->slider, &QSlider::valueChanged, this, &MainWindow::OnSliderChanged);
+  connect(ui_->slider, &QSlider::valueChanged, customGauge_, &CustomGaugeWidget::setValue);
 
   // Add "Spawn Child Process" button next to Submit/Clear
   auto* spawnButton = new QPushButton(QStringLiteral("Spawn Child Process"), this);
@@ -94,6 +198,9 @@ void MainWindow::OnClearClicked() {
   ui_->slider->setValue(50);
   ui_->checkBox->setChecked(false);
   ui_->comboBox->setCurrentIndex(0);
+  if (customGauge_) {
+    customGauge_->setValue(50);
+  }
 
   statusBar()->showMessage("Form cleared", 3000);
 }
@@ -115,3 +222,41 @@ void MainWindow::OnSpawnChildClicked() {
     statusBar()->showMessage("Failed to spawn child process", 5000);
   }
 }
+
+void MainWindow::OnSpawnStormClicked() {
+  QLayout* layout = stormContainer_->layout();
+  for (int i = 0; i < 100; ++i) {
+    auto* label = new QLabel(QStringLiteral("Storm Node %1").arg(i), stormContainer_);
+    label->setObjectName(QStringLiteral("stormLabel_%1").arg(i));
+    layout->addWidget(label);
+  }
+  statusBar()->showMessage(QStringLiteral("Spawned 100 objects"), 2000);
+}
+
+void MainWindow::OnClearStormClicked() {
+  QLayout* layout = stormContainer_->layout();
+  QLayoutItem* child;
+  while ((child = layout->takeAt(0)) != nullptr) {
+    if (child->widget()) {
+      child->widget()->deleteLater();
+    }
+    delete child;
+  }
+  statusBar()->showMessage(QStringLiteral("Cleared storm objects"), 2000);
+}
+
+void MainWindow::OnOpenModalClicked() {
+  auto* dialog = new QDialog(this);
+  dialog->setObjectName(QStringLiteral("testModalDialog"));
+  dialog->setWindowTitle(QStringLiteral("Modal Dialog"));
+  auto* layout = new QVBoxLayout(dialog);
+  auto* label = new QLabel(QStringLiteral("Active modal dialog content"), dialog);
+  label->setObjectName(QStringLiteral("modalLabel"));
+  auto* closeBtn = new QPushButton(QStringLiteral("Close Modal"), dialog);
+  closeBtn->setObjectName(QStringLiteral("modalCloseButton"));
+  connect(closeBtn, &QPushButton::clicked, dialog, &QDialog::accept);
+  layout->addWidget(label);
+  layout->addWidget(closeBtn);
+  dialog->open();
+}
+

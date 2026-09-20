@@ -40,6 +40,12 @@
 #include <QPointer>
 #include <QTreeView>
 #include <QWidget>
+#include <QWindow>
+
+#ifdef QTPILOT_HAS_QML
+#include <QQuickItem>
+#include <QQuickWindow>
+#endif
 
 namespace qtPilot {
 
@@ -233,6 +239,26 @@ void queueWidgetClick(QWidget* widget, InputSimulator::MouseButton button, const
       Qt::QueuedConnection);
 }
 
+#ifdef QTPILOT_HAS_QML
+void queueWindowClick(QWindow* window, InputSimulator::MouseButton button, const QPoint& point,
+                      bool doubleClick, Qt::KeyboardModifiers modifiers) {
+  QPointer<QWindow> safeWindow(window);
+  QMetaObject::invokeMethod(
+      window,
+      [safeWindow, button, point, doubleClick, modifiers]() {
+        if (!safeWindow) {
+          return;
+        }
+        if (doubleClick) {
+          InputSimulator::mouseDoubleClick(safeWindow, button, point, modifiers);
+        } else {
+          InputSimulator::mouseClick(safeWindow, button, point, modifiers);
+        }
+      },
+      Qt::QueuedConnection);
+}
+#endif
+
 QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodName,
                               bool doubleClick) {
   QObject* obj = resolveObjectParam(params, methodName);
@@ -268,6 +294,37 @@ QJsonObject handleUiClickLike(const QJsonObject& params, const QString& methodNa
                        {QStringLiteral("position"), QJsonObject{{QStringLiteral("x"), point.x()},
                                                                 {QStringLiteral("y"), point.y()}}}};
   }
+
+#ifdef QTPILOT_HAS_QML
+  if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+    QQuickWindow* w = item->window();
+    if (!w) {
+      throw JsonRpcException(
+          ErrorCode::kWidgetNotVisible,
+          QStringLiteral("QQuickItem is not on a window (not rendered): %1").arg(objectId),
+          QJsonObject{{QStringLiteral("objectId"), objectId}});
+    }
+    QPoint point;
+    const QJsonValue rawPosition = params.value(QStringLiteral("position"));
+    if (!rawPosition.isUndefined() && !rawPosition.isNull()) {
+      if (!rawPosition.isObject()) {
+        throw JsonRpcException(
+            JsonRpcError::kInvalidParams,
+            QStringLiteral("Parameter 'position' must be an object with numeric x/y fields"),
+            QJsonObject{{QStringLiteral("method"), methodName},
+                        {QStringLiteral("position"), rawPosition}});
+      }
+      const QJsonObject position = rawPosition.toObject();
+      point = QPoint(qRound(requireCoordinate(position, QStringLiteral("x"), methodName)),
+                     qRound(requireCoordinate(position, QStringLiteral("y"), methodName)));
+    } else {
+      point = QPoint(qRound(item->width() / 2.0), qRound(item->height() / 2.0));
+    }
+    const QPoint scenePos = item->mapToScene(QPointF(point)).toPoint();
+    queueWindowClick(w, button, scenePos, doubleClick, modifiers);
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deferred"), true}};
+  }
+#endif
 
   auto* widget = qobject_cast<QWidget*>(obj);
   if (!widget) {
@@ -502,6 +559,26 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
         {QStringLiteral("target"), QStringLiteral("graphicsItem")},
         {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)}};
   }
+
+#ifdef QTPILOT_HAS_QML
+  if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+    QQuickWindow* w = item->window();
+    if (!w) {
+      throw JsonRpcException(
+          ErrorCode::kWidgetNotVisible,
+          QStringLiteral("QQuickItem is not on a window (not rendered): %1").arg(objectId),
+          QJsonObject{{QStringLiteral("objectId"), objectId}});
+    }
+    item->forceActiveFocus();
+    if (!text.isEmpty()) {
+      InputSimulator::sendText(w, text, modifiers);
+    }
+    if (!sequence.isEmpty()) {
+      InputSimulator::sendKeySequence(w, sequence);
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("target"), QStringLiteral("quickItem")}};
+  }
+#endif
 
   auto* widget = qobject_cast<QWidget*>(obj);
   if (!widget) {

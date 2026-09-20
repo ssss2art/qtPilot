@@ -11,6 +11,7 @@
 #include "transport/jsonrpc_handler.h"
 
 #include <QApplication>
+#include <QDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -112,6 +113,10 @@ class TestNativeModeApi : public QObject {
   // Error handling
   void testStructuredErrorMissingObjectId();
   void testStructuredErrorObjectNotFound();
+
+  // QWidget lifecycle and modal regressions
+  void testDynamicWidgetCreationAndDestructionSafety();
+  void testModalDialogWidgetInteraction();
 
  private:
   /// @brief Make a JSON-RPC call and return the full parsed response object.
@@ -830,6 +835,74 @@ void TestNativeModeApi::testStructuredErrorObjectNotFound() {
                AllOf(HasJsonField("code", Eq(static_cast<int>(ErrorCode::kObjectNotFound))),
                      HasJsonField("message", QIsNotEmpty()),
                      HasJsonField("data", AllOf(HasJsonField("objectId"), HasJsonField("hint")))));
+}
+
+void TestNativeModeApi::testDynamicWidgetCreationAndDestructionSafety() {
+  auto* dynBtn = new QPushButton("Dynamic Button", m_testWindow);
+  dynBtn->setObjectName("dynamicBtn");
+  m_testWindow->layout()->addWidget(dynBtn);
+  QApplication::processEvents();
+
+  // Find the dynamically created widget
+  QJsonObject searchParams;
+  searchParams["objectName"] = "dynamicBtn";
+  QJsonArray results = callResult("qt.objects.search", searchParams).toObject()["objects"].toArray();
+  QEXPECT_THAT(results.size(), Eq(1));
+  QString objectId = results[0].toObject()["objectId"].toString();
+  QEXPECT_THAT(objectId, QIsNotEmpty());
+
+  // Verify properties can be read
+  QJsonObject getParams;
+  getParams["objectId"] = objectId;
+  getParams["name"] = "text";
+  QJsonObject getRes = callResult("qt.properties.get", getParams).toObject();
+  QEXPECT_THAT(getRes["value"].toString(), Eq("Dynamic Button"));
+
+  // Now dynamically destroy the widget
+  delete dynBtn;
+  QApplication::processEvents();
+
+  // Calling methods on the destroyed widget must safely return kObjectNotFound (-32001)
+  QJsonObject inspectError = callExpectError("qt.objects.inspect", QJsonObject{{"objectId", objectId}});
+  QEXPECT_THAT(inspectError["code"].toInt(), Eq(static_cast<int>(ErrorCode::kObjectNotFound)));
+
+  QJsonObject propError = callExpectError("qt.properties.get", getParams);
+  QEXPECT_THAT(propError["code"].toInt(), Eq(static_cast<int>(ErrorCode::kObjectNotFound)));
+
+  QJsonObject clickError = callExpectError("qt.ui.click", QJsonObject{{"objectId", objectId}});
+  QEXPECT_THAT(clickError["code"].toInt(), Eq(static_cast<int>(ErrorCode::kObjectNotFound)));
+}
+
+void TestNativeModeApi::testModalDialogWidgetInteraction() {
+  QDialog modalDialog(m_testWindow);
+  modalDialog.setObjectName("modalTestDialog");
+  modalDialog.setWindowTitle("Modal Title");
+  modalDialog.setModal(true);
+
+  QVBoxLayout* layout = new QVBoxLayout(&modalDialog);
+  QPushButton* closeBtn = new QPushButton("Close Modal", &modalDialog);
+  closeBtn->setObjectName("closeModalBtn");
+  layout->addWidget(closeBtn);
+  connect(closeBtn, &QPushButton::clicked, &modalDialog, &QDialog::accept);
+
+  modalDialog.show();
+  QApplication::processEvents();
+
+  // Verify modal dialog is discoverable and interactive
+  QJsonObject searchParams;
+  searchParams["objectName"] = "closeModalBtn";
+  QJsonArray results = callResult("qt.objects.search", searchParams).toObject()["objects"].toArray();
+  QEXPECT_THAT(results.size(), Eq(1));
+  QString btnId = results[0].toObject()["objectId"].toString();
+
+  // Click the close button via qt.ui.click
+  QJsonValue clickRes = callResult("qt.ui.click", QJsonObject{{"objectId", btnId}});
+  QEXPECT_THAT(clickRes.isObject(), IsTrue());
+  QEXPECT_THAT(clickRes.toObject(), HasJsonField("ok", Eq(true)));
+  QApplication::processEvents();
+
+  // Dialog should now be closed / not visible
+  QEXPECT_THAT(modalDialog.isVisible(), IsFalse());
 }
 
 // A top-level QWidget is parentless, so it is NOT a QObject child of the

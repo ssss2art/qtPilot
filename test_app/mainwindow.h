@@ -1,10 +1,20 @@
-// Copyright (c) 2024 qtPilot Contributors
+// Copyright (c) 2024-2026 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
 #include <QMainWindow>
 #include <QStandardItemModel>
+
+class CustomGaugeWidget;
+class ComplexTableModel;
+class QTableView;
+class QGraphicsScene;
+class QGraphicsView;
+#if defined(QTPILOT_HAS_QUICKWIDGETS)
+class QQuickWidget;
+class QmlTestBridge;
+#endif
 
 namespace Ui {
 class MainWindow;
@@ -26,8 +36,21 @@ class MainWindow : public QMainWindow {
   void OnClearClicked();
   void OnSliderChanged(int value);
   void OnSpawnChildClicked();
+  void OnSpawnStormClicked();
+  void OnClearStormClicked();
+  void OnOpenModalClicked();
 
  private:
   Ui::MainWindow* ui_;
   QStandardItemModel* treeModel_ = nullptr;
+  CustomGaugeWidget* customGauge_ = nullptr;
+  ComplexTableModel* complexTableModel_ = nullptr;
+  QTableView* complexTableView_ = nullptr;
+  QGraphicsScene* graphicsScene_ = nullptr;
+  QGraphicsView* graphicsView_ = nullptr;
+  QWidget* stormContainer_ = nullptr;
+#if defined(QTPILOT_HAS_QUICKWIDGETS)
+  QQuickWidget* quickWidget_ = nullptr;
+  QmlTestBridge* qmlBridge_ = nullptr;
+#endif
 };
