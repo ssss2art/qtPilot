@@ -5,9 +5,11 @@ re-drive what was driven, re-observe what was observed, and report what changed.
 
 ## Why this works
 
-A session divides cleanly in two. Five methods *change* the application:
+A session divides cleanly into mutating actions and observations. Mutating methods *change* the application:
 
-`qt.ui.click`, `qt.ui.clickItem`, `qt.ui.sendKeys`, `qt.properties.set`, `qt.methods.invoke`
+- **Native Qt:** `qt.ui.click`, `qt.ui.doubleClick`, `qt.ui.clickItem`, `qt.ui.sendKeys`, `qt.properties.set`, `qt.methods.invoke`
+- **Computer Use:** `cu.click`, `cu.rightClick`, `cu.middleClick`, `cu.doubleClick`, `cu.mouseMove`, `cu.drag`, `cu.mouseDown`, `cu.mouseUp`, `cu.type`, `cu.key`, `cu.scroll`, `cu.action`
+- **Chrome Mode:** `chr.click`, `chr.formInput`, `chr.navigate`
 
 Everything else only *observes* it. Re-driving the first kind against a fresh application and
 comparing the second is an assertion about behaviour — and it needs no test written by hand for
@@ -15,8 +17,9 @@ each flow, because the recording already is one.
 
 The observing set is an allow-list rather than "everything that is not mutating":
 
-`qt.objects.tree`, `qt.objects.inspect`, `qt.objects.search`, `qt.properties.get`,
-`qt.models.list`, `qt.models.data`, `qt.models.search`, `qt.ui.geometry`, `qt.ui.hitTest`
+- **Native Qt:** `qt.objects.tree`, `qt.objects.inspect`, `qt.objects.search`, `qt.properties.get`, `qt.models.list`, `qt.models.data`, `qt.models.search`, `qt.ui.geometry`, `qt.ui.hitTest`
+- **Computer Use:** `cu.cursorPosition`
+- **Chrome Mode:** `chr.readPage`, `chr.getPageText`, `chr.find`, `chr.tabsContext`, `chr.readConsoleMessages`
 
 `qt.ping` and `qt.version` describe the harness. The `qt.names.*` and `qt.signals.*` families
 describe the session's own bookkeeping. `qt.ui.screenshot` returns image bytes that belong in a
@@ -135,6 +138,28 @@ add_test(NAME Replay.SubmitForm
 This complements unit tests and a full GUI-automation suite rather than replacing either. Unit
 tests run without an application; a replay runs against a real one but is cheap to author,
 because recording a session is the authoring step.
+
+## Programmatic API, Monadic Results, and Fluent DSL
+
+For programmatic execution in pytest or CI runners, use `run_scenario` with fluent matchers or monadic results:
+
+```python
+from qtpilot.connection import ProbeConnection
+from qtpilot.fluent import expect_replay
+from qtpilot.replay import parse_entries, run_scenario
+
+scenario = parse_entries(entries)
+result = await run_scenario(scenario, conn)
+
+# Fluent assertions
+expect_replay(result).to_pass()
+expect_replay(result).to_diverge_at(step=2, kind="value_mismatch")
+
+# Monadic Result pipeline
+outcome = result.to_result()  # Result[list[Step], list[Divergence]]
+outcome.map(lambda steps: print(f"Successfully replayed {len(steps)} steps!")) \
+       .map_err(lambda errs: print(f"Found {len(errs)} divergences: {errs}"))
+```
 
 ## Limits
 
