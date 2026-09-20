@@ -306,8 +306,8 @@ QQuickItem* deepestItemAt(QQuickItem* parent, const QPointF& parentPos) {
   // missed. Sort a copy (stable, so equal z keeps document order) and walk it
   // backwards -- last painted is topmost.
   QList<QQuickItem*> children = parent->childItems();
-  std::ranges::stable_sort(
-      children, [](const QQuickItem* a, const QQuickItem* b) { return a->z() < b->z(); });
+  std::stable_sort(children.begin(), children.end(),
+                   [](const QQuickItem* a, const QQuickItem* b) { return a->z() < b->z(); });
 
   for (QQuickItem* child : std::views::reverse(children)) {
     if (!child->isVisible() || !child->isEnabled()) {
