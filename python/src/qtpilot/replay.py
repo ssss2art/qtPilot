@@ -427,7 +427,11 @@ def parse_entries(entries: Iterable[dict]) -> Scenario:
             continue
 
         if direction == "ntf":
-            entry = (raw.get("method", ""), normalise(raw.get("params", {})))
+            method = raw.get("method", "")
+            params = normalise(raw.get("params", {}))
+            if method == "qtpilot.objectDestroyed" and not params.get("objectId"):
+                continue
+            entry = (method, params)
             if mutating_in_flight:
                 in_flight.append(entry)
             else:

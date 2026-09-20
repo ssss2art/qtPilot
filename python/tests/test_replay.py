@@ -442,6 +442,18 @@ def test_notifications_belong_to_the_step_whose_action_caused_them():
     assert [m for m, _ in scenario.steps[1].notifications] == ["qtpilot.signalEmitted"]
 
 
+def test_empty_object_destroyed_notifications_are_ignored():
+    """Temporary signal-monitor teardown has no stable object identity to replay."""
+    scenario = parse_entries([
+        {"dir": "ntf", "method": "qtpilot.objectDestroyed", "params": {"objectId": ""}},
+        {"dir": "ntf", "method": "qtpilot.objectDestroyed", "params": {"objectId": "stableWidget"}},
+    ])
+
+    assert scenario.steps[0].notifications == [
+        ("qtpilot.objectDestroyed", {"objectId": "stableWidget"})
+    ]
+
+
 def test_subscription_ids_are_stripped_as_volatile():
     """sub_1, sub_2 ... come from a per-run counter, so leaving them in meant
     notifications could never compare equal between runs."""
