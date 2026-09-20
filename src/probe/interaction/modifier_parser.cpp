@@ -38,39 +38,44 @@ const QHash<QString, Qt::KeyboardModifier>& modifierNames() {
   return kNames;
 }
 
-[[noreturn]] void rejectModifiers(const QJsonValue& offending, const QString& methodName,
-                                  const QString& reason) {
+JsonRpcException makeModifierError(const QJsonValue& offending, const QString& methodName,
+                                   const QString& reason) {
   QJsonArray accepted;
   const QStringList names = ModifierParser::acceptedNames();
   for (const QString& name : names) {
     accepted.append(name);
   }
-  throw JsonRpcException(JsonRpcError::kInvalidParams, reason,
-                         QJsonObject{{QStringLiteral("method"), methodName},
-                                     {QStringLiteral("modifiers"), offending},
-                                     {QStringLiteral("accepted"), accepted}});
+  return JsonRpcException(JsonRpcError::kInvalidParams, reason,
+                          QJsonObject{{QStringLiteral("method"), methodName},
+                                      {QStringLiteral("modifiers"), offending},
+                                      {QStringLiteral("accepted"), accepted}});
 }
 
-/// Fold one name onto the accumulating flags, rejecting anything unrecognised.
-void applyName(const QString& rawName, Qt::KeyboardModifiers& flags, const QJsonValue& offending,
-               const QString& methodName) {
+/// Fold one name onto the accumulating flags, returning an unexpected JsonRpcException if
+/// unrecognised.
+std::expected<void, JsonRpcException> applyNameExpected(const QString& rawName,
+                                                        Qt::KeyboardModifiers& flags,
+                                                        const QJsonValue& offending,
+                                                        const QString& methodName) {
   const QString name = rawName.trimmed().toLower();
   if (name.isEmpty()) {
-    rejectModifiers(offending, methodName,
-                    QStringLiteral("Parameter 'modifiers' has an empty modifier name"));
+    return std::unexpected(makeModifierError(
+        offending, methodName, QStringLiteral("Parameter 'modifiers' has an empty modifier name")));
   }
   const auto it = modifierNames().constFind(name);
   if (it == modifierNames().constEnd()) {
-    rejectModifiers(
+    return std::unexpected(makeModifierError(
         offending, methodName,
-        QStringLiteral("Parameter 'modifiers' names an unknown modifier: '%1'").arg(rawName));
+        QStringLiteral("Parameter 'modifiers' names an unknown modifier: '%1'").arg(rawName)));
   }
   flags |= it.value();
+  return {};
 }
 
 }  // namespace
 
-Qt::KeyboardModifiers ModifierParser::parse(const QJsonValue& value, const QString& methodName) {
+std::expected<Qt::KeyboardModifiers, JsonRpcException> ModifierParser::parseExpected(
+    const QJsonValue& value, const QString& methodName) {
   if (value.isUndefined() || value.isNull()) {
     return Qt::NoModifier;
   }
@@ -82,11 +87,12 @@ Qt::KeyboardModifiers ModifierParser::parse(const QJsonValue& value, const QStri
     if (joined.isEmpty()) {
       return Qt::NoModifier;
     }
-    // Qt::SkipEmptyParts would quietly accept "ctrl++shift"; the caller almost
-    // certainly meant something else, so the empty segment is reported instead.
     const QStringList parts = joined.split(QLatin1Char('+'), Qt::KeepEmptyParts);
     for (const QString& part : parts) {
-      applyName(part, flags, value, methodName);
+      auto res = applyNameExpected(part, flags, value, methodName);
+      if (!res) {
+        return std::unexpected(res.error());
+      }
     }
     return flags;
   }
@@ -95,16 +101,29 @@ Qt::KeyboardModifiers ModifierParser::parse(const QJsonValue& value, const QStri
     const QJsonArray names = value.toArray();
     for (const auto& entry : names) {
       if (!entry.isString()) {
-        rejectModifiers(value, methodName,
-                        QStringLiteral("Parameter 'modifiers' array must hold only strings"));
+        return std::unexpected(makeModifierError(
+            value, methodName,
+            QStringLiteral("Parameter 'modifiers' array must hold only strings")));
       }
-      applyName(entry.toString(), flags, value, methodName);
+      auto res = applyNameExpected(entry.toString(), flags, value, methodName);
+      if (!res) {
+        return std::unexpected(res.error());
+      }
     }
     return flags;
   }
 
-  rejectModifiers(value, methodName,
-                  QStringLiteral("Parameter 'modifiers' must be a string or an array of strings"));
+  return std::unexpected(makeModifierError(
+      value, methodName,
+      QStringLiteral("Parameter 'modifiers' must be a string or an array of strings")));
+}
+
+Qt::KeyboardModifiers ModifierParser::parse(const QJsonValue& value, const QString& methodName) {
+  auto res = parseExpected(value, methodName);
+  if (!res) {
+    throw res.error();
+  }
+  return *res;
 }
 
 QStringList ModifierParser::acceptedNames() {

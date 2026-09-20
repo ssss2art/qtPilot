@@ -7,7 +7,7 @@
 // cannot cover it, and a QML app built on ListElement/JS arrays has no Qt model
 // for the probe to find.
 //
-// See docs/qml-a11y-evaluation.md.
+// See docs/QML-A11Y-EVALUATION.md.
 
 #include "models.h"
 

@@ -11,6 +11,7 @@
 #include "transport/jsonrpc_handler.h"
 
 #include <QApplication>
+#include <QDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -108,10 +109,16 @@ class TestNativeModeApi : public QObject {
   // ObjectResolver multi-style
   void testNumericIdResolution();
   void testSymbolicNameResolution();
+  void testResolveExpectedMonadic();
+  void testSymbolicNameMapExpectedMonadic();
 
   // Error handling
   void testStructuredErrorMissingObjectId();
   void testStructuredErrorObjectNotFound();
+
+  // QWidget lifecycle and modal regressions
+  void testDynamicWidgetCreationAndDestructionSafety();
+  void testModalDialogWidgetInteraction();
 
  private:
   /// @brief Make a JSON-RPC call and return the full parsed response object.
@@ -790,6 +797,32 @@ void TestNativeModeApi::testNumericIdResolution() {
   QEXPECT_THAT(infoResult.isObject(), IsTrue());
   QJsonObject info = infoResult.toObject()["info"].toObject();
   QEXPECT_THAT(info, HasJsonField("className", QStrEq("QPushButton")));
+
+  // Verify automatic cleanup on object destruction
+  int tempId = -1;
+  {
+    auto* tempObj = new QObject();
+    tempId = ObjectResolver::assignNumericId(tempObj);
+    QEXPECT_THAT(tempId, Gt(0));
+    QCOMPARE(ObjectResolver::findByNumericId(tempId), tempObj);
+    delete tempObj;
+  }
+  // After destruction, lookup returns nullptr and id mapping is gone
+  QCOMPARE(ObjectResolver::findByNumericId(tempId), nullptr);
+
+  // Test findByNumericIdExpected
+  int expId = ObjectResolver::assignNumericId(m_testButton);
+  auto numExpRes = ObjectResolver::findByNumericIdExpected(expId);
+  QVERIFY(numExpRes.has_value());
+  QCOMPARE(*numExpRes, static_cast<QObject*>(m_testButton));
+
+  auto numBadRes = ObjectResolver::findByNumericIdExpected(999999);
+  QVERIFY(!numBadRes.has_value());
+  QEXPECT_THAT(numBadRes.error(), QStrContains("not found"));
+
+  auto numNegRes = ObjectResolver::findByNumericIdExpected(-5);
+  QVERIFY(!numNegRes.has_value());
+  QEXPECT_THAT(numNegRes.error(), QStrContains("positive"));
 }
 
 void TestNativeModeApi::testSymbolicNameResolution() {
@@ -805,6 +838,121 @@ void TestNativeModeApi::testSymbolicNameResolution() {
   QEXPECT_THAT(infoResult.isObject(), IsTrue());
   QJsonObject info = infoResult.toObject()["info"].toObject();
   QEXPECT_THAT(info, HasJsonField("className", QStrEq("QPushButton")));
+}
+
+void TestNativeModeApi::testResolveExpectedMonadic() {
+  // 1. Successful resolution returns expected holding pointer
+  QString hierPath = ObjectRegistry::instance()->objectId(m_testButton);
+  auto res = ObjectResolver::resolveExpected(hierPath);
+  QVERIFY(res.has_value());
+  QCOMPARE(*res, static_cast<QObject*>(m_testButton));
+
+  // 2. Monadic chaining via .and_then()
+  auto widgetRes =
+      res.and_then([](QObject* obj) -> std::expected<QWidget*, ObjectResolver::ResolveError> {
+        if (auto* w = qobject_cast<QWidget*>(obj)) {
+          return w;
+        }
+        return std::unexpected(ObjectResolver::ResolveError{
+            ObjectResolver::ResolveErrorKind::NotFound, QString(), "Not a widget"});
+      });
+  QVERIFY(widgetRes.has_value());
+  QCOMPARE(*widgetRes, static_cast<QWidget*>(m_testButton));
+
+  // 3. Monadic transformation via .transform()
+  auto classRes = widgetRes.transform(
+      [](QWidget* w) { return QString::fromUtf8(w->metaObject()->className()); });
+  QVERIFY(classRes.has_value());
+  QCOMPARE(*classRes, QStringLiteral("QPushButton"));
+
+  // 3b. Numeric resolution via resolveExpected
+  int numId = ObjectResolver::assignNumericId(m_testButton);
+  auto numRes = ObjectResolver::resolveExpected(QString::number(numId));
+  QVERIFY(numRes.has_value());
+  QCOMPARE(*numRes, static_cast<QObject*>(m_testButton));
+
+  auto hashNumRes = ObjectResolver::resolveExpected(QStringLiteral("#%1").arg(numId));
+  QVERIFY(hashNumRes.has_value());
+  QCOMPARE(*hashNumRes, static_cast<QObject*>(m_testButton));
+
+  // 3c. Symbolic resolution via resolveExpected
+  SymbolicNameMap::instance()->registerName(QStringLiteral("myButton"), hierPath);
+  auto symRes = ObjectResolver::resolveExpected(QStringLiteral("myButton"));
+  QVERIFY(symRes.has_value());
+  QCOMPARE(*symRes, static_cast<QObject*>(m_testButton));
+  SymbolicNameMap::instance()->unregisterName(QStringLiteral("myButton"));
+
+  // 4. Empty identifier produces EmptyId error
+  auto emptyRes = ObjectResolver::resolveExpected("");
+  QVERIFY(!emptyRes.has_value());
+  QCOMPARE(static_cast<int>(emptyRes.error().kind),
+           static_cast<int>(ObjectResolver::ResolveErrorKind::EmptyId));
+
+  // 5. Nonexistent identifier produces NotFound error
+  auto missingRes = ObjectResolver::resolveExpected("nonexistent_id_404");
+  QVERIFY(!missingRes.has_value());
+  QCOMPARE(static_cast<int>(missingRes.error().kind),
+           static_cast<int>(ObjectResolver::ResolveErrorKind::NotFound));
+
+  // 6. Monadic parameter extractors via JSON-RPC
+  // Missing required "name" parameter produces kInvalidParams
+  QJsonObject missingNameErr =
+      callExpectError("qt.properties.get", QJsonObject{{"objectId", hierPath}});
+  QCOMPARE(missingNameErr["code"].toInt(), static_cast<int>(JsonRpcError::kInvalidParams));
+
+  // Missing required "value" parameter produces kInvalidParams
+  QJsonObject missingValErr =
+      callExpectError("qt.properties.set", QJsonObject{{"objectId", hierPath}, {"name", "text"}});
+  QCOMPARE(missingValErr["code"].toInt(), static_cast<int>(JsonRpcError::kInvalidParams));
+
+  // Missing required "method" parameter produces kInvalidParams
+  QJsonObject missingMethodErr =
+      callExpectError("qt.methods.invoke", QJsonObject{{"objectId", hierPath}});
+  QCOMPARE(missingMethodErr["code"].toInt(), static_cast<int>(JsonRpcError::kInvalidParams));
+}
+
+void TestNativeModeApi::testSymbolicNameMapExpectedMonadic() {
+  auto* nameMap = SymbolicNameMap::instance();
+  QString hierPath = ObjectRegistry::instance()->objectId(m_testButton);
+
+  // 1. resolveExpected
+  nameMap->registerName(QStringLiteral("okBtn"), hierPath);
+  auto foundRes = nameMap->resolveExpected(QStringLiteral("okBtn"));
+  QVERIFY(foundRes.has_value());
+  QCOMPARE(*foundRes, hierPath);
+
+  auto missingRes = nameMap->resolveExpected(QStringLiteral("nonexistentSymbol"));
+  QVERIFY(!missingRes.has_value());
+  QEXPECT_THAT(missingRes.error(), QStrContains("not registered"));
+
+  // 2. loadFromFileExpected error paths
+  auto badLoad = nameMap->loadFromFileExpected(QStringLiteral("/path/does/not/exist/names.json"));
+  QVERIFY(!badLoad.has_value());
+  QEXPECT_THAT(badLoad.error(), QStrContains("Failed to open file"));
+
+  // 3. saveToFileExpected error path
+  auto badSave = nameMap->saveToFileExpected(QStringLiteral("/invalid/root/path/names.json"));
+  QVERIFY(!badSave.has_value());
+  QEXPECT_THAT(badSave.error(), QStrContains("Failed to write file"));
+
+  // 4. saveToFileExpected and loadFromFileExpected round-trip
+  QTemporaryFile tmpFile;
+  QVERIFY(tmpFile.open());
+  QString tmpPath = tmpFile.fileName();
+  tmpFile.close();
+
+  auto saveOk = nameMap->saveToFileExpected(tmpPath);
+  QVERIFY(saveOk.has_value());
+
+  nameMap->unregisterName(QStringLiteral("okBtn"));
+  QVERIFY(!nameMap->resolveExpected(QStringLiteral("okBtn")).has_value());
+
+  auto loadOk = nameMap->loadFromFileExpected(tmpPath);
+  QVERIFY(loadOk.has_value());
+  QVERIFY(nameMap->resolveExpected(QStringLiteral("okBtn")).has_value());
+
+  // Cleanup
+  nameMap->unregisterName(QStringLiteral("okBtn"));
 }
 
 // ========================================================================
@@ -830,6 +978,77 @@ void TestNativeModeApi::testStructuredErrorObjectNotFound() {
                AllOf(HasJsonField("code", Eq(static_cast<int>(ErrorCode::kObjectNotFound))),
                      HasJsonField("message", QIsNotEmpty()),
                      HasJsonField("data", AllOf(HasJsonField("objectId"), HasJsonField("hint")))));
+}
+
+void TestNativeModeApi::testDynamicWidgetCreationAndDestructionSafety() {
+  auto* dynBtn = new QPushButton("Dynamic Button", m_testWindow);
+  dynBtn->setObjectName("dynamicBtn");
+  m_testWindow->layout()->addWidget(dynBtn);
+  QApplication::processEvents();
+
+  // Find the dynamically created widget
+  QJsonObject searchParams;
+  searchParams["objectName"] = "dynamicBtn";
+  QJsonArray results =
+      callResult("qt.objects.search", searchParams).toObject()["objects"].toArray();
+  QEXPECT_THAT(results.size(), Eq(1));
+  QString objectId = results[0].toObject()["objectId"].toString();
+  QEXPECT_THAT(objectId, QIsNotEmpty());
+
+  // Verify properties can be read
+  QJsonObject getParams;
+  getParams["objectId"] = objectId;
+  getParams["name"] = "text";
+  QJsonObject getRes = callResult("qt.properties.get", getParams).toObject();
+  QEXPECT_THAT(getRes["value"].toString(), Eq("Dynamic Button"));
+
+  // Now dynamically destroy the widget
+  delete dynBtn;
+  QApplication::processEvents();
+
+  // Calling methods on the destroyed widget must safely return kObjectNotFound (-32001)
+  QJsonObject inspectError =
+      callExpectError("qt.objects.inspect", QJsonObject{{"objectId", objectId}});
+  QEXPECT_THAT(inspectError["code"].toInt(), Eq(static_cast<int>(ErrorCode::kObjectNotFound)));
+
+  QJsonObject propError = callExpectError("qt.properties.get", getParams);
+  QEXPECT_THAT(propError["code"].toInt(), Eq(static_cast<int>(ErrorCode::kObjectNotFound)));
+
+  QJsonObject clickError = callExpectError("qt.ui.click", QJsonObject{{"objectId", objectId}});
+  QEXPECT_THAT(clickError["code"].toInt(), Eq(static_cast<int>(ErrorCode::kObjectNotFound)));
+}
+
+void TestNativeModeApi::testModalDialogWidgetInteraction() {
+  QDialog modalDialog(m_testWindow);
+  modalDialog.setObjectName("modalTestDialog");
+  modalDialog.setWindowTitle("Modal Title");
+  modalDialog.setModal(true);
+
+  QVBoxLayout* layout = new QVBoxLayout(&modalDialog);
+  QPushButton* closeBtn = new QPushButton("Close Modal", &modalDialog);
+  closeBtn->setObjectName("closeModalBtn");
+  layout->addWidget(closeBtn);
+  connect(closeBtn, &QPushButton::clicked, &modalDialog, &QDialog::accept);
+
+  modalDialog.show();
+  QApplication::processEvents();
+
+  // Verify modal dialog is discoverable and interactive
+  QJsonObject searchParams;
+  searchParams["objectName"] = "closeModalBtn";
+  QJsonArray results =
+      callResult("qt.objects.search", searchParams).toObject()["objects"].toArray();
+  QEXPECT_THAT(results.size(), Eq(1));
+  QString btnId = results[0].toObject()["objectId"].toString();
+
+  // Click the close button via qt.ui.click
+  QJsonValue clickRes = callResult("qt.ui.click", QJsonObject{{"objectId", btnId}});
+  QEXPECT_THAT(clickRes.isObject(), IsTrue());
+  QEXPECT_THAT(clickRes.toObject(), HasJsonField("ok", Eq(true)));
+  QApplication::processEvents();
+
+  // Dialog should now be closed / not visible
+  QEXPECT_THAT(modalDialog.isVisible(), IsFalse());
 }
 
 // A top-level QWidget is parentless, so it is NOT a QObject child of the

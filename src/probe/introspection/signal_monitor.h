@@ -5,6 +5,8 @@
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
 
+#include <expected>
+
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -16,6 +18,19 @@ namespace qtPilot {
 
 // Forward declaration
 class SignalRelay;
+
+/// @brief Error kinds for signal subscription failures.
+enum class SignalErrorKind {
+  ObjectNotFound,
+  SignalNotFound,
+  ConnectionFailed,
+};
+
+/// @brief Structured error for signal operations.
+struct SignalError {
+  SignalErrorKind kind;
+  QString message;
+};
 
 /// @brief Signal subscription and notification system for real-time events.
 ///
@@ -57,6 +72,13 @@ class QTPILOT_EXPORT SignalMonitor : public QObject {
   /// @throws std::runtime_error if object not found or signal not found.
   QString subscribe(const QString& objectId, const QString& signalName);
 
+  /// @brief Monadically subscribe to a signal on an object.
+  /// @param objectId Object's hierarchical ID.
+  /// @param signalName Signal name without parameters (e.g., "clicked").
+  /// @return Subscription ID, or SignalError on failure.
+  std::expected<QString, SignalError> subscribeExpected(const QString& objectId,
+                                                        const QString& signalName);
+
   /// @brief Unsubscribe from a signal (SIG-02).
   ///
   /// Removes the subscription and disconnects from the signal.
@@ -70,6 +92,11 @@ class QTPILOT_EXPORT SignalMonitor : public QObject {
   ///
   /// @param objectId Object's hierarchical ID.
   void unsubscribeAll(const QString& objectId);
+
+  /// @brief Clear all active subscriptions and reset state.
+  ///
+  /// Called on client disconnect to prevent orphaned subscriptions across sessions.
+  void clearSubscriptions();
 
   /// @brief Enable/disable object lifecycle notifications (SIG-04, SIG-05).
   ///

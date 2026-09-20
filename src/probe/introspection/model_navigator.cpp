@@ -6,6 +6,8 @@
 #include "core/object_registry.h"
 #include "introspection/variant_json.h"
 
+#include <ranges>
+
 #include <QAbstractItemView>
 #include <QByteArray>
 #include <QHash>
@@ -38,22 +40,21 @@ QJsonArray ModelNavigator::listModels() {
   auto* registry = ObjectRegistry::instance();
   const auto objects = registry->allObjects();
 
-  for (QObject* obj : objects) {
-    // Verify the object is still alive — allObjects() returns a snapshot of
-    // raw pointers, and objects may have been destroyed since the snapshot
-    // was taken (e.g., Qt internal models destroyed during widget teardown).
-    if (!registry->contains(obj))
-      continue;
+  auto validModelObjects = objects | std::views::filter([registry](QObject* obj) {
+                             if (!obj || !registry->contains(obj))
+                               return false;
+                             auto* model = qobject_cast<QAbstractItemModel*>(obj);
+                             if (!model)
+                               return false;
+                             const QString className =
+                                 QString::fromLatin1(model->metaObject()->className());
+                             return !(className.startsWith(QLatin1Char('Q')) &&
+                                      className.contains(QStringLiteral("Internal")));
+                           });
 
-    auto* model = qobject_cast<QAbstractItemModel*>(obj);
-    if (!model)
-      continue;
-
-    // Skip internal Qt models (className starts with "Q" and contains "Internal")
+  for (QObject* obj : validModelObjects) {
+    auto* model = static_cast<QAbstractItemModel*>(obj);
     const QString className = QString::fromLatin1(model->metaObject()->className());
-    if (className.startsWith(QLatin1Char('Q')) && className.contains(QStringLiteral("Internal")))
-      continue;
-
     QJsonObject info;
     info[QStringLiteral("objectId")] = registry->objectId(obj);
     info[QStringLiteral("className")] = className;
@@ -156,38 +157,43 @@ void ModelNavigator::ensureFetched(QAbstractItemModel* model, const QModelIndex&
   }
 }
 
-QModelIndex ModelNavigator::pathToIndex(QAbstractItemModel* model, const QList<int>& path,
-                                        int* outFailedSegment) {
+std::expected<QModelIndex, int> ModelNavigator::pathToIndexExpected(QAbstractItemModel* model,
+                                                                    const QList<int>& path) {
   if (!model) {
-    if (outFailedSegment)
-      *outFailedSegment = 0;
-    return {};
+    return std::unexpected(0);
   }
   QModelIndex current;  // invalid = root
   for (int i = 0; i < path.size(); ++i) {
     ensureFetched(model, current);
     const int row = path[i];
     if (row < 0 || row >= model->rowCount(current)) {
-      if (outFailedSegment)
-        *outFailedSegment = i;
-      return {};
+      return std::unexpected(i);
     }
     current = model->index(row, 0, current);
     if (!current.isValid()) {
-      if (outFailedSegment)
-        *outFailedSegment = i;
-      return {};
+      return std::unexpected(i);
     }
   }
   return current;
 }
 
-QModelIndex ModelNavigator::textPathToIndex(QAbstractItemModel* model, const QStringList& itemPath,
-                                            int matchColumn, int* outFailedSegment) {
-  if (!model) {
-    if (outFailedSegment)
-      *outFailedSegment = 0;
+QModelIndex ModelNavigator::pathToIndex(QAbstractItemModel* model, const QList<int>& path,
+                                        int* outFailedSegment) {
+  auto res = pathToIndexExpected(model, path);
+  if (!res) {
+    if (outFailedSegment) {
+      *outFailedSegment = res.error();
+    }
     return {};
+  }
+  return *res;
+}
+
+std::expected<QModelIndex, int> ModelNavigator::textPathToIndexExpected(QAbstractItemModel* model,
+                                                                        const QStringList& itemPath,
+                                                                        int role, int matchColumn) {
+  if (!model) {
+    return std::unexpected(0);
   }
   QModelIndex current;  // invalid = root
   for (int i = 0; i < itemPath.size(); ++i) {
@@ -199,29 +205,49 @@ QModelIndex ModelNavigator::textPathToIndex(QAbstractItemModel* model, const QSt
       const QModelIndex cell = model->index(row, matchColumn, current);
       if (!cell.isValid())
         continue;
-      if (model->data(cell, Qt::DisplayRole).toString() == wanted) {
+      if (model->data(cell, role).toString() == wanted) {
         current = model->index(row, 0, current);  // row identity in column 0
         matched = true;
         break;
       }
     }
     if (!matched) {
-      if (outFailedSegment)
-        *outFailedSegment = i;
-      return {};
+      return std::unexpected(i);
     }
   }
   return current;
 }
 
-bool ModelNavigator::compileFindOptions(FindOptions& opts, QString* outError) {
-  if (opts.match != MatchMode::Regex)
-    return true;
+QModelIndex ModelNavigator::textPathToIndex(QAbstractItemModel* model, const QStringList& itemPath,
+                                            int matchColumn, int* outFailedSegment) {
+  auto res = textPathToIndexExpected(model, itemPath, Qt::DisplayRole, matchColumn);
+  if (!res) {
+    if (outFailedSegment) {
+      *outFailedSegment = res.error();
+    }
+    return {};
+  }
+  return *res;
+}
+
+std::expected<void, QString> ModelNavigator::compileFindOptionsExpected(FindOptions& opts) {
+  if (opts.match != MatchMode::Regex) {
+    return {};
+  }
   opts.compiledRegex.setPattern(opts.value);
   opts.compiledRegex.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
   if (!opts.compiledRegex.isValid()) {
-    if (outError)
-      *outError = opts.compiledRegex.errorString();
+    return std::unexpected(opts.compiledRegex.errorString());
+  }
+  return {};
+}
+
+bool ModelNavigator::compileFindOptions(FindOptions& opts, QString* outError) {
+  auto res = compileFindOptionsExpected(opts);
+  if (!res) {
+    if (outError) {
+      *outError = res.error();
+    }
     return false;
   }
   return true;
@@ -300,6 +326,20 @@ QAbstractItemModel* ModelNavigator::resolveModel(QObject* obj) {
   return nullptr;
 }
 
+std::expected<QAbstractItemModel*, QString> ModelNavigator::resolveModelExpected(QObject* obj) {
+  if (!obj) {
+    return std::unexpected(QStringLiteral("Target object is null"));
+  }
+  auto* model = resolveModel(obj);
+  if (!model) {
+    return std::unexpected(
+        QStringLiteral(
+            "Object '%1' of type '%2' is neither a QAbstractItemModel nor has an underlying model")
+            .arg(obj->objectName(), QString::fromUtf8(obj->metaObject()->className())));
+  }
+  return model;
+}
+
 int ModelNavigator::resolveRoleName(QAbstractItemModel* model, const QString& roleName) {
   if (!model)
     return -1;
@@ -319,6 +359,18 @@ int ModelNavigator::resolveRoleName(QAbstractItemModel* model, const QString& ro
     return it.value();
 
   return -1;
+}
+
+std::expected<int, QString> ModelNavigator::resolveRoleNameExpected(QAbstractItemModel* model,
+                                                                    const QString& roleName) {
+  if (!model) {
+    return std::unexpected(QStringLiteral("Model is null"));
+  }
+  int role = resolveRoleName(model, roleName);
+  if (role < 0) {
+    return std::unexpected(QStringLiteral("Unknown role name: '%1'").arg(roleName));
+  }
+  return role;
 }
 
 QJsonObject ModelNavigator::indexToRowData(QAbstractItemModel* model, const QModelIndex& index,

@@ -5,6 +5,7 @@
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
 
+#include <expected>
 #include <stdexcept>
 
 #include <QJsonArray>
@@ -14,6 +15,32 @@
 #include <QStringList>
 
 namespace qtPilot {
+
+/// @brief Error kinds for property inspection operations.
+enum class PropertyErrorKind { NotFound, NotReadable, ReadOnly, TypeMismatch, NullObject };
+
+/// @brief Structured error details for property inspection.
+struct PropertyError {
+  PropertyErrorKind kind;
+  QString propertyName;
+  QString message;
+};
+
+/// @brief Error kinds for method invocation operations.
+enum class MethodErrorKind {
+  NotFound,
+  NullObject,
+  TooManyArguments,
+  InvalidArgument,
+  InvocationFailed
+};
+
+/// @brief Structured error details for method invocation.
+struct MethodError {
+  MethodErrorKind kind;
+  QString methodName;
+  QString message;
+};
 
 /// @brief Utility class for QMetaObject introspection with JSON output.
 ///
@@ -100,6 +127,13 @@ class QTPILOT_EXPORT MetaInspector {
   /// @throws std::runtime_error if property not found or not readable.
   static QJsonValue getProperty(QObject* obj, const QString& name);
 
+  /// @brief Get a single property value via C++23 std::expected.
+  /// @param obj Target object.
+  /// @param name Property name.
+  /// @return QJsonValue on success, or PropertyError on failure.
+  static std::expected<QJsonValue, PropertyError> getPropertyExpected(QObject* obj,
+                                                                      const QString& name);
+
   /// @brief Set a property value (OBJ-07).
   ///
   /// Sets a property value with automatic type coercion. Supports both
@@ -111,6 +145,14 @@ class QTPILOT_EXPORT MetaInspector {
   /// @return true if the property was set successfully.
   /// @throws std::runtime_error if property not found or read-only.
   static bool setProperty(QObject* obj, const QString& name, const QJsonValue& value);
+
+  /// @brief Set a property value via C++23 std::expected.
+  /// @param obj Target object.
+  /// @param name Property name.
+  /// @param value New value as JSON.
+  /// @return void on success, or PropertyError on failure.
+  static std::expected<void, PropertyError> setPropertyExpected(QObject* obj, const QString& name,
+                                                                const QJsonValue& value);
 
   /// @brief Invoke a method on an object (OBJ-09).
   ///
@@ -124,6 +166,14 @@ class QTPILOT_EXPORT MetaInspector {
   /// @throws std::runtime_error if method not found or invocation fails.
   static QJsonValue invokeMethod(QObject* obj, const QString& methodName,
                                  const QJsonArray& args = QJsonArray());
+
+  /// @brief Invoke a method on an object via C++23 std::expected.
+  /// @param obj Target object.
+  /// @param methodName Method name (without signature/parameters).
+  /// @param args Arguments as JSON array (max 10).
+  /// @return Return value as JSON (null for void methods) or MethodError on failure.
+  static std::expected<QJsonValue, MethodError> invokeMethodExpected(
+      QObject* obj, const QString& methodName, const QJsonArray& args = QJsonArray());
 
  private:
   // Helper to convert QMetaMethod::Access to string

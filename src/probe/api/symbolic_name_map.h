@@ -5,6 +5,8 @@
 
 #include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT
 
+#include <expected>
+
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -36,6 +38,11 @@ class QTPILOT_EXPORT SymbolicNameMap {
   /// @return The hierarchical path, or empty string if not found.
   QString resolve(const QString& symbolicName) const;
 
+  /// @brief Monadically resolve a symbolic name to a hierarchical path.
+  /// @param symbolicName The name to look up.
+  /// @return The hierarchical path, or error string if not registered.
+  std::expected<QString, QString> resolveExpected(const QString& symbolicName) const;
+
   /// @brief Register a name-to-path mapping.
   /// @param name The symbolic name.
   /// @param path The hierarchical object path.
@@ -59,10 +66,20 @@ class QTPILOT_EXPORT SymbolicNameMap {
   /// @return true on success, false on failure (file not found, parse error).
   bool loadFromFile(const QString& filePath);
 
+  /// @brief Monadically load mappings from a JSON file.
+  /// @param filePath Path to the JSON file.
+  /// @return Void on success, or error string describing failure.
+  std::expected<void, QString> loadFromFileExpected(const QString& filePath);
+
   /// @brief Save current mappings to a JSON file.
   /// @param filePath Path to save the JSON file.
   /// @return true on success, false on failure.
   bool saveToFile(const QString& filePath) const;
+
+  /// @brief Monadically save current mappings to a JSON file.
+  /// @param filePath Path to save the JSON file.
+  /// @return Void on success, or error string describing failure.
+  std::expected<void, QString> saveToFileExpected(const QString& filePath) const;
 
   /// @brief Check if all symbolic names resolve to existing objects.
   /// @return true if all names resolve, false if any are stale.

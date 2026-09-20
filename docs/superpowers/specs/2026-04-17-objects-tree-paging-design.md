@@ -2,7 +2,7 @@
 
 **Status:** Draft — 2026-04-17
 **Scope:** `qt.objects.tree` (probe + Python wrapper), new `qt.objects.children` tool.
-**Related:** `docs/qtpilot-tree-model-support-spec.md` (tree-model navigation — orthogonal feature covering data models, not the QObject hierarchy).
+**Related:** `docs/TREE-MODEL-SPEC.md` (tree-model navigation — orthogonal feature covering data models, not the QObject hierarchy).
 
 ## Problem
 
@@ -237,16 +237,16 @@ Python-side smoke tests in `python/tests/test_tools.py` already validate tool re
 
 ## End-to-end example
 
-Inspecting a Hog 4 fixture schedule window (real-world case with a wide `FTreeView`):
+Inspecting a complex data schedule window (large widgets desktop app with a wide custom tree view):
 
-```
+```python
 # 1. Overview — what's under the main window?
-qt_objects_tree(root="ScreenWindow/FixtureScheduleWin")
-# Response shows FTreeView node with truncated:true, childCount:1237
+qt_objects_tree(root="ScreenWindow/ScheduleWindow")
+# Response shows CustomTreeView node with truncated:true, childCount:1237
 
-# 2. Drill into FTreeView's children, first page
+# 2. Drill into CustomTreeView's children, first page
 qt_objects_children(
-    objectId="ScreenWindow/FixtureScheduleWin/FTreeView",
+    objectId="ScreenWindow/ScheduleWindow/CustomTreeView",
     offset=0,
     limit=20
 )
@@ -254,7 +254,7 @@ qt_objects_children(
 
 # 3. Spot a header we care about, grab its geometry
 qt_objects_children(
-    objectId="ScreenWindow/FixtureScheduleWin/FTreeView",
+    objectId="ScreenWindow/ScheduleWindow/CustomTreeView",
     offset=0,
     limit=20,
     fields=["geometry"]

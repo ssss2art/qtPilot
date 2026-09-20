@@ -84,7 +84,7 @@ class TestWebSocketServerBind : public QObject {
   // test_bind_policy, and those pass on every configuration in the matrix.
   //
   // The crash itself is real and is NOT resolved by deleting the test. It is
-  // recorded as R9 in docs/observability-testability-gaps.md, because the
+  // recorded as R9 in docs/OBSERVABILITY-GAPS.md, because the
   // probe's own shutdown-with-a-client-attached path has the same shape.
 };
 

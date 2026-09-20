@@ -28,7 +28,7 @@ Instead of trying to serialize `QModelIndex` (which is fundamentally an opaque h
 
 A row path is an integer array representing the chain of row indices from the root to a node:
 
-```
+```text
 []        = root (top-level)
 [0]       = first top-level row
 [0, 2]    = third child of the first top-level row
@@ -65,12 +65,12 @@ qt_models_data(objectId="myTreeView", parent=[0, 2])
   "rows": [
     {
       "path": [0, 0],
-      "cells": [{"display": "ETC"}, {"display": "fos4 Fresnel Lustr X8 direct"}, ...],
+      "cells": [{"display": "VendorA"}, {"display": "Device 8X direct"}, ...],
       "hasChildren": false
     },
     {
       "path": [0, 1],
-      "cells": [{"display": "ETC"}, {"display": "Fos4PD16 direct"}, ...],
+      "cells": [{"display": "VendorA"}, {"display": "Device PD16 direct"}, ...],
       "hasChildren": false
     }
   ],
@@ -116,7 +116,7 @@ Search for rows matching a value, with recursive tree support.
 ```jsonc
 qt_models_find(
     objectId="myTreeView",
-    value="fos4 Fresnel Lustr X8 direct",
+    value="Device 8X direct",
     column=1,
     match="exact"
 )
@@ -130,8 +130,8 @@ qt_models_find(
     {
       "path": [0, 0],
       "cells": [
-        {"column": 0, "display": "ETC"},
-        {"column": 1, "display": "fos4 Fresnel Lustr X8 direct"},
+        {"column": 0, "display": "VendorA"},
+        {"column": 1, "display": "Device 8X direct"},
         {"column": 5, "display": "0"},
         {"column": 9, "display": "12ch"}
       ]
@@ -190,7 +190,7 @@ qt_models_select(objectId="myTreeView", path=[0, 0])
 // Select by search
 qt_models_select(
     objectId="myTreeView",
-    value="fos4 Fresnel Lustr X8 direct",
+    value="Device 8X direct",
     column=1,
     match="exact"
 )
@@ -198,7 +198,7 @@ qt_models_select(
 // Select and open editor on Count column
 qt_models_select(
     objectId="myTreeView",
-    value="fos4 Fresnel Lustr X8 direct",
+    value="Device 8X direct",
     column=1,
     editColumn=5,
     edit=true
@@ -212,8 +212,8 @@ qt_models_select(
   "selected": true,
   "path": [0, 0],
   "cells": [
-    {"column": 0, "display": "ETC"},
-    {"column": 1, "display": "fos4 Fresnel Lustr X8 direct"},
+    {"column": 0, "display": "VendorA"},
+    {"column": 1, "display": "Device 8X direct"},
     {"column": 5, "display": "10"}
   ]
 }
@@ -270,8 +270,8 @@ qt_models_selection(objectId="myTreeView")
   "currentItem": {
     "path": [0, 0],
     "cells": [
-      {"column": 0, "display": "ETC"},
-      {"column": 1, "display": "fos4 Fresnel Lustr X8 direct"},
+      {"column": 0, "display": "VendorA"},
+      {"column": 1, "display": "Device 8X direct"},
       {"column": 5, "display": "10"},
       {"column": 9, "display": "12ch"}
     ]
@@ -337,33 +337,35 @@ QJsonObject indexToRowData(QAbstractItemModel* model, const QModelIndex& index) 
 }
 ```
 
-## End-to-End Example: Hog Fixture Schedule
+## End-to-End Example: Complex Hierarchical Schedule
 
 Without these features (current state):
-```
+
+```python
 # 1. Expand tree — hope for the best
-qt_methods_invoke(objectId="..FTreeView", method="expandAll")
+qt_methods_invoke(objectId="..ScheduleTreeView", method="expandAll")
 
 # 2. Click first row
-qt_ui_click(objectId="..FTreeView", position={x:100, y:30})
+qt_ui_click(objectId="..ScheduleTreeView", position={x:100, y:30})
 
 # 3. Arrow down — guessing which row we're on
-qt_ui_sendKeys(objectId="..FTreeView", sequence="Right")
-qt_ui_sendKeys(objectId="..FTreeView", sequence="Down")
+qt_ui_sendKeys(objectId="..ScheduleTreeView", sequence="Right")
+qt_ui_sendKeys(objectId="..ScheduleTreeView", sequence="Down")
 
 # 4. Screenshot to verify — decode base64, view image
-qt_ui_screenshot(objectId="..FTreeView")
+qt_ui_screenshot(objectId="..ScheduleTreeView")
 
 # 5. Type value — hoping we're on the right row
-qt_ui_sendKeys(objectId="..FTreeView", text="10")
+qt_ui_sendKeys(objectId="..ScheduleTreeView", text="10")
 ```
 
 With these features (proposed):
-```
+
+```python
 # 1. Find the fixture type
 qt_models_find(
-    objectId="..FTreeView",
-    value="fos4 Fresnel Lustr X8 direct",
+    objectId="..ScheduleTreeView",
+    value="Device 8X direct",
     column=1,
     match="exact"
 )
@@ -371,8 +373,8 @@ qt_models_find(
 
 # 2. Select it and open the Count editor
 qt_models_select(
-    objectId="..FTreeView",
-    value="fos4 Fresnel Lustr X8 direct",
+    objectId="..ScheduleTreeView",
+    value="Device 8X direct",
     column=1,
     editColumn=5,
     edit=true
@@ -380,10 +382,10 @@ qt_models_select(
 # Row is selected, scrolled into view, Count cell editor is open
 
 # 3. Type the count
-qt_ui_sendKeys(objectId="..FTreeView", text="10")
+qt_ui_sendKeys(objectId="..ScheduleTreeView", text="10")
 
 # 4. Verify
-qt_models_selection(objectId="..FTreeView")
+qt_models_selection(objectId="..ScheduleTreeView")
 # Returns: path=[0,0], Count="10" — confirmed
 ```
 
@@ -404,22 +406,23 @@ The unifying design principle: **use row paths (integer arrays) as the serializa
 
 The row-path approach above (integer arrays like `[0, 2, 1]`) solves the low-level problem of `QModelIndex` serialization. But for most automation scenarios, **users don't know or care about row indices** — they want to find an item by its visible text, just as they would in a manual test.
 
-Squish (the commercial Qt UI testing tool) provides `waitForObjectItem(view, itemPath)` which does exactly this — you give it a view widget and a text path like `"ETC.fos4 Fresnel Lustr X8 direct"`, and it walks the model to find the matching item. However, Squish's approach has a design flaw: it uses dot (`.`) as the path separator for trees and slash (`/`) for tables. If item text contains these characters, the path breaks. There's no escaping mechanism.
+Squish (the commercial Qt UI testing tool) provides `waitForObjectItem(view, itemPath)` which does exactly this — you give it a view widget and a text path like `"VendorA.Device 8X direct"`, and it walks the model to find the matching item. However, Squish's approach has a design flaw: it uses dot (`.`) as the path separator for trees and slash (`/`) for tables. If item text contains these characters, the path breaks. There's no escaping mechanism.
 
 ### Better design: JSON string arrays
 
 Instead of a separator-delimited string, use a **JSON array of strings** — one element per tree level:
 
 ```jsonc
-// Squish: "ETC.fos4 Fresnel Lustr X8 direct"  (breaks if text contains ".")
-// Proposed: ["ETC", "fos4 Fresnel Lustr X8 direct"]  (always unambiguous)
+// Squish: "VendorA.Device 8X direct"  (breaks if text contains ".")
+// Proposed: ["VendorA", "Device 8X direct"]  (always unambiguous)
 ```
 
 Advantages:
+
 - **No separator ambiguity** — item text can contain any characters (dots, slashes, spaces, etc.)
 - **One format for all widget types** — trees, lists, tables, combos all use `string[]`
 - **Already JSON** — no string parsing in the probe; the array maps directly to tree traversal
-- **Self-documenting** — array length = tree depth; `["ETC", "fos4 Fresnel Lustr X8 direct"]` is clearly a two-level lookup
+- **Self-documenting** — array length = tree depth; `["VendorA", "Device 8X direct"]` is clearly a two-level lookup
 - **Consistent with row paths** — integer arrays for positional addressing, string arrays for text addressing
 
 ### New tool: `qt_ui_clickItem`
@@ -441,16 +444,16 @@ Find an item in any `QAbstractItemView` subclass by text path, then interact wit
 **Examples:**
 
 ```jsonc
-// Tree view: click a fixture type under a manufacturer
+// Tree view: click an item under a category
 qt_ui_clickItem(
-    objectId="ScreenWindow/FixtureScheduleWin/FTreeView",
-    itemPath=["ETC", "fos4 Fresnel Lustr X8 direct"]
+    objectId="ScreenWindow/ScheduleWindow/CustomTreeView",
+    itemPath=["VendorA", "Device 8X direct"]
 )
 
 // Tree view: select and open editor on Count column
 qt_ui_clickItem(
-    objectId="ScreenWindow/FixtureScheduleWin/FTreeView",
-    itemPath=["ETC", "fos4 Fresnel Lustr X8 direct"],
+    objectId="ScreenWindow/ScheduleWindow/CustomTreeView",
+    itemPath=["VendorA", "Device 8X direct"],
     action="edit",
     editColumn=5
 )
@@ -458,12 +461,12 @@ qt_ui_clickItem(
 // Combo box: select an item (single-element array)
 qt_ui_clickItem(
     objectId="..QComboBox",
-    itemPath=["Hog PC"]
+    itemPath=["Desktop Station"]
 )
 
 // List view: click a file
 qt_ui_clickItem(
-    objectId="..FFileView",
+    objectId="..CustomFileView",
     itemPath=["Desktop"]
 )
 
@@ -480,10 +483,10 @@ qt_ui_clickItem(
 {
   "found": true,
   "path": [0, 0],         // integer row path (for programmatic re-use)
-  "itemPath": ["ETC", "fos4 Fresnel Lustr X8 direct"],  // echo back
+  "itemPath": ["VendorA", "Device 8X direct"],  // echo back
   "cells": [
-    {"column": 0, "display": "ETC"},
-    {"column": 1, "display": "fos4 Fresnel Lustr X8 direct"},
+    {"column": 0, "display": "VendorA"},
+    {"column": 1, "display": "Device 8X direct"},
     {"column": 5, "display": "0"},
     {"column": 9, "display": "12ch"}
   ]
@@ -566,41 +569,43 @@ QJsonObject handleUiClickItem(const QJsonObject& request) {
 ### Comparison: Squish vs qtPilot (proposed)
 
 **Squish:**
+
 ```javascript
 mouseClick(
-    waitForObjectItem(fixtureScheduleWinFTreeView, "ETC.fos4 Fresnel Lustr X8 direct"),
+    waitForObjectItem(scheduleWindowTreeView, "VendorA.Device 8X direct"),
     83, 10, Qt.NoModifier, Qt.LeftButton
 );
 ```
 
 **qtPilot (proposed):**
+
 ```jsonc
 qt_ui_clickItem(
-    objectId="ScreenWindow/FixtureScheduleWin/FTreeView",
-    itemPath=["ETC", "fos4 Fresnel Lustr X8 direct"]
+    objectId="ScreenWindow/ScheduleWindow/CustomTreeView",
+    itemPath=["VendorA", "Device 8X direct"]
 )
 ```
 
-### End-to-End: Hog Fixture Schedule with `qt_ui_clickItem`
+### End-to-End: Complex Hierarchical Schedule with `qt_ui_clickItem`
 
-```
+```python
 # 1. Search to filter the list
-qt_properties_set(objectId="..FLineEdit", name="text", value="fos4 Fresnel Lustr X8")
+qt_properties_set(objectId="..SearchLineEdit", name="text", value="Device 8X")
 
-# 2. Click the fixture type — one call, deterministic
+# 2. Click the item type — one call, deterministic
 qt_ui_clickItem(
-    objectId="ScreenWindow/FixtureScheduleWin/FTreeView",
-    itemPath=["ETC", "fos4 Fresnel Lustr X8 direct"],
+    objectId="ScreenWindow/ScheduleWindow/CustomTreeView",
+    itemPath=["VendorA", "Device 8X direct"],
     action="edit",
     editColumn=5
 )
 # Item found, expanded, selected, Count editor opened
 
 # 3. Type the count
-qt_ui_sendKeys(objectId="..FTreeView", text="10")
+qt_ui_sendKeys(objectId="..CustomTreeView", text="10")
 
 # 4. Verify
-qt_models_selection(objectId="..FTreeView")
+qt_models_selection(objectId="..CustomTreeView")
 ```
 
 ### Relationship to Row Path Tools
@@ -609,8 +614,8 @@ qt_models_selection(objectId="..FTreeView")
 
 | Approach | Addressing | Best for |
 |----------|-----------|----------|
-| Text path (`string[]`) | `["ETC", "fos4 Fresnel Lustr X8 direct"]` | Automation scripts, test authoring — human-readable and stable across model changes |
+| Text path (`string[]`) | `["VendorA", "Device 8X direct"]` | Automation scripts, test authoring — human-readable and stable across model changes |
 | Row path (`int[]`) | `[0, 0]` | Programmatic traversal, reading model data, iterating children |
-| Value search | `value="fos4 Fresnel Lustr X8 direct"` | Finding items when the tree position is unknown |
+| Value search | `value="Device 8X direct"` | Finding items when the tree position is unknown |
 
 All three ultimately construct `QModelIndex` internally. The string array approach is the most practical for automation — it's what users think in, it's stable across data changes (unlike integer indices), and it works uniformly across all view types.

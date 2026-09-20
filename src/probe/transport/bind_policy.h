@@ -5,6 +5,8 @@
 
 #include "core/qtpilot_export.h"
 
+#include <expected>
+
 #include <QHostAddress>
 
 namespace qtPilot {
@@ -22,7 +24,7 @@ namespace qtPilot {
 /// So the default is Lan, matching the behaviour before this setting existed,
 /// and Loopback is the opt-in for single-machine work. The real mitigation for
 /// the exposure is authentication, which does not exist yet -- see R7 in
-/// docs/observability-testability-gaps.md.
+/// docs/OBSERVABILITY-GAPS.md.
 enum class NetworkExposure {
   /// Loopback only. Reachable from the same machine, and from a device over
   /// `adb forward` / `iproxy`, which both terminate on the device's loopback.
@@ -46,6 +48,11 @@ enum class NetworkExposure {
 /// failure mode is a refused connection plus a message on stderr, which is
 /// something an operator can see and fix.
 QTPILOT_EXPORT NetworkExposure configuredExposure();
+
+/// @brief Monadically parse a string value into NetworkExposure.
+/// @param value The value to parse (case-insensitive, trimmed).
+/// @return NetworkExposure on success, or an error description on failure.
+QTPILOT_EXPORT std::expected<NetworkExposure, QString> parseExposure(const QString& value);
 
 /// @brief The address the WebSocket server should listen on.
 QTPILOT_EXPORT QHostAddress listenAddress();

@@ -152,12 +152,16 @@ QByteArray Screenshot::captureWindowLogical(QWidget* window) {
   }
 
   // Scale down to logical pixels if on HiDPI display
-  qreal dpr = pixmap.devicePixelRatio();
+  qreal dpr = window->devicePixelRatioF();
+  if (dpr <= 1.0) {
+    dpr = pixmap.devicePixelRatio();
+  }
   if (dpr > 1.0) {
     int logicalWidth = qRound(pixmap.width() / dpr);
     int logicalHeight = qRound(pixmap.height() / dpr);
     pixmap =
         pixmap.scaled(logicalWidth, logicalHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    pixmap.setDevicePixelRatio(1.0);
   }
 
   return encodePixmap(pixmap, "captureWindowLogical");

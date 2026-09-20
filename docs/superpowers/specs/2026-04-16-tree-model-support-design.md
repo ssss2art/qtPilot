@@ -1,6 +1,6 @@
 # qtPilot Tree Model Support — Design
 
-**Supersedes (in part):** `docs/qtpilot-tree-model-support-spec.md` — that spec proposed five tools; this design trims to three and clarifies semantics.
+**Supersedes (in part):** `docs/TREE-MODEL-SPEC.md` — that spec proposed five tools; this design trims to three and clarifies semantics.
 
 ## Goal
 

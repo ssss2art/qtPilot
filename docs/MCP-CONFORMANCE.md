@@ -32,7 +32,7 @@ revisions come entirely from the resolved `mcp` SDK.
 
 Declared dependency (`python/pyproject.toml`):
 
-```
+```toml
 fastmcp>=2.9,<5              # spans both revisions
 qtpilot[mcp-stable]          # -> fastmcp<4       -> MCP 2025-11-25
 qtpilot[mcp-next]            # -> fastmcp>=4.0.1  -> MCP 2026-07-28
@@ -157,7 +157,7 @@ environment:
 python -c "import qtpilot._mcp_compat as c; print(c.describe())"
 ```
 
-```
+```python
 {'fastmcp_version': '4.0.3', 'fastmcp_major': 4,
  'mcp_protocol_revision': '2026-07-28', 'stateless_protocol': True}
 ```

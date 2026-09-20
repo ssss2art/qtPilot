@@ -4,10 +4,12 @@
 #pragma once
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
+#include "transport/jsonrpc_handler.h"
+
+#include <expected>
 
 #include <QJsonValue>
 #include <QString>
-#include <QStringList>
 
 namespace qtPilot {
 
@@ -41,6 +43,13 @@ class QTPILOT_EXPORT ModifierParser {
   ///         recognised. The error data carries the offending value and the
   ///         list of accepted names.
   static Qt::KeyboardModifiers parse(const QJsonValue& value, const QString& methodName);
+
+  /// @brief Monadic parsing of JSON `modifiers` parameter into Qt modifier flags.
+  /// @param value The raw parameter value (may be undefined or null).
+  /// @param methodName The JSON-RPC method, used in the error payload.
+  /// @return The parsed flags on success, or JsonRpcException on failure.
+  static std::expected<Qt::KeyboardModifiers, JsonRpcException> parseExpected(
+      const QJsonValue& value, const QString& methodName);
 
   /// @brief The modifier names this parser accepts, lowercase and sorted.
   /// @return The accepted spellings, for error payloads and documentation.

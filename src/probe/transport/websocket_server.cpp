@@ -8,6 +8,7 @@
 #include "transport/notification_queue.h"
 
 #include <QDebug>
+#include <QUrl>
 #include <QWebSocket>
 #include <QWebSocketServer>
 
@@ -174,6 +175,28 @@ void WebSocketServer::onNewConnection() {
                   QStringLiteral("Another client is already connected"));
     socket->deleteLater();
     return;
+  }
+
+  // Defend against Cross-Site WebSocket Hijacking (CSWSH).
+  // Non-browser clients (qtpilot CLI, MCP server, LAN automation, Python test runners)
+  // do not send an Origin header (socket->origin() is empty).
+  // Web browsers always send an Origin header on WebSocket handshakes.
+  // Allow empty origin, localhost, loopback, file://, and vscode-webview.
+  QString origin = socket->origin();
+  if (!origin.isEmpty()) {
+    QUrl originUrl(origin);
+    QString host = originUrl.host();
+    bool trusted =
+        (host == QStringLiteral("localhost") || host == QStringLiteral("127.0.0.1") ||
+         host == QStringLiteral("::1") || origin.startsWith(QStringLiteral("vscode-webview://")) ||
+         origin.startsWith(QStringLiteral("file://")));
+    if (!trusted) {
+      qWarning() << "[qtPilot] Rejecting connection with untrusted browser origin:" << origin;
+      socket->close(QWebSocketProtocol::CloseCodePolicyViolated,
+                    QStringLiteral("Cross-Site WebSocket Hijacking rejected"));
+      socket->deleteLater();
+      return;
+    }
   }
 
   // Accept this client

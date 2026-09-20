@@ -51,6 +51,10 @@ class TestKeyNameMapper : public QObject {
   void testParseKeyCombo_WithModifiers();
   void testParseKeyCombo_ChromeStyle();
   void testParseKeyCombo_NamedPunctuation();
+
+  // Monadic C++23 tests
+  void testResolveExpectedMonadic();
+  void testParseKeyComboExpectedMonadic();
 };
 
 // ========================================================================
@@ -229,6 +233,35 @@ void TestKeyNameMapper::testParseKeyCombo_NamedPunctuation() {
                MatchesKeyCombo(Qt::Key_Minus, Qt::ControlModifier));
   QEXPECT_THAT(KeyNameMapper::parseKeyCombo("QuestionMark"),
                MatchesKeyCombo(Qt::Key_Question, Qt::NoModifier));
+}
+
+void TestKeyNameMapper::testResolveExpectedMonadic() {
+  auto valid = KeyNameMapper::resolveExpected("Return");
+  QVERIFY(valid.has_value());
+  QEXPECT_THAT(*valid, Eq(Qt::Key_Return));
+
+  auto validChar = KeyNameMapper::resolveExpected("a");
+  QVERIFY(validChar.has_value());
+  QEXPECT_THAT(*validChar, Eq(Qt::Key_A));
+
+  auto invalid = KeyNameMapper::resolveExpected("UnknownKeyXYZ");
+  QVERIFY(!invalid.has_value());
+  QVERIFY(!invalid.error().isEmpty());
+}
+
+void TestKeyNameMapper::testParseKeyComboExpectedMonadic() {
+  auto valid = KeyNameMapper::parseKeyComboExpected("ctrl+shift+s");
+  QVERIFY(valid.has_value());
+  QEXPECT_THAT(*valid, MatchesKeyCombo(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier));
+
+  auto invalidMod = KeyNameMapper::parseKeyComboExpected("invalidmod+s");
+  QVERIFY(!invalidMod.has_value());
+
+  auto invalidKey = KeyNameMapper::parseKeyComboExpected("ctrl+invalidkey");
+  QVERIFY(!invalidKey.has_value());
+
+  auto empty = KeyNameMapper::parseKeyComboExpected("");
+  QVERIFY(!empty.has_value());
 }
 
 QTEST_GUILESS_MAIN(TestKeyNameMapper)
