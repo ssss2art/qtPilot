@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from qtpilot.fluent import expect_replay
 from qtpilot.replay import Divergence, ReplayResult, Scenario, Step
 

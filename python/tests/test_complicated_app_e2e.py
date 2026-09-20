@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import os
 import socket
 import subprocess
@@ -17,10 +16,7 @@ import time
 from pathlib import Path
 
 import pytest
-
 from qtpilot.connection import ProbeConnection
-from qtpilot.fluent import expect_replay
-from qtpilot.replay import parse_entries, run_scenario
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILD_DIR = REPO_ROOT / "build"

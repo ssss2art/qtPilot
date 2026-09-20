@@ -19,11 +19,12 @@
 #include <QVBoxLayout>
 
 #if defined(QTPILOT_HAS_QUICKWIDGETS)
+#include "qml_bridge.h"
+
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickWidget>
 #include <QUrl>
-#include "qml_bridge.h"
 #endif
 
 #include "complex_table_model.h"
@@ -66,8 +67,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui_(new Ui::MainW
   // Synthetic 1200-row child set under a dedicated parent to exercise pagination.
   QStandardItem* bulk = addTopRow("BulkManufacturer", "Manufacturer", "");
   for (int i = 0; i < 1200; ++i) {
-    addRow(bulk, QStringLiteral("Device %1").arg(i, 4, 10, QChar('0')),
-           "Device", QString::number(i));
+    addRow(bulk, QStringLiteral("Device %1").arg(i, 4, 10, QChar('0')), "Device",
+           QString::number(i));
   }
 
   ui_->treeView->setModel(treeModel_);
@@ -100,7 +101,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui_(new Ui::MainW
   rectItem->setFlag(QGraphicsItem::ItemIsSelectable);
   rectItem->setFlag(QGraphicsItem::ItemIsMovable);
 
-  auto* ellipseItem = graphicsScene_->addEllipse(150, 40, 80, 80, QPen(Qt::darkBlue), QBrush(Qt::yellow));
+  auto* ellipseItem =
+      graphicsScene_->addEllipse(150, 40, 80, 80, QPen(Qt::darkBlue), QBrush(Qt::yellow));
   ellipseItem->setFlag(QGraphicsItem::ItemIsSelectable);
   ellipseItem->setFlag(QGraphicsItem::ItemIsMovable);
 
@@ -151,7 +153,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui_(new Ui::MainW
   quickWidget_->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
   qmlBridge_ = new QmlTestBridge(this);
-  quickWidget_->engine()->rootContext()->setContextProperty(QStringLiteral("qmlBridge"), qmlBridge_);
+  quickWidget_->engine()->rootContext()->setContextProperty(QStringLiteral("qmlBridge"),
+                                                            qmlBridge_);
   quickWidget_->setSource(QUrl(QStringLiteral("qrc:/qml/EmbeddedScene.qml")));
 
   auto* qmlTab = new QWidget();
@@ -177,7 +180,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui_(new Ui::MainW
   statusBar()->showMessage("Ready");
 }
 
-MainWindow::~MainWindow() { delete ui_; }
+MainWindow::~MainWindow() {
+  delete ui_;
+}
 
 void MainWindow::OnSubmitClicked() {
   QString name = ui_->nameEdit->text();
@@ -259,4 +264,3 @@ void MainWindow::OnOpenModalClicked() {
   layout->addWidget(closeBtn);
   dialog->open();
 }
-

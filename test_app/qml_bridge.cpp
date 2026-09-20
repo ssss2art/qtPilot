@@ -10,13 +10,15 @@ QmlTestBridge::QmlTestBridge(QObject* parent) : QObject(parent) {
 }
 
 void QmlTestBridge::setClickCount(int count) {
-  if (clickCount_ == count) return;
+  if (clickCount_ == count)
+    return;
   clickCount_ = count;
   emit clickCountChanged(clickCount_);
 }
 
 void QmlTestBridge::setStatusText(const QString& text) {
-  if (statusText_ == text) return;
+  if (statusText_ == text)
+    return;
   statusText_ = text;
   emit statusTextChanged(statusText_);
 }

@@ -20,12 +20,13 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from qtpilot.connection import ProbeError
-from qtpilot.result import Err, Ok, Result
+from qtpilot.result import Result
 
 # Native Qt methods
 NATIVE_MUTATING_METHODS: frozenset[str] = frozenset({

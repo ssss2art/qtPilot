@@ -13,7 +13,7 @@ U = TypeVar("U")
 F = TypeVar("F")
 
 
-class Result(Generic[T, E], ABC):
+class Result(ABC, Generic[T, E]):
     """Monadic container representing either success (Ok) or failure (Err)."""
 
     @classmethod

@@ -3,16 +3,10 @@
 from __future__ import annotations
 
 import pytest
-
 from qtpilot.fluent import expect_replay
 from qtpilot.replay import (
-    CHROME_MUTATING_METHODS,
-    CHROME_OBSERVING_METHODS,
-    CU_MUTATING_METHODS,
-    CU_OBSERVING_METHODS,
     MUTATING_METHODS,
     OBSERVING_METHODS,
-    diff_steps,
     parse_entries,
     run_scenario,
 )

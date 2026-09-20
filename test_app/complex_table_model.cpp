@@ -15,12 +15,14 @@ ComplexTableModel::ComplexTableModel(QObject* parent) : QAbstractTableModel(pare
 }
 
 int ComplexTableModel::rowCount(const QModelIndex& parent) const {
-  if (parent.isValid()) return 0;
+  if (parent.isValid())
+    return 0;
   return static_cast<int>(items_.size());
 }
 
 int ComplexTableModel::columnCount(const QModelIndex& parent) const {
-  if (parent.isValid()) return 0;
+  if (parent.isValid())
+    return 0;
   return 5;  // ID, Name, Category, Price, InStock
 }
 
@@ -33,12 +35,18 @@ QVariant ComplexTableModel::data(const QModelIndex& index, int role) const {
 
   if (role == Qt::DisplayRole || role == Qt::EditRole) {
     switch (index.column()) {
-      case 0: return item.id;
-      case 1: return item.name;
-      case 2: return item.category;
-      case 3: return item.price;
-      case 4: return item.inStock ? QStringLiteral("Yes") : QStringLiteral("No");
-      default: break;
+      case 0:
+        return item.id;
+      case 1:
+        return item.name;
+      case 2:
+        return item.category;
+      case 3:
+        return item.price;
+      case 4:
+        return item.inStock ? QStringLiteral("Yes") : QStringLiteral("No");
+      default:
+        break;
     }
   } else if (role == Qt::CheckStateRole && index.column() == 4) {
     return item.inStock ? Qt::Checked : Qt::Unchecked;
@@ -93,19 +101,26 @@ bool ComplexTableModel::setData(const QModelIndex& index, const QVariant& value,
 QVariant ComplexTableModel::headerData(int section, Qt::Orientation orientation, int role) const {
   if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
     switch (section) {
-      case 0: return QStringLiteral("ID");
-      case 1: return QStringLiteral("Name");
-      case 2: return QStringLiteral("Category");
-      case 3: return QStringLiteral("Price ($)");
-      case 4: return QStringLiteral("In Stock");
-      default: break;
+      case 0:
+        return QStringLiteral("ID");
+      case 1:
+        return QStringLiteral("Name");
+      case 2:
+        return QStringLiteral("Category");
+      case 3:
+        return QStringLiteral("Price ($)");
+      case 4:
+        return QStringLiteral("In Stock");
+      default:
+        break;
     }
   }
   return QAbstractTableModel::headerData(section, orientation, role);
 }
 
 Qt::ItemFlags ComplexTableModel::flags(const QModelIndex& index) const {
-  if (!index.isValid()) return Qt::NoItemFlags;
+  if (!index.isValid())
+    return Qt::NoItemFlags;
   Qt::ItemFlags f = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
   if (index.column() == 1 || index.column() == 2 || index.column() == 3) {
     f |= Qt::ItemIsEditable;
@@ -116,7 +131,8 @@ Qt::ItemFlags ComplexTableModel::flags(const QModelIndex& index) const {
   return f;
 }
 
-void ComplexTableModel::addItem(int id, const QString& name, const QString& category, double price, bool inStock) {
+void ComplexTableModel::addItem(int id, const QString& name, const QString& category, double price,
+                                bool inStock) {
   int row = static_cast<int>(items_.size());
   beginInsertRows(QModelIndex(), row, row);
   items_.append({id, name, category, price, inStock});
@@ -124,7 +140,8 @@ void ComplexTableModel::addItem(int id, const QString& name, const QString& cate
 }
 
 void ComplexTableModel::removeItem(int row) {
-  if (row < 0 || row >= static_cast<int>(items_.size())) return;
+  if (row < 0 || row >= static_cast<int>(items_.size()))
+    return;
   beginRemoveRows(QModelIndex(), row, row);
   items_.removeAt(row);
   endRemoveRows();

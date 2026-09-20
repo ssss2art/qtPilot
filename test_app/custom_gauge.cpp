@@ -3,8 +3,8 @@
 
 #include "custom_gauge.h"
 
-#include <QPainter>
 #include <QPaintEvent>
+#include <QPainter>
 
 CustomGaugeWidget::CustomGaugeWidget(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("customGauge"));
@@ -13,7 +13,8 @@ CustomGaugeWidget::CustomGaugeWidget(QWidget* parent) : QWidget(parent) {
 
 void CustomGaugeWidget::setValue(int val) {
   val = qBound(0, val, max_);
-  if (value_ == val) return;
+  if (value_ == val)
+    return;
   value_ = val;
   emit valueChanged(value_);
   if (value_ >= max_) {
@@ -23,7 +24,8 @@ void CustomGaugeWidget::setValue(int val) {
 }
 
 void CustomGaugeWidget::setMaximum(int max) {
-  if (max <= 0 || max_ == max) return;
+  if (max <= 0 || max_ == max)
+    return;
   max_ = max;
   if (value_ > max_) {
     setValue(max_);
@@ -32,7 +34,8 @@ void CustomGaugeWidget::setMaximum(int max) {
 }
 
 void CustomGaugeWidget::setGaugeColor(const QColor& color) {
-  if (color_ == color) return;
+  if (color_ == color)
+    return;
   color_ = color;
   emit gaugeColorChanged(color_);
   update();
