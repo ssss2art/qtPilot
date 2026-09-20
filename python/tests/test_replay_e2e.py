@@ -196,6 +196,31 @@ def test_the_app_starts_and_answers(live_app):
     asyncio.run(go())
 
 
+def test_computer_use_click_then_type_updates_the_clicked_field(live_app):
+    """Computer-use input must reach the widget selected by its own click."""
+
+    async def go() -> str:
+        async with _connected(live_app) as conn:
+            await _reset(conn)
+            geometry = await conn.call("qt.ui.geometry", {"objectId": NAME_EDIT})
+            rect = geometry["result"]["global"]
+            await conn.call(
+                "cu.click",
+                {
+                    "x": rect["x"] + rect["width"] // 2,
+                    "y": rect["y"] + rect["height"] // 2,
+                    "screenAbsolute": True,
+                },
+            )
+            await conn.call("cu.type", {"text": "Computer Use"})
+            value = await conn.call(
+                "qt.properties.get", {"objectId": NAME_EDIT, "name": "text"}
+            )
+            return value["result"]["value"]
+
+    assert asyncio.run(go()) == "Computer Use"
+
+
 def test_recorded_session_produces_a_replayable_scenario(live_app, tmp_path):
     """A level-2 recording of real traffic must parse into actions.
 

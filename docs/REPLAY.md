@@ -82,6 +82,14 @@ qtpilot_log_stop()
 to replay. Both the CLI and `qtpilot_replay_run` refuse such a log rather than running empty and
 reporting success. Use **level 3** if the scenario should also assert on signal emissions.
 
+**Separate recording from the replay baseline.** Stop
+`qtpilot_recording_*` (and any explicit `qt_events_start` capture) before
+starting `qtpilot_log_start`. A recording session enables lifecycle, signal,
+and event instrumentation; a clean replay log should contain only the
+notifications whose setup calls it also records. If you run the standalone
+`qtpilot replay` CLI, disconnect the MCP client first because the probe accepts
+one WebSocket client at a time.
+
 **Register names first.** An object with no registered name is reported as `QObject~<counter>`,
 and the counter follows the order objects happened to be constructed in. Replay masks it to
 `QObject~*` so it does not fail every run, but that also means it cannot tell two unnamed objects

@@ -28,7 +28,30 @@ The shared tools are:
 
 The server also exposes one resource, `qtpilot://status`, and currently exposes
 no MCP prompts. Calling `qtpilot_set_mode` changes the visible mode-specific
-tools while retaining the shared tools.
+tools while retaining the shared tools. MCP clients must refresh their tool
+catalog after a mode change (or wait for the `tools/list_changed` notification)
+before looking up a newly enabled tool. A tool missing while another mode is
+active is expected: switch to `all` when exploring the complete surface, then
+call `tools/list` again.
+
+### Exercising every mode locally
+
+For a reliable local all-mode pass, start one dedicated test application with
+an OS-selected probe port, connect only that probe, and switch through
+`native`, `chrome`, `cu`, then `all`. Do not infer that `cu_*` or `chr_*`
+tools are unavailable from a catalog read made while another mode is active.
+
+The probe accepts one WebSocket client at a time. Disconnect the MCP server
+with `qtpilot_disconnect_probe` before running the standalone `qtpilot replay`
+CLI against the same URL, then reconnect when the CLI completes. Keeping one
+client per probe also prevents a local test from accidentally driving another
+discovered application.
+
+For computer-use input, `cu_*` coordinates are window-relative by default.
+`qt_ui_geometry(...).local` is relative to the inspected widget, so do not pass
+it directly for a nested widget. Either calculate coordinates relative to the
+top-level window, or pass the `global` rectangle center with
+`screenAbsolute=true`.
 
 ## Inspect with mcp-explorer
 

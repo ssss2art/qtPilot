@@ -44,6 +44,7 @@ class TestComputerUseApi : public QObject {
 
   // CU-02 through CU-04: Clicks
   void testClick();
+  void testClickFocusesWidgetForType();
   void testScreenAbsoluteClick();
   void testRightClick();
   void testMiddleClick();
@@ -256,6 +257,22 @@ void TestComputerUseApi::testClick() {
   QEXPECT_THAT(result.isObject(), IsTrue());
   QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
   QEXPECT_THAT(clicked, IsTrue());
+}
+
+void TestComputerUseApi::testClickFocusesWidgetForType() {
+  m_testLineEdit->clear();
+  m_testButton->setFocus();
+  QApplication::processEvents();
+
+  const QPoint editCenter = m_testLineEdit->mapTo(m_testWindow, m_testLineEdit->rect().center());
+  QJsonValue clickResult = callResult(
+      "cu.click", QJsonObject{{"x", editCenter.x()}, {"y", editCenter.y()}});
+  QJsonValue typeResult = callResult("cu.type", QJsonObject{{"text", "Focused"}});
+  QApplication::processEvents();
+
+  QEXPECT_THAT(clickResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(typeResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_testLineEdit->text(), QStrEq("Focused"));
 }
 
 void TestComputerUseApi::testScreenAbsoluteClick() {

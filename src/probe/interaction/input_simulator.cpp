@@ -36,6 +36,8 @@ void InputSimulator::mouseClickAt(QWidget* widget, MouseButton button, const QPo
   widget->activateWindow();
   widget->raise();
   QApplication::processEvents();
+  widget->setFocus();
+  QApplication::processEvents();
 
   // QTest::mouseClick() also treats QPoint(0, 0) as its centre sentinel, so
   // deliver the pair directly to preserve an explicit top-left position.
