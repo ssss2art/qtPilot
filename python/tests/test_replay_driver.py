@@ -83,6 +83,26 @@ async def test_actions_are_driven_in_order():
 
     assert probe.calls == [
         ("qt.ui.click", {"objectId": "first"}),
+        ("qt.sync", {}),
+        ("qt.ui.sendKeys", {"objectId": "field", "keys": "hi"}),
+        ("qt.sync", {}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_actions_without_sync():
+    scenario = parse_entries([
+        req(1, "qt.ui.click", {"objectId": "first"}),
+        res(1, "qt.ui.click", {"ok": True}),
+        req(2, "qt.ui.sendKeys", {"objectId": "field", "keys": "hi"}),
+        res(2, "qt.ui.sendKeys", {"ok": True}),
+    ])
+    probe = FakeProbe()
+
+    await run_scenario(scenario, probe, settle=0, sync=False)
+
+    assert probe.calls == [
+        ("qt.ui.click", {"objectId": "first"}),
         ("qt.ui.sendKeys", {"objectId": "field", "keys": "hi"}),
     ]
 

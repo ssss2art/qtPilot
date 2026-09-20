@@ -40,6 +40,7 @@ def args_for(path: str, **overrides) -> argparse.Namespace:
         "path": path,
         "ws_url": "ws://localhost:9222",
         "settle": 0.0,
+        "sync": True,
         "inspect": False,
         "json": False,
         "watch": None,
@@ -370,3 +371,41 @@ def test_an_aborted_comparison_run_is_not_reported_as_a_divergence(
 
     assert code == EXIT_ABORTED
     assert code != EXIT_DIVERGED
+
+
+def test_negative_settle_rejected(tmp_path, capsys):
+    code = cmd_replay(args_for(write_log(tmp_path, CLICK_SESSION), settle=-1.0))
+    assert code == EXIT_USAGE
+    assert "error: --settle must be non-negative" in capsys.readouterr().err
+
+
+def test_no_sync_flag_honored(tmp_path, probe_factory, monkeypatch):
+    probe_factory("clicked")
+    sync_passed = None
+
+    async def mock_run(scenario, probe, **kwargs):
+        nonlocal sync_passed
+        sync_passed = kwargs.get("sync")
+        return ReplayResult(scenario=scenario, steps=[], divergences=[])
+
+    monkeypatch.setattr("qtpilot.replay.run_scenario", mock_run)
+    code = cmd_replay(args_for(write_log(tmp_path, CLICK_SESSION), sync=False))
+    assert code == EXIT_OK
+    assert sync_passed is False
+
+
+def test_aborted_to_result_contains_synthesized_divergence(tmp_path):
+    result = ReplayResult(
+        scenario=parse_entries(CLICK_SESSION),
+        steps=[],
+        divergences=[],
+        aborted_at=1,
+        abort_reason="qt.ui.click: Object not found",
+    )
+    monad = result.to_result()
+    assert monad.is_err
+    errs = monad.unwrap_err()
+    assert len(errs) == 1
+    assert errs[0].kind == "aborted"
+    assert errs[0].step == 1
+    assert "Object not found" in errs[0].actual

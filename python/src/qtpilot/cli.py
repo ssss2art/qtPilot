@@ -281,6 +281,10 @@ def cmd_replay(args: argparse.Namespace) -> int:
                 print(f"  drives {action}")
         return REPLAY_EXIT_OK
 
+    if args.settle < 0:
+        print("error: --settle must be non-negative", file=sys.stderr)
+        return REPLAY_EXIT_USAGE
+
     from qtpilot.connection import ProbeConnection, ProbeError
 
     async def go() -> int:
@@ -302,7 +306,12 @@ def cmd_replay(args: argparse.Namespace) -> int:
         try:
             await probe.handshake()
             result = await run_scenario(
-                scenario, probe, settle=args.settle, watch=watch, record=args.record
+                scenario,
+                probe,
+                settle=args.settle,
+                sync=getattr(args, "sync", True),
+                watch=watch,
+                record=args.record,
             )
         finally:
             await probe.disconnect()
@@ -551,6 +560,13 @@ def create_parser() -> argparse.ArgumentParser:
             "Raise it for an application that updates asynchronously; too short reports a race "
             "as a divergence."
         ),
+    )
+    replay_parser.add_argument(
+        "--no-sync",
+        action="store_false",
+        dest="sync",
+        default=True,
+        help="Disable deterministic event loop synchronization (qt.sync) between actions.",
     )
     replay_parser.add_argument(
         "--inspect",

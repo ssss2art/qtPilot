@@ -624,7 +624,18 @@ class ReplayResult:
         """Return a monadic Result containing either the driven steps (Ok) or the divergences (Err)."""
         if self.passed:
             return Result.ok(self.steps)
-        return Result.err(self.divergences)
+        errs = list(self.divergences)
+        if not errs and self.aborted_at is not None:
+            errs.append(
+                Divergence(
+                    step=self.aborted_at,
+                    kind="aborted",
+                    method=self.abort_reason or "aborted",
+                    expected=None,
+                    actual=self.abort_reason,
+                )
+            )
+        return Result.err(errs)
 
     def as_scenario(self) -> Scenario:
         """Treat this run as the recording to compare future runs against.
@@ -689,6 +700,7 @@ async def run_scenario(
     probe: Any,
     *,
     settle: float = 0.1,
+    sync: bool = True,
     timeout: float | None = None,
     watch: WatchList | None = None,
     record: bool = False,
@@ -702,6 +714,8 @@ async def run_scenario(
     :param settle: Seconds to wait after each action for signals to arrive. Signals are
         delivered asynchronously, so asserting the instant a call returns reports races as
         divergences.
+    :param sync: Synchronize deterministically with the Qt event loop via ``qt.sync`` after
+        each action. Flushes posted click/key events and deferred deletes before observing.
     :param timeout: Per-call timeout, passed through to the probe.
     :param watch: Observing calls to issue after every action, in addition to whatever the
         recording observed. Recorded observations keep their positions, so adding a watch list
@@ -748,6 +762,12 @@ async def run_scenario(
             if recorded.action is not None:
                 try:
                     await probe.call(recorded.action.method, recorded.action.params, **call_kwargs)
+                    if sync:
+                        try:
+                            await probe.call("qt.sync", {}, **call_kwargs)
+                        except Exception:
+                            # Gracefully continue if probe lacks qt.sync
+                            pass
                 except ProbeError as exc:
                     aborted_at = recorded.index
                     abort_reason = f"{recorded.action.method}: {exc}"
@@ -817,6 +837,7 @@ async def run_scenario_expected(
     probe: Any,
     *,
     settle: float = 0.1,
+    sync: bool = True,
     timeout: float | None = None,
     watch: WatchList | None = None,
     record: bool = False,
@@ -828,6 +849,7 @@ async def run_scenario_expected(
                 scenario,
                 probe,
                 settle=settle,
+                sync=sync,
                 timeout=timeout,
                 watch=watch,
                 record=record,
