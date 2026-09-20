@@ -209,6 +209,7 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/GETTING-STARTED.md) | Installation and first steps |
+| [Deterministic Replay](docs/REPLAY.md) | Record and replay sessions deterministically |
 | [Building from Source](docs/BUILDING.md) | Compile qtPilot yourself |
 | [Mobile (Android/iOS)](docs/MOBILE.md) | Linking the probe into a device build |
 | [MCP Tooling](docs/MCP-TOOLS.md) | Current modes, tool surface, resources, and inspection workflow |
