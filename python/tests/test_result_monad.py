@@ -79,3 +79,148 @@ class TestResultMonad:
         assert res_err.is_err()
         assert res_err.unwrap_err() == [div]
 
+    def test_parse_entries_expected(self):
+        from qtpilot.replay import parse_entries_expected
+
+        valid_entries = [
+            {"dir": "req", "id": 1, "method": "qt.ui.click", "params": {"objectId": "btn"}},
+            {"dir": "res", "id": 1, "method": "qt.ui.click", "result": {"ok": True}},
+        ]
+        res_ok = parse_entries_expected(valid_entries)
+        assert res_ok.is_ok()
+        assert len(res_ok.unwrap().steps) == 2
+
+        invalid_entries = [
+            {"dir": "res", "id": 99, "method": "qt.ui.click", "result": {"ok": True}},
+        ]
+        res_err = parse_entries_expected(invalid_entries)
+        assert res_err.is_err()
+        assert "no matching request" in res_err.unwrap_err()
+
+    def test_load_scenario_expected(self, tmp_path):
+        from qtpilot.replay import load_scenario_expected
+
+        bad_file = tmp_path / "bad.jsonl"
+        bad_file.write_text("not json", encoding="utf-8")
+        res_bad = load_scenario_expected(bad_file)
+        assert res_bad.is_err()
+        assert "is not valid JSON" in res_bad.unwrap_err()
+
+        good_file = tmp_path / "good.jsonl"
+        good_file.write_text(
+            '{"dir":"req","id":1,"method":"qt.ui.click","params":{}}\n{"dir":"res","id":1,"method":"qt.ui.click","result":{}}\n',
+            encoding="utf-8",
+        )
+        res_good = load_scenario_expected(good_file)
+        assert res_good.is_ok()
+        assert len(res_good.unwrap().steps) == 2
+
+    @pytest.mark.asyncio
+    async def test_run_scenario_expected(self):
+        from qtpilot.replay import Scenario, Step, run_scenario_expected
+
+        empty_scenario = Scenario(steps=[Step(index=0)])
+        res = await run_scenario_expected(empty_scenario, None)
+        assert res.is_err()
+        assert "nothing to replay" in res.unwrap_err()
+
+    def test_and_then_alias(self):
+        """and_then provides 1:1 parity with C++23 std::expected::and_then and Rust."""
+        ok = Ok(10)
+        assert ok.and_then(lambda x: Ok(x + 5)) == Ok(15)
+        assert ok.and_then(lambda x: Err("failed")) == Err("failed")
+        err = Err("already failed")
+        assert err.and_then(lambda x: Ok(x + 5)) == Err("already failed")
+
+    def test_or_else(self):
+        """or_else provides error recovery fallback chains."""
+        ok = Ok(10)
+        assert ok.or_else(lambda e: Ok(99)) == Ok(10)
+
+        err: Result[int, str] = Err("primary failed")
+        recovered = err.or_else(lambda e: Ok(42))
+        assert recovered == Ok(42)
+
+        still_failed = err.or_else(lambda e: Err(f"secondary: {e}"))
+        assert still_failed == Err("secondary: primary failed")
+
+    def test_unwrap_or_and_unwrap_or_else(self):
+        ok = Ok("value")
+        assert ok.unwrap_or("fallback") == "value"
+        assert ok.unwrap_or_else(lambda e: f"fallback {e}") == "value"
+
+        err = Err("timeout")
+        assert err.unwrap_or("fallback") == "fallback"
+        assert err.unwrap_or_else(lambda e: f"fallback on {e}") == "fallback on timeout"
+
+    def test_tap_and_tap_err(self):
+        side_effects: list[str] = []
+
+        ok = Ok("success")
+        ret_ok = ok.tap(lambda v: side_effects.append(f"ok:{v}"))
+        assert ret_ok == Ok("success")
+        assert side_effects == ["ok:success"]
+
+        side_effects.clear()
+        ret_ok2 = ok.tap_err(lambda e: side_effects.append(f"err:{e}"))
+        assert ret_ok2 == Ok("success")
+        assert side_effects == []
+
+        err = Err("failure")
+        ret_err = err.tap(lambda v: side_effects.append(f"ok:{v}"))
+        assert ret_err == Err("failure")
+        assert side_effects == []
+
+        ret_err2 = err.tap_err(lambda e: side_effects.append(f"err:{e}"))
+        assert ret_err2 == Err("failure")
+        assert side_effects == ["err:failure"]
+
+    def test_from_callable(self):
+        def parse_int(s: str) -> int:
+            return int(s)
+
+        res_ok = Result.from_callable(parse_int, "42")
+        assert res_ok == Ok(42)
+
+        res_err = Result.from_callable(parse_int, "not_a_number")
+        assert res_err.is_err()
+        assert isinstance(res_err.unwrap_err(), ValueError)
+
+    def test_structural_pattern_matching(self):
+        def inspect_res(r: Result[int, str]) -> str:
+            match r:
+                case Ok(val):
+                    return f"value:{val}"
+                case Err(err):
+                    return f"error:{err}"
+
+        assert inspect_res(Ok(100)) == "value:100"
+        assert inspect_res(Err("oops")) == "error:oops"
+
+    def test_monad_laws_left_identity(self):
+        """Monad Law 1: Ok(x).flat_map(f) == f(x)."""
+        f = lambda x: Ok(x * 3)
+        x = 7
+        assert Ok(x).flat_map(f) == f(x)
+        assert Ok(x).and_then(f) == f(x)
+
+    def test_monad_laws_right_identity(self):
+        """Monad Law 2: m.flat_map(Ok) == m."""
+        ok_m = Ok(42)
+        assert ok_m.flat_map(Ok) == ok_m
+        assert ok_m.and_then(Ok) == ok_m
+
+        err_m: Result[int, str] = Err("law2_err")
+        assert err_m.flat_map(Ok) == err_m
+        assert err_m.and_then(Ok) == err_m
+
+    def test_monad_laws_associativity(self):
+        """Monad Law 3: (m >>= f) >>= g == m >>= (lambda x: f(x) >>= g)."""
+        m = Ok(10)
+        f = lambda x: Ok(x + 2)
+        g = lambda y: Ok(y * 5)
+
+        lhs = m.flat_map(f).flat_map(g)
+        rhs = m.flat_map(lambda x: f(x).flat_map(g))
+        assert lhs == rhs == Ok(60)
+

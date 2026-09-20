@@ -20,13 +20,13 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from qtpilot.connection import ProbeError
-from qtpilot.result import Result
+from qtpilot.result import Err, Ok, Result
 
 # Native Qt methods
 NATIVE_MUTATING_METHODS: frozenset[str] = frozenset({
@@ -522,6 +522,16 @@ def load_scenario(path: str | Path) -> Scenario:
     return scenario
 
 
+def parse_entries_expected(entries: Sequence[dict]) -> Result[Scenario, str]:
+    """Parse wire messages into a Scenario monadically."""
+    return Result.from_callable(parse_entries, entries).map_err(str)
+
+
+def load_scenario_expected(path: str | Path) -> Result[Scenario, str]:
+    """Read a JSON Lines message log monadically into a Result[Scenario, str]."""
+    return Result.from_callable(load_scenario, path).map_err(str)
+
+
 def _diff_observations(expected: Step, actual: Step) -> list[Divergence]:
     """Compare one step's observations against another's."""
     divergences: list[Divergence] = []
@@ -800,3 +810,28 @@ async def run_scenario(
         aborted_at=aborted_at,
         abort_reason=abort_reason,
     )
+
+
+async def run_scenario_expected(
+    scenario: Scenario,
+    probe: Any,
+    *,
+    settle: float = 0.1,
+    timeout: float | None = None,
+    watch: WatchList | None = None,
+    record: bool = False,
+) -> Result[ReplayResult, str]:
+    """Drive a scenario returning Result[ReplayResult, str], wrapping any failures."""
+    try:
+        return Ok(
+            await run_scenario(
+                scenario,
+                probe,
+                settle=settle,
+                timeout=timeout,
+                watch=watch,
+                record=record,
+            )
+        )
+    except Exception as exc:
+        return Err(str(exc))
