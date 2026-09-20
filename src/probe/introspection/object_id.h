@@ -5,6 +5,8 @@
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
 
+#include <expected>
+
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
@@ -102,6 +104,16 @@ QTPILOT_EXPORT QList<QObject*> effectiveChildren(QObject* obj);
 /// @param root Starting point for search (nullptr = search all top-level objects).
 /// @return The object, or nullptr if not found.
 QTPILOT_EXPORT QObject* findByObjectId(const QString& id, QObject* root = nullptr);
+
+/// @brief Monadic lookup of an object by its hierarchical ID.
+///
+/// Traverses the object tree to find the object matching the given path.
+///
+/// @param id The hierarchical ID.
+/// @param root Starting point for search (nullptr = search all top-level objects).
+/// @return The object, or an error description.
+QTPILOT_EXPORT std::expected<QObject*, QString> findByObjectIdExpected(const QString& id,
+                                                                       QObject* root = nullptr);
 
 /// @brief Serialize an object tree to JSON.
 ///

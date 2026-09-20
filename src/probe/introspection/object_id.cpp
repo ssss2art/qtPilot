@@ -6,6 +6,8 @@
 #include "core/object_registry.h"
 #include "introspection/qml_inspector.h"
 
+#include <ranges>
+
 #include <QApplication>
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -321,17 +323,10 @@ QList<QObject*> getTopLevelObjects() {
   // additional roots so qt.objects.tree surfaces QML scenes, and so
   // findByObjectId can resolve window-rooted IDs.
   if (auto* guiApp = qobject_cast<QGuiApplication*>(app)) {
-    const auto topWindows = guiApp->topLevelWindows();
-    for (QWindow* w : topWindows) {
-      // Skip hidden/offscreen windows — notably a QQuickWidget's internal render
-      // surface (a non-shown QQuickWindow that is reachable through the widget
-      // hierarchy already) and never-shown transient/popup surfaces.
-      if (!w->isVisible())
-        continue;
-      // Skip the internal backing window of a top-level QWidget: those belong
-      // to the Widgets object graph, not a standalone window root.
-      if (w->inherits("QWidgetWindow"))
-        continue;
+    for (QWindow* w : guiApp->topLevelWindows() | std::views::filter([](QWindow* w) {
+                        // Skip hidden/offscreen windows and internal backing windows
+                        return w && w->isVisible() && !w->inherits("QWidgetWindow");
+                      })) {
       result.append(w);
     }
   }
@@ -349,10 +344,9 @@ QList<QObject*> getTopLevelObjects() {
   // is still a legitimate search target, and there is no offscreen-duplicate
   // problem here of the kind QQuickWidget creates.
   if (qobject_cast<QApplication*>(app)) {
-    const auto topWidgets = QApplication::topLevelWidgets();
-    for (QWidget* w : topWidgets) {
-      if (!result.contains(w))
-        result.append(w);
+    for (QWidget* w : QApplication::topLevelWidgets() |
+                          std::views::filter([&](QWidget* w) { return !result.contains(w); })) {
+      result.append(w);
     }
   }
 
@@ -544,9 +538,9 @@ QString generateObjectId(QObject* obj) {
   return segments.join(QLatin1Char('/'));
 }
 
-QObject* findByObjectId(const QString& id, QObject* root) {
+std::expected<QObject*, QString> findByObjectIdExpected(const QString& id, QObject* root) {
   if (id.isEmpty()) {
-    return nullptr;
+    return std::unexpected(QStringLiteral("Object identifier is empty"));
   }
 
   // Resolution regenerates a segment for every candidate at every level, so it pays
@@ -556,7 +550,7 @@ QObject* findByObjectId(const QString& id, QObject* root) {
 
   QStringList segments = id.split(QLatin1Char('/'), Qt::SkipEmptyParts);
   if (segments.isEmpty()) {
-    return nullptr;
+    return std::unexpected(QStringLiteral("Object identifier contains only slashes: %1").arg(id));
   }
 
   QList<QObject*> searchRoots;
@@ -566,7 +560,16 @@ QObject* findByObjectId(const QString& id, QObject* root) {
     searchRoots = getTopLevelObjects();
   }
 
-  return findBySegments(segments, 0, searchRoots);
+  QObject* found = findBySegments(segments, 0, searchRoots);
+  if (!found) {
+    return std::unexpected(QStringLiteral("Object not found by hierarchical path: %1").arg(id));
+  }
+  return found;
+}
+
+QObject* findByObjectId(const QString& id, QObject* root) {
+  auto res = findByObjectIdExpected(id, root);
+  return res.has_value() ? *res : nullptr;
 }
 
 QJsonObject serializeObjectInfo(QObject* obj) {

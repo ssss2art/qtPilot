@@ -176,6 +176,7 @@ class TestInputModifiers : public QObject {
 
   // --- ModifierParser: rejections ---
   void testParseRejectsUnknownName();
+  void testParseExpectedMonadic();
   void testParseRejectsNumber();
   void testParseRejectsBool();
   void testParseRejectsObject();
@@ -420,6 +421,32 @@ void TestInputModifiers::testParseRejectsUnknownName() {
       [] { ModifierParser::parse(QJsonValue(QStringLiteral("hyper")), QStringLiteral("t")); },
       Throws<JsonRpcException>(AllOf(WithRpcCode(static_cast<int>(JsonRpcError::kInvalidParams)),
                                      WithRpcMessage(QStrContains("hyper")))));
+}
+
+void TestInputModifiers::testParseExpectedMonadic() {
+  auto validJoined =
+      ModifierParser::parseExpected(QJsonValue(QStringLiteral("ctrl+shift")), QStringLiteral("t"));
+  QVERIFY(validJoined.has_value());
+  QEXPECT_THAT(*validJoined, HasModifiers(Qt::ControlModifier | Qt::ShiftModifier));
+
+  auto validArray = ModifierParser::parseExpected(
+      QJsonArray{QStringLiteral("alt"), QStringLiteral("meta")}, QStringLiteral("t"));
+  QVERIFY(validArray.has_value());
+  QEXPECT_THAT(*validArray, HasModifiers(Qt::AltModifier | Qt::MetaModifier));
+
+  auto validEmpty =
+      ModifierParser::parseExpected(QJsonValue(QJsonValue::Undefined), QStringLiteral("t"));
+  QVERIFY(validEmpty.has_value());
+  QEXPECT_THAT(*validEmpty, HasModifiers(Qt::NoModifier));
+
+  auto invalidName =
+      ModifierParser::parseExpected(QJsonValue(QStringLiteral("badmod")), QStringLiteral("t"));
+  QVERIFY(!invalidName.has_value());
+  QCOMPARE(invalidName.error().code(), JsonRpcError::kInvalidParams);
+
+  auto invalidType = ModifierParser::parseExpected(QJsonValue(123), QStringLiteral("t"));
+  QVERIFY(!invalidType.has_value());
+  QCOMPARE(invalidType.error().code(), JsonRpcError::kInvalidParams);
 }
 
 void TestInputModifiers::testParseRejectsNumber() {

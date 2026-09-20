@@ -3,6 +3,8 @@
 
 #include "key_name_mapper.h"
 
+#include <ranges>
+
 namespace qtPilot {
 
 const QHash<QString, Qt::Key>& KeyNameMapper::keyMap() {
@@ -172,6 +174,56 @@ KeyCombo KeyNameMapper::parseKeyCombo(const QString& combo) {
   result.key = resolve(keyName);
 
   return result;
+}
+
+std::expected<Qt::Key, QString> KeyNameMapper::resolveExpected(const QString& name) {
+  if (name.isEmpty()) {
+    return std::unexpected(QStringLiteral("Key name is empty"));
+  }
+  Qt::Key key = resolve(name);
+  if (key == Qt::Key_unknown) {
+    return std::unexpected(QStringLiteral("Unknown key name: '%1'").arg(name));
+  }
+  return key;
+}
+
+std::expected<KeyCombo, QString> KeyNameMapper::parseKeyComboExpected(const QString& combo) {
+  const QString trimmed = combo.trimmed();
+  if (trimmed.isEmpty()) {
+    return std::unexpected(QStringLiteral("Key combo string is empty"));
+  }
+
+  const QStringList parts = trimmed.split(QLatin1Char('+'));
+  if (parts.isEmpty()) {
+    return std::unexpected(QStringLiteral("Key combo string is empty"));
+  }
+
+  KeyCombo result;
+  result.modifiers = Qt::NoModifier;
+  const auto& modMap = modifierMap();
+
+  for (const QString& part : parts | std::views::take(parts.size() - 1)) {
+    const QString mod = part.trimmed().toLower();
+    if (mod.isEmpty()) {
+      return std::unexpected(QStringLiteral("Empty modifier segment in combo: '%1'").arg(combo));
+    }
+    auto it = modMap.find(mod);
+    if (it == modMap.end()) {
+      return std::unexpected(QStringLiteral("Unknown modifier in combo: '%1'").arg(part));
+    }
+    result.modifiers |= it.value();
+  }
+
+  const QString keyName = parts.last().trimmed();
+  if (keyName.isEmpty()) {
+    return std::unexpected(
+        QStringLiteral("Trailing '+' or empty key name in combo: '%1'").arg(combo));
+  }
+
+  return resolveExpected(keyName).transform([&](Qt::Key key) {
+    result.key = key;
+    return result;
+  });
 }
 
 }  // namespace qtPilot

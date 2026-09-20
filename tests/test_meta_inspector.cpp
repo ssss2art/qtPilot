@@ -147,6 +147,8 @@ class TestMetaInspector : public QObject {
   void testInvokePointerArgAcceptsNull();
   void testInvokePointerArgResolvesRegisteredObjectId();
   void testInvokePointerArgRejectsUnknownObjectId();
+  void testMonadicPropertyOperations();
+  void testMonadicMethodInvocation();
 
  private:
   QApplication* m_app = nullptr;
@@ -899,6 +901,76 @@ void TestMetaInspector::testInvokePointerArgRejectsUnknownObjectId() {
   args.append(QStringLiteral("MainWindow/NoSuchThing/AtAll"));
   QEXPECT_THAT([&] { MetaInspector::invokeMethod(&obj, QStringLiteral("describeObject"), args); },
                Throws<std::runtime_error>(WhatContains("does not exist")));
+}
+
+void TestMetaInspector::testMonadicPropertyOperations() {
+  TestObject obj;
+  obj.setStringValue(QStringLiteral("initial"));
+  obj.setIntValue(42);
+
+  // 1. Monadic read success and .transform()
+  auto res = MetaInspector::getPropertyExpected(&obj, QStringLiteral("stringValue"))
+                 .transform([](const QJsonValue& val) { return val.toString().toUpper(); });
+  QVERIFY(res.has_value());
+  QCOMPARE(*res, QStringLiteral("INITIAL"));
+
+  // 2. Monadic read failure on nonexistent property
+  auto failRes = MetaInspector::getPropertyExpected(&obj, QStringLiteral("noSuchProp"));
+  QVERIFY(!failRes.has_value());
+  QCOMPARE(failRes.error().kind, PropertyErrorKind::NotFound);
+  QCOMPARE(failRes.error().propertyName, QStringLiteral("noSuchProp"));
+
+  // 3. Monadic write success
+  auto setRes = MetaInspector::setPropertyExpected(&obj, QStringLiteral("stringValue"),
+                                                   QJsonValue(QStringLiteral("updated")));
+  QVERIFY(setRes.has_value());
+  QCOMPARE(obj.stringValue(), QStringLiteral("updated"));
+
+  // 4. Monadic write failure on read-only property
+  auto roRes =
+      MetaInspector::setPropertyExpected(&obj, QStringLiteral("readOnly"), QJsonValue(false));
+  QVERIFY(!roRes.has_value());
+  QCOMPARE(roRes.error().kind, PropertyErrorKind::ReadOnly);
+
+  // 5. Monadic write failure on null object
+  auto nullSet =
+      MetaInspector::setPropertyExpected(nullptr, QStringLiteral("intValue"), QJsonValue(123));
+  QVERIFY(!nullSet.has_value());
+  QCOMPARE(nullSet.error().kind, PropertyErrorKind::NullObject);
+
+  // 6. Monadic chaining via .and_then()
+  auto chained =
+      MetaInspector::setPropertyExpected(&obj, QStringLiteral("intValue"), QJsonValue(100))
+          .and_then([&]() {
+            return MetaInspector::getPropertyExpected(&obj, QStringLiteral("intValue"));
+          })
+          .transform([](const QJsonValue& val) { return val.toInt() * 2; });
+  QVERIFY(chained.has_value());
+  QCOMPARE(*chained, 200);
+}
+
+void TestMetaInspector::testMonadicMethodInvocation() {
+  TestObject obj;
+
+  // 1. Monadic invocation success
+  QJsonArray args;
+  args.append(5);
+  args.append(7);
+  auto res = MetaInspector::invokeMethodExpected(&obj, QStringLiteral("addNumbers"), args)
+                 .transform([](const QJsonValue& val) { return val.toInt(); });
+  QVERIFY(res.has_value());
+  QCOMPARE(*res, 12);
+
+  // 2. Monadic invocation failure on missing method
+  auto failRes =
+      MetaInspector::invokeMethodExpected(&obj, QStringLiteral("nonExistentMethod"), args);
+  QVERIFY(!failRes.has_value());
+  QCOMPARE(failRes.error().kind, MethodErrorKind::NotFound);
+
+  // 3. Monadic invocation failure on null target object
+  auto nullRes = MetaInspector::invokeMethodExpected(nullptr, QStringLiteral("addNumbers"), args);
+  QVERIFY(!nullRes.has_value());
+  QCOMPARE(nullRes.error().kind, MethodErrorKind::NullObject);
 }
 
 QTEST_APPLESS_MAIN(TestMetaInspector)

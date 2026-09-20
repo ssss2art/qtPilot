@@ -36,6 +36,9 @@ class TestSignalMonitor : public QObject {
   void testLifecycleDestroyed();
   void testSubscribeNonexistentObject();
   void testSubscribeNonexistentSignal();
+  void testSubscribeExpectedSuccess();
+  void testSubscribeExpectedNonexistentObject();
+  void testSubscribeExpectedNonexistentSignal();
 
  private:
   // Track objects created during tests for cleanup
@@ -315,6 +318,46 @@ void TestSignalMonitor::testSubscribeNonexistentSignal() {
     QEXPECT_THAT(msg, QStrContains("Signal not found"));
   }
   QEXPECT_THAT(threw, IsTrue());
+}
+
+void TestSignalMonitor::testSubscribeExpectedSuccess() {
+  auto* btn = new QPushButton();
+  btn->setObjectName("expectedTestBtn");
+  m_testObjects.append(btn);
+
+  QCoreApplication::processEvents();
+
+  QString objId = ObjectRegistry::instance()->objectId(btn);
+  QEXPECT_THAT(objId, QIsNotEmpty());
+
+  auto res = SignalMonitor::instance()->subscribeExpected(objId, "clicked");
+  QVERIFY(res.has_value());
+  QEXPECT_THAT(*res, QStrStartsWith("sub_"));
+
+  // Clean up
+  SignalMonitor::instance()->unsubscribe(*res);
+}
+
+void TestSignalMonitor::testSubscribeExpectedNonexistentObject() {
+  auto res = SignalMonitor::instance()->subscribeExpected("nonexistent/object/id", "clicked");
+  QVERIFY(!res.has_value());
+  QCOMPARE(static_cast<int>(res.error().kind), static_cast<int>(SignalErrorKind::ObjectNotFound));
+  QEXPECT_THAT(res.error().message, QStrContains("Object not found"));
+}
+
+void TestSignalMonitor::testSubscribeExpectedNonexistentSignal() {
+  auto* btn = new QPushButton();
+  btn->setObjectName("noSignalExpectedBtn");
+  m_testObjects.append(btn);
+
+  QCoreApplication::processEvents();
+
+  QString objId = ObjectRegistry::instance()->objectId(btn);
+
+  auto res = SignalMonitor::instance()->subscribeExpected(objId, "nonexistentSignal");
+  QVERIFY(!res.has_value());
+  QCOMPARE(static_cast<int>(res.error().kind), static_cast<int>(SignalErrorKind::SignalNotFound));
+  QEXPECT_THAT(res.error().message, QStrContains("Signal not found"));
 }
 
 QTEST_MAIN(TestSignalMonitor)

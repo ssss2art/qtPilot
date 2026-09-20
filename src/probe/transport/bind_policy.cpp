@@ -3,7 +3,11 @@
 
 #include "transport/bind_policy.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <ranges>
+#include <string>
+#include <string_view>
 
 #include <QByteArray>
 #include <QString>
@@ -17,7 +21,29 @@ namespace {
 /// stderr output.
 bool g_warnedInvalid = false;
 
+constexpr std::string_view kLoopbackValues[] = {"loopback", "localhost", "127.0.0.1", "::1"};
+
+constexpr std::string_view kLanValues[] = {"any", "all", "lan", "0.0.0.0", "*"};
+
 }  // namespace
+
+std::expected<NetworkExposure, QString> parseExposure(const QString& rawValue) {
+  const QString trimmed = rawValue.trimmed();
+  if (trimmed.isEmpty()) {
+    return std::unexpected(QStringLiteral("Empty exposure string"));
+  }
+  const std::string lower = trimmed.toLower().toStdString();
+
+  if (std::ranges::find(kLoopbackValues, lower) != std::end(kLoopbackValues)) {
+    return NetworkExposure::Loopback;
+  }
+  if (std::ranges::find(kLanValues, lower) != std::end(kLanValues)) {
+    return NetworkExposure::Lan;
+  }
+
+  return std::unexpected(
+      QStringLiteral("Unrecognised exposure value: '%1'. Use 'any' or 'loopback'.").arg(rawValue));
+}
 
 NetworkExposure configuredExposure() {
   const QByteArray raw = qgetenv("QTPILOT_BIND_ADDRESS");
@@ -25,31 +51,19 @@ NetworkExposure configuredExposure() {
     return NetworkExposure::Lan;
   }
 
-  const QString value = QString::fromUtf8(raw).trimmed().toLower();
-
-  if (value == QLatin1String("loopback") || value == QLatin1String("localhost") ||
-      value == QLatin1String("127.0.0.1") || value == QLatin1String("::1")) {
-    return NetworkExposure::Loopback;
-  }
-
-  if (value == QLatin1String("any") || value == QLatin1String("all") ||
-      value == QLatin1String("lan") || value == QLatin1String("0.0.0.0") ||
-      value == QLatin1String("*")) {
-    return NetworkExposure::Lan;
-  }
-
-  // Loopback, not the Lan default: the only reason to set this variable is to
-  // restrict the probe, so a typo must not be resolved as "wide open". This
-  // fails visibly -- connections are refused and the reason is on stderr.
-  if (!g_warnedInvalid) {
-    g_warnedInvalid = true;
-    fprintf(stderr,
-            "[qtPilot] QTPILOT_BIND_ADDRESS=\"%s\" is not a recognised value; "
-            "restricting to loopback. Use \"any\" (default) or \"loopback\".\n",
-            raw.constData());
-    fflush(stderr);
-  }
-  return NetworkExposure::Loopback;
+  return parseExposure(QString::fromUtf8(raw))
+      .or_else([&](const QString&) -> std::expected<NetworkExposure, QString> {
+        if (!g_warnedInvalid) {
+          g_warnedInvalid = true;
+          fprintf(stderr,
+                  "[qtPilot] QTPILOT_BIND_ADDRESS=\"%s\" is not a recognised value; "
+                  "restricting to loopback. Use \"any\" (default) or \"loopback\".\n",
+                  raw.constData());
+          fflush(stderr);
+        }
+        return NetworkExposure::Loopback;
+      })
+      .value();
 }
 
 QHostAddress listenAddress() {

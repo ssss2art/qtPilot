@@ -50,28 +50,6 @@ qint64 launchWithProbe(const LaunchOptions& options) {
             qPrintable(env.value(QStringLiteral("QTPILOT_PORT"))));
   }
 
-  // 2. Use QProcess for launching
-  // This handles all the complexity of process management
-  if (options.detach) {
-    // Detached mode: use QProcess::startDetached
-    qint64 pid = 0;
-    bool success = QProcess::startDetached(options.targetExecutable, options.targetArgs,
-                                           QString(),  // Working directory (current)
-                                           &pid);
-
-    if (!success) {
-      if (!options.quiet) {
-        fprintf(stderr, "[injector] Failed to start detached process\n");
-      }
-      return -1;
-    }
-
-    // Note: QProcess::startDetached doesn't apply environment to Qt 5 < 5.15
-    // For better compatibility, we use fork/exec below
-
-    // Actually, let's use fork/exec for proper environment handling
-  }
-
   // Fork the process
   pid_t pid = fork();
 

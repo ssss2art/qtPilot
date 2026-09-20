@@ -6,6 +6,7 @@
 #include "core/object_registry.h"
 #include "introspection/variant_json.h"
 
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 
@@ -147,28 +148,46 @@ SignalMonitor::~SignalMonitor() {
   qDebug() << "[qtPilot] SignalMonitor destroyed";
 }
 
-QString SignalMonitor::subscribe(const QString& objectId, const QString& signalName) {
-  // Find the object by ID
-  QObject* obj = ObjectRegistry::instance()->findById(objectId);
-  if (!obj) {
-    throw std::runtime_error("Object not found: " + objectId.toStdString());
+std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QString& objectId,
+                                                                     const QString& signalName) {
+  // Find the object by ID monadically
+  auto objRes = ObjectRegistry::instance()->findByIdExpected(objectId);
+  if (!objRes) {
+    return std::unexpected(SignalError{
+        SignalErrorKind::ObjectNotFound,
+        QStringLiteral("Object not found: %1").arg(objectId),
+    });
   }
-
+  QObject* obj = *objRes;
   const QMetaObject* meta = obj->metaObject();
 
-  // Find signal by name
-  int signalIndex = -1;
-  for (int i = 0; i < meta->methodCount(); ++i) {
-    QMetaMethod method = meta->method(i);
-    if (method.methodType() == QMetaMethod::Signal &&
-        QString::fromLatin1(method.name()) == signalName) {
-      signalIndex = i;
-      break;
-    }
+  // Find signal by name using C++23 range views
+  auto indices = std::views::iota(0, meta->methodCount());
+  auto it = std::ranges::find_if(indices, [&](int i) {
+    QMetaMethod m = meta->method(i);
+    return m.methodType() == QMetaMethod::Signal && QString::fromLatin1(m.name()) == signalName;
+  });
+
+  if (it == indices.end()) {
+    return std::unexpected(SignalError{
+        SignalErrorKind::SignalNotFound,
+        QStringLiteral("Signal not found: %1").arg(signalName),
+    });
   }
 
-  if (signalIndex < 0) {
-    throw std::runtime_error("Signal not found: " + signalName.toStdString());
+  int signalIndex = *it;
+
+  // Deduplicate: return existing subscription if already subscribed to this exact object and signal
+  {
+    QMutexLocker lock(&m_mutex);
+    for (auto subIt = m_subscriptions.begin(); subIt != m_subscriptions.end(); ++subIt) {
+      if (subIt->objectId == objectId && subIt->signalName == signalName &&
+          subIt->object.data() == obj) {
+        qDebug() << "[qtPilot] Reusing existing subscription for" << objectId << "::" << signalName
+                 << "as" << subIt.key();
+        return subIt.key();
+      }
+    }
   }
 
   // Generate unique subscription ID
@@ -198,7 +217,10 @@ QString SignalMonitor::subscribe(const QString& objectId, const QString& signalN
                                    QObject::staticMetaObject.methodCount());
   if (!conn) {
     delete relay;
-    throw std::runtime_error("Failed to connect to signal: " + signalName.toStdString());
+    return std::unexpected(SignalError{
+        SignalErrorKind::ConnectionFailed,
+        QStringLiteral("Failed to connect to signal: %1").arg(signalName),
+    });
   }
 
   // Watch for object destruction to auto-unsubscribe
@@ -213,13 +235,21 @@ QString SignalMonitor::subscribe(const QString& objectId, const QString& signalN
     sub.object = obj;
     sub.objectId = objectId;
     sub.signalName = signalName;
-    sub.connection = conn;
     sub.relay = relay;
-    m_subscriptions.insert(subId, sub);
+    sub.connection = conn;
+    m_subscriptions[subId] = sub;
   }
 
   qDebug() << "[qtPilot] Subscribed to" << objectId << "::" << signalName << "as" << subId;
   return subId;
+}
+
+QString SignalMonitor::subscribe(const QString& objectId, const QString& signalName) {
+  auto res = subscribeExpected(objectId, signalName);
+  if (!res) {
+    throw std::runtime_error(res.error().message.toStdString());
+  }
+  return *res;
 }
 
 void SignalMonitor::unsubscribe(const QString& subscriptionId) {
@@ -236,8 +266,10 @@ void SignalMonitor::unsubscribe(const QString& subscriptionId) {
     QObject::disconnect(it->connection);
   }
 
-  // Delete the relay
-  delete it->relay;
+  // Delete the relay asynchronously to prevent crashes if slot invocation is in-flight
+  if (it->relay) {
+    it->relay->deleteLater();
+  }
 
   qDebug() << "[qtPilot] Unsubscribed" << subscriptionId << "from" << it->objectId
            << "::" << it->signalName;
@@ -254,7 +286,9 @@ void SignalMonitor::unsubscribeAll(const QString& objectId) {
       if (it->connection) {
         QObject::disconnect(it->connection);
       }
-      delete it->relay;
+      if (it->relay) {
+        it->relay->deleteLater();
+      }
       toRemove.append(it.key());
     }
   }
@@ -266,6 +300,24 @@ void SignalMonitor::unsubscribeAll(const QString& objectId) {
   if (!toRemove.isEmpty()) {
     qDebug() << "[qtPilot] Unsubscribed all" << toRemove.size() << "subscriptions for" << objectId;
   }
+}
+
+void SignalMonitor::clearSubscriptions() {
+  QMutexLocker lock(&m_mutex);
+
+  for (auto it = m_subscriptions.begin(); it != m_subscriptions.end(); ++it) {
+    if (it->connection) {
+      QObject::disconnect(it->connection);
+    }
+    if (it->relay) {
+      it->relay->deleteLater();
+    }
+  }
+  m_subscriptions.clear();
+  m_destroyedObjectIds.clear();
+  m_lifecycleEnabled = false;
+
+  qDebug() << "[qtPilot] Cleared all subscriptions on client disconnect";
 }
 
 void SignalMonitor::setLifecycleNotificationsEnabled(bool enabled) {
@@ -355,15 +407,15 @@ void SignalMonitor::onSubscribedObjectDestroyed(QObject* obj) {
   QStringList toRemove;
   QString cachedObjectId;  // Cache for lifecycle notifications
   for (auto it = m_subscriptions.begin(); it != m_subscriptions.end(); ++it) {
-    // Check by pointer since QPointer may already be null
-    if (it->object.data() == obj || it->object.isNull()) {
+    if (it->object.data() == obj) {
       // Cache the objectId for onObjectRemoved (runs later via QueuedConnection)
       if (cachedObjectId.isEmpty()) {
         cachedObjectId = it->objectId;
       }
       // Don't disconnect - object is already being destroyed
-      // Delete the relay (it's parented to this, but be explicit)
-      delete it->relay;
+      if (it->relay) {
+        it->relay->deleteLater();
+      }
       toRemove.append(it.key());
     }
   }

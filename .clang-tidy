@@ -1,6 +1,6 @@
 # qtPilot Clang-Tidy Configuration
 #
-# Checks are Google-style; NAMING follows CLAUDE.md and this codebase (see the
+# Checks are Google-style; NAMING follows AGENTS.md and this codebase (see the
 # CheckOptions block). Not currently run in CI -- the lint job runs clang-format
 # only -- so treat its output as advisory.
 
@@ -92,10 +92,8 @@ CheckOptions:
   # covers `const` locals and const parameters, so it demanded kFoo for every
   # `const QString foo = ...` in the codebase and was a large share of the noise.
   #
-  # Note this is where CLAUDE.md was itself out of date: it said constants are
-  # UPPER_SNAKE_CASE, which describes exactly one constant in src/ against fifty
-  # k-prefixed ones. CLAUDE.md has been corrected to match; UPPER_SNAKE_CASE is for
-  # macros.
+  # Note on constants: AGENTS.md specifies compile-time constants are k-prefixed
+  # CamelCase; UPPER_SNAKE_CASE is reserved for macros.
   - key: readability-identifier-naming.GlobalConstantCase
     value: CamelCase
   - key: readability-identifier-naming.GlobalConstantPrefix

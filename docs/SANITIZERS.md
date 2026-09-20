@@ -109,7 +109,7 @@ Two things that are easy to get wrong:
 
 **1. Without a debug entitlement the result is a lie.** A default run prints
 
-```
+```text
 Process 63119 is not debuggable. Due to security restrictions, leaks can only
 show or save contents of readonly memory of restricted processes.
 Process 63119: 0 leaks for 0 total leaked bytes.

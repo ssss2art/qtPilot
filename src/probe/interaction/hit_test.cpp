@@ -6,6 +6,7 @@
 #include "core/object_registry.h"
 
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
 
 #include <QApplication>
@@ -23,9 +24,9 @@
 
 namespace qtPilot {
 
-QJsonObject HitTest::widgetGeometry(QWidget* widget) {
+std::expected<QJsonObject, QString> HitTest::widgetGeometryExpected(QWidget* widget) {
   if (!widget) {
-    throw std::invalid_argument("widgetGeometry: widget cannot be null");
+    return std::unexpected(QStringLiteral("widgetGeometryExpected: widget cannot be null"));
   }
 
   QJsonObject result;
@@ -46,6 +47,14 @@ QJsonObject HitTest::widgetGeometry(QWidget* widget) {
   result["devicePixelRatio"] = widget->devicePixelRatioF();
 
   return result;
+}
+
+QJsonObject HitTest::widgetGeometry(QWidget* widget) {
+  auto res = widgetGeometryExpected(widget);
+  if (!res) {
+    throw std::invalid_argument(res.error().toStdString());
+  }
+  return *res;
 }
 
 QWidget* HitTest::widgetAt(const QPoint& globalPos) {
@@ -245,12 +254,9 @@ QGraphicsObject* HitTest::graphicsItemAt(QGraphicsView* view, const QPointF& vie
   // descending stacking order, so the first entry that resolves is the topmost
   // thing the caller can actually address.
   const QList<QGraphicsItem*> stack = view->items(viewportPos.toPoint());
-  for (QGraphicsItem* candidate : stack) {
-    if (QGraphicsObject* object = nearestGraphicsObject(candidate)) {
-      return object;
-    }
-  }
-  return nullptr;
+  auto it = std::ranges::find_if(
+      stack, [](QGraphicsItem* candidate) { return nearestGraphicsObject(candidate) != nullptr; });
+  return it != stack.end() ? nearestGraphicsObject(*it) : nullptr;
 }
 
 QString HitTest::graphicsItemIdAt(QGraphicsView* view, const QPointF& viewportPos) {
@@ -303,8 +309,7 @@ QQuickItem* deepestItemAt(QQuickItem* parent, const QPointF& parentPos) {
   std::stable_sort(children.begin(), children.end(),
                    [](const QQuickItem* a, const QQuickItem* b) { return a->z() < b->z(); });
 
-  for (auto it = children.crbegin(); it != children.crend(); ++it) {
-    QQuickItem* child = *it;
+  for (QQuickItem* child : std::views::reverse(children)) {
     if (!child->isVisible() || !child->isEnabled()) {
       continue;
     }
@@ -408,10 +413,9 @@ QString HitTest::quickItemIdAt(const QPoint& globalPos) {
   if (focus) {
     candidates.append(focus);
   }
-  for (auto it = all.crbegin(); it != all.crend(); ++it) {
-    if (*it != focus) {
-      candidates.append(*it);
-    }
+  for (QWindow* w :
+       all | std::views::reverse | std::views::filter([&](QWindow* w) { return w != focus; })) {
+    candidates.append(w);
   }
 
   for (QWindow* candidate : candidates) {

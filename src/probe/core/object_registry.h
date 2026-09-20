@@ -6,6 +6,7 @@
 #include "probe.h"  // For QTPILOT_EXPORT
 
 #include <atomic>
+#include <expected>
 #include <mutex>
 
 #include <QHash>
@@ -65,6 +66,13 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// @return The first matching object, or nullptr if not found.
   QObject* findByObjectName(const QString& name, QObject* root = nullptr);
 
+  /// @brief Monadic lookup of an object by objectName.
+  /// @param name The objectName to search for.
+  /// @param root Optional root object to search within (nullptr = all objects).
+  /// @return The first matching object, or error description.
+  std::expected<QObject*, QString> findByObjectNameExpected(const QString& name,
+                                                            QObject* root = nullptr);
+
   /// @brief Find all objects of a given class name.
   /// @param className The class name to search for (e.g., "QPushButton").
   /// @param root Optional root object to search within (nullptr = all objects).
@@ -102,6 +110,11 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// @param id The hierarchical ID (e.g., "mainWindow/central/submitBtn").
   /// @return The object, or nullptr if not found or object was deleted.
   QObject* findById(const QString& id);
+
+  /// @brief Monadic lookup of an object by its hierarchical ID.
+  /// @param id The hierarchical ID.
+  /// @return The object, or error description.
+  std::expected<QObject*, QString> findByIdExpected(const QString& id);
 
   /// @brief Scan and register all existing objects in a tree.
   ///

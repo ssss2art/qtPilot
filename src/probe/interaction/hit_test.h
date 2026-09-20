@@ -5,6 +5,8 @@
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
 
+#include <expected>
+
 #include <QJsonObject>
 #include <QPoint>
 #include <QWidget>
@@ -53,6 +55,11 @@ class QTPILOT_EXPORT HitTest {
   /// }
   /// @endcode
   static QJsonObject widgetGeometry(QWidget* widget);
+
+  /// @brief Monadically get widget geometry in local and global coordinates.
+  /// @param widget Widget to query
+  /// @return JSON with local and global geometry, or error message on failure
+  static std::expected<QJsonObject, QString> widgetGeometryExpected(QWidget* widget);
 
   /// @brief Find widget at global screen coordinates.
   /// @param globalPos Screen coordinates

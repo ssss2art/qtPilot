@@ -10,10 +10,10 @@ This guide covers building the qtPilot probe and launcher from source code.
 - **Qt 5.15.1+ or Qt 6.5+** with development headers (including private headers).
   On macOS, Qt 6.5+ only — Qt 5.15 is not a supported configuration there, see
   [MACOS.md](MACOS.md)
-- **C++17 compiler:**
-  - GCC 8+ (Linux)
-  - Clang 7+ (Linux/macOS)
-  - MSVC 2019+ (Windows)
+- **C++23 compiler:**
+  - GCC 13+ (Linux)
+  - Clang 17+ (Linux/macOS)
+  - MSVC 2022+ (Windows)
 
 ### Required Qt Modules
 
@@ -391,14 +391,14 @@ cmake -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.0/gcc_64
 
 ### Compiler Version Errors
 
-qtPilot requires C++17. Check your compiler version:
+qtPilot requires C++23. Check your compiler version:
 
 ```bash
-g++ --version   # Need 8+
-clang++ --version  # Need 7+
+g++ --version   # Need 13+
+clang++ --version  # Need 17+
 ```
 
-On Windows, Visual Studio 2019 or later is required.
+On Windows, Visual Studio 2022 (v17.0+) or later is required.
 
 ## IDE Setup
 

@@ -44,6 +44,8 @@ class TestObjectRegistry : public QObject {
   void testScanExistingObjectsIsLazy();
   void testAllObjectsWithRoot();
   void testThreadSafety();
+  void testFindByIdExpectedMonadic();
+  void testFindByObjectNameExpectedMonadic();
 
  private:
   int m_initialObjectCount = 0;
@@ -394,6 +396,53 @@ void TestObjectRegistry::testThreadSafety() {
 
   qDebug() << "Thread safety test: created" << createdCount.loadRelaxed() << "objects across"
            << threadCount << "threads with" << errors.loadRelaxed() << "errors";
+}
+
+void TestObjectRegistry::testFindByIdExpectedMonadic() {
+  auto* registry = ObjectRegistry::instance();
+  registry->setClientConnected(true);
+
+  QObject parent;
+  parent.setObjectName(QStringLiteral("regExpectedParent"));
+  QObject* child = new QObject(&parent);
+  child->setObjectName(QStringLiteral("regExpectedChild"));
+
+  QString id = registry->objectId(child);
+
+  // Success
+  auto successRes = registry->findByIdExpected(id);
+  QVERIFY(successRes.has_value());
+  QCOMPARE(*successRes, child);
+
+  // Failure: empty ID
+  auto emptyRes = registry->findByIdExpected(QString());
+  QVERIFY(!emptyRes.has_value());
+  QVERIFY(!emptyRes.error().isEmpty());
+
+  // Failure: nonexistent ID
+  auto nonExistentRes = registry->findByIdExpected(QStringLiteral("nonexistent/id"));
+  QVERIFY(!nonExistentRes.has_value());
+  QVERIFY(!nonExistentRes.error().isEmpty());
+}
+
+void TestObjectRegistry::testFindByObjectNameExpectedMonadic() {
+  auto* registry = ObjectRegistry::instance();
+
+  QObject target;
+  target.setObjectName(QStringLiteral("uniqueMonadicName"));
+
+  // Success
+  auto successRes = registry->findByObjectNameExpected(QStringLiteral("uniqueMonadicName"));
+  QVERIFY(successRes.has_value());
+  QCOMPARE(*successRes, &target);
+
+  // Failure: empty name
+  auto emptyRes = registry->findByObjectNameExpected(QString());
+  QVERIFY(!emptyRes.has_value());
+
+  // Failure: unknown name
+  auto unknownRes = registry->findByObjectNameExpected(QStringLiteral("completelyUnknownName404"));
+  QVERIFY(!unknownRes.has_value());
 }
 
 // Use GUILESS main since we don't need GUI for these tests

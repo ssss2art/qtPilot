@@ -21,6 +21,9 @@
 #include "introspection/qml_inspector.h"
 #include "introspection/signal_monitor.h"
 
+#include <expected>
+#include <ranges>
+
 #include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
@@ -69,40 +72,102 @@ QString envelopeToString(const QJsonObject& envelope) {
   return QString::fromUtf8(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
 }
 
-/// @brief Resolve objectId param to QObject*, throw JsonRpcException on failure.
-QObject* resolveObjectParam(const QJsonObject& params, const QString& methodName) {
+/// @brief Monadic resolution of objectId parameter to QObject* using std::expected.
+std::expected<QObject*, JsonRpcException> tryResolveObjectParam(const QJsonObject& params,
+                                                                const QString& methodName) {
   QString objectId = params[QStringLiteral("objectId")].toString();
   if (objectId.isEmpty()) {
-    throw JsonRpcException(JsonRpcError::kInvalidParams,
-                           QStringLiteral("Missing required parameter: objectId"),
-                           QJsonObject{{QStringLiteral("method"), methodName}});
+    return std::unexpected(JsonRpcException(JsonRpcError::kInvalidParams,
+                                            QStringLiteral("Missing required parameter: objectId"),
+                                            QJsonObject{{QStringLiteral("method"), methodName}}));
   }
 
-  QObject* obj = ObjectResolver::resolve(objectId);
-  if (!obj) {
-    throw JsonRpcException(
-        ErrorCode::kObjectNotFound, QStringLiteral("Object not found: %1").arg(objectId),
-        QJsonObject{
-            {QStringLiteral("objectId"), objectId},
-            {QStringLiteral("hint"),
-             QStringLiteral("Use qt.objects.search or qt.objects.tree to discover valid IDs")}});
+  return ObjectResolver::resolveExpected(objectId).transform_error(
+      [&](const ObjectResolver::ResolveError& err) {
+        return JsonRpcException(
+            ErrorCode::kObjectNotFound, QStringLiteral("Object not found: %1").arg(err.id),
+            QJsonObject{{QStringLiteral("objectId"), err.id},
+                        {QStringLiteral("hint"),
+                         QStringLiteral(
+                             "Use qt.objects.search or qt.objects.tree to discover valid IDs")}});
+      });
+}
+
+/// @brief Monadic resolution of objectId parameter to QWidget* via .and_then().
+std::expected<QWidget*, JsonRpcException> tryResolveWidgetParam(const QJsonObject& params,
+                                                                const QString& methodName) {
+  return tryResolveObjectParam(params, methodName)
+      .and_then([&](QObject* obj) -> std::expected<QWidget*, JsonRpcException> {
+        if (auto* widget = qobject_cast<QWidget*>(obj)) {
+          return widget;
+        }
+        QString objectId = params[QStringLiteral("objectId")].toString();
+        return std::unexpected(JsonRpcException(
+            ErrorCode::kObjectNotWidget, QStringLiteral("Object is not a widget: %1").arg(objectId),
+            QJsonObject{
+                {QStringLiteral("objectId"), objectId},
+                {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}}));
+      });
+}
+
+/// @brief Monadic resolution of objectId parameter to QAbstractItemModel* via .and_then().
+std::expected<QAbstractItemModel*, JsonRpcException> tryResolveModelParam(
+    const QJsonObject& params, const QString& methodName) {
+  return tryResolveObjectParam(params, methodName)
+      .and_then([&](QObject* obj) -> std::expected<QAbstractItemModel*, JsonRpcException> {
+        return ModelNavigator::resolveModelExpected(obj).transform_error([&](const QString&) {
+          QString objectId = params[QStringLiteral("objectId")].toString();
+          return JsonRpcException(
+              ErrorCode::kNotAModel,
+              QStringLiteral("Object is not a model and does not have an associated model"),
+              QJsonObject{{QStringLiteral("objectId"), objectId},
+                          {QStringLiteral("hint"),
+                           QStringLiteral("Use qt.models.list to discover available models")}});
+        });
+      });
+}
+
+/// @brief Monadic extraction of a required string parameter.
+std::expected<QString, JsonRpcException> requireStringParam(const QJsonObject& params,
+                                                            const QString& key,
+                                                            const QString& methodName) {
+  const QJsonValue val = params.value(key);
+  if (!val.isString() || val.toString().isEmpty()) {
+    return std::unexpected(JsonRpcException(
+        JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: %1").arg(key),
+        QJsonObject{{QStringLiteral("method"), methodName}}));
   }
-  return obj;
+  return val.toString();
+}
+
+/// @brief Monadic extraction of a required JSON value parameter.
+std::expected<QJsonValue, JsonRpcException> requireValueParam(const QJsonObject& params,
+                                                              const QString& key,
+                                                              const QString& methodName) {
+  if (!params.contains(key)) {
+    return std::unexpected(JsonRpcException(
+        JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: %1").arg(key),
+        QJsonObject{{QStringLiteral("method"), methodName}}));
+  }
+  return params.value(key);
+}
+
+/// @brief Resolve objectId param to QObject*, throw JsonRpcException on failure.
+QObject* resolveObjectParam(const QJsonObject& params, const QString& methodName) {
+  auto res = tryResolveObjectParam(params, methodName);
+  if (!res) {
+    throw res.error();
+  }
+  return *res;
 }
 
 /// @brief Resolve objectId param to QWidget*, throw JsonRpcException on failure.
 QWidget* resolveWidgetParam(const QJsonObject& params, const QString& methodName) {
-  QObject* obj = resolveObjectParam(params, methodName);
-  QWidget* widget = qobject_cast<QWidget*>(obj);
-  if (!widget) {
-    QString objectId = params[QStringLiteral("objectId")].toString();
-    throw JsonRpcException(
-        ErrorCode::kObjectNotWidget, QStringLiteral("Object is not a widget: %1").arg(objectId),
-        QJsonObject{
-            {QStringLiteral("objectId"), objectId},
-            {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+  auto res = tryResolveWidgetParam(params, methodName);
+  if (!res) {
+    throw res.error();
   }
-  return widget;
+  return *res;
 }
 
 /// @brief Resolve an optional view id param to a QGraphicsView*.
@@ -624,16 +689,14 @@ NativeModeApi::NativeModeApi(JsonRpcHandler* handler, QObject* parent)
 // ============================================================================
 
 void NativeModeApi::registerSystemMethods() {
-  // qt.ping - measure event loop latency
+  // qt.ping - liveness check
   m_handler->RegisterMethod(QStringLiteral("qt.ping"), [](const QString& /*params*/) -> QString {
-    qint64 before = QDateTime::currentMSecsSinceEpoch();
-    QCoreApplication::processEvents();
-    qint64 after = QDateTime::currentMSecsSinceEpoch();
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
 
     QJsonObject result;
     result[QStringLiteral("pong")] = true;
-    result[QStringLiteral("timestamp")] = after;
-    result[QStringLiteral("eventLoopLatency")] = after - before;
+    result[QStringLiteral("timestamp")] = now;
+    result[QStringLiteral("eventLoopLatency")] = 0;
 
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
@@ -863,13 +926,14 @@ void NativeModeApi::registerObjectMethods() {
 
         QObject* rootObj = nullptr;
         if (!rootId.isEmpty()) {
-          rootObj = ObjectResolver::resolve(rootId);
-          if (!rootObj) {
+          auto rootRes = ObjectResolver::resolveExpected(rootId);
+          if (!rootRes) {
             throw JsonRpcException(
                 ErrorCode::kObjectNotFound, QStringLiteral("Root object not found: %1").arg(rootId),
                 QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")},
                             {QStringLiteral("root"), rootId}});
           }
+          rootObj = *rootRes;
         }
 
         QList<QObject*> candidates;
@@ -879,30 +943,32 @@ void NativeModeApi::registerObjectMethods() {
           candidates = ObjectRegistry::instance()->allObjects(rootObj);
         }
 
+        auto matchesProperties = [&](QObject* obj) {
+          if (propFilters.isEmpty()) {
+            return true;
+          }
+          for (auto it = propFilters.constBegin(); it != propFilters.constEnd(); ++it) {
+            auto propRes = MetaInspector::getPropertyExpected(obj, it.key());
+            if (!propRes.has_value() || *propRes != it.value()) {
+              return false;
+            }
+          }
+          return true;
+        };
+
+        auto filtered = candidates | std::views::filter([&](QObject* obj) {
+                          if (!obj) {
+                            return false;
+                          }
+                          if (!objectName.isEmpty() && obj->objectName() != objectName) {
+                            return false;
+                          }
+                          return matchesProperties(obj);
+                        });
+
         QJsonArray matches;
         bool truncated = false;
-        for (QObject* obj : candidates) {
-          if (!objectName.isEmpty() && obj->objectName() != objectName) {
-            continue;
-          }
-          if (!propFilters.isEmpty()) {
-            bool ok = true;
-            for (auto it = propFilters.constBegin(); it != propFilters.constEnd(); ++it) {
-              try {
-                QJsonValue actual = MetaInspector::getProperty(obj, it.key());
-                if (actual != it.value()) {
-                  ok = false;
-                  break;
-                }
-              } catch (...) {
-                ok = false;
-                break;
-              }
-            }
-            if (!ok)
-              continue;
-          }
-
+        for (QObject* obj : filtered) {
           if (matches.size() >= limit) {
             truncated = true;
             break;
@@ -935,71 +1001,71 @@ void NativeModeApi::registerPropertyMethods() {
   m_handler->RegisterMethod(
       QStringLiteral("qt.properties.get"), [](const QString& params) -> QString {
         auto p = parseParams(params);
-        QObject* obj = resolveObjectParam(p, QStringLiteral("qt.properties.get"));
         QString objectId = p[QStringLiteral("objectId")].toString();
-        QString name = p[QStringLiteral("name")].toString();
 
-        if (name.isEmpty()) {
-          throw JsonRpcException(
-              JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: name"),
-              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.properties.get")}});
-        }
+        auto res = tryResolveObjectParam(p, QStringLiteral("qt.properties.get"))
+                       .and_then([&](QObject* obj) {
+                         return requireStringParam(p, QStringLiteral("name"),
+                                                   QStringLiteral("qt.properties.get"))
+                             .and_then([&](const QString& name) {
+                               return MetaInspector::getPropertyExpected(obj, name).transform_error(
+                                   [&](const PropertyError& err) {
+                                     return JsonRpcException(
+                                         ErrorCode::kPropertyNotFound, err.message,
+                                         QJsonObject{{QStringLiteral("objectId"), objectId},
+                                                     {QStringLiteral("property"), name}});
+                                   });
+                             });
+                       })
+                       .transform([&](const QJsonValue& value) {
+                         QJsonObject result;
+                         result[QStringLiteral("value")] = value;
+                         return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+                       });
 
-        try {
-          QJsonValue value = MetaInspector::getProperty(obj, name);
-          QJsonObject result;
-          result[QStringLiteral("value")] = value;
-          return envelopeToString(ResponseEnvelope::wrap(result, objectId));
-        } catch (const std::runtime_error& e) {
-          throw JsonRpcException(ErrorCode::kPropertyNotFound, QString::fromStdString(e.what()),
-                                 QJsonObject{{QStringLiteral("objectId"), objectId},
-                                             {QStringLiteral("property"), name}});
+        if (!res) {
+          throw res.error();
         }
+        return *res;
       });
 
   // qt.properties.set
   m_handler->RegisterMethod(
       QStringLiteral("qt.properties.set"), [](const QString& params) -> QString {
         auto p = parseParams(params);
-        QObject* obj = resolveObjectParam(p, QStringLiteral("qt.properties.set"));
         QString objectId = p[QStringLiteral("objectId")].toString();
-        QString name = p[QStringLiteral("name")].toString();
 
-        if (name.isEmpty()) {
-          throw JsonRpcException(
-              JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: name"),
-              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.properties.set")}});
+        auto res = tryResolveObjectParam(p, QStringLiteral("qt.properties.set"))
+                       .and_then([&](QObject* obj) {
+                         return requireStringParam(p, QStringLiteral("name"),
+                                                   QStringLiteral("qt.properties.set"))
+                             .and_then([&](const QString& name) {
+                               return requireValueParam(p, QStringLiteral("value"),
+                                                        QStringLiteral("qt.properties.set"))
+                                   .and_then([&](const QJsonValue& value) {
+                                     return MetaInspector::setPropertyExpected(obj, name, value)
+                                         .transform_error([&](const PropertyError& err) {
+                                           int code = (err.kind == PropertyErrorKind::ReadOnly)
+                                                          ? ErrorCode::kPropertyReadOnly
+                                                          : ErrorCode::kPropertyTypeMismatch;
+                                           return JsonRpcException(
+                                               code, err.message,
+                                               QJsonObject{{QStringLiteral("objectId"), objectId},
+                                                           {QStringLiteral("property"), name}});
+                                         });
+                                   });
+                             });
+                       })
+                       .transform([&]() {
+                         QJsonObject result;
+                         result[QStringLiteral("ok")] = true;
+                         return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+                       });
+
+        if (!res) {
+          throw res.error();
         }
-
-        if (!p.contains(QStringLiteral("value"))) {
-          throw JsonRpcException(
-              JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: value"),
-              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.properties.set")}});
-        }
-
-        QJsonValue value = p[QStringLiteral("value")];
-
-        try {
-          bool ok = MetaInspector::setProperty(obj, name, value);
-          if (!ok) {
-            throw JsonRpcException(ErrorCode::kPropertyTypeMismatch,
-                                   QStringLiteral("Property set failed"),
-                                   QJsonObject{{QStringLiteral("objectId"), objectId},
-                                               {QStringLiteral("property"), name}});
-          }
-          QJsonObject result;
-          result[QStringLiteral("ok")] = true;
-          return envelopeToString(ResponseEnvelope::wrap(result, objectId));
-        } catch (const std::runtime_error& e) {
-          // Distinguish read-only from not-found
-          QString msg = QString::fromStdString(e.what());
-          int code = msg.contains(QStringLiteral("read-only"), Qt::CaseInsensitive)
-                         ? ErrorCode::kPropertyReadOnly
-                         : ErrorCode::kPropertyTypeMismatch;
-          throw JsonRpcException(code, msg,
-                                 QJsonObject{{QStringLiteral("objectId"), objectId},
-                                             {QStringLiteral("property"), name}});
-        }
+        return *res;
       });
 }
 
@@ -1012,32 +1078,36 @@ void NativeModeApi::registerMethodMethods() {
   m_handler->RegisterMethod(
       QStringLiteral("qt.methods.invoke"), [](const QString& params) -> QString {
         auto p = parseParams(params);
-        QObject* obj = resolveObjectParam(p, QStringLiteral("qt.methods.invoke"));
         QString objectId = p[QStringLiteral("objectId")].toString();
-        QString method = p[QStringLiteral("method")].toString();
 
-        if (method.isEmpty()) {
-          throw JsonRpcException(
-              JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: method"),
-              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.methods.invoke")}});
+        auto res = tryResolveObjectParam(p, QStringLiteral("qt.methods.invoke"))
+                       .and_then([&](QObject* obj) {
+                         return requireStringParam(p, QStringLiteral("method"),
+                                                   QStringLiteral("qt.methods.invoke"))
+                             .and_then([&](const QString& method) {
+                               QJsonArray args = p[QStringLiteral("args")].toArray();
+                               return MetaInspector::invokeMethodExpected(obj, method, args)
+                                   .transform_error([&](const MethodError& err) {
+                                     int code = (err.kind == MethodErrorKind::NotFound)
+                                                    ? ErrorCode::kMethodNotFound
+                                                    : ErrorCode::kMethodInvocationFailed;
+                                     return JsonRpcException(
+                                         code, err.message,
+                                         QJsonObject{{QStringLiteral("objectId"), objectId},
+                                                     {QStringLiteral("method"), method}});
+                                   });
+                             });
+                       })
+                       .transform([&](const QJsonValue& result) {
+                         QJsonObject resultObj;
+                         resultObj[QStringLiteral("result")] = result;
+                         return envelopeToString(ResponseEnvelope::wrap(resultObj, objectId));
+                       });
+
+        if (!res) {
+          throw res.error();
         }
-
-        QJsonArray args = p[QStringLiteral("args")].toArray();
-
-        try {
-          QJsonValue result = MetaInspector::invokeMethod(obj, method, args);
-          QJsonObject resultObj;
-          resultObj[QStringLiteral("result")] = result;
-          return envelopeToString(ResponseEnvelope::wrap(resultObj, objectId));
-        } catch (const std::runtime_error& e) {
-          QString msg = QString::fromStdString(e.what());
-          int code = msg.contains(QStringLiteral("not found"), Qt::CaseInsensitive)
-                         ? ErrorCode::kMethodNotFound
-                         : ErrorCode::kMethodInvocationFailed;
-          throw JsonRpcException(code, msg,
-                                 QJsonObject{{QStringLiteral("objectId"), objectId},
-                                             {QStringLiteral("method"), method}});
-        }
+        return *res;
       });
 }
 
@@ -1060,16 +1130,26 @@ void NativeModeApi::registerSignalMethods() {
               QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.signals.subscribe")}});
         }
 
-        try {
-          QString subId = SignalMonitor::instance()->subscribe(objectId, signal);
-          QJsonObject result;
-          result[QStringLiteral("subscriptionId")] = subId;
-          return envelopeToString(ResponseEnvelope::wrap(result, objectId));
-        } catch (const std::runtime_error& e) {
-          throw JsonRpcException(ErrorCode::kSignalNotFound, QString::fromStdString(e.what()),
-                                 QJsonObject{{QStringLiteral("objectId"), objectId},
-                                             {QStringLiteral("signal"), signal}});
+        auto res = SignalMonitor::instance()
+                       ->subscribeExpected(objectId, signal)
+                       .transform_error([&](const SignalError& err) {
+                         int code = (err.kind == SignalErrorKind::ObjectNotFound)
+                                        ? ErrorCode::kObjectNotFound
+                                        : ErrorCode::kSignalNotFound;
+                         return JsonRpcException(code, err.message,
+                                                 QJsonObject{{QStringLiteral("objectId"), objectId},
+                                                             {QStringLiteral("signal"), signal}});
+                       })
+                       .transform([&](const QString& subId) {
+                         QJsonObject result;
+                         result[QStringLiteral("subscriptionId")] = subId;
+                         return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+                       });
+
+        if (!res) {
+          throw res.error();
         }
+        return *res;
       });
 
   // qt.signals.unsubscribe
@@ -1248,7 +1328,6 @@ void NativeModeApi::registerUiMethods() {
 
         // Resolve the row-identity index.
         QModelIndex rowTarget;
-        int failedSegment = -1;
         QJsonObject notFoundDetail;
 
         if (hasPath) {
@@ -1256,8 +1335,9 @@ void NativeModeApi::registerUiMethods() {
           QJsonArray pathArr = p[QStringLiteral("path")].toArray();
           for (const QJsonValue& v : pathArr)
             rowPath.append(v.toInt());
-          rowTarget = ModelNavigator::pathToIndex(model, rowPath, &failedSegment);
-          if (!rowTarget.isValid()) {
+          auto pathRes = ModelNavigator::pathToIndexExpected(model, rowPath);
+          if (!pathRes || (!pathRes->isValid() && !rowPath.isEmpty())) {
+            int failedSegment = pathRes ? 0 : pathRes.error();
             QModelIndex walk;
             for (int i = 0; i < failedSegment; ++i) {
               ModelNavigator::ensureFetched(model, walk);
@@ -1273,14 +1353,18 @@ void NativeModeApi::registerUiMethods() {
                             {QStringLiteral("requestedRow"), rowPath.value(failedSegment, -1)},
                             {QStringLiteral("availableRows"), model->rowCount(walk)},
                             {QStringLiteral("partialPath"), partial}};
+          } else {
+            rowTarget = *pathRes;
           }
         } else {
           QStringList itemPath;
           QJsonArray ipArr = p[QStringLiteral("itemPath")].toArray();
           for (const QJsonValue& v : ipArr)
             itemPath.append(v.toString());
-          rowTarget = ModelNavigator::textPathToIndex(model, itemPath, column, &failedSegment);
-          if (!rowTarget.isValid()) {
+          auto textRes =
+              ModelNavigator::textPathToIndexExpected(model, itemPath, Qt::DisplayRole, column);
+          if (!textRes || (!textRes->isValid() && !itemPath.isEmpty())) {
+            int failedSegment = textRes ? 0 : textRes.error();
             QJsonArray partial;
             QModelIndex walk;
             for (int i = 0; i < failedSegment; ++i) {
@@ -1300,6 +1384,8 @@ void NativeModeApi::registerUiMethods() {
                             {QStringLiteral("failedSegment"), failedSegment},
                             {QStringLiteral("segmentText"), itemPath.value(failedSegment)},
                             {QStringLiteral("partialPath"), partial}};
+          } else {
+            rowTarget = *textRes;
           }
         }
 
@@ -1619,48 +1705,51 @@ void NativeModeApi::registerNameMapMethods() {
   // qt.names.load
   m_handler->RegisterMethod(QStringLiteral("qt.names.load"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QString filePath = p[QStringLiteral("filePath")].toString();
+    auto res =
+        requireStringParam(p, QStringLiteral("filePath"), QStringLiteral("qt.names.load"))
+            .and_then([](const QString& filePath) {
+              return SymbolicNameMap::instance()->loadFromFileExpected(filePath).transform_error(
+                  [&](const QString& err) {
+                    return JsonRpcException(ErrorCode::kNameMapLoadError, err,
+                                            QJsonObject{{QStringLiteral("filePath"), filePath}});
+                  });
+            })
+            .transform([]() {
+              QJsonObject names = SymbolicNameMap::instance()->allNames();
+              QJsonObject result;
+              result[QStringLiteral("ok")] = true;
+              result[QStringLiteral("count")] = names.size();
+              return envelopeToString(ResponseEnvelope::wrap(result));
+            });
 
-    if (filePath.isEmpty()) {
-      throw JsonRpcException(
-          JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: filePath"),
-          QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.names.load")}});
+    if (!res) {
+      throw res.error();
     }
-
-    bool ok = SymbolicNameMap::instance()->loadFromFile(filePath);
-    if (!ok) {
-      throw JsonRpcException(ErrorCode::kNameMapLoadError,
-                             QStringLiteral("Failed to load name map from: %1").arg(filePath),
-                             QJsonObject{{QStringLiteral("filePath"), filePath}});
-    }
-
-    QJsonObject names = SymbolicNameMap::instance()->allNames();
-    QJsonObject result;
-    result[QStringLiteral("ok")] = true;
-    result[QStringLiteral("count")] = names.size();
-    return envelopeToString(ResponseEnvelope::wrap(result));
+    return *res;
   });
 
   // qt.names.save
   m_handler->RegisterMethod(QStringLiteral("qt.names.save"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QString filePath = p[QStringLiteral("filePath")].toString();
+    auto res =
+        requireStringParam(p, QStringLiteral("filePath"), QStringLiteral("qt.names.save"))
+            .and_then([](const QString& filePath) {
+              return SymbolicNameMap::instance()->saveToFileExpected(filePath).transform_error(
+                  [&](const QString& err) {
+                    return JsonRpcException(ErrorCode::kNameMapLoadError, err,
+                                            QJsonObject{{QStringLiteral("filePath"), filePath}});
+                  });
+            })
+            .transform([]() {
+              QJsonObject result;
+              result[QStringLiteral("ok")] = true;
+              return envelopeToString(ResponseEnvelope::wrap(result));
+            });
 
-    if (filePath.isEmpty()) {
-      throw JsonRpcException(
-          JsonRpcError::kInvalidParams, QStringLiteral("Missing required parameter: filePath"),
-          QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.names.save")}});
+    if (!res) {
+      throw res.error();
     }
-
-    bool ok = SymbolicNameMap::instance()->saveToFile(filePath);
-    if (!ok) {
-      throw JsonRpcException(ErrorCode::kNameMapLoadError,
-                             QStringLiteral("Failed to save name map to: %1").arg(filePath),
-                             QJsonObject{{QStringLiteral("filePath"), filePath}});
-    }
-    QJsonObject result;
-    result[QStringLiteral("ok")] = true;
-    return envelopeToString(ResponseEnvelope::wrap(result));
+    return *res;
   });
 }
 
@@ -1687,18 +1776,12 @@ void NativeModeApi::registerModelMethods() {
   // qt.models.data - fetch model data with pagination and role filtering
   m_handler->RegisterMethod(QStringLiteral("qt.models.data"), [](const QString& params) -> QString {
     auto p = parseParams(params);
-    QObject* obj = resolveObjectParam(p, QStringLiteral("qt.models.data"));
-    QString objectId = p[QStringLiteral("objectId")].toString();
-
-    QAbstractItemModel* model = ModelNavigator::resolveModel(obj);
-    if (!model) {
-      throw JsonRpcException(
-          ErrorCode::kNotAModel,
-          QStringLiteral("Object is not a model and does not have an associated model"),
-          QJsonObject{{QStringLiteral("objectId"), objectId},
-                      {QStringLiteral("hint"),
-                       QStringLiteral("Use qt.models.list to discover available models")}});
+    auto modelRes = tryResolveModelParam(p, QStringLiteral("qt.models.data"));
+    if (!modelRes) {
+      throw modelRes.error();
     }
+    QAbstractItemModel* model = *modelRes;
+    QString objectId = p[QStringLiteral("objectId")].toString();
 
     // Resolve parent path.
     QList<int> parentPath;
@@ -1707,9 +1790,9 @@ void NativeModeApi::registerModelMethods() {
       parentPath.append(v.toInt());
 
     if (!parentPath.isEmpty()) {
-      int failed = -1;
-      QModelIndex parentIdx = ModelNavigator::pathToIndex(model, parentPath, &failed);
-      if (!parentIdx.isValid()) {
+      auto parentRes = ModelNavigator::pathToIndexExpected(model, parentPath);
+      if (!parentRes || !parentRes->isValid()) {
+        int failed = parentRes ? 0 : parentRes.error();
         // Compute available rows at the failure point for the error detail.
         QModelIndex walk;
         for (int i = 0; i < failed; ++i) {
@@ -1737,14 +1820,14 @@ void NativeModeApi::registerModelMethods() {
         resolvedRoles.append(roleVal.toInt());
       } else if (roleVal.isString()) {
         QString roleName = roleVal.toString();
-        int roleId = ModelNavigator::resolveRoleName(model, roleName);
-        if (roleId < 0) {
+        auto roleRes = ModelNavigator::resolveRoleNameExpected(model, roleName);
+        if (!roleRes) {
           throw JsonRpcException(
               ErrorCode::kModelRoleNotFound, QStringLiteral("Role not found: %1").arg(roleName),
               QJsonObject{{QStringLiteral("roleName"), roleName},
                           {QStringLiteral("availableRoles"), ModelNavigator::getRoleNames(model)}});
         }
-        resolvedRoles.append(roleId);
+        resolvedRoles.append(*roleRes);
       }
     }
 
@@ -1757,16 +1840,12 @@ void NativeModeApi::registerModelMethods() {
   m_handler->RegisterMethod(
       QStringLiteral("qt.models.search"), [](const QString& params) -> QString {
         auto p = parseParams(params);
-        QObject* obj = resolveObjectParam(p, QStringLiteral("qt.models.search"));
-        QString objectId = p[QStringLiteral("objectId")].toString();
-
-        QAbstractItemModel* model = ModelNavigator::resolveModel(obj);
-        if (!model) {
-          throw JsonRpcException(
-              ErrorCode::kNotAModel,
-              QStringLiteral("Object is not a model and does not have an associated model"),
-              QJsonObject{{QStringLiteral("objectId"), objectId}});
+        auto modelRes = tryResolveModelParam(p, QStringLiteral("qt.models.search"));
+        if (!modelRes) {
+          throw modelRes.error();
         }
+        QAbstractItemModel* model = *modelRes;
+        QString objectId = p[QStringLiteral("objectId")].toString();
 
         // parent
         QList<int> parentPath;
@@ -1776,14 +1855,15 @@ void NativeModeApi::registerModelMethods() {
 
         QModelIndex parentIdx;
         if (!parentPath.isEmpty()) {
-          int failed = -1;
-          parentIdx = ModelNavigator::pathToIndex(model, parentPath, &failed);
-          if (!parentIdx.isValid()) {
+          auto parentRes = ModelNavigator::pathToIndexExpected(model, parentPath);
+          if (!parentRes || !parentRes->isValid()) {
+            int failed = parentRes ? 0 : parentRes.error();
             throw JsonRpcException(ErrorCode::kInvalidParentPath,
                                    QStringLiteral("Parent path invalid at segment %1").arg(failed),
                                    QJsonObject{{QStringLiteral("path"), parentArr},
                                                {QStringLiteral("failedSegment"), failed}});
           }
+          parentIdx = *parentRes;
         }
 
         // opts
@@ -1796,15 +1876,15 @@ void NativeModeApi::registerModelMethods() {
           opts.role = roleVal.toInt();
         } else {
           QString roleName = roleVal.toString(QStringLiteral("display"));
-          int roleId = ModelNavigator::resolveRoleName(model, roleName);
-          if (roleId < 0) {
+          auto roleRes = ModelNavigator::resolveRoleNameExpected(model, roleName);
+          if (!roleRes) {
             throw JsonRpcException(
                 ErrorCode::kModelRoleNotFound, QStringLiteral("Role not found: %1").arg(roleName),
                 QJsonObject{
                     {QStringLiteral("roleName"), roleName},
                     {QStringLiteral("availableRoles"), ModelNavigator::getRoleNames(model)}});
           }
-          opts.role = roleId;
+          opts.role = *roleRes;
         }
 
         QString matchMode = p[QStringLiteral("match")].toString(QStringLiteral("contains"));
@@ -1826,12 +1906,12 @@ void NativeModeApi::registerModelMethods() {
         opts.maxHits = p[QStringLiteral("maxHits")].toInt(10);
 
         // Compile regex if needed.
-        QString regexError;
-        if (!ModelNavigator::compileFindOptions(opts, &regexError)) {
+        auto compileRes = ModelNavigator::compileFindOptionsExpected(opts);
+        if (!compileRes) {
           throw JsonRpcException(ErrorCode::kInvalidRegex,
-                                 QStringLiteral("Invalid regex: %1").arg(regexError),
+                                 QStringLiteral("Invalid regex: %1").arg(compileRes.error()),
                                  QJsonObject{{QStringLiteral("pattern"), opts.value},
-                                             {QStringLiteral("error"), regexError}});
+                                             {QStringLiteral("error"), compileRes.error()}});
         }
 
         QJsonArray matches;

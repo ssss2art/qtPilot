@@ -47,6 +47,7 @@ class TestObjectId : public QObject {
   void testSerializeObjectInfo();
   void testSerializeTree();
   void testSerializeTreeDepthLimit();
+  void testFindByObjectIdExpectedMonadic();
 
  private:
   QWidget* m_testWindow = nullptr;
@@ -414,6 +415,30 @@ void TestObjectId::testSerializeTreeDepthLimit() {
               JsonArrayContains(AllOf(
                   HasJsonField("objectName", "level2"),
                   HasJsonField("children"))))))));
+}
+
+void TestObjectId::testFindByObjectIdExpectedMonadic() {
+  QWidget parent;
+  parent.setObjectName(QStringLiteral("topParent"));
+  QPushButton* btn = new QPushButton(QStringLiteral("Press"), &parent);
+  btn->setObjectName(QStringLiteral("pressBtn"));
+
+  QString id = generateObjectId(btn);
+
+  // Success case
+  auto res = findByObjectIdExpected(id, &parent);
+  QVERIFY(res.has_value());
+  QCOMPARE(*res, static_cast<QObject*>(btn));
+
+  // Failure case: empty ID
+  auto emptyRes = findByObjectIdExpected(QString(), &parent);
+  QVERIFY(!emptyRes.has_value());
+  QVERIFY(!emptyRes.error().isEmpty());
+
+  // Failure case: missing ID
+  auto missingRes = findByObjectIdExpected(QStringLiteral("nonexistent/path"), &parent);
+  QVERIFY(!missingRes.has_value());
+  QVERIFY(!missingRes.error().isEmpty());
 }
 
 QTEST_MAIN(TestObjectId)

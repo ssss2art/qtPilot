@@ -250,7 +250,7 @@ development build, and it must never be enabled in a build you distribute. See
 
 - **Runtime:** Python 3.11+ (for MCP server)
 - **Target apps:** Qt 5.15+ or Qt 6.5+ (on macOS, Qt 6.5+ only — see Platform Support)
-- **Build:** CMake 3.16+, C++17 compiler
+- **Build:** CMake 3.16+, C++23 compiler
 
 ## License
 

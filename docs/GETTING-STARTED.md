@@ -12,14 +12,16 @@ qtPilot consists of two main components:
    development build of your own app (see [MOBILE.md](MOBILE.md))
 2. **The MCP Server** - A Python CLI (`qtpilot`) that connects Claude to the probe
 
-```
-┌────────────────────────────┐     ┌──────────────────┐     ┌─────────────┐
-│  Qt Application            │     │  qtpilot serve   │     │  Claude     │
-│  ┌──────────────────────┐  │ WS  │  (MCP Server)    │ MCP │             │
-│  │  qtPilot Probe       │◄─┼─────┤                  │◄────┤             │
-│  │  injected or linked  │  │     │                  │     │             │
-│  └──────────────────────┘  │     │                  │     │             │
-└────────────────────────────┘     └──────────────────┘     └─────────────┘
+```mermaid
+flowchart LR
+    App["Target Qt Application<br/>(Widgets / QML)"]
+    Probe["qtPilot Probe<br/>(Injected or Linked)"]
+    Server["qtPilot Server<br/>(FastMCP)"]
+    Agent["AI Assistant<br/>(MCP Client)"]
+
+    App --- Probe
+    Probe <-->|"WebSocket (:9222)"| Server
+    Server <-->|"MCP Stdio / HTTP"| Agent
 ```
 
 ## Installation Options
@@ -53,6 +55,7 @@ Download probe binaries directly from [GitHub Releases](https://github.com/ssss2
 
 Release assets vary by platform and Qt version. Use `qtpilot download-tools` to
 select the correct archive and verify its checksum. Typical artifacts include:
+
 - `qtPilot-probe-qt5.15-linux-gcc13.so` / `qtPilot-probe-qt5.15-windows-msvc17.dll`
 - `qtPilot-probe-qt6.5-linux-gcc13.so` / `qtPilot-probe-qt6.5-windows-msvc17.dll`
 - `qtPilot-probe-qt6.8-linux-gcc13.so` / `qtPilot-probe-qt6.8-windows-msvc17.dll`
@@ -72,6 +75,7 @@ See [BUILDING.md](BUILDING.md) for instructions on compiling qtPilot yourself.
 The probe must match your target application's Qt major.minor version. To check what Qt version an application uses:
 
 **Windows:**
+
 ```powershell
 # Look for Qt DLLs in the application directory
 dir "C:\path\to\app" | findstr Qt
@@ -79,6 +83,7 @@ dir "C:\path\to\app" | findstr Qt
 ```
 
 **Linux:**
+
 ```bash
 # Check linked libraries
 ldd /path/to/app | grep -i qt
@@ -86,11 +91,13 @@ ldd /path/to/app | grep -i qt
 ```
 
 **macOS:**
+
 ```bash
 otool -L /path/to/App.app/Contents/MacOS/App | grep -i Qt
 ```
 
 Available probe versions:
+
 | Qt Version | Probe Name | Default Compiler | Notes |
 |------------|------------|-----------------|-------|
 | Qt 5.15.x | `qt5.15` | gcc13 / msvc17 | For Qt 5 applications |
@@ -121,6 +128,7 @@ qtpilot serve --mode native --target /path/to/YourApp.app
 ```
 
 This automatically:
+
 1. Locates the correct probe for your platform
 2. Detects the Qt installation and sets up `PATH` / `QT_PLUGIN_PATH` (or use `--qt-dir` to specify)
 3. Launches the application with the probe loaded
@@ -133,6 +141,7 @@ For more control, use the launcher directly.
 The launcher auto-detects your Qt installation and sets `PATH` and `QT_PLUGIN_PATH` automatically. If auto-detection fails, use `--qt-dir` to point at your Qt installation:
 
 **Windows:**
+
 ```powershell
 # Auto-detect Qt (works when built from source — uses build-time Qt prefix)
 qtPilot-launcher.exe your-app.exe
@@ -147,12 +156,14 @@ qtPilot-launcher.exe --qt-dir C:\Qt\5.15.1\msvc2019_64\bin your-app.exe
 You can also set `QT_PLUGIN_PATH` manually if you prefer — the launcher respects existing env vars and won't override them.
 
 **Linux:**
+
 ```bash
 # LD_PRELOAD-based injection
 LD_PRELOAD=/path/to/libqtpilot.so ./your-app arg1 arg2
 ```
 
 To automatically inject the probe into child processes spawned by the target:
+
 ```bash
 qtPilot-launcher.exe --port 0 --inject-children your-app.exe
 ```
@@ -161,7 +172,7 @@ qtPilot-launcher.exe --port 0 --inject-children your-app.exe
 
 If the probe DLL can't load (missing Qt DLLs), the launcher catches this **before** injection and prints an actionable error:
 
-```
+```text
 [injector] ERROR: Probe DLL failed pre-flight dependency check.
 [injector]   Cause: The specified module could not be found. (error 126)
 [injector] This usually means Qt runtime DLLs are not on PATH.
@@ -173,7 +184,7 @@ If the probe DLL can't load (missing Qt DLLs), the launcher catches this **befor
 
 There are two ways to launch with admin privileges:
 
-**Option A: From an already-elevated terminal (Recommended)**
+##### Option A: From an already-elevated terminal (Recommended)
 
 Open an Administrator PowerShell or Command Prompt and use `--elevated`:
 
@@ -183,11 +194,12 @@ Open an Administrator PowerShell or Command Prompt and use `--elevated`:
 ```
 
 This is the recommended approach because:
+
 - All launcher output (injection logs, errors) is visible in your terminal
 - No transient `cmd.exe` window that closes immediately
 - Qt auto-detection works the same as non-elevated launches
 
-**Option B: Using `--run-as-admin` (auto-elevation via UAC)**
+##### Option B: Using `--run-as-admin` (auto-elevation via UAC)
 
 ```cmd
 qtPilot-launcher.exe --run-as-admin --port 9222 MyAdminApp.exe
@@ -198,11 +210,13 @@ This triggers a Windows UAC prompt. Once approved, the launcher re-launches itse
 The launcher automatically forwards `PATH`, `QT_PLUGIN_PATH`, and all `QTPILOT_*` environment variables across the UAC elevation boundary. The `--qt-dir` flag is also forwarded, and the build-time Qt prefix is compiled into the launcher, so Qt auto-detection works across elevation too.
 
 On Linux, use `sudo` instead:
+
 ```bash
 sudo qtPilot-launcher --port 9222 /path/to/admin-app
 ```
 
 Then start the MCP server separately:
+
 ```bash
 qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
@@ -221,6 +235,7 @@ cmake --install build/release --prefix /opt/qtpilot
 ```
 
 On Windows:
+
 ```powershell
 cmake --preset windows-release -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64"
 cmake --build --preset windows-release
@@ -246,17 +261,20 @@ cmake --build build
 ```
 
 On Windows:
+
 ```powershell
 cmake -B build -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64;C:\qtpilot"
 cmake --build build
 ```
 
 `qtPilot_inject_probe()` handles the platform details automatically:
+
 - **Windows (shared):** Copies the probe DLL next to your executable after each build
 - **Linux (shared):** Generates a helper script (`qtpilot-preload-myapp.sh`) that launches your app with `LD_PRELOAD` set
 - **Mobile / Static (`QTPILOT_PROBE_STATIC`):** Links the static archive (`libqtPilot-probe.a`) with whole-archive force loading automatically into the target executable (see [MOBILE.md](MOBILE.md))
 
 To run with the probe on Linux (shared), use the generated script:
+
 ```bash
 ./build/qtpilot-preload-myapp.sh
 ```
@@ -315,7 +333,7 @@ rather than leaving you to discover it.
 Treat an instrumented application the way you would treat any process with a
 debug port open: run it on a network you control, and prefer not to leave one
 running on a shared network when you are not using it. Authentication is tracked
-as R7 in [`observability-testability-gaps.md`](observability-testability-gaps.md)
+as R7 in [`OBSERVABILITY-GAPS.md`](OBSERVABILITY-GAPS.md)
 and does not exist yet.
 
 #### Restricting to one machine
@@ -352,9 +370,10 @@ What the default setup supports, and what each shape needs:
 a stale client blocks a new connection. Enumerating many instances and connecting
 to them in turn works today; holding sessions to several at once does not. That
 limit is the server, not the network setting — tracked as R6 in
-[`observability-testability-gaps.md`](observability-testability-gaps.md).
+[`OBSERVABILITY-GAPS.md`](OBSERVABILITY-GAPS.md).
 
 Example:
+
 ```bash
 # Linux
 QTPILOT_PORT=9999 QTPILOT_MODE=native LD_PRELOAD=/path/to/libqtpilot.so ./your-app
@@ -421,7 +440,9 @@ qtPilot supports three focused API modes plus an aggregate `all` mode. Ten
 `qtpilot_*` session, logging, and recording tools are present in every mode.
 
 ### Native Mode (`--mode native`)
+
 Exposes 27 `qt_*` tools plus the 10 shared tools (37 total). Use this for:
+
 - Test automation
 - Deep inspection of widget properties
 - Signal/slot monitoring
@@ -432,7 +453,9 @@ qtpilot serve --mode native --target /path/to/app
 ```
 
 ### Computer Use Mode (`--mode cu`)
+
 Exposes 13 `cu_*` tools plus the 10 shared tools (23 total). Use this for:
+
 - Visual tasks
 - Custom widgets without accessibility info
 - Games or canvas-based UIs
@@ -442,7 +465,9 @@ qtpilot serve --mode cu --target /path/to/app
 ```
 
 ### Chrome Mode (`--mode chrome`)
+
 Exposes 8 `chr_*` tools plus the 10 shared tools (18 total). Use this for:
+
 - Form filling
 - Semantic element selection
 - When you want Claude to "see" the UI like a web page
@@ -452,6 +477,7 @@ qtpilot serve --mode chrome --target /path/to/app
 ```
 
 ### All Modes (`--mode all`)
+
 Exposes all 58 tools. Useful for exploration and mixed workflows.
 
 ```bash

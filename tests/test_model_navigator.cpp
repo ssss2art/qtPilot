@@ -141,6 +141,13 @@ class TestModelNavigator : public QObject {
   void testApiUiClickItemComboBoxRejectsNonZeroColumn();
   void testApiUiClickItemExpandsAncestors();
 
+  // Monadic C++23 ModelNavigator tests
+  void testResolveModelExpectedMonadic();
+  void testResolveRoleNameExpectedMonadic();
+  void testPathToIndexExpectedMonadic();
+  void testTextPathToIndexExpectedMonadic();
+  void testCompileFindOptionsExpectedMonadic();
+
  private:
   /// @brief Make a JSON-RPC call and return the full parsed response object.
   QJsonObject callRaw(const QString& method, const QJsonObject& params);
@@ -532,14 +539,14 @@ void TestModelNavigator::testPathToIndexCallsEnsureFetched() {
 
 void TestModelNavigator::testTextPathToIndexTwoLevel() {
   auto* tree = new QStandardItemModel(this);
-  auto* etc = new QStandardItem("ETC");
-  etc->appendRow(new QStandardItem("fos4 Fresnel"));
-  etc->appendRow(new QStandardItem("ColorSource"));
-  tree->appendRow(etc);
+  auto* vendor = new QStandardItem("VendorA");
+  vendor->appendRow(new QStandardItem("FixtureType 1"));
+  vendor->appendRow(new QStandardItem("FixtureType 2"));
+  tree->appendRow(vendor);
 
-  QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"ETC", "fos4 Fresnel"}, 0);
+  QModelIndex idx = ModelNavigator::textPathToIndex(tree, {"VendorA", "FixtureType 1"}, 0);
   QEXPECT_THAT(idx.isValid(), IsTrue());
-  QEXPECT_THAT(tree->data(idx, Qt::DisplayRole).toString(), QStrEq("fos4 Fresnel"));
+  QEXPECT_THAT(tree->data(idx, Qt::DisplayRole).toString(), QStrEq("FixtureType 1"));
 
   delete tree;
 }
@@ -696,13 +703,13 @@ void TestModelNavigator::testApiModelsDataEchoesParent() {
 
 void TestModelNavigator::testFindRecursiveExactMatch() {
   auto* tree = new QStandardItemModel(this);
-  auto* etc = new QStandardItem("ETC");
-  etc->appendRow(new QStandardItem("fos4 Fresnel"));
-  tree->appendRow(etc);
-  tree->appendRow(new QStandardItem("Martin"));
+  auto* vendorA = new QStandardItem("VendorA");
+  vendorA->appendRow(new QStandardItem("FixtureType 1"));
+  tree->appendRow(vendorA);
+  tree->appendRow(new QStandardItem("VendorB"));
 
   ModelNavigator::FindOptions opts;
-  opts.value = "Martin";
+  opts.value = "VendorB";
   opts.match = ModelNavigator::MatchMode::Exact;
   opts.maxHits = 10;
 
@@ -719,16 +726,16 @@ void TestModelNavigator::testFindRecursiveExactMatch() {
 
 void TestModelNavigator::testFindRecursiveContainsMultipleLevels() {
   auto* tree = new QStandardItemModel(this);
-  auto* a = new QStandardItem("ETC");
-  a->appendRow(new QStandardItem("fos4 Fresnel"));
-  a->appendRow(new QStandardItem("ColorSource"));
+  auto* a = new QStandardItem("VendorA");
+  a->appendRow(new QStandardItem("Spotlight 1"));
+  a->appendRow(new QStandardItem("DeviceProfile 2"));
   tree->appendRow(a);
-  auto* b = new QStandardItem("Martin");
-  b->appendRow(new QStandardItem("MAC Fresnel"));
+  auto* b = new QStandardItem("VendorB");
+  b->appendRow(new QStandardItem("Spotlight 2"));
   tree->appendRow(b);
 
   ModelNavigator::FindOptions opts;
-  opts.value = "Fresnel";
+  opts.value = "Spotlight";
   opts.match = ModelNavigator::MatchMode::Contains;
   opts.maxHits = 10;
 
@@ -957,9 +964,9 @@ void TestModelNavigator::testApiUiClickItemInvalidPathError() {
 
 void TestModelNavigator::testApiUiClickItemTextPathSelect() {
   auto* tree = new QStandardItemModel(this);
-  auto* etc = new QStandardItem("ETC");
-  etc->appendRow(new QStandardItem("fos4 Fresnel"));
-  tree->appendRow(etc);
+  auto* vendor = new QStandardItem("VendorA");
+  vendor->appendRow(new QStandardItem("FixtureType 1"));
+  tree->appendRow(vendor);
   auto* view = new QTreeView();
   view->setObjectName("treeView");
   view->setModel(tree);
@@ -971,7 +978,7 @@ void TestModelNavigator::testApiUiClickItemTextPathSelect() {
   QString viewId = ObjectRegistry::instance()->objectId(view);
   QJsonValue result = callResult("qt.ui.clickItem",
                                  QJsonObject{{"objectId", viewId},
-                                             {"itemPath", QJsonArray{"ETC", "fos4 Fresnel"}},
+                                             {"itemPath", QJsonArray{"VendorA", "FixtureType 1"}},
                                              {"action", "select"}});
   QJsonObject data = result.toObject();
   QEXPECT_THAT(data, HasJsonField("found", true));
@@ -1153,6 +1160,135 @@ void TestModelNavigator::testApiUiClickItemExpandsAncestors() {
 
   delete view;
   delete tree;
+}
+
+void TestModelNavigator::testResolveModelExpectedMonadic() {
+  QStandardItemModel model;
+  auto modelRes = ModelNavigator::resolveModelExpected(&model);
+  QVERIFY(modelRes.has_value());
+  QCOMPARE(*modelRes, &model);
+
+  QTableView view;
+  view.setModel(&model);
+  auto viewRes = ModelNavigator::resolveModelExpected(&view);
+  QVERIFY(viewRes.has_value());
+  QCOMPARE(*viewRes, &model);
+
+  QPushButton button;
+  auto notModelRes = ModelNavigator::resolveModelExpected(&button);
+  QVERIFY(!notModelRes.has_value());
+  QVERIFY(!notModelRes.error().isEmpty());
+
+  auto nullRes = ModelNavigator::resolveModelExpected(nullptr);
+  QVERIFY(!nullRes.has_value());
+}
+
+void TestModelNavigator::testResolveRoleNameExpectedMonadic() {
+  QStandardItemModel model;
+  auto displayRes = ModelNavigator::resolveRoleNameExpected(&model, QStringLiteral("display"));
+  QVERIFY(displayRes.has_value());
+  QCOMPARE(*displayRes, static_cast<int>(Qt::DisplayRole));
+
+  auto editRes = ModelNavigator::resolveRoleNameExpected(&model, QStringLiteral("edit"));
+  QVERIFY(editRes.has_value());
+  QCOMPARE(*editRes, static_cast<int>(Qt::EditRole));
+
+  auto invalidRes = ModelNavigator::resolveRoleNameExpected(&model, QStringLiteral("badRole"));
+  QVERIFY(!invalidRes.has_value());
+
+  auto nullModelRes = ModelNavigator::resolveRoleNameExpected(nullptr, QStringLiteral("display"));
+  QVERIFY(!nullModelRes.has_value());
+}
+
+void TestModelNavigator::testPathToIndexExpectedMonadic() {
+  auto* tree = new QStandardItemModel(this);
+  auto* a = new QStandardItem("A");
+  auto* b = new QStandardItem("B");
+  a->appendRow(new QStandardItem("A.0"));
+  a->appendRow(new QStandardItem("A.1"));
+  b->appendRow(new QStandardItem("B.0"));
+  tree->appendRow(a);
+  tree->appendRow(b);
+
+  // Success: valid path {0, 1} -> A.1
+  auto successRes = ModelNavigator::pathToIndexExpected(tree, {0, 1});
+  QVERIFY(successRes.has_value());
+  QVERIFY(successRes->isValid());
+  QEXPECT_THAT(tree->data(*successRes, Qt::DisplayRole).toString(), QStrEq("A.1"));
+
+  // Success: empty path -> invalid index (root)
+  auto rootRes = ModelNavigator::pathToIndexExpected(tree, {});
+  QVERIFY(rootRes.has_value());
+  QVERIFY(!rootRes->isValid());
+
+  // Failure: segment 99 out of range at index 0
+  auto failRes = ModelNavigator::pathToIndexExpected(tree, {99});
+  QVERIFY(!failRes.has_value());
+  QCOMPARE(failRes.error(), 0);
+
+  // Failure: second segment out of range at index 1
+  auto failSeg1 = ModelNavigator::pathToIndexExpected(tree, {0, 42});
+  QVERIFY(!failSeg1.has_value());
+  QCOMPARE(failSeg1.error(), 1);
+
+  // Failure: null model
+  auto failNull = ModelNavigator::pathToIndexExpected(nullptr, {0});
+  QVERIFY(!failNull.has_value());
+  QCOMPARE(failNull.error(), 0);
+
+  delete tree;
+}
+
+void TestModelNavigator::testTextPathToIndexExpectedMonadic() {
+  auto* tree = new QStandardItemModel(this);
+  auto* vendor = new QStandardItem("VendorA");
+  vendor->appendRow(new QStandardItem("Device 1"));
+  vendor->appendRow(new QStandardItem("Device 2"));
+  tree->appendRow(vendor);
+
+  // Success: {"VendorA", "Device 1"}
+  auto successRes =
+      ModelNavigator::textPathToIndexExpected(tree, {"VendorA", "Device 1"}, Qt::DisplayRole, 0);
+  QVERIFY(successRes.has_value());
+  QVERIFY(successRes->isValid());
+  QEXPECT_THAT(tree->data(*successRes, Qt::DisplayRole).toString(), QStrEq("Device 1"));
+
+  // Failure: missing segment at index 1
+  auto failRes = ModelNavigator::textPathToIndexExpected(tree, {"VendorA", "MissingDevice"},
+                                                         Qt::DisplayRole, 0);
+  QVERIFY(!failRes.has_value());
+  QCOMPARE(failRes.error(), 1);
+
+  // Failure: missing segment at index 0
+  auto failRes0 =
+      ModelNavigator::textPathToIndexExpected(tree, {"MissingVendor"}, Qt::DisplayRole, 0);
+  QVERIFY(!failRes0.has_value());
+  QCOMPARE(failRes0.error(), 0);
+
+  delete tree;
+}
+
+void TestModelNavigator::testCompileFindOptionsExpectedMonadic() {
+  ModelNavigator::FindOptions optsValid;
+  optsValid.match = ModelNavigator::MatchMode::Regex;
+  optsValid.value = QStringLiteral("^[A-Z]+_[0-9]+$");
+
+  auto validRes = ModelNavigator::compileFindOptionsExpected(optsValid);
+  QVERIFY(validRes.has_value());
+
+  ModelNavigator::FindOptions optsInvalid;
+  optsInvalid.match = ModelNavigator::MatchMode::Regex;
+  optsInvalid.value = QStringLiteral("[unclosed_regex");
+
+  auto invalidRes = ModelNavigator::compileFindOptionsExpected(optsInvalid);
+  QVERIFY(!invalidRes.has_value());
+  QVERIFY(!invalidRes.error().isEmpty());
+
+  ModelNavigator::FindOptions optsExact;
+  optsExact.match = ModelNavigator::MatchMode::Exact;
+  optsExact.value = QStringLiteral("plain");
+  auto exactRes = ModelNavigator::compileFindOptionsExpected(optsExact);
+  QVERIFY(exactRes.has_value());
 }
 
 QTEST_MAIN(TestModelNavigator)
