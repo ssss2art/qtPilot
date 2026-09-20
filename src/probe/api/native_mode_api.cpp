@@ -576,7 +576,8 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
     if (!sequence.isEmpty()) {
       InputSimulator::sendKeySequence(w, sequence);
     }
-    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("target"), QStringLiteral("quickItem")}};
+    return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("target"), QStringLiteral("quickItem")}};
   }
 #endif
 
