@@ -51,6 +51,7 @@ would route through `QAccessible::queryAccessibleInterface(QWindow*)` for `QQuic
 ### QML metadata already supported
 
 `src/probe/introspection/qml_inspector.{h,cpp}` extracts, for a `QQuickItem`:
+
 - `qmlId` (via `QQmlContext::nameForObject`)
 - `qmlFile` (source URL)
 - `shortTypeName` (className with `QQuick` prefix stripped, e.g. `QQuickRectangle` → `Rectangle`)
@@ -70,6 +71,7 @@ Legend — **basis**: `live` observed against a running pure-QML app (date) ·
 > a real QML control. As of 2026-08-01 every row has at least one `live` basis.
 
 ### 3a. Discovery & connection
+
 | Step | Tool | Expected | Result | Basis |
 |---|---|---|---|---|
 | Status snapshot | `qtpilot_status` | mode/connection/discovered probes | ✅ | live 2026-07-08 |
@@ -81,6 +83,7 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 `QGuiApplication`.
 
 ### 3b. Native introspection
+
 | Step | Tool | Expected | Result | Basis |
 |---|---|---|---|---|
 | Object tree reaches QQuickWindow + items | `qt_objects_tree(maxDepth=6)` | QQuickWindow → contentItem → QML items | ✅ was ❌ **I1**, fixed | test (`test_object_id`) |
@@ -93,6 +96,7 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 | ListModel/model access | `qt_models_*` | QML list/table models | ✅ list / data / roles / tree paths / lazy-aware search | live 2026-08-01 against `test_app_qml` |
 
 ### 3c. Accessibility (the focus)
+
 | Step | Tool | Expected | Result | Basis |
 |---|---|---|---|---|
 | Semantic tree of QML window | `chr_readPage` | ARIA-style tree of QML controls | ✅ was ❌ **F1**, fixed — 43 nodes | live 2026-07-17 |
@@ -103,6 +107,7 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 | Unlabeled vs labeled controls | — | how the fallback name chain behaves for QML | ✅ 104/104 nodes named (accessible name → objectName → className) | live 2026-08-01 |
 
 ### 3d. Interaction & visuals
+
 | Step | Tool | Expected | Result | Basis |
 |---|---|---|---|---|
 | Native click | `qt_ui_click` | clicks QML control | ✅ was ❌, **fixed on this branch** | test (`test_qml_interaction`) |
@@ -113,6 +118,7 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 | Computer-use click | `cu_leftClick` | drives the QQuickWindow | ✅ | live 2026-07-09 |
 
 ### 3e. Events & signals
+
 | Step | Tool | Expected | Result | Basis |
 |---|---|---|---|---|
 | Subscribe to QML signal | `qt_signals_subscribe` | fires on property change / signal | ✅ `toggled` delivered | live 2026-08-01 |
@@ -128,7 +134,6 @@ on a suspected defect: the gallery app builds its grids from `Repeater`s over
 JavaScript arrays and contains no `QAbstractItemModel` anywhere. `test_app_qml/`
 was written to close that gap and is now part of this repo; see
 [`test_app_qml/README.md`](../test_app_qml/README.md).
-
 
 ---
 
@@ -149,6 +154,7 @@ Target: `a pure Qt Quick gallery app bundle`
 **F1 fix confirmed working live.** Before the fix `chr_*` threw `kNoActiveWindow` on this app.
 
 ### Confirmed gaps (post-F1)
+
 - [x] **F1 — Chrome/a11y blind to pure QML** → FIXED & validated (QWindow-aware discovery + `walk(QObject*)`).
 - [ ] **I1 — native `qt_objects_tree` can't see the QQuickWindow.** Top-level `QWindow`s have
   `parent()==nullptr`, so the parent-based tree walk rooted at the app never reaches them.
@@ -160,12 +166,14 @@ Target: `a pure Qt Quick gallery app bundle`
 - [ ] **F12 — QML object IDs don't round-trip** (`matchesSegment` vs `generateIdSegment`).
 
 ### Recommended fixes (priority order)
+
 1. [x] QML-aware root discovery for Chrome/a11y — `getActiveWindowObject()` + `walk(QObject*)`.
 2. [x] I1: top-level `QWindow`s as native tree roots.
 3. [x] F12: reconcile `matchesSegment` with `generateIdSegment`.
 4. [x] Computer-Use `QWindow`/`QQuickWindow` path.
 
 ### Computer-Use validation — 2026-07-09 (the QML gallery app)
+
 Full `cu.*` path made QWindow-aware end to end (InputSimulator + Screenshot QWindow
 overloads; `CuTarget` dispatch). Events are delivered with
 `QCoreApplication::sendEvent(QQuickWindow, ...)` at scene coords (Qt Quick routes to the
@@ -179,6 +187,7 @@ and interaction surfaces all now work against pure Qt Quick apps.
 ---
 
 ## 5. Notes
+
 - Prefer `qt_names_register` friendly names over text-derived objectIds (QML ids may be
   more stable; verify).
 - Rebuild qtPilot against the target app's current Qt before probing (re-check with

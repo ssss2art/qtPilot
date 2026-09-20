@@ -327,24 +327,37 @@ void ObjectRegistry::unregisterObject(QObject* obj) {
   }
 }
 
-QObject* ObjectRegistry::findByObjectName(const QString& name, QObject* root) {
+std::expected<QObject*, QString> ObjectRegistry::findByObjectNameExpected(const QString& name,
+                                                                          QObject* root) {
+  if (name.isEmpty()) {
+    return std::unexpected(QStringLiteral("Object name is empty"));
+  }
+
   std::unique_lock<std::recursive_mutex> lock(m_mutex);
 
   if (root) {
-    // Search within root's subtree
     if (root->objectName() == name) {
       return root;
     }
-    return findByObjectNameHelper(root, name);
+    QObject* found = findByObjectNameHelper(root, name);
+    if (found) {
+      return found;
+    }
+    return std::unexpected(QStringLiteral("Object with name '%1' not found under root '%2'")
+                               .arg(name, root->objectName()));
   }
 
-  // Search all tracked objects
   for (QObject* obj : std::as_const(m_objects)) {
     if (obj && obj->objectName() == name) {
       return obj;
     }
   }
-  return nullptr;
+  return std::unexpected(QStringLiteral("Object with name '%1' not found in registry").arg(name));
+}
+
+QObject* ObjectRegistry::findByObjectName(const QString& name, QObject* root) {
+  auto res = findByObjectNameExpected(name, root);
+  return res.has_value() ? *res : nullptr;
 }
 
 QList<QObject*> ObjectRegistry::findAllByClassName(const QString& className, QObject* root) {
@@ -486,9 +499,9 @@ QString ObjectRegistry::objectId(QObject* obj) {
   return id;
 }
 
-QObject* ObjectRegistry::findById(const QString& id) {
+std::expected<QObject*, QString> ObjectRegistry::findByIdExpected(const QString& id) {
   if (id.isEmpty()) {
-    return nullptr;
+    return std::unexpected(QStringLiteral("Object identifier is empty"));
   }
 
   std::unique_lock<std::recursive_mutex> lock(m_mutex);
@@ -517,8 +530,12 @@ QObject* ObjectRegistry::findById(const QString& id) {
   }
 
   // Fall back to tree search using object_id module
-  // This handles cases where ID wasn't cached (e.g., manual search)
-  return findByObjectId(id);
+  return findByObjectIdExpected(id);
+}
+
+QObject* ObjectRegistry::findById(const QString& id) {
+  auto res = findByIdExpected(id);
+  return res.has_value() ? *res : nullptr;
 }
 
 void ObjectRegistry::refreshObjectId(QObject* obj) {

@@ -97,10 +97,27 @@ class TestBindPolicy : public QObject {
     QEXPECT_THAT(listenAddress(), Eq(QHostAddress(QHostAddress::LocalHost)));
   }
 
+  void testParseExposureMonadic() {
+    auto lanRes = parseExposure(QStringLiteral("lan"));
+    QVERIFY(lanRes.has_value());
+    QCOMPARE(*lanRes, NetworkExposure::Lan);
+
+    auto loopbackRes = parseExposure(QStringLiteral("127.0.0.1"));
+    QVERIFY(loopbackRes.has_value());
+    QCOMPARE(*loopbackRes, NetworkExposure::Loopback);
+
+    auto invalidRes = parseExposure(QStringLiteral("invalid_addr"));
+    QVERIFY(!invalidRes.has_value());
+    QVERIFY(!invalidRes.error().isEmpty());
+
+    auto emptyRes = parseExposure(QStringLiteral(""));
+    QVERIFY(!emptyRes.has_value());
+  }
+
   /// Discovery is how remote instances are found, so a LAN-bound probe has to
-  /// broadcast. A loopback-bound one must not: advertising a process nobody can
-  /// connect to is noise that also discloses it.
-  void announceFollowsExposure() {
+  /// announce to broadcast; a loopback-bound probe must stay quiet so it does
+  /// not leak the existence of a process nobody else can reach.
+  void announcementsFollowListenAddress() {
     QEXPECT_THAT(announceAddress(), Eq(QHostAddress(QHostAddress::Broadcast)));
     qputenv("QTPILOT_BIND_ADDRESS", QByteArray("loopback"));
     QEXPECT_THAT(announceAddress(), Eq(QHostAddress(QHostAddress::LocalHost)));

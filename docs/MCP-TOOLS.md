@@ -6,15 +6,15 @@ need exact argument schemas rather than copying schemas from older design docs.
 
 ## Modes and Counts
 
-Every mode includes 10 shared `qtpilot_*` tools for connection management,
-mode switching, message logging, and event recording.
+Every mode includes 12 shared `qtpilot_*` tools for connection management,
+mode switching, message logging, event recording, and scenario replay.
 
 | Mode | Mode-specific tools | Shared tools | Total | Primary use |
 |------|---------------------|--------------|-------|-------------|
-| `native` | 27 `qt_*` | 10 | 37 | Qt object, property, method, signal, model, and UI access |
-| `cu` | 13 `cu_*` | 10 | 23 | Screenshot and coordinate-based interaction |
-| `chrome` | 8 `chr_*` | 10 | 18 | Accessibility-tree and element-reference interaction |
-| `all` | 48 across all families | 10 | 58 | Exploration and mixed workflows |
+| `native` | 27 `qt_*` | 12 | 39 | Qt object, property, method, signal, model, and UI access |
+| `cu` | 13 `cu_*` | 12 | 25 | Screenshot and coordinate-based interaction |
+| `chrome` | 8 `chr_*` | 12 | 20 | Accessibility-tree and element-reference interaction |
+| `all` | 48 across all families | 12 | 60 | Exploration and mixed workflows |
 
 The shared tools are:
 
@@ -23,6 +23,8 @@ The shared tools are:
 - Logging: `qtpilot_log_start`, `qtpilot_log_stop`, `qtpilot_log_status`
 - Recording: `qtpilot_recording_start`, `qtpilot_recording_stop`,
   `qtpilot_recording_status`
+- Replay: `qtpilot_replay_inspect`, `qtpilot_replay_run` (see
+  [REPLAY.md](REPLAY.md))
 
 The server also exposes one resource, `qtpilot://status`, and currently exposes
 no MCP prompts. Calling `qtpilot_set_mode` changes the visible mode-specific

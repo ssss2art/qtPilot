@@ -19,6 +19,35 @@ injected route has no mobile equivalent. Build-time linking is the only way in,
 which is why mobile support means *your own development build*, not any app on
 the device.
 
+```mermaid
+flowchart TD
+    subgraph Desktop["Desktop Architecture"]
+        direction TB
+        AppD["Target Application Process<br/>(Binary Unmodified)"]
+        Launcher["qtPilot-launcher"]
+        ProbeD["Probe Shared Library<br/>(.dll / .so / .dylib)"]
+        ServerD["WebSocket Server<br/>(:9222)"]
+
+        Launcher -->|"DYLD_INSERT / LD_PRELOAD / Detours"| AppD
+        AppD -->|Loads Dynamic Probe| ProbeD
+        ProbeD --> ServerD
+    end
+
+    subgraph Mobile["Mobile Architecture (Android / iOS)"]
+        direction TB
+        AppM["Development Build<br/>(CMake / qt-cmake)"]
+        ProbeM["Static Probe Archive<br/>(libqtPilot-probe.a)"]
+        ServerM["WebSocket Server<br/>(:9222 on Device)"]
+        Forward["USB Forwarding<br/>(adb forward / iproxy)"]
+        Host["Host MCP Server / AI Agent<br/>(ws://localhost:9222)"]
+
+        ProbeM -->|"qtPilot_inject_probe()"| AppM
+        AppM -->|"Q_COREAPP_STARTUP_FUNCTION"| ServerM
+        ServerM <-->|"USB Cable / Wi-Fi"| Forward
+        Forward <--> Host
+    end
+```
+
 ## Building the probe
 
 Configure with Qt's mobile toolchain wrapper (`qt-cmake` from the Android or iOS
@@ -46,7 +75,7 @@ Mobile mode changes three things automatically, so you do not need to pass them:
 
 The result is a static archive, versioned by Qt like every other probe build:
 
-```
+```text
 build-android/lib/libqtPilot-probe-qt6.11.a        # Release
 build-ios/lib/Debug/libqtPilot-probe-qt6.11d.a     # Debug — note the `d` suffix,
                                                    # and Xcode's per-config subdir

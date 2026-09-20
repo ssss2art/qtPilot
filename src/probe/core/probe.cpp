@@ -233,10 +233,11 @@ bool Probe::initialize() {
     fprintf(stderr, "[qtPilot] Loaded name map from %s\n", qPrintable(nameMapPath));
   }
 
-  // Clear numeric IDs and Chrome Mode refs on client disconnect
+  // Clear numeric IDs, Chrome Mode refs, and active signal subscriptions on client disconnect
   connect(m_server, &WebSocketServer::clientDisconnected, this, []() {
     ObjectResolver::clearNumericIds();
     ChromeModeApi::clearRefs();
+    SignalMonitor::instance()->clearSubscriptions();
   });
 
   // Wire signal notifications to WebSocket client

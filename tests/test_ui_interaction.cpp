@@ -37,6 +37,7 @@ class TestUIInteraction : public QObject {
 
   // HitTest tests
   void testWidgetGeometry();
+  void testWidgetGeometryExpectedMonadic();
   void testChildAt();
 
  private:
@@ -188,6 +189,18 @@ void TestUIInteraction::testWidgetGeometry() {
   // Verify devicePixelRatio is reasonable (usually 1.0, 1.5, 2.0)
   double dpr = geo["devicePixelRatio"].toDouble();
   QEXPECT_THAT(dpr, AllOf(Ge(1.0), Le(4.0)));
+}
+
+void TestUIInteraction::testWidgetGeometryExpectedMonadic() {
+  auto res = HitTest::widgetGeometryExpected(m_button);
+  QVERIFY(res.has_value());
+  QEXPECT_THAT(res->contains(QStringLiteral("local")), IsTrue());
+  QEXPECT_THAT(res->contains(QStringLiteral("global")), IsTrue());
+  QEXPECT_THAT(res->contains(QStringLiteral("devicePixelRatio")), IsTrue());
+
+  auto nullRes = HitTest::widgetGeometryExpected(nullptr);
+  QVERIFY(!nullRes.has_value());
+  QVERIFY(!nullRes.error().isEmpty());
 }
 
 void TestUIInteraction::testChildAt() {

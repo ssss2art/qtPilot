@@ -19,16 +19,17 @@ not be caught.
 
 Qt 5.15 remains supported on Windows and Linux, both exercised by CI.
 
-
 ## Implementation Summary
 
 macOS support was added by creating platform-specific files for probe initialization and launcher injection, and updating CMake, Python, and C++ code to handle macOS framework layouts and environment variables.
 
 ### Files Created
+
 - `src/probe/core/probe_init_macos.cpp` — `DYLD_INSERT_LIBRARIES` constructor/destructor + `Q_COREAPP_STARTUP_FUNCTION`
 - `src/launcher/injector_macos.cpp` — Fork/exec with `DYLD_INSERT_LIBRARIES` (colon-separated), SIP path warnings
 
 ### Files Modified
+
 - `CMakeLists.txt` — Removed macOS warning, enabled launcher, added `-Wno-variadic-macro-arguments-omitted`
 - `src/probe/CMakeLists.txt` — Added `APPLE` branch for probe init
 - `src/launcher/CMakeLists.txt` — Added `APPLE` branch for injector, framework-aware Qt prefix detection
@@ -40,6 +41,7 @@ macOS support was added by creating platform-specific files for probe initializa
 - `CMakePresets.json` — `macos-debug` and `macos-release` presets
 
 ### Build & Test Fixes for Qt 6.10 + AppleClang
+
 - `src/probe/api/chrome_mode_api.cpp` — Removed `QAccessible::Label` case (now a `RelationFlag` in Qt 6.10)
 - `tests/test_object_registry.cpp` — Fixed lambda captures (`t` missing, `objectsPerThread` unnecessary)
 
@@ -75,6 +77,7 @@ The probe's `__attribute__((constructor))` runs before `main()`, and `Q_COREAPP_
 ### System Integrity Protection (SIP)
 
 SIP strips `DYLD_INSERT_LIBRARIES` for binaries in protected paths:
+
 - `/usr/`
 - `/System/`
 - `/bin/`
@@ -104,7 +107,7 @@ macOS Qt apps are distributed as `.app` bundles. The launcher and
 `scripts/launch-with-probe.sh` wrapper both accept a `.app` path directly and
 resolve the inner executable via `Contents/Info.plist` `CFBundleExecutable`:
 
-```
+```bash
 # Either form works — .app is preferred
 build/bin/qtPilot-launcher MyApp.app
 build/bin/qtPilot-launcher MyApp.app/Contents/MacOS/MyApp
@@ -168,12 +171,14 @@ encounter Gatekeeper prompts. This is done locally — no credentials ever touch
    `appstoreconnect.apple.com → Users & Access → Integrations → App Store Connect API → +`
    Download the `.p8` file (one-time download — store it outside the repo, e.g. `~/.private_keys/`).
 3. Store credentials for `notarytool`:
+
    ```bash
    xcrun notarytool store-credentials "qtpilot-notary" \
      --key ~/.private_keys/AuthKey_XXXX.p8 \
      --key-id XXXX \
      --issuer <issuer-uuid>
    ```
+
    Credentials are stored in Keychain — no plaintext secrets.
 
 **Per-release steps (after downloading CI artifacts):**
@@ -210,6 +215,7 @@ cloud-cached approval ticket. The `xattr` workaround is not needed by end users.
 Tested against a large real-world Qt widgets application (~2300 library types, custom QMainWindow, multiple dock widgets).
 
 **Worked:**
+
 - Probe injection and WebSocket server startup
 - `ping`, `echo`, `getVersion`, `getModes`
 - `hitTest` — correctly resolved widgets at pixel coordinates
@@ -217,6 +223,7 @@ Tested against a large real-world Qt widgets application (~2300 library types, c
 - `getGeometry` — returned correct coordinates with devicePixelRatio=2 (Retina)
 
 **Known issues:**
+
 - `findByClassName` — was reported to crash on stale pointers (not macOS-specific,
   but all repros were on macOS). **Status unconfirmed.** `ObjectRegistry` now
   holds `QHash<QString, QPointer<QObject>>` and guards its queued lambdas with a

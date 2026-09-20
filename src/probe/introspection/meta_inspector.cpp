@@ -25,44 +25,43 @@ namespace {
 /// Anything else - a number, a bool, an unregistered id - is a caller mistake,
 /// and the alternative to rejecting it is handing the host application a
 /// fabricated address to dereference.
-QObject* resolvePointerArgument(const QJsonValue& value, int typeId, const QString& methodName,
-                                int argIndex) {
+std::expected<QObject*, MethodError> tryResolvePointerArgument(const QJsonValue& value, int typeId,
+                                                               const QString& methodName,
+                                                               int argIndex) {
   if (value.isNull() || value.isUndefined()) {
     return nullptr;
   }
 
   if (!value.isString()) {
-    throw std::runtime_error(
+    return std::unexpected(MethodError{
+        MethodErrorKind::InvalidArgument, methodName,
         QStringLiteral("Argument %1 of '%2' is a pointer parameter, which takes an object id "
                        "string or null")
             .arg(argIndex)
-            .arg(methodName)
-            .toStdString());
+            .arg(methodName)});
   }
 
   const QString objectId = value.toString();
-  QObject* resolved = ObjectResolver::resolve(objectId);
-  if (!resolved) {
-    throw std::runtime_error(QStringLiteral("Argument %1 of '%2' names an object that does not "
-                                            "exist: '%3'")
-                                 .arg(argIndex)
-                                 .arg(methodName, objectId)
-                                 .toStdString());
-  }
-
-  // The id resolved, but to the wrong kind of object; passing it on would let
-  // the callee's own qobject_cast hand back garbage rather than nullptr.
-  const QMetaObject* required = qtPilot::compat::metaObjectForType(typeId);
-  if (required && !resolved->metaObject()->inherits(required)) {
-    throw std::runtime_error(
-        QStringLiteral("Argument %1 of '%2' resolved to a %3, which is not a %4")
-            .arg(argIndex)
-            .arg(methodName, QString::fromUtf8(resolved->metaObject()->className()),
-                 QString::fromUtf8(required->className()))
-            .toStdString());
-  }
-
-  return resolved;
+  return ObjectResolver::resolveExpected(objectId)
+      .transform_error([&](const ObjectResolver::ResolveError& err) {
+        return MethodError{
+            MethodErrorKind::InvalidArgument, methodName,
+            QStringLiteral("Argument %1 of '%2' names an object that does not exist: '%3'")
+                .arg(argIndex)
+                .arg(methodName, err.id)};
+      })
+      .and_then([&](QObject* resolved) -> std::expected<QObject*, MethodError> {
+        const QMetaObject* required = qtPilot::compat::metaObjectForType(typeId);
+        if (required && !resolved->metaObject()->inherits(required)) {
+          return std::unexpected(MethodError{
+              MethodErrorKind::InvalidArgument, methodName,
+              QStringLiteral("Argument %1 of '%2' resolved to a %3, which is not a %4")
+                  .arg(argIndex)
+                  .arg(methodName, QString::fromUtf8(resolved->metaObject()->className()),
+                       QString::fromUtf8(required->className()))});
+        }
+        return resolved;
+      });
 }
 
 }  // namespace
@@ -284,9 +283,11 @@ QJsonArray MetaInspector::extractParameterNames(const QMetaMethod& method) {
   return names;
 }
 
-QJsonValue MetaInspector::getProperty(QObject* obj, const QString& name) {
+std::expected<QJsonValue, PropertyError> MetaInspector::getPropertyExpected(QObject* obj,
+                                                                            const QString& name) {
   if (!obj) {
-    throw std::runtime_error("Cannot get property on null object");
+    return std::unexpected(PropertyError{PropertyErrorKind::NullObject, name,
+                                         QStringLiteral("Cannot get property on null object")});
   }
 
   const QMetaObject* meta = obj->metaObject();
@@ -298,20 +299,33 @@ QJsonValue MetaInspector::getProperty(QObject* obj, const QString& name) {
     if (value.isValid()) {
       return variantToJson(value);
     }
-    throw std::runtime_error("Property not found: " + name.toStdString());
+    return std::unexpected(PropertyError{PropertyErrorKind::NotFound, name,
+                                         QStringLiteral("Property not found: %1").arg(name)});
   }
 
   QMetaProperty prop = meta->property(propIndex);
   if (!prop.isReadable()) {
-    throw std::runtime_error("Property not readable: " + name.toStdString());
+    return std::unexpected(PropertyError{PropertyErrorKind::NotReadable, name,
+                                         QStringLiteral("Property not readable: %1").arg(name)});
   }
 
   return variantToJson(prop.read(obj));
 }
 
-bool MetaInspector::setProperty(QObject* obj, const QString& name, const QJsonValue& value) {
+QJsonValue MetaInspector::getProperty(QObject* obj, const QString& name) {
+  auto res = getPropertyExpected(obj, name);
+  if (!res) {
+    throw std::runtime_error(res.error().message.toStdString());
+  }
+  return *res;
+}
+
+std::expected<void, PropertyError> MetaInspector::setPropertyExpected(QObject* obj,
+                                                                      const QString& name,
+                                                                      const QJsonValue& value) {
   if (!obj) {
-    throw std::runtime_error("Cannot set property on null object");
+    return std::unexpected(PropertyError{PropertyErrorKind::NullObject, name,
+                                         QStringLiteral("Cannot set property on null object")});
   }
 
   const QMetaObject* meta = obj->metaObject();
@@ -323,13 +337,17 @@ bool MetaInspector::setProperty(QObject* obj, const QString& name, const QJsonVa
     QVariant var = jsonToVariant(value);
     QByteArray nameBytes = name.toLatin1();
     obj->setProperty(nameBytes.constData(), var);
-    // Verify the property was actually set
-    return obj->property(nameBytes.constData()).isValid();
+    if (!obj->property(nameBytes.constData()).isValid()) {
+      return std::unexpected(PropertyError{PropertyErrorKind::TypeMismatch, name,
+                                           QStringLiteral("Property set failed: %1").arg(name)});
+    }
+    return {};
   }
 
   QMetaProperty prop = meta->property(propIndex);
   if (!prop.isWritable()) {
-    throw std::runtime_error("Property is read-only: " + name.toStdString());
+    return std::unexpected(PropertyError{PropertyErrorKind::ReadOnly, name,
+                                         QStringLiteral("Property is read-only: %1").arg(name)});
   }
 
   // Convert JSON to appropriate type
@@ -337,21 +355,38 @@ bool MetaInspector::setProperty(QObject* obj, const QString& name, const QJsonVa
 
   // Attempt type conversion if needed
   if (var.userType() != prop.userType() && !qtPilot::compat::variantConvert(var, prop.userType())) {
-    throw std::runtime_error("Cannot convert value to type: " +
-                             QString::fromLatin1(prop.typeName()).toStdString());
+    return std::unexpected(PropertyError{PropertyErrorKind::TypeMismatch, name,
+                                         QStringLiteral("Cannot convert value to type: %1")
+                                             .arg(QString::fromLatin1(prop.typeName()))});
   }
 
-  return prop.write(obj, var);
+  if (!prop.write(obj, var)) {
+    return std::unexpected(PropertyError{PropertyErrorKind::TypeMismatch, name,
+                                         QStringLiteral("Failed to write property: %1").arg(name)});
+  }
+
+  return {};
 }
 
-QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
-                                       const QJsonArray& args) {
+bool MetaInspector::setProperty(QObject* obj, const QString& name, const QJsonValue& value) {
+  auto res = setPropertyExpected(obj, name, value);
+  if (!res) {
+    throw std::runtime_error(res.error().message.toStdString());
+  }
+  return true;
+}
+
+std::expected<QJsonValue, MethodError> MetaInspector::invokeMethodExpected(
+    QObject* obj, const QString& methodName, const QJsonArray& args) {
   if (!obj) {
-    throw std::runtime_error("Cannot invoke method on null object");
+    return std::unexpected(MethodError{MethodErrorKind::NullObject, methodName,
+                                       QStringLiteral("Cannot invoke method on null object")});
   }
 
   if (args.count() > 10) {
-    throw std::runtime_error("Too many arguments (max 10): " + methodName.toStdString());
+    return std::unexpected(
+        MethodError{MethodErrorKind::TooManyArguments, methodName,
+                    QStringLiteral("Too many arguments (max 10): %1").arg(methodName)});
   }
 
   const QMetaObject* meta = obj->metaObject();
@@ -361,12 +396,9 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
   for (int i = 0; i < meta->methodCount(); ++i) {
     QMetaMethod method = meta->method(i);
     if (QString::fromLatin1(method.name()) == methodName) {
-      // Check if slot or invokable
       if (method.methodType() != QMetaMethod::Slot && method.methodType() != QMetaMethod::Method) {
         continue;
       }
-
-      // Check argument count
       if (method.parameterCount() == args.count()) {
         foundMethod = method;
         break;
@@ -375,8 +407,9 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
   }
 
   if (!foundMethod.isValid()) {
-    throw std::runtime_error("Method not found or wrong argument count: " +
-                             methodName.toStdString());
+    return std::unexpected(MethodError{
+        MethodErrorKind::NotFound, methodName,
+        QStringLiteral("Method not found or wrong argument count: %1").arg(methodName)});
   }
 
   // Build arguments - must keep QVariants alive during invocation
@@ -386,10 +419,11 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
   for (int i = 0; i < args.count(); ++i) {
     int paramType = foundMethod.parameterType(i);
     if (qtPilot::compat::isQObjectPointerType(paramType)) {
-      // jsonToVariant would happily coerce a number into a pointer-sized value
-      // and the callee would dereference it, so pointers are resolved here
-      // instead of being converted.
-      QObject* target = resolvePointerArgument(args[i], paramType, methodName, i);
+      auto ptrRes = tryResolvePointerArgument(args[i], paramType, methodName, i);
+      if (!ptrRes) {
+        return std::unexpected(ptrRes.error());
+      }
+      QObject* target = *ptrRes;
       QVariant var = qtPilot::compat::variantFromValue(paramType, &target);
       variantArgs.append(var);
       continue;
@@ -419,7 +453,9 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
                                genericArgs[6], genericArgs[7], genericArgs[8], genericArgs[9]);
 
   if (!ok) {
-    throw std::runtime_error("Method invocation failed: " + methodName.toStdString());
+    return std::unexpected(
+        MethodError{MethodErrorKind::InvocationFailed, methodName,
+                    QStringLiteral("Method invocation failed: %1").arg(methodName)});
   }
 
   if (foundMethod.returnType() == QMetaType::Void) {
@@ -427,6 +463,15 @@ QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
   }
 
   return variantToJson(returnValue);
+}
+
+QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,
+                                       const QJsonArray& args) {
+  auto res = invokeMethodExpected(obj, methodName, args);
+  if (!res) {
+    throw std::runtime_error(res.error().message.toStdString());
+  }
+  return *res;
 }
 
 }  // namespace qtPilot

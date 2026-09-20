@@ -11,7 +11,7 @@ already-built Qt application. On Android and iOS, where no platform mechanism ca
 library into a running app, the probe is instead linked into a development build of your own
 app; see [docs/MOBILE.md](docs/MOBILE.md).
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TARGET MACHINE OR DEVICE                                               │
 │                                                                         │
@@ -198,7 +198,7 @@ Uses chrome mode's accessibility tree to locate interactive elements by role.
 
 qtPilot includes a Claude Code skill that runs a comprehensive 39-test E2E suite across all three modes, plus logging and recording. To run it against the included test app:
 
-```
+```text
 /test-mcp-modes
 ```
 
@@ -209,6 +209,7 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/GETTING-STARTED.md) | Installation and first steps |
+| [Deterministic Replay](docs/REPLAY.md) | Record and replay sessions deterministically |
 | [Building from Source](docs/BUILDING.md) | Compile qtPilot yourself |
 | [Mobile (Android/iOS)](docs/MOBILE.md) | Linking the probe into a device build |
 | [MCP Tooling](docs/MCP-TOOLS.md) | Current modes, tool surface, resources, and inspection workflow |
@@ -249,7 +250,7 @@ development build, and it must never be enabled in a build you distribute. See
 
 - **Runtime:** Python 3.11+ (for MCP server)
 - **Target apps:** Qt 5.15+ or Qt 6.5+ (on macOS, Qt 6.5+ only — see Platform Support)
-- **Build:** CMake 3.16+, C++17 compiler
+- **Build:** CMake 3.16+, C++23 compiler
 
 ## License
 

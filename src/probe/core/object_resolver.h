@@ -6,8 +6,10 @@
 #include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT
 
 #include <atomic>
+#include <expected>
 
 #include <QHash>
+#include <QMutex>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -27,6 +29,18 @@ namespace qtPilot {
 /// disconnect to prevent stale references.
 class QTPILOT_EXPORT ObjectResolver {
  public:
+  /// @brief Error details for failed object resolution.
+  enum class ResolveErrorKind {
+    EmptyId,
+    NotFound,
+  };
+
+  struct ResolveError {
+    ResolveErrorKind kind;
+    QString id;
+    QString message;
+  };
+
   /// @brief Resolve an object identifier to a QObject pointer.
   ///
   /// Tries resolution in order:
@@ -38,6 +52,11 @@ class QTPILOT_EXPORT ObjectResolver {
   /// @return The resolved QObject, or nullptr if not found.
   static QObject* resolve(const QString& id);
 
+  /// @brief Monadic resolution of an object identifier returning std::expected.
+  /// @param id The object identifier string.
+  /// @return QObject* on success, or ResolveError on failure.
+  static std::expected<QObject*, ResolveError> resolveExpected(const QString& id);
+
   /// @brief Assign a numeric shorthand ID to an object.
   /// @param obj The object to assign an ID to.
   /// @return The assigned numeric ID (monotonically increasing from 1).
@@ -47,6 +66,11 @@ class QTPILOT_EXPORT ObjectResolver {
   /// @param numericId The numeric ID to look up.
   /// @return The object, or nullptr if not found or deleted.
   static QObject* findByNumericId(int numericId);
+
+  /// @brief Monadically look up an object by its numeric ID.
+  /// @param numericId The numeric ID to look up.
+  /// @return The object, or an error string if not found or deleted.
+  static std::expected<QObject*, QString> findByNumericIdExpected(int numericId);
 
   /// @brief Clear all numeric ID assignments.
   ///
@@ -62,6 +86,7 @@ class QTPILOT_EXPORT ObjectResolver {
   static QHash<int, QPointer<QObject>> s_numericIds;
   static QHash<QObject*, int> s_objectToNumericId;
   static std::atomic<int> s_nextId;
+  static QMutex s_mutex;
 };
 
 }  // namespace qtPilot

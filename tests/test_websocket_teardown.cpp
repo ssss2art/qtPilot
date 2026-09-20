@@ -15,7 +15,7 @@ using namespace qtPilot::test;
 
 /// Teardown of a server that still has a client attached.
 ///
-/// This is R9 in docs/observability-testability-gaps.md. A live-client case
+/// This is R9 in docs/OBSERVABILITY-GAPS.md. A live-client case
 /// SEGFAULTed on Qt 6.8/6.9 (Linux and Windows both) while passing on 5.15.2,
 /// 6.5.3, 6.10.0 and 6.11.1, and was removed rather than left flaky.
 ///

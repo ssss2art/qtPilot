@@ -5,6 +5,8 @@
 
 #include "core/probe.h"  // For QTPILOT_EXPORT
 
+#include <expected>
+
 #include <QAbstractItemModel>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -70,6 +72,11 @@ class QTPILOT_EXPORT ModelNavigator {
   /// @return The resolved model, or nullptr if resolution fails.
   static QAbstractItemModel* resolveModel(QObject* obj);
 
+  /// @brief Monadically resolve a QObject to its underlying QAbstractItemModel.
+  /// @param obj The object to resolve (model or view).
+  /// @return The resolved model, or error string if resolution fails.
+  static std::expected<QAbstractItemModel*, QString> resolveModelExpected(QObject* obj);
+
   /// @brief Resolve a role name string to its integer role ID.
   ///
   /// Checks model->roleNames() first, then standard Qt roles
@@ -79,6 +86,13 @@ class QTPILOT_EXPORT ModelNavigator {
   /// @param roleName The role name to resolve (e.g., "display", "edit").
   /// @return The role ID, or -1 if not found.
   static int resolveRoleName(QAbstractItemModel* model, const QString& roleName);
+
+  /// @brief Monadically resolve a role name string to its integer role ID.
+  /// @param model The model for custom role lookup.
+  /// @param roleName The role name to resolve (e.g., "display", "edit").
+  /// @return The role ID, or error string if not found.
+  static std::expected<int, QString> resolveRoleNameExpected(QAbstractItemModel* model,
+                                                             const QString& roleName);
 
   /// @brief Get all role names for a model as JSON.
   ///
@@ -112,6 +126,12 @@ class QTPILOT_EXPORT ModelNavigator {
   static QModelIndex pathToIndex(QAbstractItemModel* model, const QList<int>& path,
                                  int* outFailedSegment = nullptr);
 
+  /// @brief Monadic variant of pathToIndex returning std::expected.
+  /// Returns target QModelIndex (invalid index for empty path = root), or the
+  /// 0-based index of the first failing segment on failure.
+  static std::expected<QModelIndex, int> pathToIndexExpected(QAbstractItemModel* model,
+                                                             const QList<int>& path);
+
   /// @brief Walk a text path, matching each segment against cell display text.
   ///
   /// Matching is exact and case-sensitive. First matching row at each level
@@ -123,6 +143,13 @@ class QTPILOT_EXPORT ModelNavigator {
   /// @param outFailedSegment Optional output: first failing segment index.
   static QModelIndex textPathToIndex(QAbstractItemModel* model, const QStringList& itemPath,
                                      int matchColumn, int* outFailedSegment = nullptr);
+
+  /// @brief Monadic variant of textPathToIndex returning std::expected.
+  /// Returns target QModelIndex, or the 0-based index of the first failing segment on failure.
+  static std::expected<QModelIndex, int> textPathToIndexExpected(QAbstractItemModel* model,
+                                                                 const QStringList& itemPath,
+                                                                 int role = Qt::DisplayRole,
+                                                                 int matchColumn = 0);
 
   /// @brief Convert a QModelIndex to a {path, cells, hasChildren} JSON row.
   ///
@@ -153,6 +180,10 @@ class QTPILOT_EXPORT ModelNavigator {
   /// @param opts Options to compile. `opts.compiledRegex` is updated in place.
   /// @param outError Optional error message on failure.
   static bool compileFindOptions(FindOptions& opts, QString* outError = nullptr);
+
+  /// @brief Monadic variant of compileFindOptions returning std::expected.
+  /// Returns void on success, or an error string on invalid regex pattern.
+  static std::expected<void, QString> compileFindOptionsExpected(FindOptions& opts);
 
   /// @brief Depth-first search of `parent`'s subtree for rows whose cell at
   /// `opts.column` matches `opts.value` under `opts.role` using `opts.match`.

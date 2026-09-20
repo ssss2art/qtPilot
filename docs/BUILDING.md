@@ -10,10 +10,10 @@ This guide covers building the qtPilot probe and launcher from source code.
 - **Qt 5.15.1+ or Qt 6.5+** with development headers (including private headers).
   On macOS, Qt 6.5+ only — Qt 5.15 is not a supported configuration there, see
   [MACOS.md](MACOS.md)
-- **C++17 compiler:**
-  - GCC 8+ (Linux)
-  - Clang 7+ (Linux/macOS)
-  - MSVC 2019+ (Windows)
+- **C++23 compiler:**
+  - GCC 13+ (Linux)
+  - Clang 17+ (Linux/macOS)
+  - MSVC 2022+ (Windows)
 
 ### Required Qt Modules
 
@@ -262,6 +262,7 @@ ctest --test-dir build -V
 ```
 
 On Windows with multi-config generators:
+
 ```powershell
 ctest --test-dir build --output-on-failure -C Release
 ```
@@ -292,7 +293,8 @@ cmake --install build --config Release --prefix C:\qtPilot
 ```
 
 Installation layout:
-```
+
+```text
 <prefix>/
 ├── bin/
 │   └── qtPilot-launcher(.exe)
@@ -345,6 +347,7 @@ Qt 5 ended at 5.15.2 and its macOS build is x86_64-only. See
 Use the dedicated Qt 5 presets to build against Qt 5.15.1 locally:
 
 **Windows:**
+
 ```powershell
 cmake --preset qt5-windows-release -DQTPILOT_QT_DIR="C:\Qt\5.15.1\msvc2019_64"
 cmake --build --preset qt5-windows-release
@@ -352,6 +355,7 @@ ctest --preset qt5-windows-release
 ```
 
 **Linux:**
+
 ```bash
 cmake --preset qt5-release -DQTPILOT_QT_DIR=/opt/Qt/5.15.1/gcc_64
 cmake --build --preset qt5-release
@@ -359,6 +363,7 @@ ctest --preset qt5-release
 ```
 
 Qt 5.15.1 is available from the [Qt Archive](https://download.qt.io/archive/qt/5.15/5.15.1/) or via [aqtinstall](https://github.com/miurahr/aqtinstall):
+
 ```bash
 pip install aqtinstall
 aqt install-qt linux desktop 5.15.1
@@ -386,14 +391,14 @@ cmake -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.0/gcc_64
 
 ### Compiler Version Errors
 
-qtPilot requires C++17. Check your compiler version:
+qtPilot requires C++23. Check your compiler version:
 
 ```bash
-g++ --version   # Need 8+
-clang++ --version  # Need 7+
+g++ --version   # Need 13+
+clang++ --version  # Need 17+
 ```
 
-On Windows, Visual Studio 2019 or later is required.
+On Windows, Visual Studio 2022 (v17.0+) or later is required.
 
 ## IDE Setup
 

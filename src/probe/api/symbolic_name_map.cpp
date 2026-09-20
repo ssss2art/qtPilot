@@ -5,6 +5,8 @@
 
 #include "core/object_registry.h"
 
+#include <ranges>
+
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>
@@ -38,8 +40,18 @@ SymbolicNameMap* SymbolicNameMap::instance() {
 }
 
 QString SymbolicNameMap::resolve(const QString& symbolicName) const {
+  auto res = resolveExpected(symbolicName);
+  return res.has_value() ? *res : QString();
+}
+
+std::expected<QString, QString> SymbolicNameMap::resolveExpected(
+    const QString& symbolicName) const {
   QMutexLocker locker(&m_mutex);
-  return m_nameMap.value(symbolicName);
+  auto it = m_nameMap.constFind(symbolicName);
+  if (it != m_nameMap.constEnd()) {
+    return it.value();
+  }
+  return std::unexpected(QStringLiteral("Symbolic name '%1' not registered").arg(symbolicName));
 }
 
 void SymbolicNameMap::registerName(const QString& name, const QString& path) {
@@ -62,10 +74,15 @@ QJsonObject SymbolicNameMap::allNames() const {
 }
 
 bool SymbolicNameMap::loadFromFile(const QString& filePath) {
+  return loadFromFileExpected(filePath).has_value();
+}
+
+std::expected<void, QString> SymbolicNameMap::loadFromFileExpected(const QString& filePath) {
   QFile file(filePath);
   if (!file.open(QIODevice::ReadOnly)) {
     qWarning() << "SymbolicNameMap: Failed to open" << filePath;
-    return false;
+    return std::unexpected(
+        QStringLiteral("Failed to open file '%1': %2").arg(filePath, file.errorString()));
   }
 
   QJsonParseError parseError;
@@ -74,12 +91,13 @@ bool SymbolicNameMap::loadFromFile(const QString& filePath) {
 
   if (parseError.error != QJsonParseError::NoError) {
     qWarning() << "SymbolicNameMap: Parse error in" << filePath << ":" << parseError.errorString();
-    return false;
+    return std::unexpected(
+        QStringLiteral("JSON parse error in '%1': %2").arg(filePath, parseError.errorString()));
   }
 
   if (!doc.isObject()) {
     qWarning() << "SymbolicNameMap: Expected JSON object in" << filePath;
-    return false;
+    return std::unexpected(QStringLiteral("Expected JSON object in '%1'").arg(filePath));
   }
 
   QMutexLocker locker(&m_mutex);
@@ -93,38 +111,39 @@ bool SymbolicNameMap::loadFromFile(const QString& filePath) {
   }
 
   qDebug() << "SymbolicNameMap: Loaded" << m_nameMap.size() << "names from" << filePath;
-  return true;
+  return {};
 }
 
 bool SymbolicNameMap::saveToFile(const QString& filePath) const {
-  QMutexLocker locker(&m_mutex);
+  return saveToFileExpected(filePath).has_value();
+}
 
+std::expected<void, QString> SymbolicNameMap::saveToFileExpected(const QString& filePath) const {
   QJsonObject obj;
-  for (auto it = m_nameMap.constBegin(); it != m_nameMap.constEnd(); ++it) {
-    obj[it.key()] = it.value();
+  {
+    QMutexLocker locker(&m_mutex);
+    for (auto it = m_nameMap.constBegin(); it != m_nameMap.constEnd(); ++it) {
+      obj[it.key()] = it.value();
+    }
   }
 
   QFile file(filePath);
   if (!file.open(QIODevice::WriteOnly)) {
     qWarning() << "SymbolicNameMap: Failed to write" << filePath;
-    return false;
+    return std::unexpected(
+        QStringLiteral("Failed to write file '%1': %2").arg(filePath, file.errorString()));
   }
 
   file.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
   file.close();
-  return true;
+  return {};
 }
 
 bool SymbolicNameMap::validateAll() const {
   QMutexLocker locker(&m_mutex);
   auto* registry = ObjectRegistry::instance();
-
-  for (auto it = m_nameMap.constBegin(); it != m_nameMap.constEnd(); ++it) {
-    if (!registry->findById(it.value())) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::all_of(
+      m_nameMap, [&](const QString& path) { return registry->findById(path) != nullptr; });
 }
 
 QJsonArray SymbolicNameMap::validateNames() const {
