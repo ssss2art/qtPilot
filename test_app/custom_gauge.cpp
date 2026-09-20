@@ -3,6 +3,7 @@
 
 #include "custom_gauge.h"
 
+#include <algorithm>
 #include <QPaintEvent>
 #include <QPainter>
 
@@ -12,7 +13,7 @@ CustomGaugeWidget::CustomGaugeWidget(QWidget* parent) : QWidget(parent) {
 }
 
 void CustomGaugeWidget::setValue(int val) {
-  val = qBound(0, val, max_);
+  val = std::clamp(val, 0, max_);
   if (value_ == val)
     return;
   value_ = val;

@@ -2,7 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 
 Rectangle {
-    id: qmlRootRect
+    id: root
     objectName: "qmlRootRect"
     width: 600
     height: 400
@@ -64,18 +64,20 @@ Rectangle {
             height: 120
             clip: true
             model: ["QML Item Alpha", "QML Item Beta", "QML Item Gamma", "QML Item Delta"]
-            delegate: Rectangle {
-                id: delegateItem
-                objectName: "qmlDelegate_" + index
-                width: 300
-                height: 30
-                color: index % 2 === 0 ? "#ffffff" : "#f0f0f0"
-                border.color: "#e0e0e0"
+            delegate: Component {
+                Rectangle {
+                    id: delegateItem
+                    objectName: "qmlDelegate_" + index
+                    width: 300
+                    height: 30
+                    color: index % 2 === 0 ? "#ffffff" : "#f0f0f0"
+                    border.color: "#e0e0e0"
 
-                Text {
-                    anchors.centerIn: parent
-                    text: modelData
-                    font.pixelSize: 12
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData
+                        font.pixelSize: 12
+                    }
                 }
             }
         }

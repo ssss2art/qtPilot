@@ -20,7 +20,7 @@ class ComplexTableModel : public QAbstractTableModel {
   Q_OBJECT
 
  public:
-  enum CustomRoles {
+  enum CustomRoles : int {
     ItemIdRole = Qt::UserRole + 1,
     InStockRole,
     FormattedPriceRole,

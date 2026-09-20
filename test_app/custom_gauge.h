@@ -41,5 +41,5 @@ class CustomGaugeWidget : public QWidget {
  private:
   int value_ = 25;
   int max_ = 100;
-  QColor color_{0, 150, 255};
+  QColor color_ = {0, 150, 255};
 };

@@ -215,7 +215,8 @@ QJsonObject TestNativeModeApi::callRaw(const QString& method, const QJsonObject&
   QString requestStr = QString::fromUtf8(QJsonDocument(request).toJson(QJsonDocument::Compact));
   QString responseStr = m_handler->HandleMessage(requestStr);
 
-  return QJsonDocument::fromJson(responseStr.toUtf8()).object();
+  const QJsonDocument doc = QJsonDocument::fromJson(responseStr.toUtf8());
+  return doc.isObject() ? doc.object() : QJsonObject();
 }
 
 QJsonObject TestNativeModeApi::callEnvelope(const QString& method, const QJsonObject& params) {
@@ -295,7 +296,8 @@ void TestNativeModeApi::testSync() {
       connect(m_testButton, &QPushButton::clicked, [&clicked]() { clicked = true; });
 
   QString buttonId = ObjectRegistry::instance()->objectId(m_testButton);
-  QJsonObject clickParams{{QStringLiteral("objectId"), buttonId}};
+  QJsonObject clickParams;
+  clickParams[QStringLiteral("objectId")] = buttonId;
   QJsonObject clickResult = callResult("qt.ui.click", clickParams).toObject();
   QVERIFY(clickResult["ok"].toBool());
   QVERIFY(clickResult["deferred"].toBool());
@@ -705,7 +707,7 @@ void TestNativeModeApi::testUiClick() {
 
   QEXPECT_THAT(result.isObject(), IsTrue());
   QEXPECT_THAT(result.toObject(), HasJsonField("ok", Eq(true)));
-  QEXPECT_THAT(spy.count(), Eq(1));
+  QEXPECT_THAT(spy.size(), Eq(1));
 }
 
 void TestNativeModeApi::testUiDoubleClick() {
@@ -824,11 +826,10 @@ void TestNativeModeApi::testNumericIdResolution() {
   // Verify automatic cleanup on object destruction
   int tempId = -1;
   {
-    auto* tempObj = new QObject();
-    tempId = ObjectResolver::assignNumericId(tempObj);
+    QObject tempObj;
+    tempId = ObjectResolver::assignNumericId(&tempObj);
     QEXPECT_THAT(tempId, Gt(0));
-    QCOMPARE(ObjectResolver::findByNumericId(tempId), tempObj);
-    delete tempObj;
+    QCOMPARE(ObjectResolver::findByNumericId(tempId), &tempObj);
   }
   // After destruction, lookup returns nullptr and id mapping is gone
   QCOMPARE(ObjectResolver::findByNumericId(tempId), nullptr);

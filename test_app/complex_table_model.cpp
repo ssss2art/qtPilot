@@ -122,9 +122,7 @@ Qt::ItemFlags ComplexTableModel::flags(const QModelIndex& index) const {
   if (!index.isValid())
     return Qt::NoItemFlags;
   Qt::ItemFlags f = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-  if (index.column() == 1 || index.column() == 2 || index.column() == 3) {
-    f |= Qt::ItemIsEditable;
-  }
+  if (index.column() == 1 || index.column() == 2 || index.column() == 3) { f |= Qt::ItemIsEditable; }
   if (index.column() == 4) {
     f |= Qt::ItemIsUserCheckable;
   }
