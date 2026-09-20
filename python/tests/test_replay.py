@@ -9,6 +9,7 @@ import pytest
 from qtpilot.replay import (
     Divergence,
     Scenario,
+    _equivalent,
     diff_steps,
     load_scenario,
     normalise,
@@ -452,3 +453,54 @@ def test_subscription_ids_are_stripped_as_volatile():
     _, params = scenario.steps[0].notifications[0]
     assert "subscriptionId" not in params
     assert params["signal"] == "clicked"
+
+
+def test_an_unexpected_notification_is_a_divergence():
+    recorded = parse_entries([
+        req(1, "qt.ui.click", {"objectId": "b"}),
+        res(1, "qt.ui.click", {"ok": True}),
+    ])
+    actual = parse_entries([
+        req(1, "qt.ui.click", {"objectId": "b"}),
+        res(1, "qt.ui.click", {"ok": True}),
+        ntf("qtpilot.signalEmitted", {"objectId": "b", "signal": "unexpectedCrash"}),
+    ])
+
+    divergences = diff_steps(recorded.steps, actual.steps)
+
+    assert len(divergences) == 1
+    assert divergences[0].kind == "notification"
+    assert divergences[0].expected is None
+    assert divergences[0].actual == {"objectId": "b", "signal": "unexpectedCrash"}
+
+
+def test_an_extra_replayed_step_is_a_divergence():
+    recorded = parse_entries([
+        req(1, "qt.ui.click", {"objectId": "b"}),
+        res(1, "qt.ui.click", {"ok": True}),
+    ])
+    actual = parse_entries([
+        req(1, "qt.ui.click", {"objectId": "b"}),
+        res(1, "qt.ui.click", {"ok": True}),
+        req(2, "qt.ui.click", {"objectId": "b2"}),
+        res(2, "qt.ui.click", {"ok": True}),
+    ])
+
+    divergences = diff_steps(recorded.steps, actual.steps)
+
+    assert len(divergences) == 1
+    assert divergences[0].kind == "extra_step"
+    assert divergences[0].step == 2
+    assert divergences[0].method == "qt.ui.click"
+
+
+def test_generated_handle_with_nested_path_and_tilde():
+    nested = res(1, "qt.objects.inspect", {"meta": {"objectId": "MainWindow/view~temp/item~12"}})
+    assert normalise(nested)["result"]["meta"]["objectId"] == "MainWindow/view~temp/item~*"
+
+
+def test_truncated_comparison_preserves_type_check():
+    assert not _equivalent("foo...<truncated 50c>", {"error": "unexpected"})
+    assert _equivalent("foo...<truncated 50c>", "real text")
+    assert not _equivalent("<image:1024b>", ["not", "an", "image"])
+    assert _equivalent("<image:1024b>", "base64data")

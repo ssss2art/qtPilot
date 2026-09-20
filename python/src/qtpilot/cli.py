@@ -222,6 +222,14 @@ def cmd_replay(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
+    if args.watch and not args.record:
+        print(
+            "error: --watch requires --record (and --output). A watch list adds new observations "
+            "to capture into a new baseline; to assert against them, re-record the scenario first.",
+            file=sys.stderr,
+        )
+        return REPLAY_EXIT_USAGE
+
     if args.record and not args.watch:
         print(
             "error: --record without --watch would re-record exactly what the log already "

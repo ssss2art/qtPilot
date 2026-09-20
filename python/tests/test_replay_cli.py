@@ -409,3 +409,16 @@ def test_aborted_to_result_contains_synthesized_divergence(tmp_path):
     assert errs[0].kind == "aborted"
     assert errs[0].step == 1
     assert "Object not found" in errs[0].actual
+
+
+def test_watch_without_record_is_rejected(tmp_path, capsys):
+    watch_path = tmp_path / "watch.json"
+    watch_path.write_text(
+        json.dumps({"watch": [{"method": "qt.properties.get", "params": {"name": "text"}}]})
+    )
+    code = cmd_replay(
+        args_for(write_log(tmp_path, CLICK_SESSION), watch=str(watch_path), record=False)
+    )
+    assert code == EXIT_USAGE
+    err = capsys.readouterr().err
+    assert "--watch requires --record" in err

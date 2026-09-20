@@ -155,7 +155,9 @@ _TRUNCATED = re.compile(r"\.\.\.<truncated \d+c>$|^<image:\d+b>$")
 # (native_mode_api.cpp:361). Masking is confined to these because it used to run over every
 # string at every depth, which meant an ordinary label or model cell reading "user~1" was
 # rewritten too -- silently equal on both sides, so a real difference could pass.
-ID_KEYS: frozenset[str] = frozenset({"id", "objectId", "objectIds", "parentId"})
+ID_KEYS: frozenset[str] = frozenset(
+    {"id", "objectId", "objectIds", "parentId", "root", "targetId", "activeFocusItemId"}
+)
 
 # The collision suffix the registry appends when two objects would otherwise generate the same
 # id (object_registry.cpp allocateUniqueIdLocked). The counter is monotonic and depends on the
@@ -166,7 +168,7 @@ ID_KEYS: frozenset[str] = frozenset({"id", "objectId", "objectIds", "parentId"})
 # previous pattern was anchored to `^Class~N$`, so it never matched anything the probe emits for
 # a nested object, and the one case it did match it corrupted. Hence [^~]+ across the whole
 # string rather than an identifier at the start.
-_GENERATED_HANDLE = re.compile(r"^(?P<base>[^~]+)~\d+$")
+_GENERATED_HANDLE = re.compile(r"^(?P<base>.+)~\d+$")
 
 
 def _is_truncated(value: Any) -> bool:
@@ -220,7 +222,9 @@ def _equivalent(expected: Any, actual: Any) -> bool:
     .. note:: A truncated value is not what the application returned, so holding a replay to it
        would fail every run over a difference the logger introduced.
     """
-    if _is_truncated(expected) or _is_truncated(actual):
+    if (_is_truncated(expected) and isinstance(actual, str)) or (
+        _is_truncated(actual) and isinstance(expected, str)
+    ):
         return True
     if isinstance(expected, dict) and isinstance(actual, dict):
         if expected.keys() != actual.keys():
@@ -580,6 +584,12 @@ def _diff_notifications(expected: Step, actual: Step) -> list[Divergence]:
                 Divergence(expected.index, "notification", notification[0], notification[1], None)
             )
 
+    for extra_key in remaining:
+        extra_notif = json.loads(extra_key)
+        divergences.append(
+            Divergence(expected.index, "notification", extra_notif[0], None, extra_notif[1])
+        )
+
     return divergences
 
 
@@ -601,6 +611,11 @@ def diff_steps(expected: list[Step], actual: list[Step]) -> list[Divergence]:
         got = actual[index]
         divergences.extend(_diff_observations(want, got))
         divergences.extend(_diff_notifications(want, got))
+
+    for index in range(len(expected), len(actual)):
+        got = actual[index]
+        action = got.action.method if got.action else "<baseline>"
+        divergences.append(Divergence(got.index, "extra_step", action, None, action))
 
     return divergences
 
