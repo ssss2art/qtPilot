@@ -6,17 +6,22 @@ import json
 
 import pytest
 
+import asyncio
+
 from fastmcp import FastMCP
 
+from qtpilot import _mcp_compat as mcp_compat
 from qtpilot.tools.replay_tools import register_replay_tools
 
 
 def _tool_names(mcp: FastMCP) -> set[str]:
-    return set(mcp._tool_manager._tools.keys())
+    return set(asyncio.run(mcp_compat.list_tool_names(mcp)))
 
 
-def _fn(mcp: FastMCP, name: str):
-    return mcp._tool_manager._tools[name].fn
+async def _call_tool(mcp: FastMCP, name: str, **kwargs):
+    tool = await mcp_compat.find_tool(mcp, name)
+    assert tool is not None, f"Tool {name} not found"
+    return await tool.fn(**kwargs)
 
 
 def write_log(tmp_path, entries: list[dict]) -> str:
@@ -50,7 +55,7 @@ class TestReplayInspect:
         register_replay_tools(mock_mcp)
         path = write_log(tmp_path, CLICK_SESSION)
 
-        result = await _fn(mock_mcp, "qtpilot_replay_inspect")(path=path)
+        result = await _call_tool(mock_mcp, "qtpilot_replay_inspect", path=path)
 
         assert result["replayable"] is True
         assert result["actions"] == ["qt.ui.click"]
@@ -64,7 +69,7 @@ class TestReplayInspect:
         register_replay_tools(mock_mcp)
         path = write_log(tmp_path, MCP_ONLY_SESSION)
 
-        result = await _fn(mock_mcp, "qtpilot_replay_inspect")(path=path)
+        result = await _call_tool(mock_mcp, "qtpilot_replay_inspect", path=path)
 
         assert result["replayable"] is False
         assert result["actions"] == []
@@ -81,7 +86,7 @@ class TestReplayInspect:
         monkeypatch.setattr(server, "get_probe", explode)
         register_replay_tools(mock_mcp)
 
-        await _fn(mock_mcp, "qtpilot_replay_inspect")(path=write_log(tmp_path, CLICK_SESSION))
+        await _call_tool(mock_mcp, "qtpilot_replay_inspect", path=write_log(tmp_path, CLICK_SESSION))
 
 
 class TestReplayRun:
@@ -93,7 +98,7 @@ class TestReplayRun:
         register_replay_tools(mock_mcp)
 
         with pytest.raises(RuntimeError, match="Not connected"):
-            await _fn(mock_mcp, "qtpilot_replay_run")(path=write_log(tmp_path, CLICK_SESSION))
+            await _call_tool(mock_mcp, "qtpilot_replay_run", path=write_log(tmp_path, CLICK_SESSION))
 
     @pytest.mark.asyncio
     async def test_reports_a_clean_replay(self, mock_mcp, tmp_path, monkeypatch):
@@ -117,8 +122,8 @@ class TestReplayRun:
         monkeypatch.setattr(server, "get_probe", Probe)
         register_replay_tools(mock_mcp)
 
-        result = await _fn(mock_mcp, "qtpilot_replay_run")(
-            path=write_log(tmp_path, CLICK_SESSION), settle=0
+        result = await _call_tool(
+            mock_mcp, "qtpilot_replay_run", path=write_log(tmp_path, CLICK_SESSION), settle=0
         )
 
         assert result["passed"] is True
@@ -149,8 +154,8 @@ class TestReplayRun:
         monkeypatch.setattr(server, "get_probe", Probe)
         register_replay_tools(mock_mcp)
 
-        result = await _fn(mock_mcp, "qtpilot_replay_run")(
-            path=write_log(tmp_path, CLICK_SESSION), settle=0
+        result = await _call_tool(
+            mock_mcp, "qtpilot_replay_run", path=write_log(tmp_path, CLICK_SESSION), settle=0
         )
 
         assert result["passed"] is False
