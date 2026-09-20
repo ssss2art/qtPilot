@@ -223,4 +223,3 @@ class TestResultMonad:
         lhs = m.flat_map(f).flat_map(g)
         rhs = m.flat_map(lambda x: f(x).flat_map(g))
         assert lhs == rhs == Ok(60)
-

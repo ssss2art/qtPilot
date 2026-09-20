@@ -33,7 +33,7 @@ Rectangle {
             color: "#111111"
             verticalAlignment: TextInput.AlignVCenter
             padding: 8
-            
+
             Rectangle {
                 anchors.fill: parent
                 color: "white"

@@ -17,11 +17,16 @@ class TestReplayModes:
         """Computer Use methods must be recognized in MUTATING_METHODS and OBSERVING_METHODS."""
         assert "cu.click" in MUTATING_METHODS
         assert "cu.mouseMove" in MUTATING_METHODS
-        assert "cu.drag" in MUTATING_METHODS
+        assert "cu.mouseDrag" in MUTATING_METHODS
         assert "cu.type" in MUTATING_METHODS
         assert "cu.key" in MUTATING_METHODS
         assert "cu.scroll" in MUTATING_METHODS
         assert "cu.cursorPosition" in OBSERVING_METHODS
+
+    def test_native_menu_methods_are_mutating(self):
+        """Public menu actions must be re-driven rather than silently skipped."""
+        assert "qt.ui.contextMenu" in MUTATING_METHODS
+        assert "qt.ui.activateMenuItem" in MUTATING_METHODS
 
     def test_chrome_methods_in_mutating_and_observing(self):
         """Chrome mode methods must be recognized in MUTATING_METHODS and OBSERVING_METHODS."""
@@ -47,6 +52,54 @@ class TestReplayModes:
         assert scenario.steps[1].action.method == "cu.click"
         assert len(scenario.steps[1].observations) == 1
         assert scenario.steps[1].observations[0].method == "cu.cursorPosition"
+
+    @pytest.mark.asyncio
+    async def test_public_mouse_drag_and_menu_actions_are_replayed(self):
+        """Wire methods emitted by public tools must each form a replay action."""
+        entries = [
+            {"dir": "req", "id": 1, "method": "cu.mouseDrag", "params": {"startX": 1, "startY": 2, "endX": 3, "endY": 4}},
+            {"dir": "res", "id": 1, "method": "cu.mouseDrag", "result": {"ok": True}},
+            {"dir": "req", "id": 2, "method": "qt.ui.contextMenu", "params": {"objectId": "tree"}},
+            {"dir": "res", "id": 2, "method": "qt.ui.contextMenu", "result": {"ok": True}},
+            {"dir": "req", "id": 3, "method": "qt.ui.activateMenuItem", "params": {"text": "Delete"}},
+            {"dir": "res", "id": 3, "method": "qt.ui.activateMenuItem", "result": {"ok": True}},
+        ]
+
+        scenario = parse_entries(entries)
+
+        assert scenario.is_replayable
+        assert scenario.unsupported == {}
+        assert [step.action.method for step in scenario.steps[1:]] == [
+            "cu.mouseDrag",
+            "qt.ui.contextMenu",
+            "qt.ui.activateMenuItem",
+        ]
+
+        class RecordingProbe:
+            is_connected = True
+
+            def __init__(self):
+                self.calls = []
+
+            def add_notification_handler(self, handler):
+                pass
+
+            def remove_notification_handler(self, handler):
+                pass
+
+            async def call(self, method, params=None, **kwargs):
+                self.calls.append((method, params))
+                return {"ok": True}
+
+        probe = RecordingProbe()
+        result = await run_scenario(scenario, probe, settle=0)
+
+        assert result.divergences == []
+        assert [method for method, _ in probe.calls if method != "qt.sync"] == [
+            "cu.mouseDrag",
+            "qt.ui.contextMenu",
+            "qt.ui.activateMenuItem",
+        ]
 
     def test_chrome_session_parsing(self):
         """A session with chr.* calls must parse into steps with actions and observations."""

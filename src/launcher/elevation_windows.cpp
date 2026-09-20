@@ -73,19 +73,16 @@ int relaunchElevated(const QString& executable, const QStringList& args) {
     QString val = QString::fromLocal8Bit(qgetenv(varName));
     if (!val.isEmpty()) {
       // Escape any special cmd characters in the value
-      envSetCmds.append(
-          QStringLiteral("set \"%1=%2\"").arg(QString::fromLatin1(varName)).arg(val));
+      envSetCmds.append(QStringLiteral("set \"%1=%2\"").arg(QString::fromLatin1(varName), val));
     }
   }
 
   // Build: cmd.exe /c "set VAR=val && set VAR2=val2 && "launcher.exe" --elevated args"
   QString launcherCmd;
   if (executable.contains(QLatin1Char(' '))) {
-    launcherCmd =
-        QStringLiteral("\"%1\" %2").arg(executable).arg(quotedArgs.join(QLatin1Char(' ')));
+    launcherCmd = QStringLiteral("\"%1\" %2").arg(executable, quotedArgs.join(QLatin1Char(' ')));
   } else {
-    launcherCmd =
-        QStringLiteral("%1 %2").arg(executable).arg(quotedArgs.join(QLatin1Char(' ')));
+    launcherCmd = QStringLiteral("%1 %2").arg(executable, quotedArgs.join(QLatin1Char(' ')));
   }
 
   if (envSetCmds.isEmpty()) {
