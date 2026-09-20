@@ -45,6 +45,8 @@ class TestComputerUseApi : public QObject {
   // CU-02 through CU-04: Clicks
   void testClick();
   void testClickFocusesWidgetForType();
+  void testClickRetainsTypeTargetWhenPlatformFocusIsCleared();
+  void testTabMovesTheRetainedKeyboardTarget();
   void testScreenAbsoluteClick();
   void testRightClick();
   void testMiddleClick();
@@ -97,6 +99,7 @@ class TestComputerUseApi : public QObject {
   QMainWindow* m_testWindow = nullptr;
   QPushButton* m_testButton = nullptr;
   QLineEdit* m_testLineEdit = nullptr;
+  QLineEdit* m_testNextLineEdit = nullptr;
   QScrollArea* m_scrollArea = nullptr;
   int m_requestId = 1;
 };
@@ -131,6 +134,11 @@ void TestComputerUseApi::init() {
   m_testLineEdit->setFixedSize(200, 30);
   layout->addWidget(m_testLineEdit);
 
+  m_testNextLineEdit = new QLineEdit(central);
+  m_testNextLineEdit->setObjectName("cuNextInputField");
+  m_testNextLineEdit->setFixedSize(200, 30);
+  layout->addWidget(m_testNextLineEdit);
+
   m_scrollArea = new QScrollArea(central);
   m_scrollArea->setObjectName("cuScrollArea");
   m_scrollArea->setFixedSize(200, 100);
@@ -151,6 +159,7 @@ void TestComputerUseApi::cleanup() {
   m_testWindow = nullptr;
   m_testButton = nullptr;
   m_testLineEdit = nullptr;
+  m_testNextLineEdit = nullptr;
   m_scrollArea = nullptr;
 
   delete m_api;
@@ -273,6 +282,44 @@ void TestComputerUseApi::testClickFocusesWidgetForType() {
   QEXPECT_THAT(clickResult.toObject(), HasJsonField("success", Eq(true)));
   QEXPECT_THAT(typeResult.toObject(), HasJsonField("success", Eq(true)));
   QEXPECT_THAT(m_testLineEdit->text(), QStrEq("Focused"));
+}
+
+void TestComputerUseApi::testClickRetainsTypeTargetWhenPlatformFocusIsCleared() {
+  m_testLineEdit->clear();
+  m_testButton->setFocus();
+  QApplication::processEvents();
+
+  const QPoint editCenter = m_testLineEdit->mapTo(m_testWindow, m_testLineEdit->rect().center());
+  QJsonValue clickResult =
+      callResult("cu.click", QJsonObject{{"x", editCenter.x()}, {"y", editCenter.y()}});
+  m_testLineEdit->clearFocus();
+  QApplication::processEvents();
+  QJsonValue typeResult = callResult("cu.type", QJsonObject{{"text", "Retained"}});
+  QApplication::processEvents();
+
+  QEXPECT_THAT(clickResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(typeResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_testLineEdit->text(), QStrEq("Retained"));
+}
+
+void TestComputerUseApi::testTabMovesTheRetainedKeyboardTarget() {
+  m_testLineEdit->clear();
+  m_testNextLineEdit->clear();
+  m_testButton->setFocus();
+  QApplication::processEvents();
+
+  const QPoint editCenter = m_testLineEdit->mapTo(m_testWindow, m_testLineEdit->rect().center());
+  callResult("cu.click", QJsonObject{{"x", editCenter.x()}, {"y", editCenter.y()}});
+  m_testLineEdit->clearFocus();
+  QApplication::processEvents();
+
+  QJsonValue keyResult = callResult("cu.key", QJsonObject{{"key", "Tab"}});
+  QJsonValue typeResult = callResult("cu.type", QJsonObject{{"text", "Moved"}});
+  QApplication::processEvents();
+
+  QEXPECT_THAT(keyResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(typeResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_testNextLineEdit->text(), QStrEq("Moved"));
 }
 
 void TestComputerUseApi::testScreenAbsoluteClick() {

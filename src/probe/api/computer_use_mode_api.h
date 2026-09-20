@@ -6,6 +6,9 @@
 #include "transport/jsonrpc_handler.h"  // For QTPILOT_EXPORT, JsonRpcHandler
 
 #include <QObject>
+#include <QPointer>
+
+class QWidget;
 
 namespace qtPilot {
 
@@ -43,6 +46,7 @@ class QTPILOT_EXPORT ComputerUseModeApi : public QObject {
   void registerQueryMethods();       ///< cu.cursorPosition
 
   JsonRpcHandler* m_handler;
+  QPointer<QWidget> m_lastKeyboardTarget;
 };
 
 }  // namespace qtPilot
