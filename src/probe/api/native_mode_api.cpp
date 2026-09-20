@@ -653,6 +653,36 @@ void NativeModeApi::registerSystemMethods() {
 
     return envelopeToString(ResponseEnvelope::wrap(result));
   });
+
+  // qt.sync - flush pending events and synchronize with main loop
+  m_handler->RegisterMethod(QStringLiteral("qt.sync"), [](const QString& /*params*/) -> QString {
+    const qint64 startMs = QDateTime::currentMSecsSinceEpoch();
+
+    // 1. Process all pending posted events in the Qt main event loop.
+    // Because Qt's event loop is strictly FIFO, all earlier queued click/key events
+    // and their immediately triggered signal emissions run to completion here.
+    QCoreApplication::processEvents(QEventLoop::AllEvents);
+
+    // 2. Flush any deferred deletions resulting from widget teardown.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+    const qint64 finishMs = QDateTime::currentMSecsSinceEpoch();
+
+    QJsonObject result;
+    result[QStringLiteral("synced")] = true;
+    result[QStringLiteral("timestamp")] = finishMs;
+    result[QStringLiteral("elapsedMs")] = finishMs - startMs;
+
+    // Report active modal or popup widgets if opened by the processed events
+    if (auto* modal = QApplication::activeModalWidget()) {
+      result[QStringLiteral("activeModal")] = ObjectRegistry::instance()->objectId(modal);
+    }
+    if (auto* popup = QApplication::activePopupWidget()) {
+      result[QStringLiteral("activePopup")] = ObjectRegistry::instance()->objectId(popup);
+    }
+
+    return envelopeToString(ResponseEnvelope::wrap(result));
+  });
 }
 
 // ============================================================================

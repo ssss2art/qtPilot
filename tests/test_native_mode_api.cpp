@@ -65,6 +65,7 @@ class TestNativeModeApi : public QObject {
   // System methods
   void testPing();
   void testVersion();
+  void testSync();
 
   // Object discovery (qt.objects.*)
   void testObjectsTree();
@@ -284,6 +285,28 @@ void TestNativeModeApi::testVersion() {
       AllOf(HasJsonField("version", QIsNotEmpty()), HasJsonField("protocol", QStrEq("jsonrpc-2.0")),
             HasJsonField("name", QStrEq("qtPilot")), HasJsonField("mode", QStrEq("native")),
             HasJsonField("deprecated", JsonArrayContains(QStrEq("qtpilot.*")))));
+}
+
+void TestNativeModeApi::testSync() {
+  bool clicked = false;
+  QMetaObject::Connection conn =
+      connect(m_testButton, &QPushButton::clicked, [&clicked]() { clicked = true; });
+
+  QString buttonId = ObjectRegistry::instance()->objectId(m_testButton);
+  QJsonObject clickParams{{QStringLiteral("objectId"), buttonId}};
+  QJsonObject clickResult = callResult("qt.ui.click", clickParams).toObject();
+  QVERIFY(clickResult["ok"].toBool());
+  QVERIFY(clickResult["deferred"].toBool());
+
+  QJsonValue syncResultVal = callResult("qt.sync", QJsonObject());
+  QVERIFY(syncResultVal.isObject());
+  QJsonObject syncResult = syncResultVal.toObject();
+  QVERIFY(syncResult["synced"].toBool());
+  QVERIFY(syncResult["timestamp"].toDouble() > 0);
+  QVERIFY(syncResult["elapsedMs"].toDouble() >= 0);
+
+  QVERIFY(clicked);
+  disconnect(conn);
 }
 
 // ========================================================================
