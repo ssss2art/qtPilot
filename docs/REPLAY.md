@@ -26,11 +26,55 @@ describe the session's own bookkeeping. `qt.ui.screenshot` returns image bytes t
 visual golden. None of them say anything about the application under test, and asserting on them
 would fail runs for reasons a reader cannot act on.
 
+```mermaid
+flowchart TD
+    subgraph Recording["1. Recording Phase"]
+        AppLive["Live Qt Application<br/>(Probe Injected)"]
+        Client["Client / AI Agent<br/>(Driving Session)"]
+        Logger["MessageLogger<br/>(Level 2 or 3)"]
+        LogFile[("session.jsonl")]
+
+        Client -->|JSON-RPC| AppLive
+        AppLive -->|Responses & Events| Client
+        Client -.->|Tap Wire Traffic| Logger
+        Logger --> LogFile
+    end
+
+    subgraph Parsing["2. Parsing & Normalization"]
+        Parser["parse_entries()"]
+        Scenario["Scenario<br/>(Steps, Actions, Observations)"]
+
+        LogFile --> Parser
+        Parser --> Scenario
+    end
+
+    subgraph Replay["3. Deterministic Replay Phase"]
+        FreshApp["Fresh Target App<br/>(Clean State)"]
+        Driver["run_scenario()"]
+        Comparator["Observation Matcher<br/>(Masks Transient Handles)"]
+        ResultMonad["Result[list[Step], list[Divergence]]<br/>(Ok / Err)"]
+
+        Scenario --> Driver
+        Driver -->|Re-drive Mutating Actions| FreshApp
+        FreshApp -->|Query Observations| Comparator
+        Scenario -.->|Expected Baseline| Comparator
+        Comparator --> ResultMonad
+    end
+
+    subgraph Assertion["4. Verification & Assertions"]
+        Pass["expect_replay().to_pass()"]
+        Diverge["expect_replay().to_diverge_at()"]
+
+        ResultMonad --> Pass
+        ResultMonad --> Diverge
+    end
+```
+
 ## Recording a scenario
 
-```
+```python
 qtpilot_log_start(path="scenarios/submit-form.jsonl", level=2)
-  ... drive the application ...
+# ... drive the application ...
 qtpilot_log_stop()
 ```
 
@@ -60,7 +104,7 @@ them once in a watch list and let replay query them after every action:
 }
 ```
 
-```
+```bash
 qtpilot replay session.jsonl --watch watch.json --record -o golden.jsonl   # capture a baseline
 qtpilot replay golden.jsonl                                               # check against it
 ```
@@ -75,7 +119,7 @@ scenario cannot change what its baseline means.
 
 ## Running one
 
-```
+```bash
 qtpilot replay scenarios/submit-form.jsonl                 # against ws://localhost:9222
 qtpilot replay scenarios/submit-form.jsonl --inspect       # summarise, connect to nothing
 qtpilot replay scenarios/submit-form.jsonl --settle 0.25   # slower async updates
@@ -88,7 +132,7 @@ it does not reset anything.**
 ### Exit codes
 
 | Code | Meaning |
-|------|---------|
+| --- | --- |
 | 0 | No divergence |
 | 1 | Ran, and the application behaved differently |
 | 2 | Could not run: missing or malformed log, nothing to drive, or no probe reachable |
@@ -106,7 +150,7 @@ reinterpreted as fresh UI input.
 Five things differ between two runs of the same session and would otherwise fail every replay:
 
 | Ignored | Reason |
-|---------|--------|
+| --- | --- |
 | `ts`, `dur_ms`, and the probe's `meta.timestamp` | Timing. Stripped at every depth. |
 | The JSON-RPC request `id` | A counter. Stripped at the **top level of an entry only** — a nested `id` names an *object*, and dropping it everywhere would leave a diff unable to tell one widget from another. |
 | `QObject~<n>` handles | The counter follows construction order. Masked to `QObject~*`; register names for identity that matters. |

@@ -46,7 +46,7 @@ Mobile mode changes three things automatically, so you do not need to pass them:
 
 The result is a static archive, versioned by Qt like every other probe build:
 
-```
+```text
 build-android/lib/libqtPilot-probe-qt6.11.a        # Release
 build-ios/lib/Debug/libqtPilot-probe-qt6.11d.a     # Debug — note the `d` suffix,
                                                    # and Xcode's per-config subdir

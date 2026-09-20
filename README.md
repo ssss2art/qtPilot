@@ -11,7 +11,7 @@ already-built Qt application. On Android and iOS, where no platform mechanism ca
 library into a running app, the probe is instead linked into a development build of your own
 app; see [docs/MOBILE.md](docs/MOBILE.md).
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TARGET MACHINE OR DEVICE                                               │
 │                                                                         │
@@ -198,7 +198,7 @@ Uses chrome mode's accessibility tree to locate interactive elements by role.
 
 qtPilot includes a Claude Code skill that runs a comprehensive 39-test E2E suite across all three modes, plus logging and recording. To run it against the included test app:
 
-```
+```text
 /test-mcp-modes
 ```
 
