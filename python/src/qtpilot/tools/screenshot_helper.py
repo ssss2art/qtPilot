@@ -54,7 +54,8 @@ def process_screenshot_response(
         }
 
     if as_image:
-        return types.ImageContent(type="image", data=b64, mimeType="image/png")
+        from qtpilot._mcp_compat import create_image_content
+        return create_image_content(data=b64, mime_type="image/png")
 
     result = dict(resp)
     result["width"] = width

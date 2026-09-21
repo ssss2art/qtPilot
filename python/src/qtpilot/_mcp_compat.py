@@ -375,3 +375,33 @@ def describe() -> dict[str, Any]:
         # the bug reports of anyone running an SDK the shim could not identify.
         "stateless_protocol": is_stateless_protocol(),
     }
+
+
+def create_image_content(data: str, mime_type: str = "image/png") -> Any:
+    """Create an MCP ImageContent instance compatible with both MCP SDK v1 and v2."""
+    import mcp.types as types
+
+    try:
+        return types.ImageContent(type="image", data=data, mime_type=mime_type)
+    except Exception:
+        return types.ImageContent(type="image", data=data, mimeType=mime_type)
+
+
+def get_image_mime_type(content: Any) -> str:
+    """Read mime type from ImageContent without triggering FastMCP 4 deprecation warnings."""
+    dump = getattr(content, "model_dump", None)
+    if callable(dump):
+        res = dump()
+        return res.get("mime_type") or res.get("mimeType", "")
+    d = getattr(content, "__dict__", {})
+    return d.get("mime_type") or d.get("mimeType", "")
+
+
+def get_tool_input_schema(tool: Any) -> dict[str, Any]:
+    """Extract tool input schema without triggering FastMCP 4 deprecation warnings."""
+    dump = getattr(tool, "model_dump", None)
+    if callable(dump):
+        res = dump()
+        return res.get("input_schema") or res.get("inputSchema", {})
+    d = getattr(tool, "__dict__", {})
+    return d.get("input_schema") or d.get("inputSchema", {})

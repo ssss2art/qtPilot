@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastmcp import Client
 
+from qtpilot._mcp_compat import get_image_mime_type
 from qtpilot.server import create_server
 from qtpilot.tools.screenshot_helper import extract_png_dimensions, process_screenshot_response
 import mcp.types as types
@@ -45,7 +46,7 @@ class TestProcessScreenshotResponse:
         result = process_screenshot_response(resp, save_to=None, as_image=True)
         assert isinstance(result, types.ImageContent)
         assert result.type == "image"
-        assert result.mimeType == "image/png"
+        assert get_image_mime_type(result) == "image/png"
         assert result.data == b64
 
     def test_as_image_false_returns_dict_with_dimensions(self):
@@ -89,7 +90,7 @@ class TestNativeScreenshotTool:
                 content = res.content[0]
                 assert isinstance(content, types.ImageContent)
                 assert content.data == b64
-                assert content.mimeType == "image/png"
+                assert get_image_mime_type(content) == "image/png"
 
     @pytest.mark.asyncio
     async def test_qt_ui_screenshot_save_to_returns_lean_metadata(self):

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastmcp import Client
 
+from qtpilot._mcp_compat import get_tool_input_schema
 from qtpilot.server import create_server
 
 
@@ -25,7 +26,7 @@ class TestSchemaSlimming:
 
                 # 1. qt_objects_search
                 search_tool = tools_by_name["qt_objects_search"]
-                search_props = set(search_tool.inputSchema.get("properties", {}).keys())
+                search_props = set(get_tool_input_schema(search_tool).get("properties", {}).keys())
                 assert "objectName" in search_props
                 assert "className" in search_props
                 assert "properties" in search_props
@@ -49,20 +50,20 @@ class TestSchemaSlimming:
 
                 # 2. qt_ui_sendKeys
                 send_keys_tool = tools_by_name["qt_ui_sendKeys"]
-                send_keys_props = set(send_keys_tool.inputSchema.get("properties", {}).keys())
+                send_keys_props = set(get_tool_input_schema(send_keys_tool).get("properties", {}).keys())
                 assert "sequence" in send_keys_props
                 assert "key" not in send_keys_props
                 assert "keys" not in send_keys_props
 
                 # 3. qt_models_search
                 models_search_tool = tools_by_name["qt_models_search"]
-                models_props = set(models_search_tool.inputSchema.get("properties", {}).keys())
+                models_props = set(get_tool_input_schema(models_search_tool).get("properties", {}).keys())
                 assert "max_hits" in models_props
                 assert "maxHits" not in models_props
 
                 # 4. qt_ui_clickItem
                 click_item_tool = tools_by_name["qt_ui_clickItem"]
-                click_item_props = set(click_item_tool.inputSchema.get("properties", {}).keys())
+                click_item_props = set(get_tool_input_schema(click_item_tool).get("properties", {}).keys())
                 assert "itemPath" in click_item_props
                 assert "target" not in click_item_props
 
@@ -80,7 +81,7 @@ class TestSchemaSlimming:
 
                 # cu_leftClick
                 click_tool = tools_by_name["cu_leftClick"]
-                click_props = set(click_tool.inputSchema.get("properties", {}).keys())
+                click_props = set(get_tool_input_schema(click_tool).get("properties", {}).keys())
                 assert "screen_absolute" in click_props
                 assert "delay_ms" in click_props
                 assert "screenAbsolute" not in click_props
@@ -88,6 +89,6 @@ class TestSchemaSlimming:
 
                 # cu_key
                 key_tool = tools_by_name["cu_key"]
-                key_props = set(key_tool.inputSchema.get("properties", {}).keys())
+                key_props = set(get_tool_input_schema(key_tool).get("properties", {}).keys())
                 assert "key" in key_props
                 assert "text" not in key_props
