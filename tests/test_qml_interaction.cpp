@@ -7,9 +7,13 @@
 // measured or driven through the native surface.
 
 #include "api/computer_use_mode_api.h"
+#include "api/native_mode_api.h"
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "introspection/event_capture.h"
 #include "transport/jsonrpc_handler.h"
+
+#include <memory>
 
 #include <QGuiApplication>
 #include <QJsonDocument>
@@ -19,10 +23,6 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QtTest>
-
-#include <memory>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot;
 using namespace qtPilot::test;
@@ -50,11 +50,13 @@ class TestQmlInteraction : public QObject {
   void cleanupTestCase();
 
   void testGeometryOfQuickItem();
+  void testNativeUiGeometryOfQuickItem();
   void testGeometryOfQuickWindow();
   void testGeometryRejectsNonVisualObject();
   void testGeometryOfUnrenderedItemHasNullGlobal();
 
   void testHitTestFindsItemInWindow();
+  void testNativeUiHitTestFindsQuickItem();
   void testHitTestRejectsNonVisualParent();
 
   void testClickOnQuickItemIsAccepted();
@@ -94,6 +96,7 @@ void TestQmlInteraction::cleanupTestCase() {
 
 QJsonObject TestQmlInteraction::call(const QString& method, const QJsonObject& params) {
   JsonRpcHandler handler;
+  NativeModeApi nativeApi(&handler);
   QJsonObject request{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
                       {QStringLiteral("method"), method},
                       {QStringLiteral("params"), params},
@@ -143,6 +146,29 @@ void TestQmlInteraction::testGeometryOfQuickItem() {
   QEXPECT_THAT(scene, HasJsonField("x", 20.0));
   QEXPECT_THAT(scene, HasJsonField("y", 30.0));
   QEXPECT_THAT(scene, HasJsonField("width", 60.0));
+}
+
+void TestQmlInteraction::testNativeUiGeometryOfQuickItem() {
+  QQuickWindow window;
+  window.setGeometry(0, 0, 200, 150);
+  auto* item = new QQuickItem(window.contentItem());
+  item->setObjectName(QStringLiteral("nativeGeoItem"));
+  item->setPosition(QPointF(20, 30));
+  item->setSize(QSizeF(60, 40));
+  window.show();
+  QCoreApplication::processEvents();
+
+  const QString objectId = ObjectRegistry::instance()->objectId(item);
+  const QJsonObject response =
+      call(QStringLiteral("qt.ui.geometry"), QJsonObject{{QStringLiteral("objectId"), objectId}});
+  QEXPECT_THAT(response, HasJsonField("result"));
+  const QJsonObject result = response[QStringLiteral("result")].toObject();
+  const QJsonObject geo = result[QStringLiteral("result")].toObject();
+  const QJsonObject local = geo[QStringLiteral("local")].toObject();
+  QEXPECT_THAT(local, HasJsonField("x", 20.0));
+  QEXPECT_THAT(local, HasJsonField("y", 30.0));
+  QEXPECT_THAT(local, HasJsonField("width", 60.0));
+  QEXPECT_THAT(local, HasJsonField("height", 40.0));
 }
 
 void TestQmlInteraction::testGeometryOfQuickWindow() {
@@ -212,6 +238,28 @@ void TestQmlInteraction::testHitTestFindsItemInWindow() {
           .toObject();
 
   QEXPECT_THAT(result, HasJsonField("id", expected));
+}
+
+void TestQmlInteraction::testNativeUiHitTestFindsQuickItem() {
+  QQuickWindow window;
+  window.setGeometry(100, 100, 200, 200);
+  auto* item = new QQuickItem(window.contentItem());
+  item->setObjectName(QStringLiteral("nativeHitTargetItem"));
+  item->setPosition(QPointF(50, 50));
+  item->setSize(QSizeF(80, 60));
+  window.show();
+  QCoreApplication::processEvents();
+
+  const QString expected = ObjectRegistry::instance()->objectId(item);
+  const QPointF globalPoint = window.mapToGlobal(QPointF(70, 70));
+  const QJsonObject response = call(
+      QStringLiteral("qt.ui.hitTest"),
+      QJsonObject{{QStringLiteral("x"), globalPoint.x()}, {QStringLiteral("y"), globalPoint.y()}});
+
+  QEXPECT_THAT(response, HasJsonField("result"));
+  const QJsonObject result = response[QStringLiteral("result")].toObject();
+  const QJsonObject inner = result[QStringLiteral("result")].toObject();
+  QEXPECT_THAT(inner, HasJsonField("objectId", expected));
 }
 
 void TestQmlInteraction::testHitTestRejectsNonVisualParent() {

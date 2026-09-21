@@ -1,11 +1,10 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "interaction/key_name_mapper.h"
 
 #include <QtTest>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot;
 using namespace qtPilot::test;
@@ -20,8 +19,8 @@ MATCHER_P2(MatchesKeyCombo, expectedKey, expectedModifiers, "") {
     return false;
   }
   if (arg.modifiers != expectedModifiers) {
-    *result_listener << "modifiers were " << static_cast<int>(arg.modifiers)
-                     << ", expected " << static_cast<int>(expectedModifiers);
+    *result_listener << "modifiers were " << static_cast<int>(arg.modifiers) << ", expected "
+                     << static_cast<int>(expectedModifiers);
     return false;
   }
   return true;
@@ -175,6 +174,11 @@ void TestKeyNameMapper::testResolveSingleChar() {
   QEXPECT_THAT(KeyNameMapper::resolve("0"), Eq(Qt::Key_0));
   QEXPECT_THAT(KeyNameMapper::resolve("1"), Eq(Qt::Key_1));
   QEXPECT_THAT(KeyNameMapper::resolve("9"), Eq(Qt::Key_9));
+
+  // Literal printable characters
+  QEXPECT_THAT(KeyNameMapper::resolve("?"), Eq(Qt::Key_Question));
+  QEXPECT_THAT(KeyNameMapper::resolve(" "), Eq(Qt::Key_Space));
+  QEXPECT_THAT(KeyNameMapper::resolve("/"), Eq(Qt::Key_Slash));
 }
 
 void TestKeyNameMapper::testResolveNamedPunctuation() {
@@ -192,10 +196,12 @@ void TestKeyNameMapper::testParseKeyCombo_Simple() {
   // Single key, no modifiers
   QEXPECT_THAT(KeyNameMapper::parseKeyCombo("Return"),
                MatchesKeyCombo(Qt::Key_Return, Qt::NoModifier));
-  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("F5"),
-               MatchesKeyCombo(Qt::Key_F5, Qt::NoModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("F5"), MatchesKeyCombo(Qt::Key_F5, Qt::NoModifier));
   QEXPECT_THAT(KeyNameMapper::parseKeyCombo("Escape"),
                MatchesKeyCombo(Qt::Key_Escape, Qt::NoModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo("?"),
+               MatchesKeyCombo(Qt::Key_Question, Qt::NoModifier));
+  QEXPECT_THAT(KeyNameMapper::parseKeyCombo(" "), MatchesKeyCombo(Qt::Key_Space, Qt::NoModifier));
 }
 
 void TestKeyNameMapper::testParseKeyCombo_WithModifiers() {
@@ -253,6 +259,18 @@ void TestKeyNameMapper::testParseKeyComboExpectedMonadic() {
   auto valid = KeyNameMapper::parseKeyComboExpected("ctrl+shift+s");
   QVERIFY(valid.has_value());
   QEXPECT_THAT(*valid, MatchesKeyCombo(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier));
+
+  auto validQuestion = KeyNameMapper::parseKeyComboExpected("?");
+  QVERIFY(validQuestion.has_value());
+  QEXPECT_THAT(*validQuestion, MatchesKeyCombo(Qt::Key_Question, Qt::NoModifier));
+
+  auto validSpace = KeyNameMapper::parseKeyComboExpected(" ");
+  QVERIFY(validSpace.has_value());
+  QEXPECT_THAT(*validSpace, MatchesKeyCombo(Qt::Key_Space, Qt::NoModifier));
+
+  auto validCtrlQuestion = KeyNameMapper::parseKeyComboExpected("Ctrl+?");
+  QVERIFY(validCtrlQuestion.has_value());
+  QEXPECT_THAT(*validCtrlQuestion, MatchesKeyCombo(Qt::Key_Question, Qt::ControlModifier));
 
   auto invalidMod = KeyNameMapper::parseKeyComboExpected("invalidmod+s");
   QVERIFY(!invalidMod.has_value());

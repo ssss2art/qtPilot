@@ -516,3 +516,20 @@ def test_truncated_comparison_preserves_type_check():
     assert _equivalent("foo...<truncated 50c>", "real text")
     assert not _equivalent("<image:1024b>", ["not", "an", "image"])
     assert _equivalent("<image:1024b>", "base64data")
+
+
+def test_equivalent_unwraps_response_envelope_meta():
+    """Manual scenarios omitting 'meta' or envelope 'result' compare cleanly against wire responses."""
+    actual_wrapped = {"meta": {"objectId": "btn", "timestamp": 12345}, "result": {"value": True}}
+    expected_direct = {"value": True}
+    assert _equivalent(expected_direct, actual_wrapped)
+    assert _equivalent(actual_wrapped, expected_direct)
+
+    expected_with_result = {"result": {"value": True}}
+    assert _equivalent(expected_with_result, actual_wrapped)
+    assert _equivalent(actual_wrapped, expected_with_result)
+
+    actual_diff = {"meta": {"objectId": "btn"}, "result": {"value": False}}
+    assert not _equivalent(expected_direct, actual_diff)
+    assert not _equivalent(expected_with_result, actual_diff)
+

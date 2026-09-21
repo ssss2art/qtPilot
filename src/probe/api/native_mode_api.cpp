@@ -1577,6 +1577,13 @@ void NativeModeApi::registerUiMethods() {
               {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
     }
 
+#ifdef QTPILOT_HAS_QML
+    if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+      QJsonObject geo = HitTest::itemGeometry(item);
+      return envelopeToString(ResponseEnvelope::wrap(geo, objectId));
+    }
+#endif
+
     // Cast the object already in hand rather than re-resolving the same id:
     // a registry miss falls back to a full tree search, so resolving twice can
     // mean walking the tree twice for every widget geometry call.
@@ -1630,6 +1637,11 @@ void NativeModeApi::registerUiMethods() {
     // hit test works in.
     const QPoint globalPos(qRound(x), qRound(y));
     QString foundId = HitTest::widgetIdAt(globalPos);
+#ifdef QTPILOT_HAS_QML
+    if (foundId.isEmpty()) {
+      foundId = HitTest::quickItemIdAt(globalPos);
+    }
+#endif
     if (foundId.isEmpty()) {
       throw JsonRpcException(ErrorCode::kObjectNotFound,
                              QStringLiteral("No widget found at point (%1, %2)").arg(x).arg(y),

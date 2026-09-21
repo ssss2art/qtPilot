@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -92,9 +93,15 @@ CHROME_OBSERVING_METHODS: frozenset[str] = frozenset({
     "chr.readConsoleMessages",
 })
 
+SYNC_METHODS: frozenset[str] = frozenset({
+    "qt.sync",
+    "qt.ping",
+    "getVersion",
+})
+
 # Calls whose results describe the application, and so are worth asserting on.
 OBSERVING_METHODS: frozenset[str] = (
-    NATIVE_OBSERVING_METHODS | CU_OBSERVING_METHODS | CHROME_OBSERVING_METHODS
+    NATIVE_OBSERVING_METHODS | CU_OBSERVING_METHODS | CHROME_OBSERVING_METHODS | SYNC_METHODS
 )
 
 # Calls that set up the SESSION rather than drive or describe the application: signal
@@ -142,7 +149,8 @@ SCENARIO_FORMAT = 1
 # is why this is a new `dir` value and not a new top-level key.
 FORMAT_DIR = "meta"
 
-VOLATILE_KEYS: frozenset[str] = frozenset({"ts", "dur_ms", "timestamp", "subscriptionId"})
+VOLATILE_KEYS: frozenset[str] = frozenset({"ts", "dur_ms", "timestamp", "subscriptionId", "elapsedMs"})
+
 
 # The JSON-RPC request id. Stripped only from the top level of an entry: nested "id" keys are
 # object identifiers -- the single most meaningful thing a result carries -- and removing those
@@ -229,6 +237,16 @@ def _equivalent(expected: Any, actual: Any) -> bool:
     ):
         return True
     if isinstance(expected, dict) and isinstance(actual, dict):
+        if "meta" in actual and "meta" not in expected:
+            if "result" in actual and "result" not in expected:
+                return _equivalent(expected, actual["result"])
+            actual_compare = {k: v for k, v in actual.items() if k != "meta"}
+            return _equivalent(expected, actual_compare)
+        if "meta" in expected and "meta" not in actual:
+            if "result" in expected and "result" not in actual:
+                return _equivalent(expected["result"], actual)
+            expected_compare = {k: v for k, v in expected.items() if k != "meta"}
+            return _equivalent(expected_compare, actual)
         if expected.keys() != actual.keys():
             return False
         return all(_equivalent(expected[k], actual[k]) for k in expected)
@@ -690,8 +708,20 @@ class ReplayResult:
         """
         # Stamped so a baseline states its own shape. A future reader can then refuse a file
         # it does not understand instead of silently diffing against changed semantics.
+        source_path = self.scenario.source
+        if source_path:
+            source_str = str(source_path)
+            if os.path.isabs(source_str):
+                try:
+                    rel = os.path.relpath(source_str, os.getcwd())
+                    source_path = Path(source_str).name if rel.startswith("..") else rel
+                except ValueError:
+                    source_path = Path(source_str).name
+            else:
+                source_path = source_str
+
         lines: list[str] = [
-            json.dumps({"dir": FORMAT_DIR, "format": SCENARIO_FORMAT, "source": self.scenario.source})
+            json.dumps({"dir": FORMAT_DIR, "format": SCENARIO_FORMAT, "source": source_path})
         ]
         request_id = 0
 

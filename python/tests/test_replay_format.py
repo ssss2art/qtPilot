@@ -528,3 +528,52 @@ def test_mutating_request_with_invalid_params_does_not_leak_in_flight_counter():
     # Step 0 (the baseline step before step 1) should have received the notification
     assert len(scenario.steps) == 2
     assert ("qtpilot.signalEmitted", {"signal": "idle"}) in scenario.steps[0].notifications
+
+
+def test_recorded_baselines_do_not_leak_absolute_filesystem_paths(tmp_path) -> None:
+    """Ensure write_log() sanitizes absolute paths in meta.source to avoid leaking workstation paths."""
+    from pathlib import Path
+
+    steps = [
+        Step(index=0),
+        Step(
+            index=1,
+            action=Action("qt.properties.set", {"objectId": "window", "name": "width", "value": 360}),
+        ),
+    ]
+    scenario = Scenario(steps=steps, source="/Users/developer/secret-project/scenario.jsonl")
+    result = ReplayResult(scenario=scenario, steps=steps, divergences=[])
+    out_file = tmp_path / "baseline.jsonl"
+    result.write_log(out_file)
+
+    first_line = json.loads(out_file.read_text(encoding="utf-8").splitlines()[0])
+    source = first_line.get("source", "")
+    assert not source.startswith("/Users/"), f"Absolute path leaked into baseline header: {source}"
+    assert not Path(source).is_absolute(), f"Absolute path leaked into baseline header: {source}"
+
+
+def test_sync_calls_in_recorded_session_are_not_unsupported(tmp_path) -> None:
+    """Ensure qt.sync, qt.ping, and getVersion are recognized and not classified as unsupported."""
+    entries = [
+        {"dir": "req", "id": 1, "method": "qt.ui.click", "params": {"objectId": "btn"}},
+        {"dir": "res", "id": 1, "method": "qt.ui.click", "result": {"ok": True}},
+        {"dir": "req", "id": 2, "method": "qt.sync", "params": {}},
+        {"dir": "res", "id": 2, "method": "qt.sync", "result": {"synced": True, "elapsedMs": 5, "timestamp": 12345}},
+        {"dir": "req", "id": 3, "method": "qt.ping", "params": {}},
+        {"dir": "res", "id": 3, "method": "qt.ping", "result": {"pong": True}},
+        {"dir": "req", "id": 4, "method": "getVersion", "params": {}},
+        {"dir": "res", "id": 4, "method": "getVersion", "result": {"version": "1.0.0"}},
+    ]
+    path = write(tmp_path, entries)
+    scenario = load_scenario(path)
+    assert "qt.sync" not in scenario.unsupported
+    assert "qt.ping" not in scenario.unsupported
+    assert "getVersion" not in scenario.unsupported
+    assert len(scenario.unsupported) == 0
+    # And check that the sync observation normalized out elapsedMs
+    sync_obs = [obs for obs in scenario.steps[1].observations if obs.method == "qt.sync"]
+    assert len(sync_obs) == 1
+    assert "elapsedMs" not in sync_obs[0].result
+    assert sync_obs[0].result == {"synced": True}
+
+
