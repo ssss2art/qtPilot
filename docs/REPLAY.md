@@ -70,6 +70,69 @@ flowchart TD
     end
 ```
 
+### Replay Execution Sequence
+
+The runtime execution sequence during `run_scenario()` coordinates mutating action delivery, deterministic Qt event loop flushing (`qt.sync`), async settle delays, observation queries, and signal notification buffering:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Test Runner / CLI
+    participant Runner as Replay Engine (run_scenario)
+    participant Client as ProbeConnection (WebSocket)
+    participant Server as qtPilot Probe (C++)
+    participant App as Qt App (Main Loop & Objects)
+
+    User->>Runner: run_scenario(scenario, conn, settle, sync)
+    Runner->>Client: add_notification_handler(collect)
+
+    loop For each Step in Scenario.steps
+        opt Has Action (Mutating Request)
+            Runner->>Client: call(action.method, action.params)
+            Client->>Server: JSON-RPC request (e.g. qt.ui.click)
+            Server->>App: InputSimulator::mouseClick / sendKey
+            App-->>Server: Event processed & signals emitted
+            Server-->>Client: Response (result / error)
+            Client-->>Runner: Ok / ProbeError
+        end
+
+        opt sync == True
+            Runner->>Client: call("qt.sync")
+            Client->>Server: JSON-RPC request: qt.sync
+            Server->>App: QCoreApplication::processEvents(AllEvents)<br/>sendPostedEvents(DeferredDelete)
+            App-->>Server: Deferred events flushed
+            Server-->>Client: {synced: true, elapsedMs, ...}
+            Client-->>Runner: Synced
+        end
+
+        opt Has Setups (e.g. Signal Subscriptions)
+            Runner->>Client: call(setup.method, setup.params)
+            Client->>Server: JSON-RPC request: qt.signals.subscribe
+            Server-->>Client: Setup acknowledged
+            Client-->>Runner: Acknowledged
+        end
+
+        opt settle > 0
+            Runner->>Runner: asyncio.sleep(settle)<br/>(Allow async signal delivery)
+        end
+
+        loop For each Observation (Recorded + Watch Targets)
+            Runner->>Client: call(obs.method, obs.params)
+            Client->>Server: Query (e.g. qt.properties.get)
+            Server->>App: ObjectRegistry lookup & property read
+            App-->>Server: Current state
+            Server-->>Client: Response (value / error)
+            Client-->>Runner: Normalized Observation
+        end
+
+        Note over Server,Runner: Asynchronous notifications (qtpilot.signalEmitted)<br/>buffered by collector during step
+    end
+
+    Runner->>Client: remove_notification_handler(collect)
+    Runner->>Runner: diff_steps(scenario.steps, observed)<br/>(Mask handles QObject~*, compare multisets)
+    Runner-->>User: ReplayResult / Result[ReplayResult, str]
+```
+
 ## Recording a scenario
 
 ```python
