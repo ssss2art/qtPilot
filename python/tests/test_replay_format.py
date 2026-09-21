@@ -510,3 +510,21 @@ def test_fuzzed_notification_multisets_are_order_independent_and_strict(seed):
     assert len(divergences) == 1
     assert divergences[0].kind == "notification"
     assert divergences[0].expected is None
+
+
+def test_mutating_request_with_invalid_params_does_not_leak_in_flight_counter():
+    """A mutating call whose params are corrupted must not leave mutating_in_flight active."""
+    entries = [
+        {"dir": "req", "id": 1, "method": "qt.ui.click", "params": "not-a-dict"},
+        {"dir": "res", "id": 1, "method": "qt.ui.click", "result": {"ok": True}},
+        # This notification occurs while no mutating request is in flight.
+        # If mutating_in_flight leaked, it would be held in in_flight rather than attached to step 0.
+        {"dir": "ntf", "method": "qtpilot.signalEmitted", "params": {"signal": "idle"}},
+        {"dir": "req", "id": 2, "method": "qt.ui.click", "params": {"objectId": "btn"}},
+        {"dir": "res", "id": 2, "method": "qt.ui.click", "result": {"ok": True}},
+    ]
+    scenario = parse_entries(entries)
+    assert scenario.unsupported == {"qt.ui.click": 1}
+    # Step 0 (the baseline step before step 1) should have received the notification
+    assert len(scenario.steps) == 2
+    assert ("qtpilot.signalEmitted", {"signal": "idle"}) in scenario.steps[0].notifications

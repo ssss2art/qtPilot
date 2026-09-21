@@ -144,9 +144,12 @@ it does not reset anything.**
 | 0 | No divergence |
 | 1 | Ran, and the application behaved differently |
 | 2 | Could not run: missing or malformed log, nothing to drive, or no probe reachable |
+| 3 | Aborted partway: an action raised an error so subsequent steps could not be tested |
 
 The split matters in CI. A probe that is not there has not "behaved differently", and reporting
-it as a divergence sends someone hunting a regression that does not exist.
+it as a divergence sends someone hunting a regression that does not exist. Similarly, an aborted
+run (exit code 3) distinguishes an execution failure during replay from an application regression
+(exit code 1).
 
 Before a scenario can drive the application, each JSONL line must be an object
 and every `res` or `err` entry must match both the request ID and method of an

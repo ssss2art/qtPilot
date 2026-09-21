@@ -1,9 +1,9 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
-#include "common/qt_matchers.h"
 #include "api/computer_use_mode_api.h"
 #include "api/error_codes.h"
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "core/object_resolver.h"
 #include "transport/jsonrpc_handler.h"
@@ -47,6 +47,7 @@ class TestComputerUseApi : public QObject {
   void testClickFocusesWidgetForType();
   void testClickRetainsTypeTargetWhenPlatformFocusIsCleared();
   void testTabMovesTheRetainedKeyboardTarget();
+  void testNonTabKeyPreservesTheRetainedKeyboardTarget();
   void testScreenAbsoluteClick();
   void testRightClick();
   void testMiddleClick();
@@ -231,10 +232,7 @@ void TestComputerUseApi::testScreenshot() {
   QJsonObject obj = innerResult.toObject();
 
   // Must have image, width, height keys in response
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("image"),
-      HasJsonField("width"),
-      HasJsonField("height")));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("image"), HasJsonField("width"), HasJsonField("height")));
 
   QString image = obj["image"].toString();
   if (!image.isEmpty()) {
@@ -274,8 +272,8 @@ void TestComputerUseApi::testClickFocusesWidgetForType() {
   QApplication::processEvents();
 
   const QPoint editCenter = m_testLineEdit->mapTo(m_testWindow, m_testLineEdit->rect().center());
-  QJsonValue clickResult = callResult(
-      "cu.click", QJsonObject{{"x", editCenter.x()}, {"y", editCenter.y()}});
+  QJsonValue clickResult =
+      callResult("cu.click", QJsonObject{{"x", editCenter.x()}, {"y", editCenter.y()}});
   QJsonValue typeResult = callResult("cu.type", QJsonObject{{"text", "Focused"}});
   QApplication::processEvents();
 
@@ -316,10 +314,30 @@ void TestComputerUseApi::testTabMovesTheRetainedKeyboardTarget() {
   QJsonValue keyResult = callResult("cu.key", QJsonObject{{"key", "Tab"}});
   QJsonValue typeResult = callResult("cu.type", QJsonObject{{"text", "Moved"}});
   QApplication::processEvents();
-
   QEXPECT_THAT(keyResult.toObject(), HasJsonField("success", Eq(true)));
   QEXPECT_THAT(typeResult.toObject(), HasJsonField("success", Eq(true)));
   QEXPECT_THAT(m_testNextLineEdit->text(), QStrEq("Moved"));
+}
+
+void TestComputerUseApi::testNonTabKeyPreservesTheRetainedKeyboardTarget() {
+  m_testLineEdit->clear();
+  m_testButton->setFocus();
+  QApplication::processEvents();
+
+  const QPoint editCenter = m_testLineEdit->mapTo(m_testWindow, m_testLineEdit->rect().center());
+  callResult("cu.click", QJsonObject{{"x", editCenter.x()}, {"y", editCenter.y()}});
+  m_testLineEdit->clearFocus();
+  QApplication::processEvents();
+
+  // Send a non-Tab key while platform focus is cleared.
+  // This must not wipe out the retained keyboard target.
+  QJsonValue nonTabKey = callResult("cu.key", QJsonObject{{"key", "Backspace"}});
+  QJsonValue typeResult = callResult("cu.type", QJsonObject{{"text", "StillRetained"}});
+  QApplication::processEvents();
+
+  QEXPECT_THAT(nonTabKey.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(typeResult.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_testLineEdit->text(), QStrEq("StillRetained"));
 }
 
 void TestComputerUseApi::testScreenAbsoluteClick() {
@@ -531,10 +549,7 @@ void TestComputerUseApi::testCursorPosition() {
   QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("x"),
-      HasJsonField("y"),
-      HasJsonField("className")));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("x"), HasJsonField("y"), HasJsonField("className")));
 
   // x and y should be numbers
   QEXPECT_THAT(obj["x"].isDouble(), IsTrue());
@@ -548,9 +563,9 @@ void TestComputerUseApi::testCursorPosition() {
 void TestComputerUseApi::testClickOutOfBounds() {
   QJsonObject error = callExpectError("cu.click", QJsonObject{{"x", 9999}, {"y", 9999}});
 
-  QEXPECT_THAT(error, AllOf(
-      HasJsonField("code", Eq(static_cast<int>(ErrorCode::kCoordinateOutOfBounds))),
-      HasJsonField("message", QIsNotEmpty())));
+  QEXPECT_THAT(error,
+               AllOf(HasJsonField("code", Eq(static_cast<int>(ErrorCode::kCoordinateOutOfBounds))),
+                     HasJsonField("message", QIsNotEmpty())));
 }
 
 void TestComputerUseApi::testTypeNoFocusedWidget() {
@@ -570,7 +585,8 @@ void TestComputerUseApi::testTypeNoFocusedWidget() {
 
   // Either error is acceptable: no active window (-32060) or no focused widget (-32062)
   int code = error["code"].toInt();
-  QEXPECT_THAT(code, AnyOf(Eq(static_cast<int>(ErrorCode::kNoFocusedWidget)), Eq(static_cast<int>(ErrorCode::kNoActiveWindow))));
+  QEXPECT_THAT(code, AnyOf(Eq(static_cast<int>(ErrorCode::kNoFocusedWidget)),
+                           Eq(static_cast<int>(ErrorCode::kNoActiveWindow))));
   QEXPECT_THAT(error, HasJsonField("message", QIsNotEmpty()));
 }
 
@@ -597,9 +613,7 @@ void TestComputerUseApi::testIncludeScreenshot() {
   QJsonValue result = envelope["result"];
   QEXPECT_THAT(result.isObject(), IsTrue());
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("success", Eq(true)),
-      HasJsonField("screenshot")));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("success", Eq(true)), HasJsonField("screenshot")));
 }
 
 // cu.key on a Widgets app where nothing has been clicked yet.

@@ -77,9 +77,8 @@ def live_complicated_app():
     proc = subprocess.Popen(
         [str(LAUNCHER), "--port", str(port), str(TEST_APP)],
         env=_app_env(_qt_dir()),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     try:
         _wait_for_port(port, proc)

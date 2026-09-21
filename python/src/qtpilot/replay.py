@@ -471,6 +471,8 @@ def parse_entries(entries: Iterable[dict]) -> Scenario:
         # to invent something plausible.
         raw_params = request.get("params", {})
         if raw_params is not None and not isinstance(raw_params, dict):
+            if method in MUTATING_METHODS:
+                mutating_in_flight = max(0, mutating_in_flight - 1)
             if method:
                 unsupported[method] = unsupported.get(method, 0) + 1
             continue

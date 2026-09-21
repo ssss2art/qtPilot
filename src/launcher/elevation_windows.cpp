@@ -88,9 +88,8 @@ int relaunchElevated(const QString& executable, const QStringList& args) {
   if (envSetCmds.isEmpty()) {
     cmdLine = QStringLiteral("/c %1").arg(launcherCmd);
   } else {
-    cmdLine = QStringLiteral("/c \"%1 && %2\"")
-                  .arg(envSetCmds.join(QStringLiteral(" && ")))
-                  .arg(launcherCmd);
+    cmdLine =
+        QStringLiteral("/c \"%1 && %2\"").arg(envSetCmds.join(QStringLiteral(" && ")), launcherCmd);
   }
 
   // Elevate cmd.exe which will set env vars then run the launcher

@@ -725,7 +725,7 @@ void ComputerUseModeApi::registerKeyboardMethods() {
         tabTarget->setFocus();
         reportedFocus = QApplication::focusWidget();
         m_lastKeyboardTarget = reportedFocus ? reportedFocus : tabTarget;
-      } else {
+      } else if (reportedFocus) {
         m_lastKeyboardTarget = reportedFocus;
       }
     } else {

@@ -541,7 +541,7 @@ def create_parser() -> argparse.ArgumentParser:
             "ignored, so a difference means the application behaved differently.\n\n"
             "The application must already be in the state the recording started from -- replay\n"
             "drives input, it does not reset anything.\n\n"
-            "Exit codes: 0 no divergence, 1 diverged or aborted, 2 the log cannot be replayed.\n\n"
+            "Exit codes: 0 no divergence, 1 diverged, 2 the log cannot be replayed, 3 aborted partway.\n\n"
             "Example:\n"
             "  qtpilot replay scenarios/submit-form.jsonl\n"
             "  qtpilot replay scenarios/submit-form.jsonl --inspect\n"
