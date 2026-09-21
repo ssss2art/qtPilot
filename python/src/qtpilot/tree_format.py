@@ -85,3 +85,52 @@ def format_compact_tree(
             lines.append(child_str)
 
     return "\n".join(lines)
+
+
+def prune_hidden_nodes(tree: dict) -> dict:
+    """Filter out hidden objects and their children from a nested tree dictionary.
+
+    Args:
+        tree: Nested object tree dictionary.
+
+    Returns:
+        Pruned dictionary preserving the same shape as qt.objects.tree.
+    """
+    if not isinstance(tree, dict) or not tree:
+        return {}
+
+    # Unwrap envelope if present
+    is_wrapped = False
+    inner = tree
+    if "result" in tree and isinstance(tree["result"], dict) and len(tree) <= 2:
+        inner = tree["result"]
+        is_wrapped = True
+
+    def _prune(node: dict) -> dict | None:
+        if node.get("visible") is False:
+            return None
+        new_node = dict(node)
+        children = node.get("children", [])
+        if children:
+            pruned_children = []
+            for child in children:
+                res = _prune(child)
+                if res is not None:
+                    pruned_children.append(res)
+            new_node["children"] = pruned_children
+        return new_node
+
+    if inner.get("className") == "Root" and not inner.get("id"):
+        new_root = dict(inner)
+        pruned_children = []
+        for child in inner.get("children", []):
+            res = _prune(child)
+            if res is not None:
+                pruned_children.append(res)
+        new_root["children"] = pruned_children
+        return {"result": new_root} if is_wrapped else new_root
+
+    pruned = _prune(inner)
+    if pruned is None:
+        return {}
+    return {"result": pruned} if is_wrapped else pruned

@@ -56,7 +56,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         Example: qt_objects_tree(format="json", maxDepth=2)
         """
         from qtpilot.server import require_probe
-        from qtpilot.tree_format import format_compact_tree
+        from qtpilot.tree_format import format_compact_tree, prune_hidden_nodes
 
         if format not in ("compact", "json"):
             raise ValueError(f"Invalid format '{format}'. Valid options are 'compact' and 'json'.")
@@ -69,6 +69,8 @@ def register_native_tools(mcp: FastMCP) -> None:
 
         raw_tree = await require_probe().call("qt.objects.tree", params)
         if format == "json":
+            if visible_only:
+                return prune_hidden_nodes(raw_tree)
             return raw_tree
         return format_compact_tree(raw_tree, visible_only=visible_only)
 
@@ -452,7 +454,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         as_image: bool = True,
         ctx: Context = None,
     ) -> types.ImageContent | dict:
-        """Capture a screenshot of a widget as an image block, file artifact, or base64 dict.
+        """Capture a screenshot of a widget or window.
 
         By default, returns an MCP ImageContent object so vision-capable models
         consume image tokens rather than raw text tokens. Pass `save_to` to save
@@ -462,11 +464,12 @@ def register_native_tools(mcp: FastMCP) -> None:
             objectId: The object to screenshot
             fullWindow: Whether to capture the entire top-level window
             region: Optional crop rect `{"x": int, "y": int, "width": int, "height": int}`
-            save_to: Optional file path to save PNG artifact (returns file metadata)
-            as_image: When True (default) and save_to is None, returns native MCP ImageContent
+            save_to: Optional file path to save PNG artifact directly to disk
+            as_image: When True (default), returns native MCP ImageContent. Set False for base64 dict.
 
         Example: qt_ui_screenshot(objectId="MainWindow")
         Example: qt_ui_screenshot(objectId="MainWindow", save_to="artifacts/win.png")
+        Example: qt_ui_screenshot(objectId="MainWindow", as_image=False)
         """
         from qtpilot.server import require_probe
         from qtpilot.tools.screenshot_helper import process_screenshot_response
