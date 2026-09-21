@@ -25,10 +25,10 @@ class TestLegacyGhostVisibility:
     async def test_legacy_tools_are_hidden_from_public_list(self):
         """None of the legacy tools should appear in tools/list across any mode."""
         for mode, expected_count in [
-            ("native", 41),
-            ("cu", 23),
-            ("chrome", 18),
-            ("all", 62),
+            ("native", 43),
+            ("cu", 25),
+            ("chrome", 20),
+            ("all", 64),
         ]:
             mcp = create_server(mode=mode)
             names = await _tool_names(mcp)

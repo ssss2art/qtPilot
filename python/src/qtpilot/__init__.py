@@ -1,5 +1,14 @@
 """qtPilot - MCP server for controlling Qt applications."""
 
-from importlib.metadata import version as _pkg_version
+from __future__ import annotations
 
-__version__ = _pkg_version("qtpilot")
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("qtpilot")
+except importlib.metadata.PackageNotFoundError:
+    try:
+        from qtpilot._version import __version__
+    except ImportError:
+        __version__ = "0.0.0.dev"
+

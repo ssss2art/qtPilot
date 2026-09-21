@@ -119,7 +119,51 @@ Qt::Key KeyNameMapper::resolve(const QString& name) {
     if (ch >= QLatin1Char('0') && ch <= QLatin1Char('9')) {
       return static_cast<Qt::Key>(ch.unicode());
     }
-    // Common punctuation
+    // Common punctuation and printable ASCII characters
+    if (ch == QLatin1Char(' '))
+      return Qt::Key_Space;
+    if (ch == QLatin1Char('?'))
+      return Qt::Key_Question;
+    if (ch == QLatin1Char('!'))
+      return Qt::Key_Exclam;
+    if (ch == QLatin1Char('@'))
+      return Qt::Key_At;
+    if (ch == QLatin1Char('#'))
+      return Qt::Key_NumberSign;
+    if (ch == QLatin1Char('$'))
+      return Qt::Key_Dollar;
+    if (ch == QLatin1Char('%'))
+      return Qt::Key_Percent;
+    if (ch == QLatin1Char('^'))
+      return Qt::Key_AsciiCircum;
+    if (ch == QLatin1Char('&'))
+      return Qt::Key_Ampersand;
+    if (ch == QLatin1Char('*'))
+      return Qt::Key_Asterisk;
+    if (ch == QLatin1Char('('))
+      return Qt::Key_ParenLeft;
+    if (ch == QLatin1Char(')'))
+      return Qt::Key_ParenRight;
+    if (ch == QLatin1Char('_'))
+      return Qt::Key_Underscore;
+    if (ch == QLatin1Char('+'))
+      return Qt::Key_Plus;
+    if (ch == QLatin1Char('{'))
+      return Qt::Key_BraceLeft;
+    if (ch == QLatin1Char('}'))
+      return Qt::Key_BraceRight;
+    if (ch == QLatin1Char('|'))
+      return Qt::Key_Bar;
+    if (ch == QLatin1Char(':'))
+      return Qt::Key_Colon;
+    if (ch == QLatin1Char('"'))
+      return Qt::Key_QuoteDbl;
+    if (ch == QLatin1Char('<'))
+      return Qt::Key_Less;
+    if (ch == QLatin1Char('>'))
+      return Qt::Key_Greater;
+    if (ch == QLatin1Char('~'))
+      return Qt::Key_AsciiTilde;
     if (ch == QLatin1Char('-'))
       return Qt::Key_Minus;
     if (ch == QLatin1Char('='))
@@ -169,8 +213,9 @@ KeyCombo KeyNameMapper::parseKeyCombo(const QString& combo) {
     }
   }
 
-  // Resolve the key (last token)
-  const QString keyName = parts.last().trimmed();
+  // Resolve the key (last token). Preserve single space instead of trimming to empty.
+  const QString rawKey = parts.last();
+  const QString keyName = (rawKey == QLatin1String(" ")) ? rawKey : rawKey.trimmed();
   result.key = resolve(keyName);
 
   return result;
@@ -188,7 +233,10 @@ std::expected<Qt::Key, QString> KeyNameMapper::resolveExpected(const QString& na
 }
 
 std::expected<KeyCombo, QString> KeyNameMapper::parseKeyComboExpected(const QString& combo) {
-  const QString trimmed = combo.trimmed();
+  if (combo.isEmpty()) {
+    return std::unexpected(QStringLiteral("Key combo string is empty"));
+  }
+  const QString trimmed = (combo == QLatin1String(" ")) ? combo : combo.trimmed();
   if (trimmed.isEmpty()) {
     return std::unexpected(QStringLiteral("Key combo string is empty"));
   }
@@ -214,7 +262,8 @@ std::expected<KeyCombo, QString> KeyNameMapper::parseKeyComboExpected(const QStr
     result.modifiers |= it.value();
   }
 
-  const QString keyName = parts.last().trimmed();
+  const QString rawKey = parts.last();
+  const QString keyName = (rawKey == QLatin1String(" ")) ? rawKey : rawKey.trimmed();
   if (keyName.isEmpty()) {
     return std::unexpected(
         QStringLiteral("Trailing '+' or empty key name in combo: '%1'").arg(combo));

@@ -56,3 +56,24 @@ def test_license_shipped() -> None:
     license_files = _PROJECT.get("license-files")
     assert license_files, "project.license-files must be set so LICENSE is packaged"
     assert (PROJECT_DIR / "LICENSE").exists(), "python/LICENSE must exist to be packaged"
+
+
+def test_package_not_found_version_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure qtpilot imports cleanly without raising PackageNotFoundError if uninstalled."""
+    import importlib
+    import importlib.metadata
+    import sys
+    import pytest
+
+    def fake_version(pkg: str) -> str:
+        raise importlib.metadata.PackageNotFoundError(pkg)
+
+    monkeypatch.setattr(importlib.metadata, "version", fake_version)
+    if "qtpilot" in sys.modules:
+        monkeypatch.delitem(sys.modules, "qtpilot")
+
+    import qtpilot
+
+    assert isinstance(qtpilot.__version__, str)
+    assert len(qtpilot.__version__) > 0
+

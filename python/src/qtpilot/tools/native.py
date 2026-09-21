@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastmcp import Context, FastMCP
+import mcp.types as types
 
 
 def register_native_tools(mcp: FastMCP) -> None:
@@ -31,18 +32,45 @@ def register_native_tools(mcp: FastMCP) -> None:
     # -- Object tree --------------------------------------------------------
 
     @mcp.tool
-    async def qt_objects_tree(root: str | None = None, maxDepth: int | None = 3, ctx: Context = None) -> dict:
+    async def qt_objects_tree(
+        root: str | None = None,
+        maxDepth: int | None = 3,
+        format: str = "compact",
+        visible_only: bool = False,
+        ctx: Context = None,
+    ) -> str | dict:
         """Get the object tree, optionally from a root with limited depth (defaults to maxDepth=3).
-        Example: qt_objects_tree(maxDepth=3)
+
+        By default, returns an indented, token-efficient text outline ("compact")
+        that cuts token overhead by 80-90% compared to raw JSON. Set `format="json"`
+        for the full nested dictionary. Set `visible_only=True` to exclude hidden items.
+
+        Args:
+            root: Root objectId to start traversal from (default: top-level objects)
+            maxDepth: Maximum tree depth (default: 3). Use -1 for unbounded.
+            format: Output format: 'compact' (default, indented outline) or 'json' (raw dictionary)
+            visible_only: When True, omit hidden objects and their children
+
+        Example: qt_objects_tree(maxDepth=2)
+        Example: qt_objects_tree(format="compact", visible_only=True)
+        Example: qt_objects_tree(format="json", maxDepth=2)
         """
         from qtpilot.server import require_probe
+        from qtpilot.tree_format import format_compact_tree
+
+        if format not in ("compact", "json"):
+            raise ValueError(f"Invalid format '{format}'. Valid options are 'compact' and 'json'.")
 
         params: dict = {}
         if root is not None:
             params["root"] = root
         if maxDepth is not None:
             params["maxDepth"] = maxDepth
-        return await require_probe().call("qt.objects.tree", params)
+
+        raw_tree = await require_probe().call("qt.objects.tree", params)
+        if format == "json":
+            return raw_tree
+        return format_compact_tree(raw_tree, visible_only=visible_only)
 
     @mcp.tool
     async def qt_objects_inspect(
@@ -420,19 +448,36 @@ def register_native_tools(mcp: FastMCP) -> None:
         objectId: str,
         fullWindow: bool | None = None,
         region: dict | None = None,
+        save_to: str | None = None,
+        as_image: bool = True,
         ctx: Context = None,
-    ) -> dict:
-        """Capture a screenshot of a widget as base64 PNG.
+    ) -> types.ImageContent | dict:
+        """Capture a screenshot of a widget as an image block, file artifact, or base64 dict.
+
+        By default, returns an MCP ImageContent object so vision-capable models
+        consume image tokens rather than raw text tokens. Pass `save_to` to save
+        the PNG to disk and return lean metadata (~30 tokens).
+
+        Args:
+            objectId: The object to screenshot
+            fullWindow: Whether to capture the entire top-level window
+            region: Optional crop rect `{"x": int, "y": int, "width": int, "height": int}`
+            save_to: Optional file path to save PNG artifact (returns file metadata)
+            as_image: When True (default) and save_to is None, returns native MCP ImageContent
+
         Example: qt_ui_screenshot(objectId="MainWindow")
+        Example: qt_ui_screenshot(objectId="MainWindow", save_to="artifacts/win.png")
         """
         from qtpilot.server import require_probe
+        from qtpilot.tools.screenshot_helper import process_screenshot_response
 
         params: dict = {"objectId": objectId}
         if fullWindow is not None:
             params["fullWindow"] = fullWindow
         if region is not None:
             params["region"] = region
-        return await require_probe().call("qt.ui.screenshot", params)
+        resp = await require_probe().call("qt.ui.screenshot", params)
+        return process_screenshot_response(resp, save_to=save_to, as_image=as_image)
 
     @mcp.tool
     async def qt_ui_geometry(

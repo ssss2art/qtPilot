@@ -228,13 +228,15 @@ void maybeAddScreenshot(QJsonObject& result, const QJsonObject& params, const Cu
 }
 
 /// @brief Dispatch a click (press+release) to a widget or window target.
-void dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
-                   Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+QWidget* dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
+                       Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
     InputSimulator::mouseClick(t.window, button, resolveWindowLocal(t.window, x, y, sa), modifiers);
+    return nullptr;
   } else {
     auto r = resolveWindowCoordinate(t.widget, x, y, sa);
     InputSimulator::mouseClick(r.widget, button, r.localPos, modifiers);
+    return r.widget;
   }
 }
 
@@ -381,7 +383,7 @@ void ComputerUseModeApi::registerScreenshotMethods() {
 
 void ComputerUseModeApi::registerMouseMethods() {
   // cu.click - click at coordinates with optional button
-  m_handler->RegisterMethod(QStringLiteral("cu.click"), [](const QString& params) -> QString {
+  m_handler->RegisterMethod(QStringLiteral("cu.click"), [this](const QString& params) -> QString {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
@@ -397,7 +399,12 @@ void ComputerUseModeApi::registerMouseMethods() {
 
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.click"));
-    dispatchClick(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
+    QWidget* clickedWidget =
+        dispatchClick(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
+    if (buttonStr == QStringLiteral("left")) {
+      m_lastKeyboardTarget =
+          clickedWidget && clickedWidget->focusPolicy() != Qt::NoFocus ? clickedWidget : nullptr;
+    }
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -629,7 +636,7 @@ void ComputerUseModeApi::registerMouseMethods() {
 
 void ComputerUseModeApi::registerKeyboardMethods() {
   // cu.type - type text at focused widget
-  m_handler->RegisterMethod(QStringLiteral("cu.type"), [](const QString& params) -> QString {
+  m_handler->RegisterMethod(QStringLiteral("cu.type"), [this](const QString& params) -> QString {
     auto p = parseParams(params);
     QString text = p[QStringLiteral("text")].toString();
 
@@ -642,7 +649,8 @@ void ComputerUseModeApi::registerKeyboardMethods() {
     // Widget apps route to the focused QWidget; pure Qt Quick apps have no
     // focus QWidget, so fall back to the active window (QQuickWindow forwards
     // key events to its focused item).
-    QWidget* focusWidget = QApplication::focusWidget();
+    QWidget* focusWidget =
+        m_lastKeyboardTarget ? m_lastKeyboardTarget.data() : QApplication::focusWidget();
     CuTarget t;
     if (focusWidget) {
       InputSimulator::sendText(focusWidget, text);
@@ -674,7 +682,7 @@ void ComputerUseModeApi::registerKeyboardMethods() {
   });
 
   // cu.key - send key combination at focused widget
-  m_handler->RegisterMethod(QStringLiteral("cu.key"), [](const QString& params) -> QString {
+  m_handler->RegisterMethod(QStringLiteral("cu.key"), [this](const QString& params) -> QString {
     auto p = parseParams(params);
     QString keyStr = p[QStringLiteral("key")].toString();
 
@@ -697,11 +705,29 @@ void ComputerUseModeApi::registerKeyboardMethods() {
 
     // Widget apps route to the focused QWidget; pure Qt Quick apps fall back to
     // the active window (QQuickWindow forwards key events to its focused item).
-    QWidget* focusWidget = QApplication::focusWidget();
+    QWidget* focusWidget =
+        m_lastKeyboardTarget ? m_lastKeyboardTarget.data() : QApplication::focusWidget();
     CuTarget t;
     if (focusWidget) {
+      const bool isTab = combo.key == Qt::Key_Tab || combo.key == Qt::Key_Backtab;
+      const bool moveForward =
+          combo.key != Qt::Key_Backtab && !(combo.modifiers & Qt::ShiftModifier);
+      QWidget* tabTarget = isTab ? (moveForward ? focusWidget->nextInFocusChain()
+                                                : focusWidget->previousInFocusChain())
+                                 : nullptr;
       InputSimulator::sendKey(focusWidget, combo.key, combo.modifiers);
       t.widget = focusWidget->window();
+      QWidget* reportedFocus = QApplication::focusWidget();
+      const bool reportedInputFocus = reportedFocus && reportedFocus != focusWidget &&
+                                      reportedFocus->focusPolicy() != Qt::NoFocus &&
+                                      reportedFocus->hasFocus();
+      if (isTab && !reportedInputFocus && tabTarget && tabTarget != focusWidget) {
+        tabTarget->setFocus();
+        reportedFocus = QApplication::focusWidget();
+        m_lastKeyboardTarget = reportedFocus ? reportedFocus : tabTarget;
+      } else if (reportedFocus) {
+        m_lastKeyboardTarget = reportedFocus;
+      }
     } else {
       t = getActiveTarget();
       // Same as cu.type above: a resolved QWidget target is valid, and rejecting

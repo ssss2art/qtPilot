@@ -70,6 +70,20 @@ qtpilot serve --mode chrome --target /path/to/app.exe
 qtpilot serve --mode cu --ws-url ws://localhost:9222
 ```
 
+## Deterministic Replay
+
+Record real application traffic and replay it deterministically:
+
+```bash
+# Replay a recorded scenario against a live application
+qtpilot replay scenarios/submit-form.jsonl
+
+# Inspect a scenario without connecting
+qtpilot replay scenarios/submit-form.jsonl --inspect
+```
+
+See [docs/REPLAY.md](../docs/REPLAY.md) for full details on the replay engine, watch lists, and monadic Result API.
+
 ## Claude Desktop Configuration
 
 Add to your `claude_desktop_config.json`:

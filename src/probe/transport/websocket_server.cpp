@@ -42,8 +42,8 @@ bool WebSocketServer::start() {
   const QHostAddress bindAddress = listenAddress();
   if (!m_server->listen(bindAddress, m_port)) {
     QString error = m_server->errorString();
-    qCritical() << "[qtPilot] Failed to start WebSocket server on" << bindAddress.toString() << ":"
-                << m_port << ":" << error;
+    qCritical() << "[qtPilot] Failed to start WebSocket server on"
+                << QStringLiteral("%1:%2: %3").arg(bindAddress.toString()).arg(m_port).arg(error);
     emit errorOccurred(error);
     return false;
   }
