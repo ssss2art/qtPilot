@@ -6,6 +6,66 @@ from fastmcp import Context, FastMCP
 import mcp.types as types
 
 
+BASE_QOBJECT_WIDGET_PROPERTIES: frozenset[str] = frozenset({
+    "objectName",
+    "modal",
+    "windowModality",
+    "enabled",
+    "geometry",
+    "frameGeometry",
+    "normalGeometry",
+    "x",
+    "y",
+    "pos",
+    "frameSize",
+    "size",
+    "width",
+    "height",
+    "rect",
+    "childrenRect",
+    "childrenRegion",
+    "sizePolicy",
+    "minimumSize",
+    "maximumSize",
+    "sizeIncrement",
+    "baseSize",
+    "palette",
+    "font",
+    "cursor",
+    "mouseTracking",
+    "tabletTracking",
+    "isActiveWindow",
+    "focusPolicy",
+    "focus",
+    "contextMenuPolicy",
+    "updatesEnabled",
+    "visible",
+    "minimized",
+    "maximized",
+    "fullScreen",
+    "sizeHint",
+    "minimumSizeHint",
+    "acceptDrops",
+    "windowTitle",
+    "windowIcon",
+    "windowIconText",
+    "windowOpacity",
+    "windowModified",
+    "toolTip",
+    "toolTipDuration",
+    "statusTip",
+    "whatsThis",
+    "accessibleName",
+    "accessibleDescription",
+    "layoutDirection",
+    "autoFillBackground",
+    "styleSheet",
+    "locale",
+    "windowFilePath",
+    "inputMethodHints",
+})
+
+
 def register_native_tools(mcp: FastMCP) -> None:
     """Register all native mode tools on the MCP server."""
 
@@ -34,25 +94,26 @@ def register_native_tools(mcp: FastMCP) -> None:
     @mcp.tool
     async def qt_objects_tree(
         root: str | None = None,
-        maxDepth: int | None = 3,
+        maxDepth: int = 3,
         format: str = "compact",
         visible_only: bool = False,
         ctx: Context = None,
     ) -> str | dict:
-        """Get the object tree, optionally from a root with limited depth (defaults to maxDepth=3).
+        """Inspect the live QObject hierarchy tree.
 
-        By default, returns an indented, token-efficient text outline ("compact")
-        that cuts token overhead by 80-90% compared to raw JSON. Set `format="json"`
-        for the full nested dictionary. Set `visible_only=True` to exclude hidden items.
+        Returns either a token-efficient compact outline (default) or a raw nested JSON dict.
+        Specify `visible_only=True` to prune invisible items from the outline or tree.
+        Specify `maxDepth` to limit traversal depth (default 3 to prevent token flooding).
+        Specify `root` to start traversal from a specific object ID or symbolic name.
 
         Args:
-            root: Root objectId to start traversal from (default: top-level objects)
-            maxDepth: Maximum tree depth (default: 3). Use -1 for unbounded.
-            format: Output format: 'compact' (default, indented outline) or 'json' (raw dictionary)
-            visible_only: When True, omit hidden objects and their children
+            root: Root objectId to start traversal from (default: root objects)
+            maxDepth: Maximum depth to traverse (default 3; pass -1 for unlimited)
+            format: Output representation: "compact" (default, 85-90% token reduction) or "json"
+            visible_only: When True, prune hidden/invisible widgets and their subtrees
 
-        Example: qt_objects_tree(maxDepth=2)
-        Example: qt_objects_tree(format="compact", visible_only=True)
+        Example: qt_objects_tree()
+        Example: qt_objects_tree(root="MainWindow", visible_only=True)
         Example: qt_objects_tree(format="json", maxDepth=2)
         """
         from qtpilot.server import require_probe
@@ -64,8 +125,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         params: dict = {}
         if root is not None:
             params["root"] = root
-        if maxDepth is not None:
-            params["maxDepth"] = maxDepth
+        params["maxDepth"] = maxDepth
 
         raw_tree = await require_probe().call("qt.objects.tree", params)
         if format == "json":
@@ -78,7 +138,8 @@ def register_native_tools(mcp: FastMCP) -> None:
     async def qt_objects_inspect(
         objectId: str,
         parts: str | list[str] | None = None,
-        part: str | list[str] | None = None,
+        declared_only: bool = False,
+        property_name: str | None = None,
         ctx: Context = None,
     ) -> dict:
         """Inspect an object with selectable detail sections.
@@ -96,13 +157,18 @@ def register_native_tools(mcp: FastMCP) -> None:
             parts: Sections to include. String "all" includes everything; string "info"
                    (or omitted) returns just info. A list names specific sections.
                    Comma-separated string like "info,properties" is also accepted.
-            part: Alias for `parts`.
+            declared_only: When True and parts includes properties, filters out base
+                           QObject and QWidget properties (e.g. palette, font, cursor).
+            property_name: When specified and parts includes properties, filters down
+                           to only the named property.
 
         Example: qt_objects_inspect(objectId="MainWindow", parts=["info","geometry"])
+        Example: qt_objects_inspect(objectId="SubmitBtn", parts=["properties"], declared_only=True)
+        Example: qt_objects_inspect(objectId="InputField", parts=["properties"], property_name="text")
         """
         from qtpilot.server import require_probe
 
-        raw_parts = part if part is not None else parts
+        raw_parts = parts
         if isinstance(raw_parts, str):
             if raw_parts == "all":
                 parsed_parts: str | list[str] = "all"
@@ -116,7 +182,20 @@ def register_native_tools(mcp: FastMCP) -> None:
             parsed_parts = ["info"]
 
         params: dict = {"objectId": objectId, "parts": parsed_parts}
-        return await require_probe().call("qt.objects.inspect", params)
+        if declared_only:
+            params["declaredOnly"] = True
+        if property_name is not None:
+            params["propertyName"] = property_name
+
+        result = await require_probe().call("qt.objects.inspect", params)
+        if isinstance(result, dict) and "properties" in result and isinstance(result["properties"], list):
+            props = result["properties"]
+            if property_name is not None:
+                props = [p for p in props if p.get("name") == property_name]
+            if declared_only:
+                props = [p for p in props if p.get("name") not in BASE_QOBJECT_WIDGET_PROPERTIES]
+            result["properties"] = props
+        return result
 
     @mcp.tool
     async def qt_objects_search(
@@ -125,10 +204,6 @@ def register_native_tools(mcp: FastMCP) -> None:
         properties: dict | None = None,
         root: str | None = None,
         limit: int | None = None,
-        name: str | None = None,
-        class_name: str | None = None,
-        root_id: str | None = None,
-        rootId: str | None = None,
         ctx: Context = None,
     ) -> dict:
         """Discover objects by name, class, and/or property filters.
@@ -145,27 +220,20 @@ def register_native_tools(mcp: FastMCP) -> None:
             properties: Property-value filters; every listed property must equal the given value
             root: Restrict search to this subtree
             limit: Maximum matches returned (default 50)
-            name: Alias for `objectName`
-            class_name: Alias for `className`
-            root_id / rootId: Alias for `root`
 
         Example: qt_objects_search(className="QPushButton", properties={"enabled": True})
         """
         from qtpilot.server import require_probe
 
-        resolved_name = objectName if objectName is not None else name
-        resolved_class = className if className is not None else class_name
-        resolved_root = root if root is not None else (root_id or rootId)
-
         params: dict = {}
-        if resolved_name is not None:
-            params["objectName"] = resolved_name
-        if resolved_class is not None:
-            params["className"] = resolved_class
+        if objectName is not None:
+            params["objectName"] = objectName
+        if className is not None:
+            params["className"] = className
         if properties is not None:
             params["properties"] = properties
-        if resolved_root is not None:
-            params["root"] = resolved_root
+        if root is not None:
+            params["root"] = root
         if limit is not None:
             params["limit"] = limit
         return await require_probe().call("qt.objects.search", params)
@@ -411,8 +479,6 @@ def register_native_tools(mcp: FastMCP) -> None:
         objectId: str,
         text: str | None = None,
         sequence: str | None = None,
-        key: str | None = None,
-        keys: str | None = None,
         viewObjectId: str | None = None,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
@@ -433,12 +499,11 @@ def register_native_tools(mcp: FastMCP) -> None:
         """
         from qtpilot.server import require_probe
 
-        resolved_sequence = sequence if sequence is not None else (key or keys)
         params: dict = {"objectId": objectId}
         if text is not None:
             params["text"] = text
-        if resolved_sequence is not None:
-            params["sequence"] = resolved_sequence
+        if sequence is not None:
+            params["sequence"] = sequence
         if viewObjectId is not None:
             params["viewObjectId"] = viewObjectId
         if modifiers is not None:
@@ -630,7 +695,6 @@ def register_native_tools(mcp: FastMCP) -> None:
         role: str = "display",
         match: str = "contains",
         max_hits: int = 10,
-        maxHits: int | None = None,
         parent: list[int] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -645,14 +709,13 @@ def register_native_tools(mcp: FastMCP) -> None:
         """
         from qtpilot.server import require_probe
 
-        hits = maxHits if maxHits is not None else max_hits
         params: dict = {
             "objectId": objectId,
             "value": value,
             "column": column,
             "role": role,
             "match": match,
-            "maxHits": hits,
+            "maxHits": max_hits,
         }
         if parent is not None:
             params["parent"] = parent
@@ -663,7 +726,6 @@ def register_native_tools(mcp: FastMCP) -> None:
         objectId: str,
         itemPath: list[str] | str | None = None,
         path: list[int] | None = None,
-        target: list[str] | str | None = None,
         column: int = 0,
         action: str = "click",
         editColumn: int | None = None,
@@ -675,7 +737,6 @@ def register_native_tools(mcp: FastMCP) -> None:
 
         Provide either `itemPath` (exact display text per level, or delimited string
         like "File > Save" / "Menu/File/Save") or `path` (int[] row path).
-        `target` is accepted as an alias for `itemPath`.
         `column` selects which cell of the addressed row is acted on (and, for
         `itemPath`, which column's text is matched).
         `action` one of "select", "click", "doubleClick", "edit".
@@ -685,7 +746,7 @@ def register_native_tools(mcp: FastMCP) -> None:
         """
         from qtpilot.server import require_probe
 
-        resolved_item_path = itemPath if itemPath is not None else target
+        resolved_item_path = itemPath
         if isinstance(resolved_item_path, str):
             if ">" in resolved_item_path:
                 resolved_item_path = [p.strip() for p in resolved_item_path.split(">") if p.strip()]

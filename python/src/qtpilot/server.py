@@ -425,6 +425,10 @@ def create_server(
     from qtpilot.logging_middleware import LoggingMiddleware
     mcp.add_middleware(LoggingMiddleware())
 
+    # Register alias normalization middleware for token-efficient schemas
+    from qtpilot.alias_middleware import AliasMiddleware
+    mcp.add_middleware(AliasMiddleware())
+
     # Register discovery tools (always available regardless of mode)
     from qtpilot.tools.discovery_tools import register_discovery_tools
     register_discovery_tools(mcp)

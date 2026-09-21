@@ -72,6 +72,8 @@ class TestNativeModeApi : public QObject {
   void testObjectsInspect();
   void testInspectDefaultInfoOnly();
   void testInspectPropertiesPart();
+  void testInspectPropertiesDeclaredOnly();
+  void testInspectPropertiesPropertyName();
   void testInspectAllAlias();
   void testInspectUnknownPartError();
   void testInspectModelPartNullForNonModel();
@@ -376,6 +378,45 @@ void TestNativeModeApi::testInspectPropertiesPart() {
 
   QJsonObject obj = result.toObject();
   QEXPECT_THAT(obj, AllOf(HasJsonField("properties", QIsNotEmpty()), DoesNotHaveJsonField("info")));
+}
+
+void TestNativeModeApi::testInspectPropertiesDeclaredOnly() {
+  QString id = ObjectRegistry::instance()->objectId(m_testButton);
+
+  QJsonObject params;
+  params[QStringLiteral("objectId")] = id;
+  params[QStringLiteral("parts")] = QStringLiteral("properties");
+  params[QStringLiteral("declaredOnly")] = true;
+
+  QJsonValue result = callResult("qt.objects.inspect", params);
+  QJsonObject obj = result.toObject();
+  QJsonArray props = obj[QStringLiteral("properties")].toArray();
+
+  bool foundText = false;
+  bool foundPalette = false;
+  for (const QJsonValue& val : props) {
+    QString name = val.toObject()[QStringLiteral("name")].toString();
+    if (name == QStringLiteral("text")) foundText = true;
+    if (name == QStringLiteral("palette")) foundPalette = true;
+  }
+  QEXPECT_THAT(foundText, IsTrue());
+  QEXPECT_THAT(foundPalette, IsFalse());
+}
+
+void TestNativeModeApi::testInspectPropertiesPropertyName() {
+  QString id = ObjectRegistry::instance()->objectId(m_testButton);
+
+  QJsonObject params;
+  params[QStringLiteral("objectId")] = id;
+  params[QStringLiteral("parts")] = QStringLiteral("properties");
+  params[QStringLiteral("propertyName")] = QStringLiteral("text");
+
+  QJsonValue result = callResult("qt.objects.inspect", params);
+  QJsonObject obj = result.toObject();
+  QJsonArray props = obj[QStringLiteral("properties")].toArray();
+
+  QEXPECT_THAT(props.size(), Eq(1));
+  QEXPECT_THAT(props.at(0).toObject()[QStringLiteral("name")].toString(), QStrEq("text"));
 }
 
 void TestNativeModeApi::testInspectAllAlias() {
