@@ -251,7 +251,7 @@ void TestQmlInteraction::testNativeUiHitTestFindsQuickItem() {
   QCoreApplication::processEvents();
 
   const QString expected = ObjectRegistry::instance()->objectId(item);
-  const QPointF globalPoint = window.mapToGlobal(QPointF(70, 70));
+  const QPoint globalPoint = window.mapToGlobal(QPoint(70, 70));
   const QJsonObject response = call(
       QStringLiteral("qt.ui.hitTest"),
       QJsonObject{{QStringLiteral("x"), globalPoint.x()}, {QStringLiteral("y"), globalPoint.y()}});
