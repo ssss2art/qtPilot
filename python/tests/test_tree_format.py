@@ -180,6 +180,24 @@ class TestObjectsTreeToolIntegration:
                 assert "btn_start" in text
 
     @pytest.mark.asyncio
+    async def test_objects_tree_format_json_with_visible_only(self, sample_object_tree):
+        mock_probe = AsyncMock()
+        mock_probe.is_connected = True
+        mock_probe.call = AsyncMock(return_value=sample_object_tree)
+
+        with patch("qtpilot.server.require_probe", return_value=mock_probe):
+            mcp = create_server(mode="native")
+            async with Client(mcp) as client:
+                res = await client.call_tool("qt_objects_tree", {"format": "json", "visible_only": True})
+                import json
+                parsed = json.loads(res.content[0].text)
+                central = parsed["children"][0]["children"][0]
+                child_names = [c["objectName"] for c in central["children"]]
+                assert "btn_start" in child_names
+                assert "lbl_status" in child_names
+                assert "secret_panel" not in child_names
+
+    @pytest.mark.asyncio
     async def test_objects_tree_invalid_format_raises_value_error(self, sample_object_tree):
         mock_probe = AsyncMock()
         mock_probe.is_connected = True
@@ -191,3 +209,4 @@ class TestObjectsTreeToolIntegration:
                 with pytest.raises(Exception) as exc_info:
                     await client.call_tool("qt_objects_tree", {"format": "yaml"})
                 assert "format" in str(exc_info.value).lower()
+

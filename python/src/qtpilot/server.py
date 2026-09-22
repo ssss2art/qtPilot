@@ -425,6 +425,10 @@ def create_server(
     from qtpilot.logging_middleware import LoggingMiddleware
     mcp.add_middleware(LoggingMiddleware())
 
+    # Register alias normalization middleware for token-efficient schemas
+    from qtpilot.alias_middleware import AliasMiddleware
+    mcp.add_middleware(AliasMiddleware())
+
     # Register discovery tools (always available regardless of mode)
     from qtpilot.tools.discovery_tools import register_discovery_tools
     register_discovery_tools(mcp)
@@ -456,8 +460,15 @@ def create_server(
     )
     _register_tools_for_mode(mcp, "all" if _uses_mode_visibility(mcp) else mode)
 
-    # Register status resource
+    # Register status and UI resources
     from qtpilot.status import register_status_resource
     register_status_resource(mcp)
+
+    from qtpilot.ui_resources import register_ui_resources
+    register_ui_resources(mcp)
+
+    # Register workflow prompts
+    from qtpilot.prompts import register_prompts
+    register_prompts(mcp)
 
     return mcp

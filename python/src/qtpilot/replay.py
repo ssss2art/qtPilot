@@ -921,3 +921,88 @@ async def run_scenario_expected(
         )
     except Exception as exc:
         return Err(str(exc))
+
+
+# Tool name to JSON-RPC method mapping for inline replay authoring
+TOOL_TO_METHOD: dict[str, str] = {
+    "qt_ping": "qt.ping",
+    "qt_version": "qt.version",
+    "qt_sync": "qt.sync",
+    "qt_objects_tree": "qt.objects.tree",
+    "qt_objects_search": "qt.objects.search",
+    "qt_objects_inspect": "qt.objects.inspect",
+    "qt_properties_get": "qt.properties.get",
+    "qt_properties_set": "qt.properties.set",
+    "qt_methods_invoke": "qt.methods.invoke",
+    "qt_signals_subscribe": "qt.signals.subscribe",
+    "qt_signals_unsubscribe": "qt.signals.unsubscribe",
+    "qt_signals_emissions": "qt.signals.emissions",
+    "qt_ui_click": "qt.ui.click",
+    "qt_ui_doubleClick": "qt.ui.doubleClick",
+    "qt_ui_contextMenu": "qt.ui.contextMenu",
+    "qt_ui_sendKeys": "qt.ui.sendKeys",
+    "qt_ui_screenshot": "qt.ui.screenshot",
+    "qt_ui_clickItem": "qt.ui.clickItem",
+    "qt_models_data": "qt.models.data",
+    "qt_models_search": "qt.models.search",
+    "cu_leftClick": "cu.click",
+    "cu_rightClick": "cu.rightClick",
+    "cu_middleClick": "cu.middleClick",
+    "cu_doubleClick": "cu.doubleClick",
+    "cu_mouseMove": "cu.mouseMove",
+    "cu_mouseDrag": "cu.mouseDrag",
+    "cu_mouseDown": "cu.mouseDown",
+    "cu_mouseUp": "cu.mouseUp",
+    "cu_type": "cu.type",
+    "cu_key": "cu.key",
+    "cu_scroll": "cu.scroll",
+}
+
+
+def scenario_from_steps(steps: list[dict], source: str = "<inline>") -> Scenario:
+    """Construct a Scenario from a sequence of step dictionaries.
+
+    Each step dictionary can specify:
+      - 'action': {'method': '...', 'params': {...}}
+      or shorthand:
+      - 'method': '...' (or tool name e.g. 'qt_ui_click')
+      - 'params': {...}
+      and optionally:
+      - 'observations': [{'method': '...', 'params': {...}, 'result': ...}]
+    """
+    scenario_steps: list[Step] = []
+    for idx, item in enumerate(steps):
+        action_obj = item.get("action")
+        if isinstance(action_obj, dict):
+            method = action_obj.get("method", "")
+            params = action_obj.get("params", {})
+        else:
+            method = item.get("method", "")
+            params = item.get("params", {})
+
+        canonical_method = TOOL_TO_METHOD.get(method, method)
+        action = Action(method=canonical_method, params=params) if canonical_method else None
+
+        raw_obs = item.get("observations", [])
+        observations: list[Observation] = []
+        for obs in raw_obs:
+            obs_method = obs.get("method", "")
+            canonical_obs_method = TOOL_TO_METHOD.get(obs_method, obs_method)
+            observations.append(
+                Observation(
+                    method=canonical_obs_method,
+                    params=obs.get("params", {}),
+                    result=obs.get("result"),
+                    error=obs.get("error"),
+                )
+            )
+
+        scenario_steps.append(
+            Step(
+                index=idx + 1,
+                action=action,
+                observations=observations,
+            )
+        )
+
+    return Scenario(steps=scenario_steps, source=source)

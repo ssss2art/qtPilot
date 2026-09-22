@@ -57,10 +57,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
         y: int | None = None,
         coordinate: list[int] | None = None,
         point: dict | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         delay_ms: int | None = None,
-        delayMs: int | None = None,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -70,16 +68,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-        resolved_delay = delay_ms if delay_ms is not None else delayMs
-
         params: dict = {"x": rx, "y": ry}
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
-        if resolved_delay is not None:
-            params["delay_ms"] = resolved_delay
+        if screen_absolute:
+            params["screenAbsolute"] = True
+        if delay_ms is not None:
+            params["delay_ms"] = delay_ms
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.click", params)
@@ -90,10 +83,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
         y: int | None = None,
         coordinate: list[int] | None = None,
         point: dict | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         delay_ms: int | None = None,
-        delayMs: int | None = None,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -103,16 +94,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-        resolved_delay = delay_ms if delay_ms is not None else delayMs
-
         params: dict = {"x": rx, "y": ry}
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
-        if resolved_delay is not None:
-            params["delay_ms"] = resolved_delay
+        if screen_absolute:
+            params["screenAbsolute"] = True
+        if delay_ms is not None:
+            params["delay_ms"] = delay_ms
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.rightClick", params)
@@ -123,10 +109,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
         y: int | None = None,
         coordinate: list[int] | None = None,
         point: dict | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         delay_ms: int | None = None,
-        delayMs: int | None = None,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -136,16 +120,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-        resolved_delay = delay_ms if delay_ms is not None else delayMs
-
         params: dict = {"x": rx, "y": ry}
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
-        if resolved_delay is not None:
-            params["delay_ms"] = resolved_delay
+        if screen_absolute:
+            params["screenAbsolute"] = True
+        if delay_ms is not None:
+            params["delay_ms"] = delay_ms
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.middleClick", params)
@@ -156,10 +135,8 @@ def register_cu_tools(mcp: FastMCP) -> None:
         y: int | None = None,
         coordinate: list[int] | None = None,
         point: dict | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         delay_ms: int | None = None,
-        delayMs: int | None = None,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -169,16 +146,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-        resolved_delay = delay_ms if delay_ms is not None else delayMs
-
         params: dict = {"x": rx, "y": ry}
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
-        if resolved_delay is not None:
-            params["delay_ms"] = resolved_delay
+        if screen_absolute:
+            params["screenAbsolute"] = True
+        if delay_ms is not None:
+            params["delay_ms"] = delay_ms
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.doubleClick", params)
@@ -189,8 +161,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         y: int | None = None,
         coordinate: list[int] | None = None,
         point: dict | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -200,13 +171,9 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-
         params: dict = {"x": rx, "y": ry}
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
+        if screen_absolute:
+            params["screenAbsolute"] = True
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseMove", params)
@@ -219,8 +186,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         endY: int | None = None,
         start_coordinate: list[int] | None = None,
         coordinate: list[int] | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -232,13 +198,9 @@ def register_cu_tools(mcp: FastMCP) -> None:
 
         sx, sy = _resolve_coords(startX, startY, start_coordinate)
         ex, ey = _resolve_coords(endX, endY, coordinate)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-
         params: dict = {"startX": sx, "startY": sy, "endX": ex, "endY": ey}
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
+        if screen_absolute:
+            params["screenAbsolute"] = True
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseDrag", params)
@@ -250,8 +212,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         coordinate: list[int] | None = None,
         point: dict | None = None,
         button: str | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -261,15 +222,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-
         params: dict = {"x": rx, "y": ry}
         if button is not None:
             params["button"] = button
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
+        if screen_absolute:
+            params["screenAbsolute"] = True
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseDown", params)
@@ -281,8 +238,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         coordinate: list[int] | None = None,
         point: dict | None = None,
         button: str | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -292,15 +248,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-
         params: dict = {"x": rx, "y": ry}
         if button is not None:
             params["button"] = button
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
+        if screen_absolute:
+            params["screenAbsolute"] = True
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.mouseUp", params)
@@ -316,20 +268,17 @@ def register_cu_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def cu_key(
-        key: str | None = None, text: str | None = None, ctx: Context = None
+        key: str, ctx: Context = None
     ) -> dict:
         """Press a key or single key combination.
 
         Use named punctuation when the key is part of the ``+``-separated
         grammar. Examples: ``meta+Plus``, ``ctrl+Minus``, and
-        ``QuestionMark``. Accepts both 'key' and 'text'.
+        ``QuestionMark``.
         """
         from qtpilot.server import require_probe
 
-        resolved_key = key if key is not None else text
-        if resolved_key is None:
-            raise ValueError("key or text must be provided")
-        return await require_probe().call("cu.key", {"key": resolved_key})
+        return await require_probe().call("cu.key", {"key": key})
 
     @mcp.tool
     async def cu_scroll(
@@ -339,8 +288,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         amount: int | None = None,
         coordinate: list[int] | None = None,
         point: dict | None = None,
-        screenAbsolute: bool | None = None,
-        screen_absolute: bool | None = None,
+        screen_absolute: bool = False,
         modifiers: str | list[str] | None = None,
         ctx: Context = None,
     ) -> dict:
@@ -350,15 +298,11 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.server import require_probe
 
         rx, ry = _resolve_coords(x, y, coordinate, point)
-        resolved_screen_abs = (
-            screenAbsolute if screenAbsolute is not None else screen_absolute
-        )
-
         params: dict = {"x": rx, "y": ry, "direction": direction}
         if amount is not None:
             params["amount"] = amount
-        if resolved_screen_abs is not None:
-            params["screenAbsolute"] = resolved_screen_abs
+        if screen_absolute:
+            params["screenAbsolute"] = True
         if modifiers is not None:
             params["modifiers"] = modifiers
         return await require_probe().call("cu.scroll", params)

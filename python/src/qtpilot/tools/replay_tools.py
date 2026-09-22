@@ -51,35 +51,38 @@ def register_replay_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def qtpilot_replay_run(
-        path: str,
+        path: str | None = None,
+        steps: list[dict] | None = None,
         settle: float = 0.1,
         ctx: Context = None,
     ) -> dict:
-        """Re-drive a recorded session against the connected application and report differences.
+        """Re-drive a recorded session or inline steps against the connected application and report differences.
 
-        Re-issues the recorded actions in order, re-issues the recorded observations after each
-        one, and compares. Timings, request ids and generated object handles are ignored, so a
-        difference means the application behaved differently -- not that the clock moved.
-
-        The application must be in the same state the recording started from. Replay drives
-        input; it does not reset anything.
+        Pass either `path` (to replay a recorded .jsonl session) or `steps` (to execute
+        a batch sequence of actions directly in memory without writing to disk).
 
         Args:
-            path: Path to a .jsonl message log written by qtpilot_log_start at level 2 or above.
-            settle: Seconds to wait after each action for signals to arrive. Raise it for an
-                application that updates asynchronously; a too-short window reports a race as a
-                divergence.
+            path: Path to a .jsonl message log written by qtpilot_log_start.
+            steps: In-memory list of action step dictionaries: `[{"method": "qt.ui.click", "params": {...}}, ...]`.
+            settle: Seconds to wait after each action for signals to arrive.
 
         Example: qtpilot_replay_run(path="scenarios/submit-form.jsonl", settle=0.25)
+        Example: qtpilot_replay_run(steps=[{"method": "qt.ui.click", "params": {"objectId": "btn"}}])
         """
-        from qtpilot.replay import load_scenario, run_scenario
+        from qtpilot.replay import load_scenario, run_scenario, scenario_from_steps
         from qtpilot.server import get_probe
+
+        if (path is None) == (steps is None):
+            raise ValueError("Provide exactly one of 'path' or 'steps'")
 
         probe = get_probe()
         if probe is None or not probe.is_connected:
             raise RuntimeError("Not connected to a probe -- replay drives a running application.")
 
-        scenario = load_scenario(path)
+        if path is not None:
+            scenario = load_scenario(path)
+        else:
+            scenario = scenario_from_steps(steps or [])
         result = await run_scenario(scenario, probe, settle=settle)
 
         return {

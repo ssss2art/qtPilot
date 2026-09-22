@@ -86,7 +86,8 @@ QJsonObject MetaInspector::objectInfo(QObject* obj) {
   return info;
 }
 
-QJsonArray MetaInspector::listProperties(QObject* obj) {
+QJsonArray MetaInspector::listProperties(QObject* obj, bool declaredOnly,
+                                         const QString& propertyName) {
   if (!obj) {
     return QJsonArray();
   }
@@ -94,14 +95,25 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
   QJsonArray result;
   const QMetaObject* meta = obj->metaObject();
 
-  // Iterate through all properties (including inherited from QObject)
-  // Using 0 instead of propertyOffset() to include QObject base properties
-  // like objectName, which are often useful
-  for (int i = 0; i < meta->propertyCount(); ++i) {
+  int startIndex = 0;
+  if (declaredOnly) {
+    if (qobject_cast<QWidget*>(obj)) {
+      startIndex = QWidget::staticMetaObject.propertyCount();
+    } else {
+      startIndex = QObject::staticMetaObject.propertyCount();
+    }
+  }
+
+  // Iterate through properties (skipping base properties when declaredOnly is true)
+  for (int i = startIndex; i < meta->propertyCount(); ++i) {
     QMetaProperty prop = meta->property(i);
+    const QString propName = QString::fromLatin1(prop.name());
+    if (!propertyName.isEmpty() && propName != propertyName) {
+      continue;
+    }
 
     QJsonObject propInfo;
-    propInfo[QStringLiteral("name")] = QString::fromLatin1(prop.name());
+    propInfo[QStringLiteral("name")] = propName;
     propInfo[QStringLiteral("type")] = QString::fromLatin1(prop.typeName());
     propInfo[QStringLiteral("readable")] = prop.isReadable();
     propInfo[QStringLiteral("writable")] = prop.isWritable();
@@ -154,10 +166,15 @@ QJsonArray MetaInspector::listProperties(QObject* obj) {
   // [status="error"] selector), so surface them too, flagged dynamic.
   const QList<QByteArray> dynamicNames = obj->dynamicPropertyNames();
   for (const QByteArray& name : dynamicNames) {
+    const QString dynName = QString::fromLatin1(name);
+    if (!propertyName.isEmpty() && dynName != propertyName) {
+      continue;
+    }
+
     const QVariant value = obj->property(name.constData());
 
     QJsonObject propInfo;
-    propInfo[QStringLiteral("name")] = QString::fromLatin1(name);
+    propInfo[QStringLiteral("name")] = dynName;
     const char* typeName = value.typeName();
     propInfo[QStringLiteral("type")] = QString::fromLatin1(typeName ? typeName : "");
     propInfo[QStringLiteral("readable")] = true;

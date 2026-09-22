@@ -818,7 +818,10 @@ void NativeModeApi::registerObjectMethods() {
           result[QStringLiteral("info")] = MetaInspector::objectInfo(obj);
         }
         if (requestedParts.contains(QStringLiteral("properties"))) {
-          result[QStringLiteral("properties")] = MetaInspector::listProperties(obj);
+          bool declaredOnly = p[QStringLiteral("declaredOnly")].toBool(false);
+          QString propertyName = p[QStringLiteral("propertyName")].toString();
+          result[QStringLiteral("properties")] =
+              MetaInspector::listProperties(obj, declaredOnly, propertyName);
         }
         if (requestedParts.contains(QStringLiteral("methods"))) {
           result[QStringLiteral("methods")] = MetaInspector::listMethods(obj);

@@ -78,8 +78,11 @@ class QTPILOT_EXPORT MetaInspector {
   /// Properties include both the object's own properties and inherited ones.
   ///
   /// @param obj The object to inspect.
+  /// @param declaredOnly If true, filters out base QObject and QWidget properties.
+  /// @param propertyName Optional specific property name to filter by.
   /// @return JSON array of property information.
-  static QJsonArray listProperties(QObject* obj);
+  static QJsonArray listProperties(QObject* obj, bool declaredOnly = false,
+                                   const QString& propertyName = QString());
 
   /// @brief List all invokable methods (OBJ-08).
   ///

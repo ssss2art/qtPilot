@@ -116,6 +116,8 @@ class TestMetaInspector : public QObject {
   void testObjectInfoWidget();
   void testListProperties();
   void testListPropertiesWidget();
+  void testListPropertiesDeclaredOnlyWidget();
+  void testListPropertiesPropertyNameFilter();
   void testListMethods();
   void testListSignals();
   void testInheritanceChain();
@@ -515,6 +517,56 @@ void TestMetaInspector::testListPropertiesWidget() {
   QEXPECT_THAT(foundText, IsTrue());
   QEXPECT_THAT(foundEnabled, IsTrue());
   QEXPECT_THAT(foundVisible, IsTrue());
+}
+
+void TestMetaInspector::testListPropertiesDeclaredOnlyWidget() {
+  QPushButton button(QStringLiteral("Test Button"));
+
+  // With declaredOnly=true, QWidget/QObject base properties (e.g. palette, font, cursor, enabled, visible)
+  // should be omitted, while QPushButton/QAbstractButton properties (e.g. text) remain.
+  QJsonArray props = MetaInspector::listProperties(&button, true);
+
+  bool foundText = false;
+  bool foundPalette = false;
+  bool foundFont = false;
+  bool foundCursor = false;
+  bool foundVisible = false;
+  bool foundEnabled = false;
+
+  for (const QJsonValue& val : props) {
+    QJsonObject prop = val.toObject();
+    QString name = prop[QStringLiteral("name")].toString();
+    if (name == QStringLiteral("text")) {
+      foundText = true;
+    } else if (name == QStringLiteral("palette")) {
+      foundPalette = true;
+    } else if (name == QStringLiteral("font")) {
+      foundFont = true;
+    } else if (name == QStringLiteral("cursor")) {
+      foundCursor = true;
+    } else if (name == QStringLiteral("visible")) {
+      foundVisible = true;
+    } else if (name == QStringLiteral("enabled")) {
+      foundEnabled = true;
+    }
+  }
+
+  QEXPECT_THAT(foundText, IsTrue());
+  QEXPECT_THAT(foundPalette, IsFalse());
+  QEXPECT_THAT(foundFont, IsFalse());
+  QEXPECT_THAT(foundCursor, IsFalse());
+  QEXPECT_THAT(foundVisible, IsFalse());
+  QEXPECT_THAT(foundEnabled, IsFalse());
+}
+
+void TestMetaInspector::testListPropertiesPropertyNameFilter() {
+  QPushButton button(QStringLiteral("Filter Button"));
+
+  QJsonArray props = MetaInspector::listProperties(&button, false, QStringLiteral("text"));
+  QEXPECT_THAT(props.size(), Eq(1));
+  QJsonObject prop = props.at(0).toObject();
+  QEXPECT_THAT(prop[QStringLiteral("name")].toString(), QStrEq("text"));
+  QEXPECT_THAT(prop[QStringLiteral("value")].toString(), QStrEq("Filter Button"));
 }
 
 void TestMetaInspector::testListMethods() {
