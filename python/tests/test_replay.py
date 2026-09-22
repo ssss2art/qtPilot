@@ -135,6 +135,24 @@ def test_normalise_masks_the_index_throughout_a_superclass_chain():
     ]
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "QQuickSwitch",           # a compiled Qt type
+        "Legacy_V2_3",            # a C++ name that merely looks suffixed
+        "Switch_QMLTYPE",         # the marker without an index
+        "Switch_QMLTYPE_",        # the marker with an empty index
+        "Switch_QML_12x",         # digits that do not run to the end
+    ],
+)
+def test_normalise_strips_only_the_engine_suffix(name: str):
+    # The rule has to be narrow. Anything that merely resembles the generated
+    # form must survive, or replay quietly stops distinguishing two real types.
+    nested = res(1, "qt.objects.inspect", {"result": {"info": {"className": name}}})
+
+    assert normalise(nested)["result"]["result"]["info"]["className"] == name
+
+
 def test_normalise_leaves_compiled_type_names_intact():
     # Only the generated suffix goes. A C++ type name carries no index and must survive, or a
     # replay would stop noticing that an object changed type.
