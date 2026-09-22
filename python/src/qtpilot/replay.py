@@ -181,6 +181,18 @@ ID_KEYS: frozenset[str] = frozenset(
 _GENERATED_HANDLE = re.compile(r"^(?P<base>.+)~\d+$")
 
 
+# Keys whose value is a type name rather than an identifier. A type declared in QML is reported
+# under a name the QML engine generated -- Switch_QMLTYPE_58_QML_98 -- where the numbers are
+# registration indices, not anything about the type. They differ between two runs of the same
+# unchanged binary, so a recording that observed one diverges on every replay.
+TYPE_NAME_KEYS: frozenset[str] = frozenset({"className", "qmlTypeName", "superClasses"})
+
+# The suffix the QML engine appends. Either part may be absent: a type can appear as
+# Switch_QMLTYPE_58_QML_98, Switch_QMLTYPE_58 or Column_QML_16. Anchored to the end so a
+# compiled C++ name, which carries no index, is left exactly as it is.
+_QML_GENERATED_SUFFIX = re.compile(r"(?:_QMLTYPE_\d+)?(?:_QML_\d+)?$")
+
+
 def _is_truncated(value: Any) -> bool:
     """Whether a logged value is a placeholder rather than the real thing."""
     return isinstance(value, str) and _TRUNCATED.search(value) is not None
@@ -223,6 +235,10 @@ def normalise(
         ]
     if isinstance(value, str) and mask_handles and key in ID_KEYS:
         return _GENERATED_HANDLE.sub(r"\g<base>~*", value)
+    if isinstance(value, str) and mask_handles and key in TYPE_NAME_KEYS:
+        # Reduced to the name the type was declared with rather than blanked, so a diff still
+        # names the type and a genuine change of type is still a divergence.
+        return _QML_GENERATED_SUFFIX.sub("", value, count=1)
     return value
 
 

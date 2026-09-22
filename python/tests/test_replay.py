@@ -96,6 +96,76 @@ def test_normalise_leaves_registered_names_intact():
     assert normalise(nested)["result"]["meta"]["objectId"] == "mainWindow.okButton"
 
 
+def test_normalise_masks_the_generated_index_in_a_qml_type_name():
+    # A type declared in QML is reported under the name the QML engine generated for it, and
+    # the number in that name is a registration index rather than anything about the type. It
+    # differs between two runs of the same unchanged binary, so a recording that observed it
+    # diverges on every replay -- over a difference no reader can act on.
+    nested = res(1, "qt.objects.inspect", {"result": {"info": {"className": "Switch_QMLTYPE_58_QML_98"}}})
+
+    assert normalise(nested)["result"]["result"]["info"]["className"] == "Switch"
+
+
+@pytest.mark.parametrize(
+    "generated,declared",
+    [
+        ("Switch_QMLTYPE_58_QML_98", "Switch"),
+        ("Switch_QMLTYPE_58", "Switch"),
+        ("Column_QML_16", "Column"),
+    ],
+)
+def test_normalise_masks_every_shape_the_engine_generates(generated: str, declared: str):
+    nested = res(1, "qt.objects.inspect", {"result": {"info": {"className": generated}}})
+
+    assert normalise(nested)["result"]["result"]["info"]["className"] == declared
+
+
+def test_normalise_masks_the_index_throughout_a_superclass_chain():
+    # inspect reports the whole chain, and every QML-declared link in it carries an index.
+    nested = res(
+        1,
+        "qt.objects.inspect",
+        {"result": {"info": {"superClasses": ["Switch_QMLTYPE_58", "Base_QMLTYPE_59", "QObject"]}}},
+    )
+
+    assert normalise(nested)["result"]["result"]["info"]["superClasses"] == [
+        "Switch",
+        "Base",
+        "QObject",
+    ]
+
+
+def test_normalise_leaves_compiled_type_names_intact():
+    # Only the generated suffix goes. A C++ type name carries no index and must survive, or a
+    # replay would stop noticing that an object changed type.
+    nested = res(1, "qt.objects.inspect", {"result": {"info": {"className": "QQuickSwitch"}}})
+
+    assert normalise(nested)["result"]["result"]["info"]["className"] == "QQuickSwitch"
+
+
+def test_a_qml_type_index_that_moved_is_not_a_divergence():
+    # The whole point: same application, same behaviour, two runs.
+    recorded = res(1, "qt.objects.inspect", {"result": {"info": {"className": "Switch_QMLTYPE_58_QML_98"}}})
+    replayed = res(1, "qt.objects.inspect", {"result": {"info": {"className": "Switch_QMLTYPE_66_QML_97"}}})
+
+    assert _equivalent(normalise(recorded), normalise(replayed))
+
+
+def test_a_genuine_type_change_is_still_a_divergence():
+    recorded = res(1, "qt.objects.inspect", {"result": {"info": {"className": "Switch_QMLTYPE_58"}}})
+    replayed = res(1, "qt.objects.inspect", {"result": {"info": {"className": "Button_QMLTYPE_58"}}})
+
+    assert not _equivalent(normalise(recorded), normalise(replayed))
+
+
+def test_a_qml_type_name_survives_the_drive_path_unmasked():
+    # Masking is a comparison concern. className is a search parameter, so a masked value on
+    # the drive path would send the probe a type name that matches nothing.
+    params = {"className": "Switch_QMLTYPE_58_QML_98"}
+
+    assert normalise(params, top_level=False, mask_handles=False) == params
+
+
 # --- parsing -----------------------------------------------------------------
 
 
