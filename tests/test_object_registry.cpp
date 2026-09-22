@@ -7,6 +7,8 @@
 #include "common/qt_matchers.h"
 #include "core/object_registry.h"
 
+#include <memory>
+
 #include <QSignalSpy>
 #include <QThread>
 #include <QTimer>
@@ -14,6 +16,26 @@
 
 using namespace qtPilot;
 using namespace qtPilot::test;
+
+namespace {
+
+// A type declared in QML reaches the metaobject system under a name the QML
+// engine generated: the declared name plus a registration index. These stand in
+// for that, so the rule can be tested without standing up a QML engine -- the
+// suffix is the whole subject, and it is an ordinary C++ identifier.
+class Probe_QMLTYPE_58_QML_98 : public QObject {
+  Q_OBJECT
+};
+
+class Probe_QMLTYPE_58 : public QObject {
+  Q_OBJECT
+};
+
+class Probe_QML_16 : public QObject {
+  Q_OBJECT
+};
+
+}  // namespace
 
 /// @brief Unit tests for ObjectRegistry
 ///
@@ -37,6 +59,8 @@ class TestObjectRegistry : public QObject {
   void testFindByObjectName();
   void testFindAllByClassName();
   void testObjectRemoval();
+  void testFindsQmlTypeByDeclaredName();
+  void testDeclaredNameDoesNotMatchAnUnrelatedType();
   void testDisconnectedRegistrationIsLazy();
   void testConnectedRegistrationPublishesObjectAdded();
   void testDestroyedObjectSuppressesQueuedObjectAdded();
@@ -170,6 +194,45 @@ void TestObjectRegistry::testFindAllByClassName() {
   QList<QObject*> allObjects = registry->findAllByClassName(QStringLiteral("QObject"), parent);
   QEXPECT_THAT(allObjects,
                AllOf(Contains(parent), Contains(child), Contains(timer1), Contains(timer2)));
+}
+
+void TestObjectRegistry::testFindsQmlTypeByDeclaredName() {
+  // The index in a generated name is a registration counter, and it differs
+  // between two runs of the same unchanged binary. Searching by it is therefore
+  // a search nobody can write down and keep -- so the declared name has to work.
+  ObjectRegistry* registry = ObjectRegistry::instance();
+  auto parent = std::make_unique<QObject>();
+  parent->setObjectName(QStringLiteral("declaredNameParent"));
+  auto* both = new Probe_QMLTYPE_58_QML_98();
+  both->setParent(parent.get());
+  auto* typeOnly = new Probe_QMLTYPE_58();
+  typeOnly->setParent(parent.get());
+  auto* qmlOnly = new Probe_QML_16();
+  qmlOnly->setParent(parent.get());
+
+  QCoreApplication::processEvents();
+
+  QEXPECT_THAT(registry->findAllByClassName(QStringLiteral("Probe"), parent.get()),
+               AllOf(Contains(both), Contains(typeOnly), Contains(qmlOnly)));
+
+  // The generated name still resolves, so a recording that captured one keeps working.
+  QEXPECT_THAT(
+      registry->findAllByClassName(QStringLiteral("Probe_QMLTYPE_58_QML_98"), parent.get()),
+      Contains(both));
+}
+
+void TestObjectRegistry::testDeclaredNameDoesNotMatchAnUnrelatedType() {
+  // Only the generated suffix is discounted. Matching on a prefix would make
+  // "Probe" find a "ProbeWidget", which is a different type.
+  ObjectRegistry* registry = ObjectRegistry::instance();
+  auto parent = std::make_unique<QObject>();
+  parent->setObjectName(QStringLiteral("unrelatedTypeParent"));
+  auto* generated = new Probe_QMLTYPE_58();
+  generated->setParent(parent.get());
+
+  QEXPECT_THAT(registry->findAllByClassName(QStringLiteral("Prob"), parent.get()), IsEmpty());
+  QEXPECT_THAT(registry->findAllByClassName(QStringLiteral("Probe_QMLTYPE"), parent.get()),
+               IsEmpty());
 }
 
 void TestObjectRegistry::testObjectRemoval() {

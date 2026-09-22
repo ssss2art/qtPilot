@@ -4,6 +4,7 @@
 #include "core/object_registry.h"
 
 #include "introspection/object_id.h"
+#include "introspection/qml_inspector.h"
 
 #include <atomic>
 #include <cstring>  // std::strcmp (not transitively included on Qt5/gcc)
@@ -48,8 +49,22 @@ std::atomic<bool> g_singletonConstructed{false};
 // documented behaviour of the search API.
 bool metaInheritsClassName(const QMetaObject* meta, const QByteArray& className) {
   const char* target = className.constData();
+  const auto targetLength = static_cast<size_t>(className.size());
   for (const QMetaObject* m = meta; m != nullptr; m = m->superClass()) {
-    if (m->className() && std::strcmp(m->className(), target) == 0) {
+    const char* name = m->className();
+    if (!name) {
+      continue;
+    }
+    if (std::strcmp(name, target) == 0) {
+      return true;
+    }
+    // A type declared in QML is registered under its declared name plus an index
+    // that changes between runs, so the generated form is not a name a caller can
+    // write down. Accept the declared name as well, without making the generated
+    // one stop working. Guarded on a cheap prefix test first: only a candidate
+    // that could carry the suffix is worth converting.
+    if (std::strncmp(name, target, targetLength) == 0 && name[targetLength] == '_' &&
+        qtPilot::declaredTypeName(QString::fromLatin1(name)) == QLatin1String(target)) {
       return true;
     }
   }
