@@ -155,6 +155,9 @@ Target: `a pure Qt Quick gallery app bundle`
 
 ### Confirmed gaps (post-F1)
 
+> Historical checkpoint: all three open items in this snapshot were resolved by
+> the later 2026-08-01 work summarized immediately below.
+
 - [x] **F1 — Chrome/a11y blind to pure QML** → FIXED & validated (QWindow-aware discovery + `walk(QObject*)`).
 - [ ] **I1 — native `qt_objects_tree` can't see the QQuickWindow.** Top-level `QWindow`s have
   `parent()==nullptr`, so the parent-based tree walk rooted at the app never reaches them.

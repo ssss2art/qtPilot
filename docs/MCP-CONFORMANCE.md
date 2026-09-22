@@ -5,11 +5,11 @@ This document states, explicitly, which revision of the **Model Context Protocol
 leave the project's conformance ambiguous.
 
 > **TL;DR** — qtPilot supports **two** MCP revisions from one codebase.
-> A default install advertises **`2025-11-25`**. Installing the `mcp-next`
-> extra advertises **`2026-07-28`** (the stateless revision). Both negotiate
-> down to clients as old as **`2024-11-05`**. The revision is provided by the
-> official MCP Python SDK that FastMCP depends on; qtPilot does not implement
-> the wire protocol itself.
+> A default install (or the explicit `mcp-next` extra) advertises
+> **`2026-07-28`**, the stateless revision. Installing `mcp-stable` advertises
+> **`2025-11-25`**. Both negotiate down to clients as old as **`2024-11-05`**.
+> The revision is provided by the official MCP Python SDK that FastMCP depends
+> on; qtPilot does not implement the wire protocol itself.
 
 ## Two different "protocols" — don't conflate them
 
@@ -114,10 +114,12 @@ ordered, and the exposed surface is a pure function of the active mode.
 - **Transport:** **stdio** only. The MCP client launches `qtpilot serve` as a
   subprocess (see `.mcp.json`). qtPilot does not expose an HTTP/SSE endpoint
   (HTTP+SSE is deprecated as of `2026-07-28`).
-- **Server capabilities:** **tools** and one **resource**. The tool families are
-  `qt_*` / `chr_*` / `cu_*` plus the `qtpilot_*` session tools; the resource is
-  `qtpilot://status` (live probe connection state, registered by
-  `qtpilot/status.py`). qtPilot does not implement MCP `prompts`.
+- **Server capabilities:** **tools**, **resources**, and **prompts**. The tool
+  families are `qt_*` / `chr_*` / `cu_*` plus the `qtpilot_*` shared tools.
+  `qtpilot://status` reports live probe connection state and
+  `qtpilot://ui/tree` reports a compact visible UI hierarchy. The
+  `qt_explore_ui` and `qt_generate_replay_test` prompts guide exploration and
+  deterministic replay authoring.
 - **Unused MCP features:** Roots, Sampling, Logging, and MCP `ping` are not
   implemented. All four are deprecated or removed as of `2026-07-28`, so this
   costs qtPilot nothing. In particular, qtPilot's `qtpilot_log_*` tools and
@@ -131,7 +133,7 @@ fastmcp 4.0.3:
 
 | Result | `ttlMs` | `cacheScope` |
 |---|---|---|
-| `resources/read` (`qtpilot://status`) | `0` | `private` |
+| `resources/read` (`qtpilot://status`, `qtpilot://ui/tree`) | `0` | `private` |
 | `resources/list` | `0` | `private` |
 | `tools/list` | `0` | `private` |
 

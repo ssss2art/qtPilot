@@ -1,5 +1,10 @@
 # Spec: Rebuild CI System for qtPilot
 
+> **Historical implementation plan.** The CI rebuild has shipped and the paths,
+> versions, and workflow structure below are no longer authoritative. Current
+> behavior is defined by [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+> and [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
 ## Context
 
 The current CI system (4 GitHub Actions workflows, 576 lines) is broken and overly complex for this early-stage project. The Python test job references a nonexistent path (`src/mcp_server/` instead of `python/`), all builds depend on vcpkg which adds fragility, and there are CI-only presets that diverge from local development. The CI needs to be rebuilt from scratch to support the plugin spec (`claude-code-plugin-spec.md`), which requires building C++ probe/launcher binaries for multiple Qt versions and platforms, publishing them to GitHub Releases, and publishing the Python package to PyPI.

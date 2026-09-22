@@ -11,10 +11,10 @@ mode switching, message logging, event recording, and scenario replay.
 
 | Mode | Mode-specific tools | Shared tools | Total | Primary use |
 |------|---------------------|--------------|-------|-------------|
-| `native` | 27 `qt_*` | 12 | 39 | Qt object, property, method, signal, model, and UI access |
+| `native` | 31 `qt_*` | 12 | 43 | Qt object, property, method, signal, model, and UI access |
 | `cu` | 13 `cu_*` | 12 | 25 | Screenshot and coordinate-based interaction |
 | `chrome` | 8 `chr_*` | 12 | 20 | Accessibility-tree and element-reference interaction |
-| `all` | 48 across all families | 12 | 60 | Exploration and mixed workflows |
+| `all` | 52 across all families | 12 | 64 | Exploration and mixed workflows |
 
 The shared tools are:
 
@@ -26,13 +26,22 @@ The shared tools are:
 - Replay: `qtpilot_replay_inspect`, `qtpilot_replay_run` (see
   [REPLAY.md](REPLAY.md))
 
-The server also exposes one resource, `qtpilot://status`, and currently exposes
-no MCP prompts. Calling `qtpilot_set_mode` changes the visible mode-specific
-tools while retaining the shared tools. MCP clients must refresh their tool
-catalog after a mode change (or wait for the `tools/list_changed` notification)
-before looking up a newly enabled tool. A tool missing while another mode is
-active is expected: switch to `all` when exploring the complete surface, then
-call `tools/list` again.
+The server also exposes two resources:
+
+- `qtpilot://status` — live connection, discovery, and mode state
+- `qtpilot://ui/tree` — a compact, visible-only UI hierarchy from the connected probe
+
+Two MCP prompts provide reusable workflows:
+
+- `qt_explore_ui` — efficient discovery, inspection, interaction, and verification
+- `qt_generate_replay_test` — deterministic inline replay/test authoring
+
+Calling `qtpilot_set_mode` changes the visible mode-specific tools while
+retaining the shared tools, resources, and prompts. MCP clients must refresh
+their tool catalog after a mode change (or wait for the `tools/list_changed`
+notification) before looking up a newly enabled tool. A tool missing while
+another mode is active is expected: switch to `all` when exploring the complete
+surface, then call `tools/list` again.
 
 ### Exercising every mode locally
 

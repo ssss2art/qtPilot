@@ -1,5 +1,10 @@
 # Spec: Qt 5.15.1 Local Dev Support & Admin Elevation
 
+> **Status: implemented.** Qt 5.15 Windows/Linux coverage and launcher
+> `--run-as-admin` support are shipped. This document is retained as design and
+> implementation history; use [`docs/BUILDING.md`](docs/BUILDING.md) and
+> [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md) for current instructions.
+
 ## Context
 
 qtPilot needs two capabilities:
