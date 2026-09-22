@@ -24,12 +24,14 @@ namespace qtPilot {
 inline QString declaredTypeName(const QString& className) {
   QString name = className;
   // Innermost last: "Foo_QMLTYPE_58_QML_98" sheds "_QML_98", then "_QMLTYPE_58".
+  // `auto` throughout, not int: these return qsizetype on Qt 6 and int on Qt 5, and
+  // pinning either one narrows on the other -- which the stricter toolchains reject.
   const auto shed = [&name](QLatin1String marker) {
-    const int at = name.lastIndexOf(marker);
+    const auto at = name.lastIndexOf(marker);
     if (at < 0 || at + marker.size() >= name.size()) {
       return;
     }
-    for (int i = at + marker.size(); i < name.size(); ++i) {
+    for (auto i = at + marker.size(); i < name.size(); ++i) {
       if (!name.at(i).isDigit()) {
         return;
       }
