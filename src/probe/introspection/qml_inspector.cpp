@@ -49,7 +49,10 @@ static QmlItemInfo inspectQmlItemImpl(QObject* obj, bool wantFile) {
   }
 
   info.isQmlItem = true;
-  info.shortTypeName = stripQmlPrefix(QString::fromLatin1(obj->metaObject()->className()));
+  // The declared name, not the generated one: shortTypeName is what a caller reads and
+  // types back, and the registration index in a generated name does not survive a restart.
+  info.shortTypeName =
+      declaredTypeName(stripQmlPrefix(QString::fromLatin1(obj->metaObject()->className())));
 
   // Re-entrancy guard. This runs from the AddQObject hook, during QObject
   // construction. QQmlContext::nameForObject() resolves the object's `id:` by

@@ -8,6 +8,41 @@
 
 namespace qtPilot {
 
+/// @brief Strip the registration index the QML engine appends to a declared type.
+///
+/// A type declared in QML reaches the metaobject system as the declared name plus
+/// a generated suffix: "Foo_QMLTYPE_58_QML_98", "Foo_QMLTYPE_58" or "Foo_QML_16".
+/// Those numbers are registration indices -- they differ between two runs of the
+/// same unchanged binary -- so they cannot be part of any name a caller writes
+/// down. Everything else, including a compiled C++ name, is returned unchanged.
+///
+/// Declared outside the QTPILOT_HAS_QML guard on purpose: this is string work with
+/// no Qt Quick dependency, and the registry needs it without taking one.
+///
+/// @param className The class name to strip.
+/// @return The name the type was declared with.
+inline QString declaredTypeName(const QString& className) {
+  QString name = className;
+  // Innermost last: "Foo_QMLTYPE_58_QML_98" sheds "_QML_98", then "_QMLTYPE_58".
+  // `auto` throughout, not int: these return qsizetype on Qt 6 and int on Qt 5, and
+  // pinning either one narrows on the other -- which the stricter toolchains reject.
+  const auto shed = [&name](QLatin1String marker) {
+    const auto at = name.lastIndexOf(marker);
+    if (at < 0 || at + marker.size() >= name.size()) {
+      return;
+    }
+    for (auto i = at + marker.size(); i < name.size(); ++i) {
+      if (!name.at(i).isDigit()) {
+        return;
+      }
+    }
+    name.truncate(at);
+  };
+  shed(QLatin1String("_QML_"));
+  shed(QLatin1String("_QMLTYPE_"));
+  return name;
+}
+
 /// @brief Metadata extracted from a QML item.
 struct QmlItemInfo {
   bool isQmlItem = false;
