@@ -159,6 +159,13 @@ and the counter follows the order objects happened to be constructed in. Replay 
 apart. `qt.names.register` / `qt.names.load` give a recording a stable identity, and are what
 makes a scenario survive a refactor.
 
+**QML type names carry an index that is not stable.** A type declared in QML reaches the wire as
+`Foo_QMLTYPE_58_QML_98` rather than `Foo`, and those numbers are the QML engine's registration
+indices — the same unchanged binary reports different ones from one run to the next. Any
+observation that carries a class name (`qt.objects.inspect`, `qt.objects.tree`) would otherwise
+diverge on every replay of a QML application. Replay compares the declared name instead, so the
+index cannot fail a run while a real change of type still can.
+
 **Observe deliberately, or use a watch list.** A replay can only assert on what the recording
 looked at, and an operator driving an application clicks far more readily than they inspect. A
 session of nothing but clicks replays as a sequence of clicks that cannot fail.
@@ -228,6 +235,7 @@ Five things differ between two runs of the same session and would otherwise fail
 | `ts`, `dur_ms`, and the probe's `meta.timestamp` | Timing. Stripped at every depth. |
 | The JSON-RPC request `id` | A counter. Stripped at the **top level of an entry only** — a nested `id` names an *object*, and dropping it everywhere would leave a diff unable to tell one widget from another. |
 | `QObject~<n>` handles | The counter follows construction order. Masked to `QObject~*`; register names for identity that matters. |
+| The QML engine's generated type index | A type declared in QML is reported as `Foo_QMLTYPE_<n>_QML_<n>`, where the numbers are registration indices. They move between two runs of the same unchanged binary, so the suffix is stripped and the declared name compared. A genuine change of type still diverges. |
 | Logger-truncated values (`...<truncated Nc>`, `<image:Nb>`) | The recording does not hold what the application returned, so comparing the placeholder would fail over a difference the logger introduced. Treated as wildcards. |
 | Notification order within a step | Delivery order between independent objects is not promised. Compared as a multiset. |
 
