@@ -9,18 +9,18 @@ vendor-specific tool version.
 
 | Mode | Prefix | Mode tools | Total with shared tools | Best for |
 |------|--------|------------|-------------------------|----------|
-| `native` | `qt_*` | 27 | 37 | Qt introspection, models, signals, and deterministic automation |
-| `cu` | `cu_*` | 13 | 23 | Screenshots and coordinate-based input |
-| `chrome` | `chr_*` | 8 | 18 | Accessibility trees and semantic element references |
-| `all` | all prefixes | 48 | 58 | Exploration and workflows that combine APIs |
+| `native` | `qt_*` | 31 | 43 | Qt introspection, models, signals, and deterministic automation |
+| `cu` | `cu_*` | 13 | 25 | Screenshots and coordinate-based input |
+| `chrome` | `chr_*` | 8 | 20 | Accessibility trees and semantic element references |
+| `all` | all prefixes | 52 | 64 | Exploration and workflows that combine APIs |
 
 Start in the narrowest mode that suits the task. This gives an MCP client fewer
 tools to choose from. Use `all` when investigating the surface or when a task
 genuinely needs more than one interaction style.
 
-Ten `qtpilot_*` tools are always visible for probe connections, runtime mode
-selection, message logging, and event recording. See [MCP Tooling](docs/MCP-TOOLS.md)
-for those tools and a schema-inspection workflow.
+Twelve `qtpilot_*` tools are always visible for probe connections, runtime mode
+selection, message logging, event recording, and replay. See
+[MCP Tooling](docs/MCP-TOOLS.md) for those tools and a schema-inspection workflow.
 
 ## Native Mode
 
@@ -34,7 +34,7 @@ from pixels.
 | Objects | `qt_objects_tree`, `qt_objects_inspect`, `qt_objects_search` |
 | Properties and methods | `qt_properties_get`, `qt_properties_set`, `qt_methods_invoke` |
 | Signals and events | `qt_signals_subscribe`, `qt_signals_unsubscribe`, `qt_signals_setLifecycle`, `qt_events_start`, `qt_events_stop` |
-| UI interaction | `qt_ui_click`, `qt_ui_sendKeys`, `qt_ui_screenshot`, `qt_ui_geometry`, `qt_ui_hitTest`, `qt_ui_clickItem` |
+| UI interaction | `qt_ui_click`, `qt_ui_doubleClick`, `qt_ui_contextMenu`, `qt_ui_activeMenu`, `qt_ui_activateMenuItem`, `qt_ui_sendKeys`, `qt_ui_screenshot`, `qt_ui_geometry`, `qt_ui_hitTest`, `qt_ui_clickItem` |
 | Stable names | `qt_names_register`, `qt_names_unregister`, `qt_names_list`, `qt_names_validate`, `qt_names_load` |
 | Models | `qt_models_list`, `qt_models_data`, `qt_models_search` |
 

@@ -1,5 +1,10 @@
 # qtPilot MVP Implementation Plan
 
+> **Historical plan.** This is the original MVP checklist, not current project
+> status or the active roadmap. Most unchecked capabilities below have since
+> shipped. Use [`docs/OBSERVABILITY-GAPS.md`](../docs/OBSERVABILITY-GAPS.md) for
+> current gaps and [`docs/MCP-TOOLS.md`](../docs/MCP-TOOLS.md) for the live API.
+
 ## Executive Summary
 
 This document outlines the implementation plan for qtPilot MVP - a Qt application introspection and automation library with MCP (Model Context Protocol) integration for Claude AI.
@@ -1017,4 +1022,3 @@ These items are explicitly **out of scope** for MVP:
 - No admin rights needed
 - More reliable
 - DLL injection can be added post-MVP
-

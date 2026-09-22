@@ -1,5 +1,10 @@
 # Spec: Package qtPilot as a Claude Code Plugin
 
+> **Historical proposal, not an active roadmap commitment.** The repository
+> currently ships MCP configuration and a Claude Code test skill, but not the
+> plugin layout proposed below. Current priorities are tracked in
+> [`docs/OBSERVABILITY-GAPS.md`](docs/OBSERVABILITY-GAPS.md).
+
 ## Context
 
 qtPilot already functions as an MCP server that Claude Code can use, but it requires manual configuration in `settings.json`. Packaging it as a Claude Code plugin adds auto-registration of the MCP server, user-facing commands, model-invoked skills, and distribution via a plugin marketplace.

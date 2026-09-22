@@ -436,12 +436,12 @@ claude mcp add --transport stdio qtpilot -- qtpilot serve --mode native --ws-url
 
 ## Choosing an API Mode
 
-qtPilot supports three focused API modes plus an aggregate `all` mode. Ten
-`qtpilot_*` session, logging, and recording tools are present in every mode.
+qtPilot supports three focused API modes plus an aggregate `all` mode. Twelve
+`qtpilot_*` session, logging, recording, and replay tools are present in every mode.
 
 ### Native Mode (`--mode native`)
 
-Exposes 27 `qt_*` tools plus the 10 shared tools (37 total). Use this for:
+Exposes 31 `qt_*` tools plus the 12 shared tools (43 total). Use this for:
 
 - Test automation
 - Deep inspection of widget properties
@@ -454,7 +454,7 @@ qtpilot serve --mode native --target /path/to/app
 
 ### Computer Use Mode (`--mode cu`)
 
-Exposes 13 `cu_*` tools plus the 10 shared tools (23 total). Use this for:
+Exposes 13 `cu_*` tools plus the 12 shared tools (25 total). Use this for:
 
 - Visual tasks
 - Custom widgets without accessibility info
@@ -466,7 +466,7 @@ qtpilot serve --mode cu --target /path/to/app
 
 ### Chrome Mode (`--mode chrome`)
 
-Exposes 8 `chr_*` tools plus the 10 shared tools (18 total). Use this for:
+Exposes 8 `chr_*` tools plus the 12 shared tools (20 total). Use this for:
 
 - Form filling
 - Semantic element selection
@@ -478,7 +478,7 @@ qtpilot serve --mode chrome --target /path/to/app
 
 ### All Modes (`--mode all`)
 
-Exposes all 58 tools. Useful for exploration and mixed workflows.
+Exposes all 64 tools. Useful for exploration and mixed workflows.
 
 ```bash
 qtpilot serve --mode all --target /path/to/app

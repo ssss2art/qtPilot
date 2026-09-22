@@ -234,13 +234,14 @@ QApplication/QQuickWindow/QQuickItem#root/QQuickRectangle#header
 
 ## Environment Variables
 
+The original table has been reconciled with the current probe configuration:
+
 | Variable | Purpose | Default | Example |
 |----------|---------|---------|---------|
-| `QTPILOT_PORT` | WebSocket server port | `9999` | `9999` |
-| `QTPILOT_BIND` | Bind address | `127.0.0.1` | `0.0.0.0` |
+| `QTPILOT_PORT` | WebSocket server port (`0` selects an ephemeral port) | `9222` | `0` |
+| `QTPILOT_BIND_ADDRESS` | Network exposure | `any` (all interfaces) | `loopback` |
 | `QTPILOT_ENABLED` | Enable/disable probe | `1` | `0` to disable |
-| `QTPILOT_LOG_LEVEL` | Logging verbosity | `info` | `debug`, `info`, `warn`, `error` |
-| `QTPILOT_MODE` | API mode | `native` | `native`, `computer_use`, `chrome`, `all` |
+| `QTPILOT_MODE` | API mode | `all` | `native`, `computer_use`, `chrome`, `all` |
 
 ---
 
@@ -575,9 +576,12 @@ The server pushes these events to subscribed clients:
 
 ### Configurable Binding
 
-- Default: `127.0.0.1` (localhost only)
-- Configurable via `QTPILOT_BIND` environment variable
-- For remote access: set `QTPILOT_BIND=0.0.0.0`
+- Current default: all interfaces, because LAN driving and broadcast discovery
+  are product requirements.
+- Configure with `QTPILOT_BIND_ADDRESS`; set it to `loopback` for local-only
+  development and CI.
+- Unrecognised values fail closed to loopback. See
+  [Getting Started: Network exposure](docs/GETTING-STARTED.md#network-exposure).
 
 ### No Authentication in MVP
 
@@ -681,7 +685,7 @@ qtpilot/
 | Feature | Status |
 |---------|--------|
 | macOS support | Implemented |
-| Recording/playback | Implemented (recording; playback still future) — `qtpilot_recording_*` tools |
+| Recording/playback | Implemented — `qtpilot_recording_*`, `qtpilot_replay_*`, and the `qtpilot replay` CLI |
 | Attach to running process | Future |
 | Authentication | Future |
 | Qt 4 support | Never |

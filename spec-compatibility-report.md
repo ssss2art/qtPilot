@@ -1,5 +1,10 @@
 # Spec Compatibility Report: Build Simplification vs. Claude Code Plugin
 
+> **Historical analysis.** The conflicting proposals discussed here predate the
+> current CMake, CI, release, and `download-tools` implementation. Do not use
+> this report as an execution plan. Current gaps and priorities live in
+> [`docs/OBSERVABILITY-GAPS.md`](docs/OBSERVABILITY-GAPS.md).
+
 ## Executive Summary
 
 The two specs have **5 breaking conflicts** that must be resolved before either can be implemented. The root cause is that the build-simplification spec was written without awareness of the plugin spec's binary distribution requirements. The good news: the two specs operate on largely **separate concerns** (CMake install layout vs. Python/plugin download system), so a unified approach is achievable with targeted amendments to both specs.

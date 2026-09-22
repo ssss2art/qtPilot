@@ -1,5 +1,12 @@
 # qtPilot Feature Request: Tree Model Navigation Support
 
+> **Status: core design implemented.** Row-path data access, recursive search,
+> and click/select/edit by row path or text path are shipped as
+> `qt_models_data`, `qt_models_search`, and `qt_ui_clickItem`. The original
+> problem statement below is preserved as design history. Direct model
+> `setData`, header access, proxy mapping, and selection/current-index reads
+> remain tracked as M1-M4 in [OBSERVABILITY-GAPS.md](OBSERVABILITY-GAPS.md).
+
 ## Problem
 
 qtPilot's native mode has no way to programmatically navigate, search, or select items in Qt tree views (`QTreeView` / `QAbstractItemModel` hierarchies). The root cause is that `QModelIndex` — the fundamental addressing type in Qt's model/view framework — is an opaque, non-serializable C++ type that cannot be passed through qtPilot's JSON-RPC interface.

@@ -33,7 +33,7 @@ app; see [docs/MOBILE.md](docs/MOBILE.md).
    │  qtPilot MCP Server (Python)                                      │
    │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐    │
    │  │ Probe Client    │  │ MCP Tools       │  │ stdio Transport │    │
-   │  │ (WebSocket)     │  │ (58, 3 modes)   │  │                 │    │
+   │  │ (WebSocket)     │  │ (64, 3 modes)   │  │                 │    │
    │  └─────────────────┘  └─────────────────┘  └─────────────────┘    │
    └───────────────────────────────────┬───────────────────────────────┘
                                        │ MCP
@@ -123,7 +123,8 @@ qtpilot serve --mode native --ws-url ws://localhost:9222
   - **Native** - Full Qt object tree introspection
   - **Computer Use** - Screenshot and coordinate-based interaction
   - **Chrome** - Browser-style accessibility tree with element references
-- **58 MCP tools** across all modes: 27 native, 13 computer-use, 8 accessibility, and 10 shared session tools
+- **64 MCP tools** across all modes: 31 native, 13 computer-use, 8 accessibility, and 12 shared session/replay tools
+- **Two live resources and two workflow prompts** for connection status, compact UI hierarchy, exploration, and replay authoring
 - **Works with Qt 5.15.1+ and Qt 6.5+** applications (Qt 5.15 on Windows and Linux; macOS needs Qt 6.5+)
 - **Zero modification** to target applications on desktop (the probe is injected); on mobile it is linked into your own development build
 - **Child process injection** - `--inject-children` automatically injects the probe into child processes (Windows: Detours hook on CreateProcessW; Linux: LD_PRELOAD propagation)

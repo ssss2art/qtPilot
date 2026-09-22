@@ -52,7 +52,7 @@ qtpilot serve --mode native --ws-url ws://localhost:9222
 ## Features
 
 - **Three API modes**: Native (full Qt access), Computer Use (screenshots + clicks), Chrome (accessibility tree)
-- **58 MCP tools** when using `--mode all` (mode-specific tools plus shared session tools)
+- **64 MCP tools** when using `--mode all` (52 mode-specific tools plus 12 shared session/replay tools)
 - **Works with Qt 5.15 and Qt 6.x** applications
 - **Zero modification on desktop** (probe is injected); statically linked into development builds on Android/iOS
 - **Cross-platform**: Windows, Linux, macOS, Android, and iOS

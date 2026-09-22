@@ -1,5 +1,11 @@
 # Plan: Simplify Build System
 
+> **Historical proposal; do not execute against the current tree.** CI,
+> release packaging, mobile/static delivery, and the supported CMake presets
+> now depend on infrastructure this document proposed deleting. See
+> [`docs/BUILDING.md`](docs/BUILDING.md) and the checked-in workflows for the
+> current build contract.
+
 ## Context
 
 The current build system has grown to 17+ build-related files with ~1,500 lines of CMake code, vcpkg integration, 4 CI workflows, 6 CMake presets, and vcpkg port directories — far more infrastructure than this early-stage project needs. The goal is to strip it down to the minimum needed to build, test, and integrate locally.

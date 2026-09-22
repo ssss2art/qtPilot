@@ -283,6 +283,6 @@ outcome.map(lambda steps: print(f"Successfully replayed {len(steps)} steps!")) \
 
 - The recursive signal subscribe behind `qtpilot_recording_*` is still one level deep, so a
   recording can miss nested widgets. See `O8` in
-  [observability-testability-gaps.md](observability-testability-gaps.md).
+  [OBSERVABILITY-GAPS.md](OBSERVABILITY-GAPS.md).
 - There are no emission timestamps, so signals are ordered per step but not timed within one.
 - Screenshots are excluded by design. Pair a replay with a visual golden if pixels matter.

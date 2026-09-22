@@ -1564,7 +1564,7 @@
       </div>
     </div>
 
-    <!-- Arrow: stdio/SSE -->
+    <!-- Arrow: stdio -->
     <div class="arch-arrow">
       <span class="arrow-label">MCP</span>
       <svg class="arrow-svg" viewBox="0 0 60 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1573,7 +1573,7 @@
         <line x1="56" y1="20" x2="12" y2="20" stroke="#3ddc84" stroke-width="1.5" stroke-dasharray="4 3"/>
         <polyline points="16,15 8,20 16,25" stroke="#3ddc84" stroke-width="1.5" fill="none"/>
       </svg>
-      <span class="arrow-label">stdio / SSE</span>
+      <span class="arrow-label">stdio</span>
     </div>
 
     <!-- MCP Server (Python) -->
@@ -1582,8 +1582,9 @@
       <div class="node-title">qtPilot Server</div>
       <div class="node-desc">Python FastMCP bridge. Registers tools that wrap probe JSON-RPC methods. Handles UDP discovery of probes on the network.</div>
       <div style="margin-top:auto; display:flex; gap:6px; flex-wrap:wrap;">
-        <span class="badge badge-green">58 Tools</span>
-        <span class="badge badge-green">1 Resource</span>
+        <span class="badge badge-green">64 Tools</span>
+        <span class="badge badge-green">2 Resources</span>
+        <span class="badge badge-green">2 Prompts</span>
       </div>
     </div>
 
@@ -1866,7 +1867,7 @@
   <h2>qtPilot at a Glance</h2>
   <div class="stats-row">
     <div class="stat-card">
-      <div class="stat-value" style="color:var(--green)">58</div>
+      <div class="stat-value" style="color:var(--green)">64</div>
       <div class="stat-label">MCP Tools</div>
     </div>
     <div class="stat-card">
@@ -1874,11 +1875,11 @@
       <div class="stat-label">API Modes</div>
     </div>
     <div class="stat-card">
-      <div class="stat-value" style="color:var(--purple)">1</div>
-      <div class="stat-label">Resource</div>
+      <div class="stat-value" style="color:var(--purple)">2</div>
+      <div class="stat-label">Resources</div>
     </div>
     <div class="stat-card">
-      <div class="stat-value" style="color:var(--accent)">0</div>
+      <div class="stat-value" style="color:var(--accent)">2</div>
       <div class="stat-label">Prompts</div>
     </div>
   </div>
@@ -1886,10 +1887,10 @@
   <!-- Mode protocol strip -->
   <div class="protocol-strip" style="margin-bottom:24px;">
     <span class="protocol-title">API Modes →</span>
-    <span class="badge badge-green">Native (33 tools)</span>
+    <span class="badge badge-green">Native (31 tools)</span>
     <span class="badge badge-amber">Computer Use (13 tools)</span>
     <span class="badge badge-purple">Chrome (8 tools)</span>
-    <span class="badge badge-blue">Discovery (4 tools)</span>
+    <span class="badge badge-blue">Shared (12 tools)</span>
   </div>
 
   <!-- Tool Browser -->
@@ -1929,11 +1930,29 @@
     </div>
 
     <div class="tool-group">
-      <div class="tool-group-title">Resource</div>
+      <div class="tool-group-title">Resources</div>
       <div class="tool-grid">
         <div class="tool-card" style="border-color:var(--green)">
           <div class="tool-name" style="color:var(--green)">qtpilot://status</div>
           <div class="tool-desc">JSON resource exposing current connection state: <code>connected</code>, <code>ws_url</code>, <code>mode</code>, <code>discovery_active</code>, <code>discovered_probes</code>.</div>
+        </div>
+        <div class="tool-card" style="border-color:var(--green)">
+          <div class="tool-name" style="color:var(--green)">qtpilot://ui/tree</div>
+          <div class="tool-desc">JSON resource exposing a bounded snapshot of the connected application's current UI tree.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tool-group">
+      <div class="tool-group-title">Prompts</div>
+      <div class="tool-grid">
+        <div class="tool-card" style="border-color:var(--accent)">
+          <div class="tool-name" style="color:var(--accent)">qt_explore_ui</div>
+          <div class="tool-desc">Guides an agent through connecting to a probe and exploring an application's UI.</div>
+        </div>
+        <div class="tool-card" style="border-color:var(--accent)">
+          <div class="tool-name" style="color:var(--accent)">qt_generate_replay_test</div>
+          <div class="tool-desc">Guides an agent from a recorded interaction to a deterministic replay test.</div>
         </div>
       </div>
     </div>
@@ -2295,7 +2314,7 @@
       <span class="badge badge-blue">QTPILOT_PORT=9222</span>
       <span class="badge badge-green">QTPILOT_MODE=native|computer_use|chrome|all</span>
       <span class="badge badge-amber">QTPILOT_ENABLED=0|1</span>
-      <span class="badge badge-purple">QTPILOT_BIND=127.0.0.1</span>
+      <span class="badge badge-purple">QTPILOT_BIND_ADDRESS=any|loopback</span>
     </div>
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
       <span class="protocol-title" style="min-width:100px">Ports →</span>
@@ -2307,11 +2326,11 @@
   <!-- Footers -->
   <div class="foot" style="margin-top:48px;">
     <span>📎</span>
-    <span>Spec: <strong style="color:var(--text)">modelcontextprotocol.io</strong> · All messages are JSON-RPC 2.0 · Requests have <code>id</code>, notifications do not · Protocol version: <strong style="color:var(--text)">2025-11-25</strong> (also serves <strong style="color:var(--text)">2026-07-28</strong>, stateless)</span>
+    <span>Spec: <strong style="color:var(--text)">modelcontextprotocol.io</strong> · All messages are JSON-RPC 2.0 · Requests have <code>id</code>, notifications do not · Default protocol version: <strong style="color:var(--text)">2026-07-28</strong> · <code>mcp-stable</code>: <strong style="color:var(--text)">2025-11-25</strong></span>
   </div>
   <div class="foot" style="border:none; padding-top:8px;">
     <span>🔬</span>
-    <span>qtPilot: <strong style="color:var(--text)">58 tools</strong> · <strong style="color:var(--text)">3 API modes</strong> · <strong style="color:var(--text)">1 resource</strong> · Zero source-code modification on desktop (probe injected) · linked into your build on Android/iOS · Works with any Qt 5/6 application</span>
+    <span>qtPilot: <strong style="color:var(--text)">64 tools</strong> · <strong style="color:var(--text)">3 API modes</strong> · <strong style="color:var(--text)">2 resources</strong> · <strong style="color:var(--text)">2 prompts</strong> · Zero source-code modification on desktop (probe injected) · linked into your build on Android/iOS · Works with any Qt 5/6 application</span>
   </div>
 
 </div>
