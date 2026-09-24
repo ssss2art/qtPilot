@@ -17,6 +17,7 @@
 #include <QTreeView>
 #include <QtTest>
 
+#include "common/parked_on_worker.h"
 #include "common/qt_matchers.h"
 
 using namespace qtPilot;
@@ -57,6 +58,20 @@ class LazyFlatModel : public QAbstractListModel {
 /// Tests model discovery, data retrieval (with smart pagination), role
 /// filtering, view-to-model auto-resolution, and error handling for all
 /// model methods.
+/// @brief Its rowCount() destroys the model -- application code that
+/// qt.models.list runs for every model it reports.
+class SelfDestructingModel : public QAbstractListModel {
+  Q_OBJECT
+
+ public:
+  using QAbstractListModel::QAbstractListModel;
+  int rowCount(const QModelIndex& = QModelIndex()) const override {
+    delete this;
+    return 0;
+  }
+  QVariant data(const QModelIndex&, int) const override { return {}; }
+};
+
 class TestModelNavigator : public QObject {
   Q_OBJECT
 
@@ -69,6 +84,8 @@ class TestModelNavigator : public QObject {
   // qt.models.list
   void testModelsListFindsTestModel();
   void testModelsListIncludesRoleNames();
+  void testModelsListSkipsAModelItsOwnRowCountDestroys();
+  void testModelsListLeavesOtherThreadsModelsAlone();
 
   // qt.models.data
   void testModelsDataSmallModel();
@@ -318,6 +335,25 @@ void TestModelNavigator::testModelsListIncludesRoleNames() {
     QEXPECT_THAT(model, HasJsonField("roleNames"));
     QEXPECT_THAT(model["roleNames"].isObject(), IsTrue());
   }
+}
+
+void TestModelNavigator::testModelsListSkipsAModelItsOwnRowCountDestroys() {
+  (new SelfDestructingModel())->setObjectName(QStringLiteral("selfDestructingModel"));
+
+  const QJsonValue result = callResult("qt.models.list", QJsonObject());
+
+  QEXPECT_THAT(result.toArray(), Not(JsonArrayContains(HasJsonField(
+                                     "objectId", QStrContains("selfDestructingModel")))));
+}
+
+// A model owned by a worker thread is never read from the GUI thread.
+void TestModelNavigator::testModelsListLeavesOtherThreadsModelsAlone() {
+  ParkedOnWorker<QStandardItemModel> parked(QStringLiteral("workerOwnedModel"));
+
+  const QJsonValue result = callResult("qt.models.list", QJsonObject());
+
+  QEXPECT_THAT(result.toArray(), Not(JsonArrayContains(HasJsonField(
+                                     "objectId", QStrContains("workerOwnedModel")))));
 }
 
 // ========================================================================

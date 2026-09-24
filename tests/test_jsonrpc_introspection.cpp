@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/parked_on_worker.h"
 #include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "introspection/signal_monitor.h"
@@ -13,6 +14,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QVBoxLayout>
+#include <QTimer>
 #include <QtTest>
 
 using namespace qtPilot;
@@ -51,6 +53,7 @@ class TestJsonRpcIntrospection : public QObject {
   // Object discovery
   void testFindByObjectName();
   void testFindByClassName();
+  void testFindByClassNameLeavesOtherThreadsObjectsAlone();
   void testGetObjectTree();
   void testGetObjectInfo();
 
@@ -206,6 +209,18 @@ void TestJsonRpcIntrospection::testFindByClassName() {
     }
   }
   QEXPECT_THAT(found, IsTrue());
+}
+
+// The legacy lookup walks the whole registry too, and must not read an object
+// another thread owns.
+void TestJsonRpcIntrospection::testFindByClassNameLeavesOtherThreadsObjectsAlone() {
+  ParkedOnWorker<QTimer> parked(QStringLiteral("workerOwnedTimer"));
+
+  const QJsonValue result =
+      getResult(callMethod("qtpilot.findByClassName", QJsonObject{{"className", "QTimer"}}));
+
+  QEXPECT_THAT(result.toObject(),
+               HasJsonField("ids", Not(JsonArrayContains(QStrContains("workerOwnedTimer")))));
 }
 
 void TestJsonRpcIntrospection::testGetObjectTree() {

@@ -4,6 +4,7 @@
 #include "api/error_codes.h"
 #include "api/native_mode_api.h"
 #include "api/symbolic_name_map.h"
+#include "common/parked_on_worker.h"
 #include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "core/object_resolver.h"
@@ -63,6 +64,50 @@ class TripwireObject : public QObject {
   }
 };
 
+/// @brief Its `text` getter deletes the object -- the property ID generation
+/// reads for any object without an objectName.
+class TextTripwire : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(QString text READ text)
+
+ public:
+  using QObject::QObject;
+  QString text() const {
+    delete this;
+    return QStringLiteral("gone");
+  }
+};
+
+/// @brief Its getter waits for a worker thread that creates a QObject.
+///
+/// Every QObject construction passes through the registry's creation hook,
+/// which takes the registry lock; a getter run while the search held that lock
+/// would wait forever for a worker that is itself waiting for the lock.
+class WaitsOnWorker : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(bool workerFinished READ workerFinished)
+
+ public:
+  using QObject::QObject;
+  bool workerFinished() const {
+    QThread* worker = QThread::create([] { QObject scratch; });
+    worker->start();
+    const bool finished = worker->wait(2000);
+    if (!finished) {
+      worker->wait();  // the lock is released once this getter returns
+    }
+    delete worker;
+    return finished;
+  }
+};
+
+/// @brief Exposes how many connections a signal has, for asserting there are none.
+class ReceiverCounter : public QObject {
+ public:
+  using QObject::QObject;
+  using QObject::receivers;
+};
+
 }  // namespace
 
 /// @brief Integration tests for the complete Native Mode API (qt.* methods).
@@ -113,6 +158,12 @@ class TestNativeModeApi : public QObject {
   void testObjectsSearchSkipsSiblingDestroyedByPropertyGetter();
   void testObjectsSearchSkipsObjectThatDestroysItselfWhenRead();
   void testObjectsSearchSurvivesObjectsDyingOnAnotherThread();
+  void testObjectsSearchSkipsObjectDestroyedWhileItsIdIsBuilt();
+  void testObjectsSearchTruncatedIsExactWithPropertyFilters();
+  void testObjectsSearchRunsGettersWithoutHoldingTheRegistry();
+  void testObjectsSearchLeavesOtherThreadsObjectsAlone();
+  void testObjectsSearchRefusesARootOnAnotherThread();
+  void testObjectIdDoesNotConnectToAnotherThreadsObject();
 
   // Properties (qt.properties.*)
   void testPropertiesGetSet();
@@ -694,8 +745,8 @@ void TestNativeModeApi::testObjectsSearchSkipsObjectThatDestroysItselfWhenRead()
 
 // The shape of a crash seen in the field: an application starting up creates and
 // destroys objects on worker threads while a client polls an objectName search.
-// Every one of those objects passes through the registry, so a search that reads
-// a collected pointer after dropping the registry lock reads freed memory.
+// Reading those objects from the GUI thread races their own thread -- even the
+// objectName -- so the search must not read them at all.
 void TestNativeModeApi::testObjectsSearchSurvivesObjectsDyingOnAnotherThread() {
   std::atomic<bool> stop{false};
   QThread* churn = QThread::create([&stop] {
@@ -709,14 +760,92 @@ void TestNativeModeApi::testObjectsSearchSurvivesObjectsDyingOnAnotherThread() {
   churn->start();
 
   for (int i = 0; i < 400; ++i) {
-    const QJsonObject response =
-        callRaw("qt.objects.search", QJsonObject{{"objectName", "churnTarget"}, {"limit", 5}});
-    QEXPECT_THAT(response, HasJsonField("result"));
+    const QJsonValue result =
+        callResult("qt.objects.search", QJsonObject{{"objectName", "churnTarget"}, {"limit", 5}});
+    QEXPECT_THAT(result.toObject(), HasJsonField("count", Eq(0)));
   }
 
   stop.store(true);
   churn->wait();
   delete churn;
+}
+
+// ID generation reads the `text` property of an object without an objectName,
+// and that getter is application code too.
+void TestNativeModeApi::testObjectsSearchSkipsObjectDestroyedWhileItsIdIsBuilt() {
+  QObject root;
+  new TextTripwire(&root);
+
+  const QJsonValue result = callResult(
+      "qt.objects.search", QJsonObject{{"root", ObjectRegistry::instance()->objectId(&root)},
+                                       {"className", "TextTripwire"}});
+
+  QEXPECT_THAT(result.toObject(),
+               AllOf(HasJsonField("count", Eq(0)), HasJsonField("skippedDestroyed", Eq(1))));
+}
+
+// truncated means a match was left out -- not that candidates were left unexamined.
+void TestNativeModeApi::testObjectsSearchTruncatedIsExactWithPropertyFilters() {
+  QObject root;
+  root.setObjectName(QStringLiteral("truncRoot"));
+  for (const bool armed : {true, false, true, false, false}) {
+    auto* child = armed ? new TripwireObject(&root) : new QObject(&root);
+    child->setObjectName(QStringLiteral("truncChild"));
+  }
+
+  const QJsonValue result = callResult(
+      "qt.objects.search", QJsonObject{{"root", ObjectRegistry::instance()->objectId(&root)},
+                                       {"properties", QJsonObject{{"armed", 1}}},
+                                       {"limit", 2}});
+
+  QEXPECT_THAT(result.toObject(),
+               AllOf(HasJsonField("count", Eq(2)), HasJsonField("truncated", Eq(false))));
+}
+
+void TestNativeModeApi::testObjectsSearchRunsGettersWithoutHoldingTheRegistry() {
+  QObject root;
+  (new WaitsOnWorker(&root))->setObjectName(QStringLiteral("waitsOnWorker"));
+
+  const QJsonValue result = callResult(
+      "qt.objects.search", QJsonObject{{"root", ObjectRegistry::instance()->objectId(&root)},
+                                       {"properties", QJsonObject{{"workerFinished", true}}}});
+
+  QEXPECT_THAT(result.toObject(),
+               HasJsonField("objects", JsonArrayContains(HasJsonField(
+                                           "objectName", QStrEq("waitsOnWorker")))));
+}
+
+// An object another thread owns is never read from the GUI thread; the search
+// says how many it passed over instead.
+void TestNativeModeApi::testObjectsSearchLeavesOtherThreadsObjectsAlone() {
+  ParkedOnWorker<> parked(QStringLiteral("parkedOnWorker"));
+
+  const QJsonValue result =
+      callResult("qt.objects.search", QJsonObject{{"objectName", "parkedOnWorker"}});
+
+  QEXPECT_THAT(result.toObject(),
+               AllOf(HasJsonField("count", Eq(0)), HasJsonField("skippedForeignThread", Ge(1))));
+}
+
+void TestNativeModeApi::testObjectsSearchRefusesARootOnAnotherThread() {
+  ParkedOnWorker<> parked(QStringLiteral("foreignRoot"));
+
+  const QJsonObject error = callExpectError(
+      "qt.objects.search",
+      QJsonObject{{"root", QString::number(ObjectResolver::assignNumericId(parked.object()))}});
+
+  QEXPECT_THAT(error, HasJsonField("message", QStrContains("another thread")));
+}
+
+// objectId() keeps a cached ID fresh by connecting to objectNameChanged. Made
+// from the GUI thread to an object another thread owns, that connect() races
+// the owner's destructor.
+void TestNativeModeApi::testObjectIdDoesNotConnectToAnotherThreadsObject() {
+  ParkedOnWorker<ReceiverCounter> parked(QStringLiteral("parkedForId"));
+
+  ObjectRegistry::instance()->objectId(parked.object());
+
+  QEXPECT_THAT(parked.object()->receivers(SIGNAL(objectNameChanged(QString))), Eq(0));
 }
 
 // ========================================================================
