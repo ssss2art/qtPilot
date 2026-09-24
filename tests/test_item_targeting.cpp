@@ -244,6 +244,9 @@ class TestItemTargeting : public QObject {
 };
 
 void TestItemTargeting::initTestCase() {
+  // As in the probe: without the hooks a destroyed host's cached ID outlives it,
+  // and a later host built at the same address inherits it.
+  installObjectHooks();
   m_scene = new QGraphicsScene(this);
   m_scene->setSceneRect(0, 0, 800, 400);
   m_view = new QGraphicsView(m_scene);
@@ -330,6 +333,7 @@ void TestItemTargeting::cleanupTestCase() {
   m_view = nullptr;
   delete m_menuHost;
   m_menuHost = nullptr;
+  uninstallObjectHooks();
 }
 
 void TestItemTargeting::init() {
@@ -885,7 +889,8 @@ void TestItemTargeting::testMenuPathChoosesTheEntryInTheMenuOpenNow() {
 
   callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"path", deletePath}});
 
-  QEXPECT_THAT(host.deletedBy, Eq(QList<int>{3}));
+  // QCOMPARE, not a matcher: gmock prints a Qt 5 QList through an iterator MSVC deprecates.
+  QCOMPARE(host.deletedBy, QList<int>{3});
 }
 
 void TestItemTargeting::testMenuPathDescendsIntoASubmenu() {
