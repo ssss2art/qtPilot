@@ -215,6 +215,10 @@ qtPilot_add_test(NAME test_websocket_teardown SOURCES test_websocket_teardown.cp
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+qtPilot_add_test(NAME test_websocket_dispatch SOURCES test_websocket_dispatch.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
 qtPilot_add_test(NAME test_probe_version SOURCES test_probe_version.cpp
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 

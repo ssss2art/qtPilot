@@ -5,6 +5,7 @@
 
 #include <QHostAddress>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 
 class QWebSocketServer;
@@ -70,6 +71,13 @@ class QTPILOT_EXPORT WebSocketServer : public QObject {
   /// @return Pointer to the handler.
   JsonRpcHandler* rpcHandler() const;
 
+  /// @brief Whether QtWebSockets is delivering a frame to this server right now.
+  ///
+  /// A request handler must never observe true: application code it runs may
+  /// spin a nested event loop, and QtWebSockets' frame processing is not
+  /// reentrant. Exposed so that invariant can be tested.
+  bool inFrameDispatch() const;
+
   /// @brief Send a message to the connected client.
   /// @param message The message to send.
   /// @return true if sent successfully, false if no client connected.
@@ -118,9 +126,13 @@ class QTPILOT_EXPORT WebSocketServer : public QObject {
   ///         owns finishing with it (close/deleteLater).
   QWebSocket* takeActiveClient();
 
+  /// @brief Handle one request and answer @p client, outside frame processing.
+  void handleRequest(const QPointer<QWebSocket>& client, const QString& message);
+
   QWebSocketServer* m_server = nullptr;
   QWebSocket* m_activeClient = nullptr;
   JsonRpcHandler* m_rpcHandler = nullptr;
+  int m_frameDispatchDepth = 0;
   quint16 m_port;
   NotificationQueue* m_notificationQueue = nullptr;
 };

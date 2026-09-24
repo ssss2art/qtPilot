@@ -8,6 +8,8 @@
 #include "transport/notification_queue.h"
 
 #include <QDebug>
+#include <QPointer>
+#include <QScopeGuard>
 #include <QUrl>
 #include <QWebSocket>
 #include <QWebSocketServer>
@@ -214,15 +216,32 @@ void WebSocketServer::onNewConnection() {
   emit clientConnected();
 }
 
+bool WebSocketServer::inFrameDispatch() const {
+  return m_frameDispatchDepth > 0;
+}
+
 void WebSocketServer::onTextMessage(const QString& message) {
   if (!m_activeClient) {
     return;
   }
+  ++m_frameDispatchDepth;
+  const auto leaveDispatch = qScopeGuard([this] { --m_frameDispatchDepth; });
 
   qDebug() << "[qtPilot] Received:" << message;
   emit messageReceived(message);
 
-  // Process message through JSON-RPC handler
+  // Handle the request from the event loop, not from here. This slot runs inside
+  // QtWebSockets' frame processing, which delivers every buffered frame in one
+  // non-reentrant call. A handler that turns the event loop -- qt.sync and
+  // sendKeys do, and so does any slot that opens a modal dialog -- would let the
+  // socket deliver again with that call still on the stack. Posted events are
+  // delivered in order, so requests are still handled, and answered, in order.
+  QPointer<QWebSocket> client(m_activeClient);
+  QMetaObject::invokeMethod(
+      this, [this, client, message]() { handleRequest(client, message); }, Qt::QueuedConnection);
+}
+
+void WebSocketServer::handleRequest(const QPointer<QWebSocket>& client, const QString& message) {
   QString response = m_rpcHandler->HandleMessage(message);
 
   // Send response if not a notification (notifications return empty response)
@@ -230,19 +249,18 @@ void WebSocketServer::onTextMessage(const QString& message) {
     return;
   }
 
-  // Re-check rather than trusting the pointer tested before the call.
-  // HandleMessage() can turn the event loop -- a queued UI event, a popup, a
-  // modal dialog -- and the client may disconnect while it does, at which point
-  // onClientDisconnected() has already cleared m_activeClient. Using the stale
-  // pointer dereferenced null and took the host application down with it.
-  if (!m_activeClient) {
+  // Answer only the client that asked, and only if it is still here. It may
+  // have left before the request was handled -- or while it was, since
+  // HandleMessage() can turn the event loop -- and a different client may have
+  // taken its place.
+  if (client.isNull() || client != m_activeClient) {
     qWarning() << "[qtPilot] Client left while its request was being handled; "
                   "dropping the reply";
     return;
   }
 
   qDebug() << "[qtPilot] Sending:" << response;
-  m_activeClient->sendTextMessage(response);
+  client->sendTextMessage(response);
 }
 
 void WebSocketServer::onClientDisconnected() {
