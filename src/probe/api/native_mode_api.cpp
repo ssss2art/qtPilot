@@ -21,7 +21,9 @@
 #include "introspection/qml_inspector.h"
 #include "introspection/signal_monitor.h"
 
+#include <algorithm>
 #include <expected>
+#include <iterator>
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -602,6 +604,73 @@ std::expected<void, QString> stillChoosable(const QPointer<QMenu>& menu,
   return {};
 }
 
+/// @brief Why no single entry of a menu answers to a label.
+struct MenuEntryError {
+  int code;
+  QString message;
+  QJsonObject data;
+};
+
+/// @brief Whether an entry labelled @p label answers to what a caller typed.
+///
+/// The caller is told to write labels as they read, so the normalized label is
+/// compared with the text as given: "Save && Close" reads "Save & Close", and
+/// normalizing the caller's text too would drop its '&'. Raw markup ("&Delete")
+/// is still accepted, as a caller may have copied it from a listing.
+bool labelAnswersTo(const QString& label, const QString& typed) {
+  return normalizeLabel(label) == typed || label == typed ||
+         normalizeLabel(label) == normalizeLabel(typed);
+}
+
+/// @brief The one enabled, visible entry of @p menu that answers to @p typed.
+std::expected<QAction*, MenuEntryError> findMenuEntry(QMenu* menu, const QString& typed) {
+  QJsonArray offered;
+  QList<QAction*> matches;
+  const QList<QAction*> actions = menu->actions();
+  for (QAction* action : actions) {
+    // A hidden entry is not in the menu as far as a user is concerned.
+    if (action->isSeparator() || !action->isVisible()) {
+      continue;
+    }
+    offered.append(normalizeLabel(action->text()));
+    if (labelAnswersTo(action->text(), typed)) {
+      matches.append(action);
+    }
+  }
+  if (matches.isEmpty()) {
+    return std::unexpected(MenuEntryError{
+        ErrorCode::kMenuItemNotFound, QStringLiteral("No menu item labelled '%1'").arg(typed),
+        QJsonObject{{QStringLiteral("text"), typed}, {QStringLiteral("offered"), offered}}});
+  }
+
+  QList<QAction*> enabled;
+  std::copy_if(matches.cbegin(), matches.cend(), std::back_inserter(enabled),
+               [](QAction* action) { return action->isEnabled(); });
+  if (enabled.isEmpty()) {
+    return std::unexpected(MenuEntryError{ErrorCode::kMenuItemNotFound,
+                                          QStringLiteral("Menu item '%1' is disabled").arg(typed),
+                                          QJsonObject{{QStringLiteral("text"), typed}}});
+  }
+  if (enabled.size() > 1) {
+    QJsonArray candidates;
+    for (QAction* action : std::as_const(enabled)) {
+      candidates.append(action->text());
+    }
+    return std::unexpected(MenuEntryError{
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("%1 enabled menu items read '%2'").arg(enabled.size()).arg(typed),
+        QJsonObject{{QStringLiteral("text"), typed}, {QStringLiteral("candidates"), candidates}}});
+  }
+  // Choosing an entry that opens a submenu only opens the submenu.
+  if (enabled.front()->menu()) {
+    return std::unexpected(MenuEntryError{
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Menu item '%1' opens a submenu and cannot be chosen").arg(typed),
+        QJsonObject{{QStringLiteral("text"), typed}}});
+  }
+  return enabled.front();
+}
+
 QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
   const QString kMethod = QStringLiteral("qt.ui.activateMenuItem");
   const QString text = params.value(QStringLiteral("text")).toString();
@@ -615,65 +684,43 @@ QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
   }
 
   QMenu* menu = requireActiveMenu(kMethod);
-  QJsonArray offered;
-  const QList<QAction*> actions = menu->actions();
-  for (QAction* action : actions) {
-    if (action->isSeparator()) {
-      continue;
-    }
-    // Compare labels as they read, so a caller writes "Delete" rather than
-    // "&Delete\tDel". normalizeLabel() is also what IDs are built from.
-    const QString label = action->text();
-    offered.append(label);
-    if (label == text || normalizeLabel(label) == normalizeLabel(text)) {
-      if (!action->isEnabled()) {
-        throw JsonRpcException(
-            ErrorCode::kMenuItemNotFound, QStringLiteral("Menu item '%1' is disabled").arg(text),
-            QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("text"), text}});
-      }
-      // Choosing an entry that opens a submenu only opens the submenu.
-      if (action->menu()) {
-        throw JsonRpcException(
-            JsonRpcError::kInvalidParams,
-            QStringLiteral("Menu item '%1' opens a submenu and cannot be chosen").arg(text),
-            QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("text"), text}});
-      }
-      // Describe the entry before choosing it: choosing runs application code,
-      // which may destroy the menu and every action in it.
-      const QJsonObject chosen{
-          {QStringLiteral("ok"), true},
-          {QStringLiteral("text"), label},
-          {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(action)},
-          {QStringLiteral("deferred"), deferred}};
-      if (deferred) {
-        QPointer<QMenu> safeMenu(menu);
-        QPointer<QAction> safeAction(action);
-        QMetaObject::invokeMethod(
-            menu,
-            [safeMenu, safeAction, label]() {
-              // Things may have moved on since the reply went out. A user can only
-              // choose an enabled entry of a menu that is open, and neither can we.
-              const auto choosable = stillChoosable(safeMenu, safeAction, label);
-              if (!choosable) {
-                qWarning().noquote() << "[qtPilot] deferred qt.ui.activateMenuItem did not run:"
-                                     << choosable.error();
-                return;
-              }
-              chooseMenuEntry(safeMenu, safeAction);
-            },
-            Qt::QueuedConnection);
-      } else {
-        chooseMenuEntry(menu, action);
-      }
-      return chosen;
-    }
+  const auto found = findMenuEntry(menu, text);
+  if (!found) {
+    QJsonObject data = found.error().data;
+    data[QStringLiteral("method")] = kMethod;
+    throw JsonRpcException(found.error().code, found.error().message, data);
   }
+  QAction* action = *found;
+  const QString label = action->text();
 
-  throw JsonRpcException(ErrorCode::kMenuItemNotFound,
-                         QStringLiteral("No menu item labelled '%1'").arg(text),
-                         QJsonObject{{QStringLiteral("method"), kMethod},
-                                     {QStringLiteral("text"), text},
-                                     {QStringLiteral("offered"), offered}});
+  // Describe the entry before choosing it: choosing runs application code,
+  // which may destroy the menu and every action in it.
+  const QJsonObject chosen{
+      {QStringLiteral("ok"), true},
+      {QStringLiteral("text"), label},
+      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(action)},
+      {QStringLiteral("deferred"), deferred}};
+  if (deferred) {
+    QPointer<QMenu> safeMenu(menu);
+    QPointer<QAction> safeAction(action);
+    QMetaObject::invokeMethod(
+        menu,
+        [safeMenu, safeAction, label]() {
+          // Things may have moved on since the reply went out. A user can only
+          // choose an enabled entry of a menu that is open, and neither can we.
+          const auto choosable = stillChoosable(safeMenu, safeAction, label);
+          if (!choosable) {
+            qWarning().noquote() << "[qtPilot] deferred qt.ui.activateMenuItem did not run:"
+                                 << choosable.error();
+            return;
+          }
+          chooseMenuEntry(safeMenu, safeAction);
+        },
+        Qt::QueuedConnection);
+  } else {
+    chooseMenuEntry(menu, action);
+  }
+  return chosen;
 }
 
 QJsonObject handleUiSendKeys(const QJsonObject& params) {

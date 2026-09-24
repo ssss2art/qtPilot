@@ -135,7 +135,12 @@ QString baseIdSegment(QObject* obj) {
   if (objectsDied()) {
     return QString();
   }
-  text = normalizeLabel(text);
+  // '&' marks a mnemonic, and a tab a shortcut column, only where Qt draws them
+  // so: actions and buttons. Elsewhere -- a QLabel reading "R&D", a line edit
+  // holding a tab -- they are content, and dropping them makes siblings collide.
+  if (obj->inherits("QAction") || obj->inherits("QAbstractButton")) {
+    text = normalizeLabel(text);
+  }
   if (!text.isEmpty()) {
     return QStringLiteral("text_") + sanitizeForId(text);
   }

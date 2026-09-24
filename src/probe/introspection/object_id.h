@@ -74,14 +74,17 @@ QTPILOT_EXPORT void noteObjectDestroyed();
 /// and a menu entry's tab-separated shortcut hint ("Delete\tDel" reads
 /// "Delete"). Both are how a label is drawn, not what it says, and the hint
 /// changes whenever a user rebinds the key. IDs and label matching share this
-/// one definition so they cannot disagree about what a label is.
+/// one definition so they cannot disagree about what a label is. It applies to
+/// the labels of actions and buttons; other text is content and is left alone.
+/// Qt's CJK mnemonic form "(&F)" keeps its parentheses: "File(&F)" reads "File(F)".
 QTPILOT_EXPORT QString normalizeLabel(const QString& label);
 
 /// @brief Generate a hierarchical ID for a QObject.
 ///
 /// ID format: "segment/segment/segment" where each segment is:
 ///   - objectName (if set and non-empty)
-///   - text_<sanitized> (if "text" property exists and non-empty)
+///   - text_<sanitized> (if the "text" property is non-empty; for an action or
+///     a button, without its mnemonic marker or shortcut hint -- see normalizeLabel())
 ///   - ClassName or ClassName#N (for disambiguation among siblings)
 ///
 /// The path is built from root to object, creating a unique hierarchical

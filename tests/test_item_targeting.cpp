@@ -157,6 +157,11 @@ class TestItemTargeting : public QObject {
   void testActivateMenuItemRefusesAnEntryThatOpensASubmenu();
   void testActivateMenuItemRejectsANonBooleanDeferred();
   void testActivateMenuItemMatchesTheLabelAsItReads();
+  void testActivateMenuItemMatchesAnEscapedAmpersandAsItReads();
+  void testActivateMenuItemPrefersAnEnabledTwin();
+  void testActivateMenuItemIgnoresInvisibleEntries();
+  void testActivateMenuItemRefusesAnAmbiguousLabel();
+  void testActivateMenuItemOffersLabelsAsTheyRead();
 
  private:
   QJsonObject callRaw(const QString& method, const QJsonObject& params);
@@ -648,6 +653,87 @@ void TestItemTargeting::testActivateMenuItemMatchesTheLabelAsItReads() {
   callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Export..."}});
 
   QEXPECT_THAT(exported, Eq(1));
+}
+
+// "Save && Close" is drawn as "Save & Close", and that is what a caller types.
+void TestItemTargeting::testActivateMenuItemMatchesAnEscapedAmpersandAsItReads() {
+  QMenu menu(m_menuHost);
+  int chosen = 0;
+  connect(menu.addAction(QStringLiteral("Save && Close")), &QAction::triggered, this,
+          [&chosen] { ++chosen; });
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Save & Close"}});
+
+  QEXPECT_THAT(chosen, Eq(1));
+}
+
+// Applications keep twin entries and enable one; a disabled first twin must not
+// hide an enabled second.
+void TestItemTargeting::testActivateMenuItemPrefersAnEnabledTwin() {
+  QMenu menu(m_menuHost);
+  menu.addAction(QStringLiteral("Paste"))->setEnabled(false);
+  int chosen = 0;
+  connect(menu.addAction(QStringLiteral("Paste")), &QAction::triggered, this,
+          [&chosen] { ++chosen; });
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Paste"}});
+
+  QEXPECT_THAT(chosen, Eq(1));
+}
+
+// A hidden entry is not in the menu as far as a user is concerned.
+void TestItemTargeting::testActivateMenuItemIgnoresInvisibleEntries() {
+  QMenu menu(m_menuHost);
+  int hiddenChosen = 0;
+  int shownChosen = 0;
+  QAction* hidden = menu.addAction(QStringLiteral("Delete"));
+  hidden->setVisible(false);
+  connect(hidden, &QAction::triggered, this, [&hiddenChosen] { ++hiddenChosen; });
+  connect(menu.addAction(QStringLiteral("Delete")), &QAction::triggered, this,
+          [&shownChosen] { ++shownChosen; });
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Delete"}});
+
+  QEXPECT_THAT(hiddenChosen, Eq(0));
+  QEXPECT_THAT(shownChosen, Eq(1));
+}
+
+// Two enabled entries that read the same: choosing one silently would be a guess.
+void TestItemTargeting::testActivateMenuItemRefusesAnAmbiguousLabel() {
+  QMenu menu(m_menuHost);
+  menu.addAction(QStringLiteral("Zoom\t100%"));
+  menu.addAction(QStringLiteral("Zoom\t200%"));
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  const QJsonObject response =
+      callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Zoom"}});
+
+  QEXPECT_THAT(response, IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
+  QEXPECT_THAT(response.value(QStringLiteral("error")).toObject(),
+               HasJsonField("data", HasJsonField("candidates", JsonArraySize(Eq(2)))));
+  menu.hide();
+}
+
+// What a caller is offered should be what it can send back.
+void TestItemTargeting::testActivateMenuItemOffersLabelsAsTheyRead() {
+  QMenu menu(m_menuHost);
+  menu.addAction(QStringLiteral("&Export...\tCtrl+E"));
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  const QJsonObject response =
+      callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Import"}});
+
+  QEXPECT_THAT(response.value(QStringLiteral("error")).toObject(),
+               HasJsonField("data", HasJsonField("offered", JsonArrayContains(QStrEq("Export...")))));
+  menu.hide();
 }
 
 QTEST_MAIN(TestItemTargeting)

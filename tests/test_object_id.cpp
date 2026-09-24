@@ -12,6 +12,9 @@
 #include <QAction>
 #include <QPointer>
 #include <QPushButton>
+#include <QToolBar>
+#include <QLineEdit>
+#include <QLabel>
 #include <QWindow>
 #include <QWidget>
 #include <QtTest>
@@ -65,6 +68,8 @@ class TestObjectId : public QObject {
   void testTextSegmentIgnoresMnemonicMarker();
   void testTextSegmentIgnoresShortcutHint();
   void testTextSegmentKeepsAnEscapedAmpersandAsText();
+  void testTextSegmentKeepsLiteralContentOfPlainText();
+  void testToolbarActionAndItsButtonStayDistinct();
   void testIdSiblingDisambiguation();
   void testFindById();
   void testFindByIdGlobal();
@@ -185,6 +190,32 @@ void TestObjectId::testTextSegmentKeepsAnEscapedAmpersandAsText() {
   QEXPECT_THAT(generateIdSegment(action), QStrEq("text_Save_Close"));
   QEXPECT_THAT(normalizeLabel(QStringLiteral("Save && &Close\tCtrl+W")),
                QStrEq("Save & Close"));
+}
+
+// '&' is a mnemonic marker, and a tab a shortcut column, only where Qt draws
+// them that way: actions and buttons. Everywhere else they are content -- a
+// label reading "R&D", a line edit holding a tab -- and dropping them would make
+// distinct siblings collide and fall back to positional #N suffixes.
+void TestObjectId::testTextSegmentKeepsLiteralContentOfPlainText() {
+  QWidget parent;
+  auto* label = new QLabel(QStringLiteral("R&D"), &parent);
+  auto* edit = new QLineEdit(QStringLiteral("Name:\tAlice"), &parent);
+
+  QEXPECT_THAT(generateIdSegment(label), QStrEq("text_R_D"));
+  QEXPECT_THAT(generateIdSegment(edit), QStrEq("text_Name_Alice"));
+}
+
+// A toolbar makes a QToolButton for each action, labelled with the action's
+// text minus its mnemonic -- so the two read the same. Characterization: they
+// share a segment and are told apart by position, which is what the registry's
+// sibling disambiguation is for. Pinned so a change to it is deliberate.
+void TestObjectId::testToolbarActionAndItsButtonStayDistinct() {
+  QToolBar toolbar;
+  QAction* action = toolbar.addAction(QStringLiteral("&Delete"));
+  QWidget* button = toolbar.widgetForAction(action);
+  QVERIFY(button != nullptr);
+
+  QEXPECT_THAT(generateObjectId(action), QStrNe(generateObjectId(button)));
 }
 
 void TestObjectId::testIdWithClassName() {
