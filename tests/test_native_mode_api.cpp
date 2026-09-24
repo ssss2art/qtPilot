@@ -10,12 +10,16 @@
 #include "introspection/signal_monitor.h"
 #include "transport/jsonrpc_handler.h"
 
+#include <atomic>
+
 #include <QApplication>
 #include <QDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPointer>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QThread>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QtTest>
@@ -37,6 +41,25 @@ class DoubleClickProbeWidget : public QWidget {
   void mouseDoubleClickEvent(QMouseEvent* event) override {
     emit doubleClicked();
     QWidget::mouseDoubleClickEvent(event);
+  }
+};
+
+/// @brief Reading `armed` deletes whatever `victim` points at.
+///
+/// Stands in for application code that runs while a search is walking: a
+/// property getter that tears objects down, or one that pumps a nested event
+/// loop in which something else does. `victim` may be the object itself.
+class TripwireObject : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(int armed READ armed)
+
+ public:
+  using QObject::QObject;
+  QPointer<QObject> victim;
+
+  int armed() const {
+    delete victim.data();
+    return 1;
   }
 };
 
@@ -87,6 +110,9 @@ class TestNativeModeApi : public QObject {
   void testObjectsSearchByRootOnlySubtreeIsolation();
   void testObjectsSearchParamAliases();
   void testObjectsSearchLimitTruncation();
+  void testObjectsSearchSkipsSiblingDestroyedByPropertyGetter();
+  void testObjectsSearchSkipsObjectThatDestroysItselfWhenRead();
+  void testObjectsSearchSurvivesObjectsDyingOnAnotherThread();
 
   // Properties (qt.properties.*)
   void testPropertiesGetSet();
@@ -623,6 +649,74 @@ void TestNativeModeApi::testObjectsSearchLimitTruncation() {
   QJsonValue result = callResult("qt.objects.search", params);
   QJsonObject obj = result.toObject();
   QEXPECT_THAT(obj, AllOf(HasJsonField("count", Eq(0)), HasJsonField("truncated", Eq(true))));
+}
+
+// An application getter can destroy an object the search has already collected
+// but not yet looked at. The search must notice, skip it, and say so, instead of
+// dereferencing freed memory.
+void TestNativeModeApi::testObjectsSearchSkipsSiblingDestroyedByPropertyGetter() {
+  QObject root;
+  root.setObjectName(QStringLiteral("tripwireRoot"));
+  auto* tripwire = new TripwireObject(&root);
+  tripwire->setObjectName(QStringLiteral("tripwire"));
+  auto* victim = new TripwireObject(&root);  // would match too, were it still alive
+  victim->setObjectName(QStringLiteral("victim"));
+  tripwire->victim = victim;
+
+  const QJsonValue result = callResult(
+      "qt.objects.search", QJsonObject{{"root", ObjectRegistry::instance()->objectId(&root)},
+                                       {"properties", QJsonObject{{"armed", 1}}}});
+
+  QEXPECT_THAT(
+      result.toObject(),
+      AllOf(
+          HasJsonField("objects",
+                       AllOf(JsonArrayContains(HasJsonField("objectName", QStrEq("tripwire"))),
+                             Not(JsonArrayContains(HasJsonField("objectName", QStrEq("victim")))))),
+          HasJsonField("skippedDestroyed", Eq(1))));
+}
+
+// The getter destroys the very object being matched. It matched on the way in,
+// but there is nothing left to describe on the way out.
+void TestNativeModeApi::testObjectsSearchSkipsObjectThatDestroysItselfWhenRead() {
+  QObject root;
+  auto* tripwire = new TripwireObject(&root);
+  tripwire->setObjectName(QStringLiteral("selfDestruct"));
+  tripwire->victim = tripwire;
+
+  const QJsonValue result = callResult(
+      "qt.objects.search", QJsonObject{{"root", ObjectRegistry::instance()->objectId(&root)},
+                                       {"properties", QJsonObject{{"armed", 1}}}});
+
+  QEXPECT_THAT(result.toObject(),
+               AllOf(HasJsonField("count", Eq(0)), HasJsonField("skippedDestroyed", Eq(1))));
+}
+
+// The shape of a crash seen in the field: an application starting up creates and
+// destroys objects on worker threads while a client polls an objectName search.
+// Every one of those objects passes through the registry, so a search that reads
+// a collected pointer after dropping the registry lock reads freed memory.
+void TestNativeModeApi::testObjectsSearchSurvivesObjectsDyingOnAnotherThread() {
+  std::atomic<bool> stop{false};
+  QThread* churn = QThread::create([&stop] {
+    while (!stop.load(std::memory_order_relaxed)) {
+      QObject parent;
+      for (int i = 0; i < 64; ++i) {
+        (new QObject(&parent))->setObjectName(QStringLiteral("churnTarget"));
+      }
+    }
+  });
+  churn->start();
+
+  for (int i = 0; i < 400; ++i) {
+    const QJsonObject response =
+        callRaw("qt.objects.search", QJsonObject{{"objectName", "churnTarget"}, {"limit", 5}});
+    QEXPECT_THAT(response, HasJsonField("result"));
+  }
+
+  stop.store(true);
+  churn->wait();
+  delete churn;
 }
 
 // ========================================================================

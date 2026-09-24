@@ -22,7 +22,6 @@
 #include "introspection/signal_monitor.h"
 
 #include <expected>
-#include <ranges>
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -939,58 +938,73 @@ void NativeModeApi::registerObjectMethods() {
           rootObj = *rootRes;
         }
 
-        QList<QObject*> candidates;
-        if (!className.isEmpty()) {
-          candidates = ObjectRegistry::instance()->findAllByClassName(className, rootObj);
-        } else {
-          candidates = ObjectRegistry::instance()->allObjects(rootObj);
-        }
+        // Collect under the registry lock, then evaluate each candidate through
+        // withLive(). Property filters run application getters, and the target may be
+        // pumping a nested event loop or tearing objects down on other threads, so any
+        // candidate can be gone by the time it is looked at. Those are skipped and
+        // counted, never dereferenced.
+        auto* registry = ObjectRegistry::instance();
+        const QList<LiveObjectRef> candidates =
+            registry->collectLive(ObjectFilter{className, objectName}, rootObj);
 
-        auto matchesProperties = [&](QObject* obj) {
-          if (propFilters.isEmpty()) {
-            return true;
-          }
+        enum class Skip { Destroyed, Mismatch };
+
+        auto matchProperties = [&](const LiveObjectRef& ref,
+                                   QObject* obj) -> std::expected<QObject*, Skip> {
           for (auto it = propFilters.constBegin(); it != propFilters.constEnd(); ++it) {
             auto propRes = MetaInspector::getPropertyExpected(obj, it.key());
+            // The getter is application code and may have destroyed obj itself.
+            if (!registry->isAlive(ref)) {
+              return std::unexpected(Skip::Destroyed);
+            }
             if (!propRes.has_value() || *propRes != it.value()) {
-              return false;
+              return std::unexpected(Skip::Mismatch);
             }
           }
-          return true;
+          return obj;
         };
 
-        auto filtered = candidates | std::views::filter([&](QObject* obj) {
-                          if (!obj) {
-                            return false;
-                          }
-                          if (!objectName.isEmpty() && obj->objectName() != objectName) {
-                            return false;
-                          }
-                          return matchesProperties(obj);
-                        });
+        auto describeMatch = [registry](QObject* obj) -> std::expected<QJsonObject, Skip> {
+          QJsonObject entry;
+          entry[QStringLiteral("objectId")] = registry->objectId(obj);
+          entry[QStringLiteral("className")] = QString::fromUtf8(obj->metaObject()->className());
+          entry[QStringLiteral("objectName")] = obj->objectName();
+          entry[QStringLiteral("numericId")] = ObjectResolver::assignNumericId(obj);
+          return entry;
+        };
+
+        auto evaluate = [&](const LiveObjectRef& ref) -> std::expected<QJsonObject, Skip> {
+          return registry
+              ->withLive(
+                  ref,
+                  [&](QObject* obj) { return matchProperties(ref, obj).and_then(describeMatch); })
+              .transform_error([](ObjectDestroyed) { return Skip::Destroyed; })
+              .and_then([](std::expected<QJsonObject, Skip> inner) { return inner; });
+        };
 
         QJsonArray matches;
         bool truncated = false;
-        for (QObject* obj : filtered) {
+        int skippedDestroyed = 0;
+        for (const LiveObjectRef& ref : candidates) {
           if (matches.size() >= limit) {
             truncated = true;
             break;
           }
-
-          QString objId = ObjectRegistry::instance()->objectId(obj);
-          int numId = ObjectResolver::assignNumericId(obj);
-          QJsonObject entry;
-          entry[QStringLiteral("objectId")] = objId;
-          entry[QStringLiteral("className")] = QString::fromUtf8(obj->metaObject()->className());
-          entry[QStringLiteral("objectName")] = obj->objectName();
-          entry[QStringLiteral("numericId")] = numId;
-          matches.append(entry);
+          const auto outcome = evaluate(ref);
+          if (outcome) {
+            matches.append(*outcome);
+          } else if (outcome.error() == Skip::Destroyed) {
+            ++skippedDestroyed;
+          }
         }
 
         QJsonObject result;
         result[QStringLiteral("objects")] = matches;
         result[QStringLiteral("count")] = matches.size();
         result[QStringLiteral("truncated")] = truncated;
+        if (skippedDestroyed > 0) {
+          result[QStringLiteral("skippedDestroyed")] = skippedDestroyed;
+        }
         return envelopeToString(ResponseEnvelope::wrap(result));
       });
 }
