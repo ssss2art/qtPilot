@@ -266,11 +266,20 @@ def register_native_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def qt_methods_invoke(
-        objectId: str, method: str, args: list | None = None, ctx: Context = None
+        objectId: str,
+        method: str,
+        args: list | None = None,
+        deferred: bool = False,
+        ctx: Context = None,
     ) -> dict:
         """Invoke a Qt slot or Q_INVOKABLE method with optional arguments.
 
         Signals are notifications and cannot be emitted through this tool.
+        Set deferred=True for a method that opens a modal dialog or otherwise
+        blocks: the call is queued and this returns {"deferred": true} at once,
+        without the method's return value. The method name and arguments are
+        still checked immediately. Pair it with qt_signals_wait to learn when
+        the effect happened.
         Example: qt_methods_invoke(objectId="settingsDialog", method="accept")
         """
         from qtpilot.server import require_probe
@@ -278,6 +287,8 @@ def register_native_tools(mcp: FastMCP) -> None:
         params: dict = {"objectId": objectId, "method": method}
         if args is not None:
             params["args"] = args
+        if deferred:
+            params["deferred"] = True
         return await require_probe().call("qt.methods.invoke", params)
 
     # -- Signals ------------------------------------------------------------
@@ -461,18 +472,26 @@ def register_native_tools(mcp: FastMCP) -> None:
         return await require_probe().call("qt.ui.activeMenu", {})
 
     @mcp.tool
-    async def qt_ui_activateMenuItem(text: str, ctx: Context = None) -> dict:
+    async def qt_ui_activateMenuItem(
+        text: str, deferred: bool = True, ctx: Context = None
+    ) -> dict:
         """Choose an entry in the open context menu by its label.
 
         The label is matched with any mnemonic '&' removed, so pass what the
         entry reads as on screen. Errors when no menu is open, when nothing
         carries that label, or when the entry is disabled.
 
+        By default the choice is queued and this returns before the entry's
+        effect runs, which keeps an entry that opens a dialog from wedging the
+        probe. Pass deferred=False to run it before returning.
+
         Example: qt_ui_activateMenuItem(text="Delete")
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call("qt.ui.activateMenuItem", {"text": text})
+        return await require_probe().call(
+            "qt.ui.activateMenuItem", {"text": text, "deferred": deferred}
+        )
 
     @mcp.tool
     async def qt_ui_sendKeys(

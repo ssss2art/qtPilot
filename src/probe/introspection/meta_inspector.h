@@ -11,8 +11,12 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QList>
+#include <QMetaMethod>
 #include <QObject>
+#include <QPointer>
 #include <QStringList>
+#include <QVariant>
 
 namespace qtPilot {
 
@@ -40,6 +44,27 @@ struct MethodError {
   MethodErrorKind kind;
   QString methodName;
   QString message;
+};
+
+/// @brief A method found and its arguments converted, ready to be called now or later.
+///
+/// Splitting preparation from the call is what lets a deferred invocation report
+/// a bad method name or argument to the caller immediately, and queue only the
+/// call itself. It owns its converted arguments, so it may outlive the request.
+class QTPILOT_EXPORT PreparedInvocation {
+ public:
+  /// @brief Call the method on @p obj, which must be the object it was prepared for.
+  /// @return Return value as JSON (null for void methods), or InvalidArgument if an
+  ///         object argument has been destroyed since preparation.
+  std::expected<QJsonValue, MethodError> invoke(QObject* obj) const;
+
+ private:
+  friend class MetaInspector;
+  QMetaMethod m_method;
+  QString m_methodName;
+  QList<QVariant> m_arguments;
+  /// Object arguments, watched so a call that runs later never passes a dead one.
+  QList<QPointer<QObject>> m_objectArguments;
 };
 
 /// @brief Utility class for QMetaObject introspection with JSON output.
@@ -176,6 +201,14 @@ class QTPILOT_EXPORT MetaInspector {
   /// @param args Arguments as JSON array (max 10).
   /// @return Return value as JSON (null for void methods) or MethodError on failure.
   static std::expected<QJsonValue, MethodError> invokeMethodExpected(
+      QObject* obj, const QString& methodName, const QJsonArray& args = QJsonArray());
+
+  /// @brief Find a method and convert its arguments without calling it.
+  /// @param obj Target object.
+  /// @param methodName Method name (without signature/parameters).
+  /// @param args Arguments as JSON array (max 10).
+  /// @return The prepared call, or the MethodError invoking it would have produced.
+  static std::expected<PreparedInvocation, MethodError> prepareInvocation(
       QObject* obj, const QString& methodName, const QJsonArray& args = QJsonArray());
 
  private:

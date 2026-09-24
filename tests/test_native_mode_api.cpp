@@ -122,6 +122,18 @@ class ReceiverCounter : public QObject {
   using QObject::receivers;
 };
 
+/// @brief Records what its slot was called with, and how often.
+class PointerSink : public QObject {
+  Q_OBJECT
+
+ public:
+  using QObject::QObject;
+  int calls = 0;
+
+ public slots:
+  void take(QObject* /*target*/) { ++calls; }
+};
+
 }  // namespace
 
 /// @brief Integration tests for the complete Native Mode API (qt.* methods).
@@ -185,6 +197,9 @@ class TestNativeModeApi : public QObject {
 
   // Methods (qt.methods.*)
   void testMethodsInvoke();
+  void testMethodsInvokeDeferredReturnsBeforeTheSlotRuns();
+  void testMethodsInvokeDeferredStillRejectsAnUnknownMethod();
+  void testMethodsInvokeDeferredDropsTheCallWhenAnArgumentDies();
 
   // Signals (qt.signals.*)
   void testSignalsSubscribeUnsubscribe();
@@ -930,6 +945,60 @@ void TestNativeModeApi::testMethodsInvoke() {
 
   // Re-enable for other tests
   m_testButton->setEnabled(true);
+}
+
+// A slot that opens a modal dialog spins an event loop inside the request that
+// invoked it, and that loop re-enters the WebSocket dispatch. Deferred mode
+// queues the call so the reply goes out first -- at the price of the result.
+void TestNativeModeApi::testMethodsInvokeDeferredReturnsBeforeTheSlotRuns() {
+  QSignalSpy clicked(m_testButton, &QPushButton::clicked);
+
+  const QJsonValue result =
+      callResult("qt.methods.invoke",
+                 QJsonObject{{"objectId", ObjectRegistry::instance()->objectId(m_testButton)},
+                             {"method", "click"},
+                             {"deferred", true}});
+
+  QEXPECT_THAT(result.toObject(),
+               AllOf(HasJsonField("deferred", Eq(true)), DoesNotHaveJsonField("result")));
+  QEXPECT_THAT(clicked.count(), Eq(0));
+  QTRY_COMPARE(clicked.count(), 1);
+}
+
+// Deferring the call must not defer the diagnosis: a method that does not exist
+// is still reported to the caller, not dropped on the floor later.
+void TestNativeModeApi::testMethodsInvokeDeferredStillRejectsAnUnknownMethod() {
+  const QJsonObject error =
+      callExpectError("qt.methods.invoke",
+                      QJsonObject{{"objectId", ObjectRegistry::instance()->objectId(m_testButton)},
+                                  {"method", "noSuchSlot"},
+                                  {"deferred", true}});
+
+  QEXPECT_THAT(error, HasJsonField("code", Eq(static_cast<int>(ErrorCode::kMethodNotFound))));
+}
+
+// Arguments are converted when the request arrives, so an object argument is a
+// pointer captured then. If it is destroyed before the call runs, the call must
+// not run with it.
+void TestNativeModeApi::testMethodsInvokeDeferredDropsTheCallWhenAnArgumentDies() {
+  PointerSink sink(m_testWindow);
+  sink.setObjectName(QStringLiteral("pointerSink"));
+  auto* argument = new QObject(m_testWindow);
+  argument->setObjectName(QStringLiteral("shortLivedArgument"));
+
+  const QJsonValue result =
+      callResult("qt.methods.invoke",
+                 QJsonObject{{"objectId", ObjectRegistry::instance()->objectId(&sink)},
+                             {"method", "take"},
+                             {"args", QJsonArray{ObjectRegistry::instance()->objectId(argument)}},
+                             {"deferred", true}});
+  QEXPECT_THAT(result.toObject(), HasJsonField("deferred", Eq(true)));
+
+  delete argument;
+  QCoreApplication::processEvents();
+  QCoreApplication::processEvents();
+
+  QEXPECT_THAT(sink.calls, Eq(0));
 }
 
 // ========================================================================

@@ -393,7 +393,7 @@ bool MetaInspector::setProperty(QObject* obj, const QString& name, const QJsonVa
   return true;
 }
 
-std::expected<QJsonValue, MethodError> MetaInspector::invokeMethodExpected(
+std::expected<PreparedInvocation, MethodError> MetaInspector::prepareInvocation(
     QObject* obj, const QString& methodName, const QJsonArray& args) {
   if (!obj) {
     return std::unexpected(MethodError{MethodErrorKind::NullObject, methodName,
@@ -429,9 +429,10 @@ std::expected<QJsonValue, MethodError> MetaInspector::invokeMethodExpected(
         QStringLiteral("Method not found or wrong argument count: %1").arg(methodName)});
   }
 
-  // Build arguments - must keep QVariants alive during invocation
-  QList<QVariant> variantArgs;
-  variantArgs.reserve(args.count());
+  PreparedInvocation prepared;
+  prepared.m_method = foundMethod;
+  prepared.m_methodName = methodName;
+  prepared.m_arguments.reserve(args.count());
 
   for (int i = 0; i < args.count(); ++i) {
     int paramType = foundMethod.parameterType(i);
@@ -441,45 +442,64 @@ std::expected<QJsonValue, MethodError> MetaInspector::invokeMethodExpected(
         return std::unexpected(ptrRes.error());
       }
       QObject* target = *ptrRes;
-      QVariant var = qtPilot::compat::variantFromValue(paramType, &target);
-      variantArgs.append(var);
+      if (target) {
+        prepared.m_objectArguments.append(QPointer<QObject>(target));
+      }
+      prepared.m_arguments.append(qtPilot::compat::variantFromValue(paramType, &target));
       continue;
     }
-    QVariant var = jsonToVariant(args[i], paramType);
-    variantArgs.append(var);
+    prepared.m_arguments.append(jsonToVariant(args[i], paramType));
   }
 
-  // Build QGenericArgument array - points into variantArgs data
+  return prepared;
+}
+
+std::expected<QJsonValue, MethodError> PreparedInvocation::invoke(QObject* obj) const {
+  for (const QPointer<QObject>& argument : m_objectArguments) {
+    if (argument.isNull()) {
+      return std::unexpected(MethodError{
+          MethodErrorKind::InvalidArgument, m_methodName,
+          QStringLiteral("An object argument was destroyed before %1 ran").arg(m_methodName)});
+    }
+  }
+
+  // Build QGenericArgument array - points into m_arguments, which outlives the call
   QGenericArgument genericArgs[10];
-  for (int i = 0; i < variantArgs.count(); ++i) {
-    genericArgs[i] = QGenericArgument(compat::methodParameterTypeName(foundMethod, i),
-                                      variantArgs[i].constData());
+  for (int i = 0; i < m_arguments.count(); ++i) {
+    genericArgs[i] =
+        QGenericArgument(compat::methodParameterTypeName(m_method, i), m_arguments[i].constData());
   }
 
   // Prepare return value storage
   QVariant returnValue;
   QGenericReturnArgument returnArg;
-  if (foundMethod.returnType() != QMetaType::Void) {
-    returnValue = qtPilot::compat::emptyVariantOfType(foundMethod.returnType());
-    returnArg = QGenericReturnArgument(foundMethod.typeName(), returnValue.data());
+  if (m_method.returnType() != QMetaType::Void) {
+    returnValue = qtPilot::compat::emptyVariantOfType(m_method.returnType());
+    returnArg = QGenericReturnArgument(m_method.typeName(), returnValue.data());
   }
 
   // Invoke (use Qt::AutoConnection for thread safety)
-  bool ok = foundMethod.invoke(obj, Qt::AutoConnection, returnArg, genericArgs[0], genericArgs[1],
-                               genericArgs[2], genericArgs[3], genericArgs[4], genericArgs[5],
-                               genericArgs[6], genericArgs[7], genericArgs[8], genericArgs[9]);
+  bool ok = m_method.invoke(obj, Qt::AutoConnection, returnArg, genericArgs[0], genericArgs[1],
+                            genericArgs[2], genericArgs[3], genericArgs[4], genericArgs[5],
+                            genericArgs[6], genericArgs[7], genericArgs[8], genericArgs[9]);
 
   if (!ok) {
     return std::unexpected(
-        MethodError{MethodErrorKind::InvocationFailed, methodName,
-                    QStringLiteral("Method invocation failed: %1").arg(methodName)});
+        MethodError{MethodErrorKind::InvocationFailed, m_methodName,
+                    QStringLiteral("Method invocation failed: %1").arg(m_methodName)});
   }
 
-  if (foundMethod.returnType() == QMetaType::Void) {
+  if (m_method.returnType() == QMetaType::Void) {
     return QJsonValue::Null;
   }
 
   return variantToJson(returnValue);
+}
+
+std::expected<QJsonValue, MethodError> MetaInspector::invokeMethodExpected(
+    QObject* obj, const QString& methodName, const QJsonArray& args) {
+  return prepareInvocation(obj, methodName, args)
+      .and_then([obj](const PreparedInvocation& prepared) { return prepared.invoke(obj); });
 }
 
 QJsonValue MetaInspector::invokeMethod(QObject* obj, const QString& methodName,

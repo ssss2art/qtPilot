@@ -9,6 +9,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QGraphicsItem>
 #include <QGraphicsObject>
 #include <QGraphicsScene>
@@ -20,6 +21,7 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QPainter>
+#include <QTimer>
 #include <QtTest>
 
 using namespace qtPilot;
@@ -88,6 +90,29 @@ class HollowItem : public RecordingItem {
   qreal m_band;
 };
 
+/// @brief Answers a right-click the most common way an application does: a
+/// local QMenu run with exec(), acting on whatever exec() returns.
+///
+/// Nothing is connected to the actions' triggered() signals, so an entry only
+/// takes effect if choosing it makes exec() return it.
+class ExecMenuHost : public QWidget {
+  Q_OBJECT
+
+ public:
+  using QWidget::QWidget;
+  QString chosen;
+
+ protected:
+  void contextMenuEvent(QContextMenuEvent* event) override {
+    QMenu menu(this);
+    menu.addAction(QStringLiteral("Keep"));
+    menu.addAction(QStringLiteral("Delete"));
+    if (QAction* picked = menu.exec(event->globalPos())) {
+      chosen = picked->text();
+    }
+  }
+};
+
 }  // namespace
 
 /// @brief Addressing an item by id must act on *that* item, plus context menus.
@@ -123,6 +148,9 @@ class TestItemTargeting : public QObject {
   void testActiveMenuFailsWhenNothingIsOpen();
   void testActivateMenuItemTriggersTheAction();
   void testActivateMenuItemRejectsAnUnknownLabel();
+  void testActivateMenuItemDefersByDefault();
+  void testActivateMenuItemRunsInlineWhenNotDeferred();
+  void testActivateMenuItemReachesAnExecCaller();
 
  private:
   QJsonObject callRaw(const QString& method, const QJsonObject& params);
@@ -472,6 +500,67 @@ void TestItemTargeting::testActivateMenuItemRejectsAnUnknownLabel() {
   QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.activateMenuItem"), params),
                IsJsonRpcError(static_cast<int>(ErrorCode::kMenuItemNotFound)));
   m_menu->hide();
+}
+
+// Choosing an entry runs application code: whatever is connected to the action,
+// and whatever follows the menu's exec(). If that code opens a modal dialog, its
+// event loop re-enters the WebSocket dispatch the request arrived on. So by
+// default the choice is queued and the reply goes out first.
+void TestItemTargeting::testActivateMenuItemDefersByDefault() {
+  m_menu->popup(QPoint(10, 10));
+  pump();
+
+  const QJsonObject response =
+      callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Delete"}});
+
+  QEXPECT_THAT(payloadOf(response),
+               AllOf(HasJsonField("deferred", Eq(true)), HasJsonField("text", QStrEq("Delete")),
+                     HasJsonField("objectId")));
+  QEXPECT_THAT(m_actionFired, Eq(0));
+
+  pump();
+  QEXPECT_THAT(m_actionFired, Eq(1));
+  QEXPECT_THAT(m_menu->isVisible(), IsFalse());
+}
+
+void TestItemTargeting::testActivateMenuItemRunsInlineWhenNotDeferred() {
+  m_menu->popup(QPoint(10, 10));
+  pump();
+
+  const QJsonObject response = callRaw(QStringLiteral("qt.ui.activateMenuItem"),
+                                       QJsonObject{{"text", "Delete"}, {"deferred", false}});
+
+  QEXPECT_THAT(payloadOf(response), HasJsonField("deferred", Eq(false)));
+  QEXPECT_THAT(m_actionFired, Eq(1));
+}
+
+// The menu's exec() blocks until an entry is chosen, so the entry is chosen from
+// inside that loop, as a client's request would be.
+void TestItemTargeting::testActivateMenuItemReachesAnExecCaller() {
+  ExecMenuHost host;
+  host.setObjectName(QStringLiteral("execMenuHost"));
+  host.resize(200, 150);
+  host.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&host));
+  ObjectRegistry::instance()->scanExistingObjects(&host);
+
+  bool requested = false;
+  QTimer chooser;
+  chooser.setInterval(10);
+  connect(&chooser, &QTimer::timeout, this, [&] {
+    if (requested || !QApplication::activePopupWidget()) {
+      return;
+    }
+    requested = true;
+    callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Delete"}});
+  });
+  chooser.start();
+
+  callOk(QStringLiteral("qt.ui.contextMenu"),
+         QJsonObject{{"objectId", ObjectRegistry::instance()->objectId(&host)}});
+
+  QTRY_COMPARE(host.chosen, QStringLiteral("Delete"));
+  QEXPECT_THAT(requested, IsTrue());
 }
 
 QTEST_MAIN(TestItemTargeting)

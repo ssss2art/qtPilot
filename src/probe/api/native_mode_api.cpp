@@ -38,6 +38,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QPointer>
 #include <QThread>
@@ -468,6 +469,23 @@ QJsonArray describeMenuItems(QMenu* menu) {
   return items;
 }
 
+/// @brief Run @p prepared on @p obj from the event loop, after this request returns.
+///
+/// Queued on @p obj itself, so Qt discards the call if @p obj is destroyed first.
+/// Errors cannot reach the caller any more; they are logged.
+void queueInvocation(QObject* obj, PreparedInvocation prepared) {
+  QMetaObject::invokeMethod(
+      obj,
+      [obj, prepared = std::move(prepared)]() {
+        const auto outcome = prepared.invoke(obj);
+        if (!outcome) {
+          qWarning().noquote() << "[qtPilot] deferred qt.methods.invoke did not run:"
+                               << outcome.error().message;
+        }
+      },
+      Qt::QueuedConnection);
+}
+
 /// @brief Post a context-menu event to @p widget at @p point.
 ///
 /// Posted rather than sent: a handler that answers with QMenu::exec() spins its
@@ -537,9 +555,24 @@ QJsonObject handleUiActiveMenu() {
                      {QStringLiteral("items"), describeMenuItems(menu)}};
 }
 
+/// @brief Choose @p action in @p menu the way a user does: make it the current
+/// entry and press Return.
+///
+/// Not QAction::trigger(). That fires the action's triggered() signal, but the
+/// menu itself never learns an entry was chosen, so a QMenu::exec() caller --
+/// the usual way to run a context menu -- gets nullptr back and does nothing.
+void chooseMenuEntry(QMenu* menu, QAction* action) {
+  menu->setActiveAction(action);
+  QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+  QCoreApplication::sendEvent(menu, &press);
+}
+
 QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
   const QString kMethod = QStringLiteral("qt.ui.activateMenuItem");
   const QString text = params.value(QStringLiteral("text")).toString();
+  // Deferred unless asked otherwise: choosing an entry runs application code,
+  // and a modal dialog opened from it would re-enter the request's dispatch.
+  const bool deferred = params.value(QStringLiteral("deferred")).toBool(true);
   if (text.isEmpty()) {
     throw JsonRpcException(JsonRpcError::kInvalidParams,
                            QStringLiteral("Parameter 'text' is required"),
@@ -565,14 +598,28 @@ QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
             ErrorCode::kMenuItemNotFound, QStringLiteral("Menu item '%1' is disabled").arg(text),
             QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("text"), text}});
       }
-      // Triggering the action is what choosing the entry does. Clicking inside
-      // the menu's own modal loop would be a different and much worse problem.
-      action->trigger();
-      menu->close();
-      return QJsonObject{
+      // Describe the entry before choosing it: choosing runs application code,
+      // which may destroy the menu and every action in it.
+      const QJsonObject chosen{
           {QStringLiteral("ok"), true},
           {QStringLiteral("text"), label},
-          {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(action)}};
+          {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(action)},
+          {QStringLiteral("deferred"), deferred}};
+      if (deferred) {
+        QPointer<QMenu> safeMenu(menu);
+        QPointer<QAction> safeAction(action);
+        QMetaObject::invokeMethod(
+            menu,
+            [safeMenu, safeAction]() {
+              if (safeMenu && safeAction) {
+                chooseMenuEntry(safeMenu, safeAction);
+              }
+            },
+            Qt::QueuedConnection);
+      } else {
+        chooseMenuEntry(menu, action);
+      }
+      return chosen;
     }
   }
 
@@ -1122,27 +1169,48 @@ void NativeModeApi::registerMethodMethods() {
         auto p = parseParams(params);
         QString objectId = p[QStringLiteral("objectId")].toString();
 
+        const bool deferred = p.value(QStringLiteral("deferred")).toBool(false);
+
+        auto toRpcError = [&](const QString& method) {
+          return [&objectId, method](const MethodError& err) {
+            int code = (err.kind == MethodErrorKind::NotFound) ? ErrorCode::kMethodNotFound
+                                                               : ErrorCode::kMethodInvocationFailed;
+            return JsonRpcException(code, err.message,
+                                    QJsonObject{{QStringLiteral("objectId"), objectId},
+                                                {QStringLiteral("method"), method}});
+          };
+        };
+
+        // Preparation happens now in both modes, so a bad method or argument is
+        // reported to this caller. Only the call itself is deferred.
+        auto run =
+            [&](QObject* obj, const QString& method,
+                PreparedInvocation prepared) -> std::expected<QJsonObject, JsonRpcException> {
+          if (deferred) {
+            queueInvocation(obj, std::move(prepared));
+            return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deferred"), true}};
+          }
+          return prepared.invoke(obj)
+              .transform([](const QJsonValue& value) {
+                return QJsonObject{{QStringLiteral("result"), value}};
+              })
+              .transform_error(toRpcError(method));
+        };
+
         auto res = tryResolveObjectParam(p, QStringLiteral("qt.methods.invoke"))
                        .and_then([&](QObject* obj) {
                          return requireStringParam(p, QStringLiteral("method"),
                                                    QStringLiteral("qt.methods.invoke"))
                              .and_then([&](const QString& method) {
-                               QJsonArray args = p[QStringLiteral("args")].toArray();
-                               return MetaInspector::invokeMethodExpected(obj, method, args)
-                                   .transform_error([&](const MethodError& err) {
-                                     int code = (err.kind == MethodErrorKind::NotFound)
-                                                    ? ErrorCode::kMethodNotFound
-                                                    : ErrorCode::kMethodInvocationFailed;
-                                     return JsonRpcException(
-                                         code, err.message,
-                                         QJsonObject{{QStringLiteral("objectId"), objectId},
-                                                     {QStringLiteral("method"), method}});
+                               return MetaInspector::prepareInvocation(
+                                          obj, method, p[QStringLiteral("args")].toArray())
+                                   .transform_error(toRpcError(method))
+                                   .and_then([&](PreparedInvocation prepared) {
+                                     return run(obj, method, std::move(prepared));
                                    });
                              });
                        })
-                       .transform([&](const QJsonValue& result) {
-                         QJsonObject resultObj;
-                         resultObj[QStringLiteral("result")] = result;
+                       .transform([&](const QJsonObject& resultObj) {
                          return envelopeToString(ResponseEnvelope::wrap(resultObj, objectId));
                        });
 
