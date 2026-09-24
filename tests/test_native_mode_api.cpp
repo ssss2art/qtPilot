@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QPointer>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QThread>
 #include <QVBoxLayout>
@@ -200,6 +201,7 @@ class TestNativeModeApi : public QObject {
   void testMethodsInvokeDeferredReturnsBeforeTheSlotRuns();
   void testMethodsInvokeDeferredStillRejectsAnUnknownMethod();
   void testMethodsInvokeDeferredDropsTheCallWhenAnArgumentDies();
+  void testMethodsInvokeDeferredRefusesAnotherThreadsObject();
 
   // Signals (qt.signals.*)
   void testSignalsSubscribeUnsubscribe();
@@ -966,7 +968,9 @@ void TestNativeModeApi::testMethodsInvokeDeferredReturnsBeforeTheSlotRuns() {
 }
 
 // Deferring the call must not defer the diagnosis: a method that does not exist
-// is still reported to the caller, not dropped on the floor later.
+// is still reported to the caller, not dropped on the floor later. A
+// characterization test -- it passed before deferral existed -- that keeps a
+// "defer the lookup too" implementation from slipping in.
 void TestNativeModeApi::testMethodsInvokeDeferredStillRejectsAnUnknownMethod() {
   const QJsonObject error =
       callExpectError("qt.methods.invoke",
@@ -994,11 +998,28 @@ void TestNativeModeApi::testMethodsInvokeDeferredDropsTheCallWhenAnArgumentDies(
                              {"deferred", true}});
   QEXPECT_THAT(result.toObject(), HasJsonField("deferred", Eq(true)));
 
+  QTest::ignoreMessage(QtWarningMsg,
+                       QRegularExpression("object argument was destroyed before take ran"));
   delete argument;
   QCoreApplication::processEvents();
   QCoreApplication::processEvents();
 
   QEXPECT_THAT(sink.calls, Eq(0));
+}
+
+// A deferred call is queued to its target's thread. For another thread's object
+// that is a thread whose event loop may never run it -- while the caller was
+// told it was queued -- and whose objects cannot be checked safely from here.
+void TestNativeModeApi::testMethodsInvokeDeferredRefusesAnotherThreadsObject() {
+  ParkedOnWorker<> parked(QStringLiteral("deferredForeignTarget"));
+
+  const QJsonObject error = callExpectError(
+      "qt.methods.invoke",
+      QJsonObject{{"objectId", QString::number(ObjectResolver::assignNumericId(parked.object()))},
+                  {"method", "deleteLater"},
+                  {"deferred", true}});
+
+  QEXPECT_THAT(error, HasJsonField("message", QStrContains("another thread")));
 }
 
 // ========================================================================

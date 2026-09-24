@@ -21,6 +21,7 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QPainter>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QtTest>
 
@@ -151,6 +152,10 @@ class TestItemTargeting : public QObject {
   void testActivateMenuItemDefersByDefault();
   void testActivateMenuItemRunsInlineWhenNotDeferred();
   void testActivateMenuItemReachesAnExecCaller();
+  void testDeferredChoiceIsDroppedIfTheMenuWasDismissed();
+  void testDeferredChoiceLeavesAMenuAloneIfTheEntryWasDisabled();
+  void testActivateMenuItemRefusesAnEntryThatOpensASubmenu();
+  void testActivateMenuItemRejectsANonBooleanDeferred();
 
  private:
   QJsonObject callRaw(const QString& method, const QJsonObject& params);
@@ -485,8 +490,8 @@ void TestItemTargeting::testActivateMenuItemTriggersTheAction() {
   params[QStringLiteral("text")] = QStringLiteral("Delete");
   callOk(QStringLiteral("qt.ui.activateMenuItem"), params);
 
-  // Triggering the action is what clicking the entry would do; clicking inside a
-  // menu's own modal loop is a different and much worse problem.
+  // Choosing the entry is what clicking it would do; clicking inside a menu's own
+  // modal loop is a different and much worse problem.
   QEXPECT_THAT(m_actionFired, Eq(1));
 }
 
@@ -544,6 +549,15 @@ void TestItemTargeting::testActivateMenuItemReachesAnExecCaller() {
   QVERIFY(QTest::qWaitForWindowExposed(&host));
   ObjectRegistry::instance()->scanExistingObjects(&host);
 
+  // If the choice never lands, exec() never returns and nothing after it runs.
+  // Close the menu after a while so a regression fails the comparison below
+  // instead of hanging the test binary.
+  QTimer::singleShot(3000, this, [] {
+    if (QWidget* popup = QApplication::activePopupWidget()) {
+      popup->close();
+    }
+  });
+
   bool requested = false;
   QTimer chooser;
   chooser.setInterval(10);
@@ -561,6 +575,63 @@ void TestItemTargeting::testActivateMenuItemReachesAnExecCaller() {
 
   QTRY_COMPARE(host.chosen, QStringLiteral("Delete"));
   QEXPECT_THAT(requested, IsTrue());
+}
+
+// A user cannot choose from a menu that is no longer open. A deferred choice
+// must not either: the menu may have been dismissed between the reply and the
+// queued step, and a menu kept alive for reuse would still fire its action.
+void TestItemTargeting::testDeferredChoiceIsDroppedIfTheMenuWasDismissed() {
+  m_menu->popup(QPoint(10, 10));
+  pump();
+  QTest::ignoreMessage(QtWarningMsg, QRegularExpression("menu .*no longer open"));
+
+  callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Delete"}});
+  m_menu->hide();
+  pump();
+
+  QEXPECT_THAT(m_actionFired, Eq(0));
+}
+
+// An entry disabled between the reply and the queued step cannot be chosen, and
+// trying must not leave the menu highlighting some other entry instead.
+void TestItemTargeting::testDeferredChoiceLeavesAMenuAloneIfTheEntryWasDisabled() {
+  m_menu->popup(QPoint(10, 10));
+  pump();
+  QAction* del = m_menu->actions().at(1);
+  QTest::ignoreMessage(QtWarningMsg, QRegularExpression("no longer enabled"));
+
+  callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Delete"}});
+  del->setEnabled(false);
+  pump();
+
+  QEXPECT_THAT(m_actionFired, Eq(0));
+  QEXPECT_THAT(m_menu->activeAction(), IsNull());
+  del->setEnabled(true);
+  m_menu->hide();
+}
+
+// Choosing an entry that opens a submenu only opens the submenu; reporting that
+// as the entry being chosen would be a lie.
+void TestItemTargeting::testActivateMenuItemRefusesAnEntryThatOpensASubmenu() {
+  QMenu menu(m_menuHost);
+  menu.addMenu(QStringLiteral("Export"))->addAction(QStringLiteral("As PDF"));
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Export"}}),
+               IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
+  menu.hide();
+}
+
+void TestItemTargeting::testActivateMenuItemRejectsANonBooleanDeferred() {
+  m_menu->popup(QPoint(10, 10));
+  pump();
+
+  QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.activateMenuItem"),
+                       QJsonObject{{"text", "Delete"}, {"deferred", "false"}}),
+               IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
+  QEXPECT_THAT(m_actionFired, Eq(0));
+  m_menu->hide();
 }
 
 QTEST_MAIN(TestItemTargeting)

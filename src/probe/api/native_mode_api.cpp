@@ -441,6 +441,23 @@ QMenu* activeContextMenu() {
 }
 
 /// @brief The open menu, or a structured "nothing is open" error.
+/// @brief An optional boolean parameter: @p fallback when absent, an error when
+/// present but not a boolean. A string "false" read as true would be the worst
+/// kind of wrong for a switch like 'deferred'.
+bool optionalBool(const QJsonObject& params, const QString& key, bool fallback,
+                  const QString& method) {
+  const QJsonValue value = params.value(key);
+  if (value.isUndefined() || value.isNull()) {
+    return fallback;
+  }
+  if (!value.isBool()) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams, QStringLiteral("Parameter '%1' must be a boolean").arg(key),
+        QJsonObject{{QStringLiteral("method"), method}, {QStringLiteral("parameter"), key}});
+  }
+  return value.toBool();
+}
+
 QMenu* requireActiveMenu(const QString& methodName) {
   QMenu* menu = activeContextMenu();
   if (!menu) {
@@ -567,12 +584,30 @@ void chooseMenuEntry(QMenu* menu, QAction* action) {
   QCoreApplication::sendEvent(menu, &press);
 }
 
+/// @brief Whether @p action can still be chosen from @p menu, as a user could.
+std::expected<void, QString> stillChoosable(const QPointer<QMenu>& menu,
+                                            const QPointer<QAction>& action, const QString& label) {
+  if (menu.isNull() || action.isNull()) {
+    return std::unexpected(QStringLiteral("the menu for '%1' was destroyed").arg(label));
+  }
+  if (!menu->isVisible()) {
+    return std::unexpected(QStringLiteral("the menu for '%1' is no longer open").arg(label));
+  }
+  if (!menu->actions().contains(action.data())) {
+    return std::unexpected(QStringLiteral("'%1' is no longer in its menu").arg(label));
+  }
+  if (!action->isEnabled() || !action->isVisible()) {
+    return std::unexpected(QStringLiteral("'%1' is no longer enabled").arg(label));
+  }
+  return {};
+}
+
 QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
   const QString kMethod = QStringLiteral("qt.ui.activateMenuItem");
   const QString text = params.value(QStringLiteral("text")).toString();
   // Deferred unless asked otherwise: choosing an entry runs application code,
   // and a modal dialog opened from it would re-enter the request's dispatch.
-  const bool deferred = params.value(QStringLiteral("deferred")).toBool(true);
+  const bool deferred = optionalBool(params, QStringLiteral("deferred"), true, kMethod);
   if (text.isEmpty()) {
     throw JsonRpcException(JsonRpcError::kInvalidParams,
                            QStringLiteral("Parameter 'text' is required"),
@@ -598,6 +633,13 @@ QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
             ErrorCode::kMenuItemNotFound, QStringLiteral("Menu item '%1' is disabled").arg(text),
             QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("text"), text}});
       }
+      // Choosing an entry that opens a submenu only opens the submenu.
+      if (action->menu()) {
+        throw JsonRpcException(
+            JsonRpcError::kInvalidParams,
+            QStringLiteral("Menu item '%1' opens a submenu and cannot be chosen").arg(text),
+            QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("text"), text}});
+      }
       // Describe the entry before choosing it: choosing runs application code,
       // which may destroy the menu and every action in it.
       const QJsonObject chosen{
@@ -610,10 +652,16 @@ QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
         QPointer<QAction> safeAction(action);
         QMetaObject::invokeMethod(
             menu,
-            [safeMenu, safeAction]() {
-              if (safeMenu && safeAction) {
-                chooseMenuEntry(safeMenu, safeAction);
+            [safeMenu, safeAction, label]() {
+              // Things may have moved on since the reply went out. A user can only
+              // choose an enabled entry of a menu that is open, and neither can we.
+              const auto choosable = stillChoosable(safeMenu, safeAction, label);
+              if (!choosable) {
+                qWarning().noquote() << "[qtPilot] deferred qt.ui.activateMenuItem did not run:"
+                                     << choosable.error();
+                return;
               }
+              chooseMenuEntry(safeMenu, safeAction);
             },
             Qt::QueuedConnection);
       } else {
@@ -1169,7 +1217,8 @@ void NativeModeApi::registerMethodMethods() {
         auto p = parseParams(params);
         QString objectId = p[QStringLiteral("objectId")].toString();
 
-        const bool deferred = p.value(QStringLiteral("deferred")).toBool(false);
+        const bool deferred =
+            optionalBool(p, QStringLiteral("deferred"), false, QStringLiteral("qt.methods.invoke"));
 
         auto toRpcError = [&](const QString& method) {
           return [&objectId, method](const MethodError& err) {
@@ -1187,6 +1236,16 @@ void NativeModeApi::registerMethodMethods() {
             [&](QObject* obj, const QString& method,
                 PreparedInvocation prepared) -> std::expected<QJsonObject, JsonRpcException> {
           if (deferred) {
+            // Queued to the target's thread: for another thread's object, one whose
+            // event loop may never run it, after the caller was told it was queued.
+            if (obj->thread() != QThread::currentThread()) {
+              return std::unexpected(JsonRpcException(
+                  JsonRpcError::kInvalidParams,
+                  QStringLiteral("Cannot defer a call on an object another thread owns: %1")
+                      .arg(objectId),
+                  QJsonObject{{QStringLiteral("objectId"), objectId},
+                              {QStringLiteral("method"), method}}));
+            }
             queueInvocation(obj, std::move(prepared));
             return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deferred"), true}};
           }
