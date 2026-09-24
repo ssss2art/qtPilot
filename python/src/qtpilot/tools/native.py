@@ -550,7 +550,11 @@ def register_native_tools(mcp: FastMCP) -> None:
         """List the entries of the context menu that is currently open.
 
         Each entry reports text, enabled, visible, checkable, checked,
-        separator and hasSubmenu. Errors when no menu is open.
+        separator, hasSubmenu and objectId. Entries that can be chosen also
+        carry a label path (["Export", "As PDF"]) to pass to
+        qt_ui_activateMenuItem; submenu entries are nested under "items".
+        Listed from the root menu even when a submenu is open. Errors when no
+        menu is open.
 
         Example: qt_ui_activeMenu()
         """
@@ -560,25 +564,38 @@ def register_native_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def qt_ui_activateMenuItem(
-        text: str, deferred: bool = True, ctx: Context = None
+        text: str | None = None,
+        path: list[str] | None = None,
+        deferred: bool = True,
+        ctx: Context = None,
     ) -> dict:
-        """Choose an entry in the open context menu by its label.
+        """Choose an entry in the open context menu by its label, or by label path.
 
-        The label is matched with any mnemonic '&' removed, so pass what the
-        entry reads as on screen. Errors when no menu is open, when nothing
-        carries that label, or when the entry is disabled.
+        Pass text for an entry of the root menu, or path to reach into submenus
+        (["Export", "As PDF"]); qt_ui_activeMenu lists each entry's path. Labels
+        match as they read on screen: the mnemonic '&' and a shortcut hint are
+        ignored. A path, unlike an objectId, still names the entry after the
+        application rebuilds the menu, and submenus are opened on the way so
+        entries they add as they open can be reached. Errors when no menu is
+        open, when nothing carries a label, when two enabled entries do, or when
+        the entry is disabled.
 
         By default the choice is queued and this returns before the entry's
         effect runs, which keeps an entry that opens a dialog from wedging the
-        probe. Pass deferred=False to run it before returning.
+        probe; only the first label is checked before returning. Pass
+        deferred=False to walk and choose before returning.
 
         Example: qt_ui_activateMenuItem(text="Delete")
         """
         from qtpilot.server import require_probe
 
-        return await require_probe().call(
-            "qt.ui.activateMenuItem", {"text": text, "deferred": deferred}
-        )
+        if (text is None) == (path is None):
+            raise ValueError("Pass exactly one of text or path")
+        if path is not None and not path:
+            raise ValueError("path needs at least one label")
+        params: dict[str, object] = {"text": text} if text is not None else {"path": path}
+        params["deferred"] = deferred
+        return await require_probe().call("qt.ui.activateMenuItem", params)
 
     @mcp.tool
     async def qt_ui_sendKeys(

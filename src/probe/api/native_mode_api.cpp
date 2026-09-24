@@ -43,6 +43,8 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QPointer>
+#include <QScopeGuard>
+#include <QSet>
 #include <QThread>
 #include <QTreeView>
 #include <QWidget>
@@ -469,8 +471,42 @@ QMenu* requireActiveMenu(const QString& methodName) {
   return menu;
 }
 
-/// @brief Describe a menu's entries in the order they are shown.
-QJsonArray describeMenuItems(QMenu* menu) {
+/// @brief How many submenus deep qt.ui.activeMenu describes, and a walk descends.
+constexpr int kMaxMenuDepth = 8;
+
+/// @brief The menu at the top of the chain of open menus that @p menu belongs to.
+///
+/// A client lists paths from the root, but the innermost open popup is a
+/// submenu whenever one is open -- by hovering, or by a walk left half done.
+QMenu* rootMenuOf(QMenu* menu) {
+  for (int depth = 0; depth < kMaxMenuDepth; ++depth) {
+    QMenu* opener = nullptr;
+    const QWidgetList windows = QApplication::topLevelWidgets();
+    for (QWidget* window : windows) {
+      auto* candidate = qobject_cast<QMenu*>(window);
+      if (candidate && candidate != menu && candidate->isVisible() &&
+          candidate->actions().contains(menu->menuAction())) {
+        opener = candidate;
+        break;
+      }
+    }
+    if (!opener) {
+      return menu;
+    }
+    menu = opener;
+  }
+  return menu;
+}
+
+/// @brief Describe a menu's entries in the order they are shown, submenus nested.
+///
+/// Each entry that can be chosen carries its label path: the labels, as they
+/// read, from the root menu down to it. An objectId names one QAction, and a menu
+/// rebuilt on every right-click has new ones each time; a path names the entry
+/// and survives that. Hidden and unlabelled entries get no path -- a path that
+/// could never be chosen would only mislead. A submenu already on the way down,
+/// or too deep, is marked truncated rather than described again.
+QJsonArray describeMenuItems(QMenu* menu, const QJsonArray& parentPath, QSet<QMenu*>& ancestors) {
   QJsonArray items;
   const QList<QAction*> actions = menu->actions();
   for (QAction* action : actions) {
@@ -483,6 +519,22 @@ QJsonArray describeMenuItems(QMenu* menu) {
     entry[QStringLiteral("separator")] = action->isSeparator();
     entry[QStringLiteral("hasSubmenu")] = action->menu() != nullptr;
     entry[QStringLiteral("objectId")] = ObjectRegistry::instance()->objectId(action);
+
+    const QString label = normalizeLabel(action->text());
+    if (!action->isSeparator() && action->isVisible() && !label.isEmpty()) {
+      QJsonArray path = parentPath;
+      path.append(label);
+      entry[QStringLiteral("path")] = path;
+      if (QMenu* submenu = action->menu()) {
+        if (ancestors.contains(submenu) || ancestors.size() >= kMaxMenuDepth) {
+          entry[QStringLiteral("truncated")] = true;
+        } else {
+          ancestors.insert(submenu);
+          entry[QStringLiteral("items")] = describeMenuItems(submenu, path, ancestors);
+          ancestors.remove(submenu);
+        }
+      }
+    }
     items.append(entry);
   }
   return items;
@@ -568,10 +620,11 @@ QJsonObject handleUiContextMenu(const QJsonObject& params) {
 }
 
 QJsonObject handleUiActiveMenu() {
-  QMenu* menu = requireActiveMenu(QStringLiteral("qt.ui.activeMenu"));
+  QMenu* menu = rootMenuOf(requireActiveMenu(QStringLiteral("qt.ui.activeMenu")));
+  QSet<QMenu*> ancestors{menu};
   return QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(menu)},
                      {QStringLiteral("title"), menu->title()},
-                     {QStringLiteral("items"), describeMenuItems(menu)}};
+                     {QStringLiteral("items"), describeMenuItems(menu, QJsonArray(), ancestors)}};
 }
 
 /// @brief Choose @p action in @p menu the way a user does: make it the current
@@ -584,24 +637,6 @@ void chooseMenuEntry(QMenu* menu, QAction* action) {
   menu->setActiveAction(action);
   QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
   QCoreApplication::sendEvent(menu, &press);
-}
-
-/// @brief Whether @p action can still be chosen from @p menu, as a user could.
-std::expected<void, QString> stillChoosable(const QPointer<QMenu>& menu,
-                                            const QPointer<QAction>& action, const QString& label) {
-  if (menu.isNull() || action.isNull()) {
-    return std::unexpected(QStringLiteral("the menu for '%1' was destroyed").arg(label));
-  }
-  if (!menu->isVisible()) {
-    return std::unexpected(QStringLiteral("the menu for '%1' is no longer open").arg(label));
-  }
-  if (!menu->actions().contains(action.data())) {
-    return std::unexpected(QStringLiteral("'%1' is no longer in its menu").arg(label));
-  }
-  if (!action->isEnabled() || !action->isVisible()) {
-    return std::unexpected(QStringLiteral("'%1' is no longer enabled").arg(label));
-  }
-  return {};
 }
 
 /// @brief Why no single entry of a menu answers to a label.
@@ -661,66 +696,187 @@ std::expected<QAction*, MenuEntryError> findMenuEntry(QMenu* menu, const QString
         QStringLiteral("%1 enabled menu items read '%2'").arg(enabled.size()).arg(typed),
         QJsonObject{{QStringLiteral("text"), typed}, {QStringLiteral("candidates"), candidates}}});
   }
-  // Choosing an entry that opens a submenu only opens the submenu.
-  if (enabled.front()->menu()) {
-    return std::unexpected(MenuEntryError{
-        JsonRpcError::kInvalidParams,
-        QStringLiteral("Menu item '%1' opens a submenu and cannot be chosen").arg(typed),
-        QJsonObject{{QStringLiteral("text"), typed}}});
-  }
   return enabled.front();
+}
+
+/// @brief Find the entry for one step of a label path, and check its shape: every
+/// step but the last must open a submenu, and the last must not.
+std::expected<QAction*, MenuEntryError> findPathStep(QMenu* menu, const QStringList& path,
+                                                     int depth) {
+  const QString& label = path.at(depth);
+  const bool last = depth + 1 == path.size();
+  return findMenuEntry(menu, label)
+      .and_then([&](QAction* action) -> std::expected<QAction*, MenuEntryError> {
+        if (last && action->menu()) {
+          // Choosing it would only open the submenu.
+          return std::unexpected(MenuEntryError{
+              JsonRpcError::kInvalidParams,
+              QStringLiteral("Menu item '%1' opens a submenu; a path must end on an entry")
+                  .arg(label),
+              QJsonObject{{QStringLiteral("text"), label}}});
+        }
+        if (!last && !action->menu()) {
+          return std::unexpected(
+              MenuEntryError{ErrorCode::kMenuItemNotFound,
+                             QStringLiteral("Menu item '%1' does not open a submenu").arg(label),
+                             QJsonObject{{QStringLiteral("text"), label}}});
+        }
+        return action;
+      })
+      .transform_error([&](MenuEntryError err) {
+        err.data[QStringLiteral("depth")] = depth;
+        err.data[QStringLiteral("path")] = QJsonArray::fromStringList(path);
+        return err;
+      });
+}
+
+/// @brief The entry a label path chose.
+struct ChosenEntry {
+  QString text;
+  QString objectId;
+};
+
+/// @brief Walk @p path from @p root as a user would, and choose its last entry.
+///
+/// One step at a time: each label is looked up only once the submenu holding it
+/// has opened, because applications fill submenus as they open ("Recent files",
+/// "Open with") and may rebuild them each time. Menu animation is off for the
+/// walk: an animated submenu is only marked visible until the animation ends,
+/// so choosing in it would leave the root menu open.
+std::expected<ChosenEntry, MenuEntryError> walkMenuPath(QMenu* root, const QStringList& path) {
+  const bool animated = QApplication::isEffectEnabled(Qt::UI_AnimateMenu);
+  QApplication::setEffectEnabled(Qt::UI_AnimateMenu, false);
+  const auto restoreAnimation =
+      qScopeGuard([animated] { QApplication::setEffectEnabled(Qt::UI_AnimateMenu, animated); });
+
+  QMenu* menu = root;
+  for (int depth = 0; depth < path.size(); ++depth) {
+    const auto step = findPathStep(menu, path, depth);
+    if (!step) {
+      return std::unexpected(step.error());
+    }
+    QAction* action = *step;
+    if (depth + 1 == path.size()) {
+      // Describe the entry before choosing it: choosing runs application code,
+      // which may destroy the menu and every action in it.
+      ChosenEntry chosen{action->text(), ObjectRegistry::instance()->objectId(action)};
+      chooseMenuEntry(menu, action);
+      return chosen;
+    }
+    QMenu* submenu = action->menu();
+    menu->setActiveAction(action);  // opens it, as hovering does
+    if (!submenu->isVisible()) {
+      return std::unexpected(
+          MenuEntryError{ErrorCode::kMenuItemNotFound,
+                         QStringLiteral("Submenu '%1' did not open").arg(path.at(depth)),
+                         QJsonObject{{QStringLiteral("depth"), depth},
+                                     {QStringLiteral("path"), QJsonArray::fromStringList(path)}}});
+    }
+    menu = submenu;
+  }
+  return std::unexpected(MenuEntryError{JsonRpcError::kInvalidParams,
+                                        QStringLiteral("A menu path needs at least one label"),
+                                        QJsonObject()});
+}
+
+/// @brief The label path a request names: 'path', or 'text' for a one-label path.
+QStringList requireMenuPath(const QJsonObject& params, const QString& method) {
+  auto present = [&](const QString& key) {
+    const QJsonValue value = params.value(key);
+    return !value.isUndefined() && !value.isNull();
+  };
+  auto invalid = [&](const QString& message) {
+    return JsonRpcException(JsonRpcError::kInvalidParams, message,
+                            QJsonObject{{QStringLiteral("method"), method}});
+  };
+  if (present(QStringLiteral("text")) == present(QStringLiteral("path"))) {
+    throw invalid(QStringLiteral("Exactly one of 'text' or 'path' is required"));
+  }
+  if (present(QStringLiteral("text"))) {
+    const QString text = params.value(QStringLiteral("text")).toString();
+    if (text.isEmpty()) {
+      throw invalid(QStringLiteral("Parameter 'text' must be a non-empty label"));
+    }
+    return {text};
+  }
+  if (!params.value(QStringLiteral("path")).isArray()) {
+    throw invalid(QStringLiteral("Parameter 'path' must be an array of labels"));
+  }
+  QStringList path;
+  const QJsonArray labels = params.value(QStringLiteral("path")).toArray();
+  for (const QJsonValue& label : labels) {
+    if (!label.isString() || label.toString().isEmpty()) {
+      throw invalid(QStringLiteral("Parameter 'path' must be an array of non-empty labels"));
+    }
+    path.append(label.toString());
+  }
+  if (path.isEmpty() || path.size() > kMaxMenuDepth + 1) {
+    throw invalid(
+        QStringLiteral("Parameter 'path' must hold 1 to %1 labels").arg(kMaxMenuDepth + 1));
+  }
+  return path;
 }
 
 QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
   const QString kMethod = QStringLiteral("qt.ui.activateMenuItem");
-  const QString text = params.value(QStringLiteral("text")).toString();
+  const QStringList path = requireMenuPath(params, kMethod);
   // Deferred unless asked otherwise: choosing an entry runs application code,
   // and a modal dialog opened from it would re-enter the request's dispatch.
   const bool deferred = optionalBool(params, QStringLiteral("deferred"), true, kMethod);
-  if (text.isEmpty()) {
-    throw JsonRpcException(JsonRpcError::kInvalidParams,
-                           QStringLiteral("Parameter 'text' is required"),
-                           QJsonObject{{QStringLiteral("method"), kMethod}});
+  QMenu* root = rootMenuOf(requireActiveMenu(kMethod));
+
+  auto toException = [&](MenuEntryError err) {
+    err.data[QStringLiteral("method")] = kMethod;
+    return JsonRpcException(err.code, err.message, err.data);
+  };
+
+  QJsonObject reply{{QStringLiteral("ok"), true},
+                    {QStringLiteral("path"), QJsonArray::fromStringList(path)},
+                    {QStringLiteral("deferred"), deferred}};
+  if (!deferred) {
+    const auto chosen = walkMenuPath(root, path);
+    if (!chosen) {
+      throw toException(chosen.error());
+    }
+    reply[QStringLiteral("text")] = chosen->text;
+    reply[QStringLiteral("objectId")] = chosen->objectId;
+    return reply;
   }
 
-  QMenu* menu = requireActiveMenu(kMethod);
-  const auto found = findMenuEntry(menu, text);
-  if (!found) {
-    QJsonObject data = found.error().data;
-    data[QStringLiteral("method")] = kMethod;
-    throw JsonRpcException(found.error().code, found.error().message, data);
+  // Check what can be checked now, so a mistake reaches this caller: the first
+  // step. Deeper steps may not exist until their submenus open.
+  const auto first = findPathStep(root, path, 0);
+  if (!first) {
+    throw toException(first.error());
   }
-  QAction* action = *found;
-  const QString label = action->text();
+  if (path.size() == 1) {
+    reply[QStringLiteral("text")] = (*first)->text();
+    reply[QStringLiteral("objectId")] = ObjectRegistry::instance()->objectId(*first);
+  }
 
-  // Describe the entry before choosing it: choosing runs application code,
-  // which may destroy the menu and every action in it.
-  const QJsonObject chosen{
-      {QStringLiteral("ok"), true},
-      {QStringLiteral("text"), label},
-      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(action)},
-      {QStringLiteral("deferred"), deferred}};
-  if (deferred) {
-    QPointer<QMenu> safeMenu(menu);
-    QPointer<QAction> safeAction(action);
-    QMetaObject::invokeMethod(
-        menu,
-        [safeMenu, safeAction, label]() {
-          // Things may have moved on since the reply went out. A user can only
-          // choose an enabled entry of a menu that is open, and neither can we.
-          const auto choosable = stillChoosable(safeMenu, safeAction, label);
-          if (!choosable) {
-            qWarning().noquote() << "[qtPilot] deferred qt.ui.activateMenuItem did not run:"
-                                 << choosable.error();
-            return;
-          }
-          chooseMenuEntry(safeMenu, safeAction);
-        },
-        Qt::QueuedConnection);
-  } else {
-    chooseMenuEntry(menu, action);
-  }
-  return chosen;
+  // The walk re-resolves every step when it runs: things may have moved on since
+  // this reply, and a user can only choose an enabled entry of a menu that is open.
+  QPointer<QMenu> safeRoot(root);
+  QMetaObject::invokeMethod(
+      root,
+      [safeRoot, path]() {
+        const QString label = path.join(QStringLiteral(" > "));
+        const auto outcome =
+            safeRoot && safeRoot->isVisible()
+                ? walkMenuPath(safeRoot, path)
+                : std::expected<ChosenEntry, MenuEntryError>(
+                      std::unexpect,
+                      MenuEntryError{
+                          ErrorCode::kMenuItemNotFound,
+                          QStringLiteral("the menu for '%1' is no longer open").arg(label),
+                          QJsonObject()});
+        if (!outcome) {
+          qWarning().noquote() << "[qtPilot] deferred qt.ui.activateMenuItem did not run:"
+                               << outcome.error().message;
+        }
+      },
+      Qt::QueuedConnection);
+  return reply;
 }
 
 QJsonObject handleUiSendKeys(const QJsonObject& params) {

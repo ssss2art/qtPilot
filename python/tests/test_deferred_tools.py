@@ -64,3 +64,31 @@ async def test_activate_menu_item_can_run_inline(mock_probe: MagicMock) -> None:
     mock_probe.call.assert_awaited_once_with(
         "qt.ui.activateMenuItem", {"text": "Delete", "deferred": False}
     )
+
+
+@pytest.mark.asyncio
+async def test_activate_menu_item_forwards_a_label_path(mock_probe: MagicMock) -> None:
+    await _call(mock_probe, "qt_ui_activateMenuItem", {"path": ["Export", "As PDF"]})
+
+    mock_probe.call.assert_awaited_once_with(
+        "qt.ui.activateMenuItem", {"path": ["Export", "As PDF"], "deferred": True}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "arguments",
+    [{}, {"text": "Delete", "path": ["Delete"]}, {"path": []}],
+    ids=["neither", "both", "empty-path"],
+)
+async def test_activate_menu_item_needs_exactly_one_of_text_or_path(
+    mock_probe: MagicMock, arguments: dict[str, object]
+) -> None:
+    with patch("qtpilot.server.require_probe", return_value=mock_probe):
+        async with Client(create_server(mode="native")) as client:
+            result = await client.call_tool(
+                "qt_ui_activateMenuItem", arguments, raise_on_error=False
+            )
+
+    assert result.is_error
+    mock_probe.call.assert_not_awaited()

@@ -114,6 +114,51 @@ class ExecMenuHost : public QWidget {
   }
 };
 
+/// @brief Builds a fresh context menu on every right-click and never deletes
+/// the old ones -- a leak real applications have. Each generation's entries are
+/// new objects, so nothing identifies "the same entry" across right-clicks but
+/// what it says.
+class RebuildingMenuHost : public QWidget {
+  Q_OBJECT
+
+ public:
+  using QWidget::QWidget;
+  int generations = 0;
+  QList<int> deletedBy;  ///< generation of each Delete that fired
+
+ protected:
+  void contextMenuEvent(QContextMenuEvent* event) override {
+    const int generation = ++generations;
+    auto* menu = new QMenu(this);
+    menu->addAction(QStringLiteral("Rename"));
+    connect(menu->addAction(QStringLiteral("&Delete")), &QAction::triggered, this,
+            [this, generation] { deletedBy.append(generation); });
+    menu->popup(event->globalPos());
+  }
+};
+
+/// @brief Runs a context menu with a submenu through exec(), acting on whatever
+/// exec() returns -- the usual way, and one only a real choice satisfies.
+class ExecSubmenuHost : public QWidget {
+  Q_OBJECT
+
+ public:
+  using QWidget::QWidget;
+  QString chosen;
+
+ protected:
+  void contextMenuEvent(QContextMenuEvent* event) override {
+    QMenu menu(this);
+    menu.addAction(QStringLiteral("Delete"));
+    QMenu* exportMenu = menu.addMenu(QStringLiteral("E&xport"));
+    exportMenu->addAction(QStringLiteral("As &PDF"));
+    exportMenu->addAction(QStringLiteral("As PNG"));
+    if (QAction* picked = menu.exec(event->globalPos())) {
+      chosen = picked->text();
+    }
+  }
+};
+
 }  // namespace
 
 /// @brief Addressing an item by id must act on *that* item, plus context menus.
@@ -162,6 +207,19 @@ class TestItemTargeting : public QObject {
   void testActivateMenuItemIgnoresInvisibleEntries();
   void testActivateMenuItemRefusesAnAmbiguousLabel();
   void testActivateMenuItemOffersLabelsAsTheyRead();
+  void testActiveMenuGivesEachEntryItsLabelPath();
+  void testActiveMenuGivesNoPathToWhatCannotBeChosen();
+  void testMenuPathChoosesTheEntryInTheMenuOpenNow();
+  void testMenuPathDescendsIntoASubmenu();
+  void testMenuPathRunsInlineWhenNotDeferred();
+  void testMenuPathReachesAnExecCallerThroughASubmenu();
+  void testMenuPathFindsEntriesASubmenuAddsAsItOpens();
+  void testMenuPathStartsFromTheRootWhenASubmenuIsOpen();
+  void testMenuPathRoundTripsAnEscapedAmpersand();
+  void testMenuPathReportsWhereItStopped();
+  void testMenuPathMustEndOnAnEntry();
+  void testMenuPathMustBeAnArrayOfLabels();
+  void testActivateMenuItemTakesTextOrPathNotBoth();
 
  private:
   QJsonObject callRaw(const QString& method, const QJsonObject& params);
@@ -604,7 +662,7 @@ void TestItemTargeting::testDeferredChoiceLeavesAMenuAloneIfTheEntryWasDisabled(
   m_menu->popup(QPoint(10, 10));
   pump();
   QAction* del = m_menu->actions().at(1);
-  QTest::ignoreMessage(QtWarningMsg, QRegularExpression("no longer enabled"));
+  QTest::ignoreMessage(QtWarningMsg, QRegularExpression("Delete' is disabled"));
 
   callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Delete"}});
   del->setEnabled(false);
@@ -734,6 +792,279 @@ void TestItemTargeting::testActivateMenuItemOffersLabelsAsTheyRead() {
   QEXPECT_THAT(response.value(QStringLiteral("error")).toObject(),
                HasJsonField("data", HasJsonField("offered", JsonArrayContains(QStrEq("Export...")))));
   menu.hide();
+}
+
+namespace {
+
+/// A menu with a submenu, the shape a label path has to walk.
+struct NestedMenu {
+  explicit NestedMenu(QWidget* host) : root(host) {
+    root.addAction(QStringLiteral("&Delete"));
+    exportMenu = root.addMenu(QStringLiteral("E&xport"));
+    asPdf = exportMenu->addAction(QStringLiteral("As &PDF"));
+    exportMenu->addAction(QStringLiteral("As PNG"));
+  }
+  QMenu root;
+  QMenu* exportMenu = nullptr;
+  QAction* asPdf = nullptr;
+};
+
+QJsonArray activeMenuItems(const QJsonObject& response) {
+  return response.value(QStringLiteral("result"))
+      .toObject()
+      .value(QStringLiteral("result"))
+      .toObject()
+      .value(QStringLiteral("items"))
+      .toArray();
+}
+
+}  // namespace
+
+void TestItemTargeting::testActiveMenuGivesEachEntryItsLabelPath() {
+  NestedMenu menu(m_menuHost);
+  menu.root.popup(QPoint(10, 10));
+  pump();
+
+  const QJsonArray items = activeMenuItems(callOk(QStringLiteral("qt.ui.activeMenu"), {}));
+
+  QEXPECT_THAT(items, JsonArrayContains(HasJsonField("path", Eq(QJsonArray{"Delete"}))));
+  QEXPECT_THAT(items,
+               JsonArrayContains(AllOf(
+                   HasJsonField("path", Eq(QJsonArray{"Export"})),
+                   HasJsonField("items", JsonArrayContains(HasJsonField(
+                                             "path", Eq(QJsonArray{"Export", "As PDF"})))))));
+  menu.root.hide();
+}
+
+// An icon-only entry has no label to name it by, and a hidden one cannot be
+// chosen at all; listing a path for either would hand out one that fails.
+void TestItemTargeting::testActiveMenuGivesNoPathToWhatCannotBeChosen() {
+  QMenu menu(m_menuHost);
+  menu.addAction(QString())->setObjectName(QStringLiteral("iconOnly"));
+  QAction* hidden = menu.addAction(QStringLiteral("Hidden"));
+  hidden->setVisible(false);
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  const QJsonArray items = activeMenuItems(callOk(QStringLiteral("qt.ui.activeMenu"), {}));
+
+  for (const auto& item : items) {
+    QEXPECT_THAT(item.toObject(), DoesNotHaveJsonField("path"));
+  }
+  menu.hide();
+}
+
+// The whole point of a label path: an entry in a menu rebuilt on every
+// right-click is a new object each time, but the path read off the first
+// menu still names the entry in the third.
+void TestItemTargeting::testMenuPathChoosesTheEntryInTheMenuOpenNow() {
+  RebuildingMenuHost host;
+  host.setObjectName(QStringLiteral("rebuildingMenuHost"));
+  host.resize(200, 150);
+  host.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&host));
+  ObjectRegistry::instance()->scanExistingObjects(&host);
+  const QJsonObject rightClick{{"objectId", ObjectRegistry::instance()->objectId(&host)}};
+
+  callOk(QStringLiteral("qt.ui.contextMenu"), rightClick);
+  QJsonArray deletePath;
+  for (const auto& item : activeMenuItems(callOk(QStringLiteral("qt.ui.activeMenu"), {}))) {
+    if (item.toObject().value(QStringLiteral("text")) == QStringLiteral("&Delete")) {
+      deletePath = item.toObject().value(QStringLiteral("path")).toArray();
+    }
+  }
+  QVERIFY2(!deletePath.isEmpty(), "the first menu did not report a path for Delete");
+
+  for (int reopen = 0; reopen < 2; ++reopen) {
+    QTRY_VERIFY(QApplication::activePopupWidget() != nullptr);
+    QApplication::activePopupWidget()->close();
+    pump();
+    callOk(QStringLiteral("qt.ui.contextMenu"), rightClick);
+  }
+  QCOMPARE(host.generations, 3);
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"path", deletePath}});
+
+  QEXPECT_THAT(host.deletedBy, Eq(QList<int>{3}));
+}
+
+void TestItemTargeting::testMenuPathDescendsIntoASubmenu() {
+  NestedMenu menu(m_menuHost);
+  int chosen = 0;
+  connect(menu.asPdf, &QAction::triggered, this, [&chosen] { ++chosen; });
+  menu.root.popup(QPoint(10, 10));
+  pump();
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"),
+         QJsonObject{{"path", QJsonArray{"Export", "As PDF"}}});
+
+  QEXPECT_THAT(chosen, Eq(1));
+  QEXPECT_THAT(QApplication::activePopupWidget(), IsNull());
+}
+
+void TestItemTargeting::testMenuPathRunsInlineWhenNotDeferred() {
+  NestedMenu menu(m_menuHost);
+  int chosen = 0;
+  connect(menu.asPdf, &QAction::triggered, this, [&chosen] { ++chosen; });
+  menu.root.popup(QPoint(10, 10));
+  pump();
+
+  const QJsonObject response =
+      callRaw(QStringLiteral("qt.ui.activateMenuItem"),
+              QJsonObject{{"path", QJsonArray{"Export", "As PDF"}}, {"deferred", false}});
+
+  QEXPECT_THAT(response, IsJsonRpcSuccess());
+  QEXPECT_THAT(chosen, Eq(1));
+}
+
+// The claim that matters for submenus: the menu's exec() caller -- which acts
+// only on what exec() returns -- still learns what was chosen.
+void TestItemTargeting::testMenuPathReachesAnExecCallerThroughASubmenu() {
+  ExecSubmenuHost host;
+  host.setObjectName(QStringLiteral("execSubmenuHost"));
+  host.resize(200, 150);
+  host.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&host));
+  ObjectRegistry::instance()->scanExistingObjects(&host);
+
+  QTimer::singleShot(3000, this, [] {
+    while (QWidget* popup = QApplication::activePopupWidget()) {
+      popup->close();
+    }
+  });
+  bool requested = false;
+  QTimer chooser;
+  chooser.setInterval(10);
+  connect(&chooser, &QTimer::timeout, this, [&] {
+    if (requested || !QApplication::activePopupWidget()) {
+      return;
+    }
+    requested = true;
+    callRaw(QStringLiteral("qt.ui.activateMenuItem"),
+            QJsonObject{{"path", QJsonArray{"Export", "As PDF"}}});
+  });
+  chooser.start();
+
+  callOk(QStringLiteral("qt.ui.contextMenu"),
+         QJsonObject{{"objectId", ObjectRegistry::instance()->objectId(&host)}});
+
+  QTRY_COMPARE(host.chosen, QStringLiteral("As &PDF"));
+}
+
+// Applications fill submenus when they open ("Recent files", "Open with"). The
+// entry does not exist until the walk has opened its submenu.
+void TestItemTargeting::testMenuPathFindsEntriesASubmenuAddsAsItOpens() {
+  QMenu root(m_menuHost);
+  QMenu* recent = root.addMenu(QStringLiteral("Recent"));
+  int opened = 0;
+  connect(recent, &QMenu::aboutToShow, this, [this, recent, &opened] {
+    recent->clear();
+    connect(recent->addAction(QStringLiteral("notes.txt")), &QAction::triggered, this,
+            [&opened] { ++opened; });
+  });
+  root.popup(QPoint(10, 10));
+  pump();
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"),
+         QJsonObject{{"path", QJsonArray{"Recent", "notes.txt"}}});
+
+  QEXPECT_THAT(opened, Eq(1));
+}
+
+// A path is listed from the root menu. A submenu opened since -- by hovering, or
+// a walk left half done -- must not change what the path is resolved against.
+void TestItemTargeting::testMenuPathStartsFromTheRootWhenASubmenuIsOpen() {
+  NestedMenu menu(m_menuHost);
+  int chosen = 0;
+  connect(menu.asPdf, &QAction::triggered, this, [&chosen] { ++chosen; });
+  menu.root.popup(QPoint(10, 10));
+  pump();
+  menu.root.setActiveAction(menu.exportMenu->menuAction());
+  pump();
+  QTRY_COMPARE(QApplication::activePopupWidget(), static_cast<QWidget*>(menu.exportMenu));
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"),
+         QJsonObject{{"path", QJsonArray{"Export", "As PDF"}}});
+
+  QEXPECT_THAT(chosen, Eq(1));
+}
+
+// The path qt.ui.activeMenu hands out must work when handed back.
+void TestItemTargeting::testMenuPathRoundTripsAnEscapedAmpersand() {
+  QMenu menu(m_menuHost);
+  QMenu* edit = menu.addMenu(QStringLiteral("Find && Replace"));
+  int chosen = 0;
+  connect(edit->addAction(QStringLiteral("Next")), &QAction::triggered, this,
+          [&chosen] { ++chosen; });
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  QJsonArray path;
+  for (const auto& item : activeMenuItems(callOk(QStringLiteral("qt.ui.activeMenu"), {}))) {
+    for (const auto& child : item.toObject().value(QStringLiteral("items")).toArray()) {
+      path = child.toObject().value(QStringLiteral("path")).toArray();
+    }
+  }
+  QCOMPARE(path, (QJsonArray{"Find & Replace", "Next"}));
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"path", path}});
+
+  QEXPECT_THAT(chosen, Eq(1));
+}
+
+void TestItemTargeting::testMenuPathReportsWhereItStopped() {
+  NestedMenu menu(m_menuHost);
+  menu.root.popup(QPoint(10, 10));
+  pump();
+
+  const QJsonObject response =
+      callRaw(QStringLiteral("qt.ui.activateMenuItem"),
+              QJsonObject{{"path", QJsonArray{"Export", "As SVG"}}, {"deferred", false}});
+
+  QEXPECT_THAT(response, IsJsonRpcError(static_cast<int>(ErrorCode::kMenuItemNotFound)));
+  QEXPECT_THAT(response.value(QStringLiteral("error")).toObject(),
+               HasJsonField("data", AllOf(HasJsonField("depth", Eq(1)),
+                                          HasJsonField("offered",
+                                                       JsonArrayContains(QStrEq("As PNG"))))));
+  while (QWidget* popup = QApplication::activePopupWidget()) {
+    popup->close();
+  }
+}
+
+// A path ending on a submenu only opens it; that is not choosing an entry.
+void TestItemTargeting::testMenuPathMustEndOnAnEntry() {
+  NestedMenu menu(m_menuHost);
+  menu.root.popup(QPoint(10, 10));
+  pump();
+
+  QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.activateMenuItem"),
+                       QJsonObject{{"path", QJsonArray{"Export"}}}),
+               IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
+  menu.root.hide();
+}
+
+void TestItemTargeting::testMenuPathMustBeAnArrayOfLabels() {
+  m_menu->popup(QPoint(10, 10));
+  pump();
+
+  const QJsonObject response =
+      callRaw(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"path", "Delete"}});
+
+  QEXPECT_THAT(response, IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams),
+                                        QStrContains("array")));
+  QEXPECT_THAT(m_actionFired, Eq(0));
+  m_menu->hide();
+}
+
+void TestItemTargeting::testActivateMenuItemTakesTextOrPathNotBoth() {
+  m_menu->popup(QPoint(10, 10));
+  pump();
+
+  QEXPECT_THAT(callRaw(QStringLiteral("qt.ui.activateMenuItem"),
+                       QJsonObject{{"text", "Delete"}, {"path", QJsonArray{"Delete"}}}),
+               IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
+  QEXPECT_THAT(m_actionFired, Eq(0));
+  m_menu->hide();
 }
 
 QTEST_MAIN(TestItemTargeting)
