@@ -621,13 +621,11 @@ QJsonObject handleUiActivateMenuItem(const QJsonObject& params) {
     if (action->isSeparator()) {
       continue;
     }
-    // Compare with the mnemonic marker removed, so a caller writes what the
-    // entry reads as on screen rather than "&Delete".
+    // Compare labels as they read, so a caller writes "Delete" rather than
+    // "&Delete\tDel". normalizeLabel() is also what IDs are built from.
     const QString label = action->text();
-    QString plain = label;
-    plain.remove(QLatin1Char('&'));
     offered.append(label);
-    if (label == text || plain == text) {
+    if (label == text || normalizeLabel(label) == normalizeLabel(text)) {
       if (!action->isEnabled()) {
         throw JsonRpcException(
             ErrorCode::kMenuItemNotFound, QStringLiteral("Menu item '%1' is disabled").arg(text),

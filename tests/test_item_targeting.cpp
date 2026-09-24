@@ -156,6 +156,7 @@ class TestItemTargeting : public QObject {
   void testDeferredChoiceLeavesAMenuAloneIfTheEntryWasDisabled();
   void testActivateMenuItemRefusesAnEntryThatOpensASubmenu();
   void testActivateMenuItemRejectsANonBooleanDeferred();
+  void testActivateMenuItemMatchesTheLabelAsItReads();
 
  private:
   QJsonObject callRaw(const QString& method, const QJsonObject& params);
@@ -632,6 +633,21 @@ void TestItemTargeting::testActivateMenuItemRejectsANonBooleanDeferred() {
                IsJsonRpcError(static_cast<int>(JsonRpcError::kInvalidParams)));
   QEXPECT_THAT(m_actionFired, Eq(0));
   m_menu->hide();
+}
+
+// The caller names an entry the way it reads. The mnemonic marker and the
+// shortcut Qt draws beside it are how it is presented, not what it says.
+void TestItemTargeting::testActivateMenuItemMatchesTheLabelAsItReads() {
+  QMenu menu(m_menuHost);
+  int exported = 0;
+  connect(menu.addAction(QStringLiteral("&Export...\tCtrl+E")), &QAction::triggered, this,
+          [&exported] { ++exported; });
+  menu.popup(QPoint(10, 10));
+  pump();
+
+  callOk(QStringLiteral("qt.ui.activateMenuItem"), QJsonObject{{"text", "Export..."}});
+
+  QEXPECT_THAT(exported, Eq(1));
 }
 
 QTEST_MAIN(TestItemTargeting)

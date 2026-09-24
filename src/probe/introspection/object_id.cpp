@@ -25,7 +25,8 @@ namespace qtPilot {
 namespace {
 
 /// @brief Sanitize a string for use in an ID segment.
-/// Takes first 20 characters, replaces non-alphanumeric with underscores.
+/// Takes first 20 characters, replaces each run of non-alphanumerics with one
+/// underscore ("Save & Close" -> "Save_Close", not "Save___Close").
 QString sanitizeForId(const QString& input) {
   QString result;
   result.reserve(qMin(input.length(), 20));
@@ -34,7 +35,7 @@ QString sanitizeForId(const QString& input) {
     QChar ch = input.at(i);
     if (ch.isLetterOrNumber()) {
       result.append(ch);
-    } else {
+    } else if (!result.endsWith(QLatin1Char('_'))) {
       result.append(QLatin1Char('_'));
     }
   }
@@ -134,6 +135,7 @@ QString baseIdSegment(QObject* obj) {
   if (objectsDied()) {
     return QString();
   }
+  text = normalizeLabel(text);
   if (!text.isEmpty()) {
     return QStringLiteral("text_") + sanitizeForId(text);
   }
@@ -572,6 +574,26 @@ IdGenerationScope::~IdGenerationScope() {
     g_siblingCache->byParent.clear();
     g_siblingCache = nullptr;
   }
+}
+
+QString normalizeLabel(const QString& label) {
+  const auto tab = label.indexOf(QLatin1Char('\t'));
+  const QString shown = tab >= 0 ? label.left(tab) : label;
+
+  QString result;
+  result.reserve(shown.size());
+  for (decltype(shown.size()) i = 0; i < shown.size(); ++i) {
+    if (shown.at(i) != QLatin1Char('&')) {
+      result.append(shown.at(i));
+      continue;
+    }
+    // "&&" is an escaped, visible ampersand; a lone "&" only marks the mnemonic.
+    if (i + 1 < shown.size() && shown.at(i + 1) == QLatin1Char('&')) {
+      result.append(QLatin1Char('&'));
+      ++i;
+    }
+  }
+  return result;
 }
 
 QString generateObjectId(QObject* obj) {

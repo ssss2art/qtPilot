@@ -68,6 +68,15 @@ class QTPILOT_EXPORT IdGenerationScope {
 /// uses this to notice and stop before it touches a pointer that may be dead.
 QTPILOT_EXPORT void noteObjectDestroyed();
 
+/// @brief A control's label as it reads, without Qt's presentation markup.
+///
+/// Drops the mnemonic marker ("&Delete" reads "Delete"; "&&" is a literal "&")
+/// and a menu entry's tab-separated shortcut hint ("Delete\tDel" reads
+/// "Delete"). Both are how a label is drawn, not what it says, and the hint
+/// changes whenever a user rebinds the key. IDs and label matching share this
+/// one definition so they cannot disagree about what a label is.
+QTPILOT_EXPORT QString normalizeLabel(const QString& label);
+
 /// @brief Generate a hierarchical ID for a QObject.
 ///
 /// ID format: "segment/segment/segment" where each segment is:

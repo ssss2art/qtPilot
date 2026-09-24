@@ -9,6 +9,7 @@
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QAction>
 #include <QPointer>
 #include <QPushButton>
 #include <QWindow>
@@ -61,6 +62,9 @@ class TestObjectId : public QObject {
   void testIdWithObjectName();
   void testIdWithTextProperty();
   void testIdWithClassName();
+  void testTextSegmentIgnoresMnemonicMarker();
+  void testTextSegmentIgnoresShortcutHint();
+  void testTextSegmentKeepsAnEscapedAmpersandAsText();
   void testIdSiblingDisambiguation();
   void testFindById();
   void testFindByIdGlobal();
@@ -150,6 +154,37 @@ void TestObjectId::testIdWithTextProperty() {
   QString lastSegment = segments.last();
   QEXPECT_THAT(lastSegment, QStrStartsWith("text_"));
   QEXPECT_THAT(lastSegment.length(), Le(25));
+}
+
+// A label's '&' marks the mnemonic; the letter after it is underlined, but the
+// '&' is not part of what the control says. It used to become an underscore,
+// so "&Delete" and "Delete" named one entry two ways.
+void TestObjectId::testTextSegmentIgnoresMnemonicMarker() {
+  QWidget parent;
+  auto* withMnemonic = new QAction(QStringLiteral("&Delete"), &parent);
+  auto* plain = new QPushButton(QStringLiteral("Save &As"), &parent);
+
+  QEXPECT_THAT(generateIdSegment(withMnemonic), QStrEq("text_Delete"));
+  QEXPECT_THAT(generateIdSegment(plain), QStrEq("text_Save_As"));
+}
+
+// A menu entry's text may carry its shortcut after a tab ("Delete\tDel"); Qt
+// draws it right-aligned. It is presentation, and it changes when a user
+// rebinds the key.
+void TestObjectId::testTextSegmentIgnoresShortcutHint() {
+  QWidget parent;
+  auto* action = new QAction(QStringLiteral("Delete\tDel"), &parent);
+
+  QEXPECT_THAT(generateIdSegment(action), QStrEq("text_Delete"));
+}
+
+void TestObjectId::testTextSegmentKeepsAnEscapedAmpersandAsText() {
+  QWidget parent;
+  auto* action = new QAction(QStringLiteral("Save && Close"), &parent);
+
+  QEXPECT_THAT(generateIdSegment(action), QStrEq("text_Save_Close"));
+  QEXPECT_THAT(normalizeLabel(QStringLiteral("Save && &Close\tCtrl+W")),
+               QStrEq("Save & Close"));
 }
 
 void TestObjectId::testIdWithClassName() {
