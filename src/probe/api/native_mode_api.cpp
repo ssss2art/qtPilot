@@ -981,8 +981,16 @@ void NativeModeApi::registerObjectMethods() {
         };
 
         auto describeMatch = [&](const Candidate& weak) -> std::expected<QJsonObject, Skip> {
-          // objectId() reads the `text` property of an unnamed object: another getter.
-          const QString objId = registry->objectId(weak.data());
+          // objectId() reads the `text` property of unnamed objects -- this one and
+          // its siblings -- and comes back empty if a getter destroyed anything.
+          // Once whatever died is gone, a second attempt usually succeeds.
+          QString objId;
+          for (int attempt = 0; attempt < 3 && objId.isEmpty() && !weak.isNull(); ++attempt) {
+            objId = registry->objectId(weak.data());
+          }
+          if (objId.isEmpty()) {
+            return std::unexpected(Skip::Destroyed);
+          }
           return alive(weak).transform([&](QObject* obj) {
             QJsonObject entry;
             entry[QStringLiteral("objectId")] = objId;

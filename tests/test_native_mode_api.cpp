@@ -78,6 +78,20 @@ class TextTripwire : public QObject {
   }
 };
 
+/// @brief Its `text` getter deletes whatever `victim` points at.
+class SiblingKiller : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(QString text READ text)
+
+ public:
+  using QObject::QObject;
+  QPointer<QObject> victim;
+  QString text() const {
+    delete victim.data();
+    return QStringLiteral("killer");
+  }
+};
+
 /// @brief Its getter waits for a worker thread that creates a QObject.
 ///
 /// Every QObject construction passes through the registry's creation hook,
@@ -159,6 +173,7 @@ class TestNativeModeApi : public QObject {
   void testObjectsSearchSkipsObjectThatDestroysItselfWhenRead();
   void testObjectsSearchSurvivesObjectsDyingOnAnotherThread();
   void testObjectsSearchSkipsObjectDestroyedWhileItsIdIsBuilt();
+  void testObjectsSearchSurvivesASiblingDestroyedWhileAnIdIsBuilt();
   void testObjectsSearchTruncatedIsExactWithPropertyFilters();
   void testObjectsSearchRunsGettersWithoutHoldingTheRegistry();
   void testObjectsSearchLeavesOtherThreadsObjectsAlone();
@@ -782,6 +797,26 @@ void TestNativeModeApi::testObjectsSearchSkipsObjectDestroyedWhileItsIdIsBuilt()
 
   QEXPECT_THAT(result.toObject(),
                AllOf(HasJsonField("count", Eq(0)), HasJsonField("skippedDestroyed", Eq(1))));
+}
+
+// Building one match's ID reads its same-class siblings' `text`, and one of
+// those getters destroys the match itself. The ID is abandoned, the match
+// skipped, and every other match still described.
+void TestNativeModeApi::testObjectsSearchSurvivesASiblingDestroyedWhileAnIdIsBuilt() {
+  QObject root;
+  root.setObjectName(QStringLiteral("siblingKillRoot"));
+  auto* target = new SiblingKiller(&root);
+  auto* killer = new SiblingKiller(&root);
+  killer->victim = target;
+
+  const QJsonValue result = callResult(
+      "qt.objects.search", QJsonObject{{"root", ObjectRegistry::instance()->objectId(&root)},
+                                       {"className", "SiblingKiller"}});
+
+  QEXPECT_THAT(result.toObject(),
+               AllOf(HasJsonField("count", Eq(1)), HasJsonField("skippedDestroyed", Eq(1)),
+                     HasJsonField("objects", JsonArrayContains(HasJsonField(
+                                                 "objectId", QStrContains("text_killer"))))));
 }
 
 // truncated means a match was left out -- not that candidates were left unexamined.

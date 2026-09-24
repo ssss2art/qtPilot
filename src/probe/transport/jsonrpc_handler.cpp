@@ -381,7 +381,7 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
         continue;
       }
       const QString id = registry->objectId(weak.data());
-      if (!weak.isNull()) {
+      if (!weak.isNull() && !id.isEmpty()) {
         ids.append(id);
       }
     }

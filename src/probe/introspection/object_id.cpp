@@ -47,6 +47,35 @@ QString sanitizeForId(const QString& input) {
   return result;
 }
 
+/// Destructions on this thread, as reported by the registry's removal hook.
+thread_local quint64 g_destroyedHere = 0;
+/// Nesting depth of ID generation on this thread, and the destruction count
+/// when the outermost generation began.
+thread_local int g_generationDepth = 0;
+thread_local quint64 g_generationStart = 0;
+
+/// @brief Marks one ID generation (or resolution) as running on this thread.
+///
+/// Everything inside works on raw pointers it collected along the way. If any
+/// object on this thread is destroyed meanwhile -- only application code can do
+/// that, and the only application code ID generation runs is a `text` getter --
+/// objectsDied() turns true and the walk must stop touching those pointers.
+class GenerationWatch {
+ public:
+  GenerationWatch() {
+    if (g_generationDepth++ == 0) {
+      g_generationStart = g_destroyedHere;
+    }
+  }
+  ~GenerationWatch() { --g_generationDepth; }
+  GenerationWatch(const GenerationWatch&) = delete;
+  GenerationWatch& operator=(const GenerationWatch&) = delete;
+};
+
+bool objectsDied() {
+  return g_generationDepth > 0 && g_destroyedHere != g_generationStart;
+}
+
 /// @brief Get the text property value if it exists.
 /// Returns empty string if no text property or value is empty.
 QString getTextProperty(QObject* obj) {
@@ -101,6 +130,10 @@ QString baseIdSegment(QObject* obj) {
 
   // Priority 2: text property (if exists and non-empty)
   QString text = getTextProperty(obj);
+  // The getter may have destroyed obj; nothing below may touch it then.
+  if (objectsDied()) {
+    return QString();
+  }
   if (!text.isEmpty()) {
     return QStringLiteral("text_") + sanitizeForId(text);
   }
@@ -144,6 +177,9 @@ QHash<QObject*, int> buildSiblingIndices(QObject* parent) {
       continue;
     }
     bySegment[baseIdSegment(child)].append(child);
+    if (objectsDied()) {
+      return {};  // the remaining children may be dead
+    }
   }
 
   QHash<QObject*, int> indices;
@@ -203,7 +239,11 @@ int getSiblingIndex(QObject* obj, const QString& base) {
       int indexAmongSame = -1;
       const auto windows = guiApp->topLevelWindows();
       for (QWindow* w : windows) {
-        if (baseIdSegment(w) == base) {
+        const QString windowBase = baseIdSegment(w);
+        if (objectsDied()) {
+          return -1;
+        }
+        if (windowBase == base) {
           if (w == obj) {
             indexAmongSame = sameSegmentCount;
           }
@@ -226,7 +266,11 @@ int getSiblingIndex(QObject* obj, const QString& base) {
   if (g_siblingCache != nullptr) {
     auto parentIt = g_siblingCache->byParent.constFind(parent);
     if (parentIt == g_siblingCache->byParent.constEnd()) {
-      parentIt = g_siblingCache->byParent.insert(parent, buildSiblingIndices(parent));
+      QHash<QObject*, int> indices = buildSiblingIndices(parent);
+      if (objectsDied()) {
+        return -1;  // incomplete: must not be cached, and obj may be gone
+      }
+      parentIt = g_siblingCache->byParent.insert(parent, indices);
     }
     const auto childIt = parentIt->constFind(obj);
     if (childIt != parentIt->constEnd()) {
@@ -288,7 +332,11 @@ int getSiblingIndex(QObject* obj, const QString& base) {
       continue;
     }
 
-    if (baseIdSegment(sibling) == base) {
+    const QString siblingBase = baseIdSegment(sibling);
+    if (objectsDied()) {
+      return -1;
+    }
+    if (siblingBase == base) {
       ++sameSegmentCount;
     }
   }
@@ -387,7 +435,12 @@ QObject* findBySegments(const QStringList& segments, int segmentIndex,
   bool isLastSegment = (segmentIndex == segments.size() - 1);
 
   for (QObject* obj : candidates) {
-    if (matchesSegment(obj, segment)) {
+    const bool matched = matchesSegment(obj, segment);
+    // The remaining candidates, and obj itself, may be dead.
+    if (objectsDied()) {
+      return nullptr;
+    }
+    if (matched) {
       if (isLastSegment) {
         return obj;
       }
@@ -432,13 +485,24 @@ QJsonObject serializeTreeRecursive(QObject* obj, int maxDepth, int currentDepth)
 
 }  // namespace
 
+void noteObjectDestroyed() {
+  ++g_destroyedHere;
+}
+
 QString generateIdSegment(QObject* obj) {
   if (!obj) {
     return QString();
   }
+  GenerationWatch watch;
 
   const QString base = baseIdSegment(obj);
+  if (objectsDied()) {
+    return QString();
+  }
   const int siblingIndex = getSiblingIndex(obj, base);
+  if (objectsDied()) {
+    return QString();
+  }
 
   if (siblingIndex > 0) {
     return base + QLatin1Char('#') + QString::number(siblingIndex);
@@ -515,6 +579,8 @@ QString generateObjectId(QObject* obj) {
     return QString();
   }
 
+  GenerationWatch watch;
+
   // Build path from root to object
   QStringList segments;
   QObject* current = obj;
@@ -532,6 +598,10 @@ QString generateObjectId(QObject* obj) {
       break;
     }
     segments.prepend(generateIdSegment(current));
+    // A getter destroyed something: current, or an ancestor still to be walked.
+    if (objectsDied()) {
+      return QString();
+    }
     current = effectiveParent(current);
   }
 
@@ -560,7 +630,12 @@ std::expected<QObject*, QString> findByObjectIdExpected(const QString& id, QObje
     searchRoots = getTopLevelObjects();
   }
 
+  GenerationWatch watch;
   QObject* found = findBySegments(segments, 0, searchRoots);
+  if (objectsDied()) {
+    return std::unexpected(
+        QStringLiteral("Objects were destroyed while resolving %1; try again").arg(id));
+  }
   if (!found) {
     return std::unexpected(QStringLiteral("Object not found by hierarchical path: %1").arg(id));
   }

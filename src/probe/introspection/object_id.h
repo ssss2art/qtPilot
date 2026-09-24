@@ -60,6 +60,14 @@ class QTPILOT_EXPORT IdGenerationScope {
   IdGenerationScope& operator=(IdGenerationScope&&) = delete;
 };
 
+/// @brief Record that a QObject is being destroyed on the calling thread.
+///
+/// Called from the registry's removal hook. ID generation reads the `text`
+/// property of objects it walks, and that getter is application code: it can
+/// destroy the object being identified, a sibling, or an ancestor. Generation
+/// uses this to notice and stop before it touches a pointer that may be dead.
+QTPILOT_EXPORT void noteObjectDestroyed();
+
 /// @brief Generate a hierarchical ID for a QObject.
 ///
 /// ID format: "segment/segment/segment" where each segment is:
@@ -72,6 +80,8 @@ class QTPILOT_EXPORT IdGenerationScope {
 ///
 /// @param obj The object to generate an ID for.
 /// @return The hierarchical ID string (e.g., "mainWindow/central/submitBtn").
+/// @return The ID, or an empty string if an object was destroyed while it was
+///         being built (see noteObjectDestroyed()).
 QTPILOT_EXPORT QString generateObjectId(QObject* obj);
 
 /// @brief The parent an ID path steps up to.
