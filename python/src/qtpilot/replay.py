@@ -149,7 +149,11 @@ SCENARIO_FORMAT = 1
 # is why this is a new `dir` value and not a new top-level key.
 FORMAT_DIR = "meta"
 
-VOLATILE_KEYS: frozenset[str] = frozenset({"ts", "dur_ms", "timestamp", "subscriptionId", "elapsedMs"})
+# "skippedForeignThread" counts the objects other threads owned at the instant of a search --
+# worker-thread churn, not anything the application under test did.
+VOLATILE_KEYS: frozenset[str] = frozenset(
+    {"ts", "dur_ms", "timestamp", "subscriptionId", "elapsedMs", "skippedForeignThread"}
+)
 
 
 # The JSON-RPC request id. Stripped only from the top level of an entry: nested "id" keys are

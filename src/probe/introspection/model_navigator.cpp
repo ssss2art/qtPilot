@@ -6,13 +6,12 @@
 #include "core/object_registry.h"
 #include "introspection/variant_json.h"
 
-#include <ranges>
-
 #include <QAbstractItemView>
 #include <QByteArray>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPointer>
 
 namespace qtPilot {
 
@@ -38,29 +37,39 @@ static const QHash<QString, int>& standardRoleNames() {
 QJsonArray ModelNavigator::listModels() {
   QJsonArray result;
   auto* registry = ObjectRegistry::instance();
-  const auto objects = registry->allObjects();
+  // Only models this thread owns (see collectOwned()). Describing one runs its
+  // rowCount()/columnCount()/roleNames() -- application code that may destroy it
+  // or a model after it -- so each is re-checked before it is touched again.
+  const OwnedObjects models =
+      registry->collectOwned(ObjectFilter{QStringLiteral("QAbstractItemModel"), QString()});
 
-  auto validModelObjects = objects | std::views::filter([registry](QObject* obj) {
-                             if (!obj || !registry->contains(obj))
-                               return false;
-                             auto* model = qobject_cast<QAbstractItemModel*>(obj);
-                             if (!model)
-                               return false;
-                             const QString className =
-                                 QString::fromLatin1(model->metaObject()->className());
-                             return !(className.startsWith(QLatin1Char('Q')) &&
-                                      className.contains(QStringLiteral("Internal")));
-                           });
-
-  for (QObject* obj : validModelObjects) {
-    auto* model = static_cast<QAbstractItemModel*>(obj);
+  for (const QPointer<QObject>& weak : models.objects) {
+    auto* model = qobject_cast<QAbstractItemModel*>(weak.data());
+    if (!model) {
+      continue;
+    }
     const QString className = QString::fromLatin1(model->metaObject()->className());
+    if (className.startsWith(QLatin1Char('Q')) && className.contains(QStringLiteral("Internal"))) {
+      continue;
+    }
     QJsonObject info;
-    info[QStringLiteral("objectId")] = registry->objectId(obj);
     info[QStringLiteral("className")] = className;
     info[QStringLiteral("rowCount")] = model->rowCount();
+    if (weak.isNull()) {
+      continue;
+    }
     info[QStringLiteral("columnCount")] = model->columnCount();
+    if (weak.isNull()) {
+      continue;
+    }
     info[QStringLiteral("roleNames")] = getRoleNames(model);
+    if (weak.isNull()) {
+      continue;
+    }
+    info[QStringLiteral("objectId")] = registry->objectId(model);
+    if (weak.isNull()) {
+      continue;
+    }
     result.append(info);
   }
 

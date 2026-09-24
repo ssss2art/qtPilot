@@ -20,6 +20,7 @@
 #include "introspection/signal_monitor.h"
 
 #include <QPointer>
+#include <QThread>
 #include <QWidget>
 // Unconditional: qtpilot.getGeometry casts to QWindow* outside the QML guard,
 // and <QWidget> only reaches qwindowdefs.h, which forward-declares QWindow.
@@ -365,12 +366,24 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     QString className = doc.object()["className"].toString();
     QString root = doc.object()["root"].toString();
 
-    QObject* rootObj = root.isEmpty() ? nullptr : ObjectRegistry::instance()->findById(root);
-    QList<QObject*> found = ObjectRegistry::instance()->findAllByClassName(className, rootObj);
+    auto* registry = ObjectRegistry::instance();
+    QObject* rootObj = root.isEmpty() ? nullptr : registry->findById(root);
+    if (rootObj && rootObj->thread() != QThread::currentThread()) {
+      throw std::runtime_error("Root object lives on another thread: " + root.toStdString());
+    }
+    // Only objects this thread owns (see collectOwned()). objectId() reads the
+    // `text` property of an unnamed object, and that getter may destroy it.
+    const OwnedObjects found = registry->collectOwned(ObjectFilter{className, QString()}, rootObj);
 
     QJsonArray ids;
-    for (QObject* obj : found) {
-      ids.append(ObjectRegistry::instance()->objectId(obj));
+    for (const QPointer<QObject>& weak : found.objects) {
+      if (weak.isNull()) {
+        continue;
+      }
+      const QString id = registry->objectId(weak.data());
+      if (!weak.isNull()) {
+        ids.append(id);
+      }
     }
 
     return QString::fromUtf8(

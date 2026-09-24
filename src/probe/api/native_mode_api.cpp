@@ -40,6 +40,7 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QPointer>
+#include <QThread>
 #include <QTreeView>
 #include <QWidget>
 #include <QWindow>
@@ -936,61 +937,74 @@ void NativeModeApi::registerObjectMethods() {
                             {QStringLiteral("root"), rootId}});
           }
           rootObj = *rootRes;
+          if (rootObj->thread() != QThread::currentThread()) {
+            throw JsonRpcException(
+                JsonRpcError::kInvalidParams,
+                QStringLiteral("Root object lives on another thread and cannot be searched: %1")
+                    .arg(rootId),
+                QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")},
+                            {QStringLiteral("root"), rootId}});
+          }
         }
 
-        // Collect under the registry lock, then evaluate each candidate through
-        // withLive(). Property filters run application getters, and the target may be
-        // pumping a nested event loop or tearing objects down on other threads, so any
-        // candidate can be gone by the time it is looked at. Those are skipped and
-        // counted, never dereferenced.
+        // Only objects this thread owns are looked at (see collectOwned()). Each
+        // candidate is then watched through a QPointer: property filters and ID
+        // generation run application getters, which may destroy it -- or any
+        // candidate after it. Those are skipped and counted, never dereferenced.
+        // No registry lock is held here, so a getter that waits on a thread that
+        // creates objects cannot deadlock against the creation hook.
         auto* registry = ObjectRegistry::instance();
-        const QList<LiveObjectRef> candidates =
-            registry->collectLive(ObjectFilter{className, objectName}, rootObj);
+        const OwnedObjects candidates =
+            registry->collectOwned(ObjectFilter{className, objectName}, rootObj);
 
         enum class Skip { Destroyed, Mismatch };
+        using Candidate = QPointer<QObject>;
 
-        auto matchProperties = [&](const LiveObjectRef& ref,
-                                   QObject* obj) -> std::expected<QObject*, Skip> {
+        auto alive = [](const Candidate& weak) -> std::expected<QObject*, Skip> {
+          if (weak.isNull()) {
+            return std::unexpected(Skip::Destroyed);
+          }
+          return weak.data();
+        };
+
+        auto matchProperties = [&](const Candidate& weak) -> std::expected<QObject*, Skip> {
           for (auto it = propFilters.constBegin(); it != propFilters.constEnd(); ++it) {
-            auto propRes = MetaInspector::getPropertyExpected(obj, it.key());
-            // The getter is application code and may have destroyed obj itself.
-            if (!registry->isAlive(ref)) {
+            auto propRes = MetaInspector::getPropertyExpected(weak.data(), it.key());
+            if (weak.isNull()) {
               return std::unexpected(Skip::Destroyed);
             }
             if (!propRes.has_value() || *propRes != it.value()) {
               return std::unexpected(Skip::Mismatch);
             }
           }
-          return obj;
+          return weak.data();
         };
 
-        auto describeMatch = [registry](QObject* obj) -> std::expected<QJsonObject, Skip> {
-          QJsonObject entry;
-          entry[QStringLiteral("objectId")] = registry->objectId(obj);
-          entry[QStringLiteral("className")] = QString::fromUtf8(obj->metaObject()->className());
-          entry[QStringLiteral("objectName")] = obj->objectName();
-          entry[QStringLiteral("numericId")] = ObjectResolver::assignNumericId(obj);
-          return entry;
-        };
-
-        auto evaluate = [&](const LiveObjectRef& ref) -> std::expected<QJsonObject, Skip> {
-          return registry
-              ->withLive(
-                  ref,
-                  [&](QObject* obj) { return matchProperties(ref, obj).and_then(describeMatch); })
-              .transform_error([](ObjectDestroyed) { return Skip::Destroyed; })
-              .and_then([](std::expected<QJsonObject, Skip> inner) { return inner; });
+        auto describeMatch = [&](const Candidate& weak) -> std::expected<QJsonObject, Skip> {
+          // objectId() reads the `text` property of an unnamed object: another getter.
+          const QString objId = registry->objectId(weak.data());
+          return alive(weak).transform([&](QObject* obj) {
+            QJsonObject entry;
+            entry[QStringLiteral("objectId")] = objId;
+            entry[QStringLiteral("className")] = QString::fromUtf8(obj->metaObject()->className());
+            entry[QStringLiteral("objectName")] = obj->objectName();
+            entry[QStringLiteral("numericId")] = ObjectResolver::assignNumericId(obj);
+            return entry;
+          });
         };
 
         QJsonArray matches;
         bool truncated = false;
         int skippedDestroyed = 0;
-        for (const LiveObjectRef& ref : candidates) {
-          if (matches.size() >= limit) {
+        for (const Candidate& weak : candidates.objects) {
+          const auto matched =
+              alive(weak).and_then([&](QObject*) { return matchProperties(weak); });
+          // Only a real match beyond the limit makes the result truncated.
+          if (matched && matches.size() >= limit) {
             truncated = true;
             break;
           }
-          const auto outcome = evaluate(ref);
+          const auto outcome = matched.and_then([&](QObject*) { return describeMatch(weak); });
           if (outcome) {
             matches.append(*outcome);
           } else if (outcome.error() == Skip::Destroyed) {
@@ -1004,6 +1018,9 @@ void NativeModeApi::registerObjectMethods() {
         result[QStringLiteral("truncated")] = truncated;
         if (skippedDestroyed > 0) {
           result[QStringLiteral("skippedDestroyed")] = skippedDestroyed;
+        }
+        if (candidates.skippedForeignThread > 0) {
+          result[QStringLiteral("skippedForeignThread")] = candidates.skippedForeignThread;
         }
         return envelopeToString(ResponseEnvelope::wrap(result));
       });

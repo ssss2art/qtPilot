@@ -410,11 +410,24 @@ void ObjectRegistry::ensureNameTrackingLocked(QObject* obj) {
     if (m_nameTracked.contains(node)) {
       continue;
     }
+    // Only objects this thread owns. A connect() to another thread's object races
+    // that thread's destructor: ~QObject clears an object's connections before it
+    // reaches the removal hook, so a connection made in between is never cleared.
+    // Ancestors share their child's thread, so there is nothing further up either.
+    if (node->thread() != QThread::currentThread()) {
+      break;
+    }
+    // An object being destroyed by this thread -- reached from an event loop
+    // pumped inside its destructor -- has already had its connections cleared.
+    if (QObjectPrivate::get(node)->wasDeleted) {
+      continue;
+    }
+    m_nameTracked.insert(node);
 
     QObject* target = node;
     // QueuedConnection: the slot runs on the registry's (main) thread and re-locks the
     // mutex, so it must not run synchronously inside this locked section.
-    const QMetaObject::Connection refresh = connect(
+    connect(
         target, &QObject::objectNameChanged, this,
         [this, target]() {
           {
@@ -427,17 +440,6 @@ void ObjectRegistry::ensureNameTrackingLocked(QObject* obj) {
           refreshDescendantIds(target);
         },
         Qt::QueuedConnection);
-
-    // ~QObject clears an object's connections before it reaches the removal hook.
-    // An ancestor destroying its children on another thread is past that point, yet
-    // still registered while its children wait on this lock -- and a connection made
-    // to it now is never cleared, leaving the registry with a dangling sender. The
-    // connect() above took the lock that teardown releases, so the flag is current.
-    if (QObjectPrivate::get(target)->wasDeleted) {
-      disconnect(refresh);
-      continue;
-    }
-    m_nameTracked.insert(node);
   }
 }
 
@@ -452,14 +454,25 @@ QList<QObject*> ObjectRegistry::allObjects(QObject* root) {
   return result;
 }
 
-QList<LiveObjectRef> ObjectRegistry::collectLive(const ObjectFilter& filter, QObject* root) {
+OwnedObjects ObjectRegistry::collectOwned(const ObjectFilter& filter, QObject* root) {
   std::unique_lock<std::recursive_mutex> lock(m_mutex);
   const QByteArray classNameBytes = filter.className.toLatin1();
-  QThread* const collectingThread = QThread::currentThread();
+  QThread* const here = QThread::currentThread();
 
-  QList<LiveObjectRef> result;
+  OwnedObjects result;
   auto keep = [&](QObject* obj) {
     if (!obj) {
+      return;
+    }
+    // Reading a foreign object's thread affinity is the one look it gets: its
+    // memory stays valid while we hold the lock, since its removal hook waits.
+    if (obj->thread() != here) {
+      ++result.skippedForeignThread;
+      return;
+    }
+    // Ours, so nothing else can be changing it. It may still be mid-destruction
+    // if this runs in an event loop pumped from inside a destructor.
+    if (QObjectPrivate::get(obj)->wasDeleted) {
       return;
     }
     if (!classNameBytes.isEmpty() && !metaInheritsClassName(obj->metaObject(), classNameBytes)) {
@@ -468,7 +481,7 @@ QList<LiveObjectRef> ObjectRegistry::collectLive(const ObjectFilter& filter, QOb
     if (!filter.objectName.isEmpty() && obj->objectName() != filter.objectName) {
       return;
     }
-    result.append(LiveObjectRef(obj, obj->thread() == collectingThread));
+    result.objects.append(QPointer<QObject>(obj));
   };
 
   if (!root) {
@@ -478,6 +491,7 @@ QList<LiveObjectRef> ObjectRegistry::collectLive(const ObjectFilter& filter, QOb
     return result;
   }
 
+  // A QObject's children share its thread, so a subtree of an owned root is ours.
   QList<QObject*> subtree;
   QSet<QObject*> visited;
   collectEffectiveSubtreeHelper(root, subtree, visited);
@@ -485,32 +499,6 @@ QList<LiveObjectRef> ObjectRegistry::collectLive(const ObjectFilter& filter, QOb
     keep(obj);
   }
   return result;
-}
-
-bool ObjectRegistry::isAlive(const LiveObjectRef& ref) const {
-  std::unique_lock<std::recursive_mutex> lock(m_mutex);
-  return liveObjectLocked(ref) != nullptr;
-}
-
-QObject* ObjectRegistry::liveObjectLocked(const LiveObjectRef& ref) const {
-  // Caller holds m_mutex.
-  if (ref.m_ownedHere) {
-    return ref.m_weak.data();
-  }
-  // Another thread's object: registry membership is the authority. Its removal
-  // hook cannot complete while we hold the lock, so a member is not yet freed.
-  if (!m_objects.contains(ref.m_raw)) {
-    return nullptr;
-  }
-  // Not freed is not the same as usable. ~QObject tears down the object's
-  // connections and children BEFORE it reaches the removal hook, so an object
-  // parked there -- waiting for this very lock -- still looks registered. A
-  // connect() made to it now (objectId() and numeric IDs both make one) outlives
-  // the object and leaves every receiver holding a dangling sender.
-  if (QObjectPrivate::get(ref.m_raw)->wasDeleted) {
-    return nullptr;
-  }
-  return ref.m_raw;
 }
 
 int ObjectRegistry::objectCount() const {

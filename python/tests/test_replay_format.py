@@ -577,3 +577,22 @@ def test_sync_calls_in_recorded_session_are_not_unsupported(tmp_path) -> None:
     assert sync_obs[0].result == {"synced": True}
 
 
+
+
+def test_search_observations_drop_the_count_of_other_threads_objects(tmp_path) -> None:
+    """How many objects worker threads own at the moment of a search is not app behaviour."""
+    entries = [
+        {"dir": "req", "id": 1, "method": "qt.ui.click", "params": {"objectId": "btn"}},
+        {"dir": "res", "id": 1, "method": "qt.ui.click", "result": {"ok": True}},
+        {"dir": "req", "id": 2, "method": "qt.objects.search", "params": {"objectName": "x"}},
+        {
+            "dir": "res",
+            "id": 2,
+            "method": "qt.objects.search",
+            "result": {"count": 0, "skippedForeignThread": 17},
+        },
+    ]
+    scenario = load_scenario(write(tmp_path, entries))
+
+    search = [obs for obs in scenario.steps[1].observations if obs.method == "qt.objects.search"]
+    assert search[0].result == {"count": 0}
