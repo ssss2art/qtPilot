@@ -163,6 +163,9 @@ void qtpilotAddObjectHook(QObject* obj) {
 }
 
 void qtpilotRemoveObjectHook(QObject* obj) {
+  // First, and unconditionally: ID generation on this thread relies on hearing
+  // about every destruction that happens while it runs.
+  qtPilot::noteObjectDestroyed();
   try {
     auto prevRemove = g_previousRemoveCallback.load(std::memory_order_acquire);
     // Guard against re-entry during singleton creation
@@ -556,6 +559,11 @@ QString ObjectRegistry::objectId(QObject* obj) {
   // are stable) and cache it. Caching here is what keeps findById() correct: a client can
   // only ever hold an ID we handed out, and handing one out populates m_idToObject.
   QString id = generateObjectId(obj);
+  // Empty when an object was destroyed while the ID was built -- possibly obj.
+  // Nothing to cache, and obj must not be touched again.
+  if (id.isEmpty()) {
+    return id;
+  }
 
   // Only cache IDs for objects we actually track; untracked objects get a transient ID.
   if (!m_objects.contains(obj)) {

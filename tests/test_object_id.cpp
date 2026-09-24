@@ -9,6 +9,7 @@
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QPointer>
 #include <QPushButton>
 #include <QWindow>
 #include <QWidget>
@@ -27,6 +28,28 @@ using namespace qtPilot::test;
 /// - ClassName with sibling disambiguation
 /// - findById lookup
 /// - Tree serialization to JSON
+namespace {
+
+/// @brief Its `text` getter deletes whatever `victim` points at, possibly itself.
+///
+/// ID generation reads `text` for any object without an objectName -- the
+/// object's own, and its same-class siblings' -- so this is application code
+/// running in the middle of building an ID.
+class TextVictimizer : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(QString text READ text)
+
+ public:
+  using QObject::QObject;
+  QPointer<QObject> victim;
+  QString text() const {
+    delete victim.data();
+    return QStringLiteral("label");
+  }
+};
+
+}  // namespace
+
 class TestObjectId : public QObject {
   Q_OBJECT
 
@@ -48,6 +71,9 @@ class TestObjectId : public QObject {
   void testSerializeTree();
   void testSerializeTreeDepthLimit();
   void testFindByObjectIdExpectedMonadic();
+  void testIdGenerationStopsWhenTheObjectDiesDuringIt();
+  void testIdGenerationStopsWhenASiblingDiesDuringIt();
+  void testRegistryDoesNotCacheAnIdItCouldNotFinish();
 
  private:
   QWidget* m_testWindow = nullptr;
@@ -439,6 +465,38 @@ void TestObjectId::testFindByObjectIdExpectedMonadic() {
   auto missingRes = findByObjectIdExpected(QStringLiteral("nonexistent/path"), &parent);
   QVERIFY(!missingRes.has_value());
   QVERIFY(!missingRes.error().isEmpty());
+}
+
+// Everything after the getter would read the freed object: its parent, its
+// siblings. An ID that could not be finished is no ID at all.
+void TestObjectId::testIdGenerationStopsWhenTheObjectDiesDuringIt() {
+  QObject parent;
+  auto* doomed = new TextVictimizer(&parent);
+  doomed->victim = doomed;
+
+  QEXPECT_THAT(generateObjectId(doomed), QIsEmpty());
+}
+
+// Disambiguating a segment reads its same-class siblings' `text` too.
+void TestObjectId::testIdGenerationStopsWhenASiblingDiesDuringIt() {
+  QObject parent;
+  auto* target = new TextVictimizer(&parent);
+  auto* killer = new TextVictimizer(&parent);
+  killer->victim = target;
+
+  QEXPECT_THAT(generateObjectId(target), QIsEmpty());
+}
+
+void TestObjectId::testRegistryDoesNotCacheAnIdItCouldNotFinish() {
+  QObject parent;
+  auto* target = new TextVictimizer(&parent);
+  auto* killer = new TextVictimizer(&parent);
+  killer->victim = target;
+  ObjectRegistry::instance()->scanExistingObjects(&parent);
+
+  QEXPECT_THAT(ObjectRegistry::instance()->objectId(target), QIsEmpty());
+  // The killer's getter has nothing left to delete, so its ID can now be built.
+  QEXPECT_THAT(ObjectRegistry::instance()->objectId(killer), QStrContains("text_label"));
 }
 
 QTEST_MAIN(TestObjectId)

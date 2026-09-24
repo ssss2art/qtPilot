@@ -66,10 +66,11 @@ QJsonArray ModelNavigator::listModels() {
     if (weak.isNull()) {
       continue;
     }
-    info[QStringLiteral("objectId")] = registry->objectId(model);
-    if (weak.isNull()) {
+    const QString id = registry->objectId(model);
+    if (weak.isNull() || id.isEmpty()) {
       continue;
     }
+    info[QStringLiteral("objectId")] = id;
     result.append(info);
   }
 
