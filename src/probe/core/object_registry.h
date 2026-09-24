@@ -8,6 +8,7 @@
 #include <atomic>
 #include <expected>
 #include <mutex>
+#include <type_traits>
 
 #include <QHash>
 #include <QObject>
@@ -19,6 +20,47 @@ void qtpilotAddObjectHook(QObject*);
 void qtpilotRemoveObjectHook(QObject*);
 
 namespace qtPilot {
+
+/// @brief Which objects ObjectRegistry::collectLive() keeps.
+///
+/// Plain data rather than a callback on purpose: the filter runs with the
+/// registry lock held, so it may only look at what cannot run application code.
+struct ObjectFilter {
+  QString className;   ///< Subclass-aware; empty matches any class.
+  QString objectName;  ///< Exact; empty matches any name.
+};
+
+/// @brief Tag for "the object a LiveObjectRef referred to has been destroyed".
+struct ObjectDestroyed {};
+
+/// @brief A collected object that can say later, safely, whether it still exists.
+///
+/// A raw pointer taken from the registry goes stale the moment the registry lock
+/// is released: application code (a property getter, a nested event loop) or
+/// another thread may destroy the object before the pointer is next read. Only
+/// ObjectRegistry creates these and only it can turn one back into a pointer, via
+/// withLive(), which does so under the lock.
+class LiveObjectRef {
+ public:
+  LiveObjectRef() = default;
+
+ private:
+  friend class ObjectRegistry;
+  LiveObjectRef(QObject* raw, bool ownedByCollectingThread)
+      : m_raw(raw), m_ownedHere(ownedByCollectingThread) {
+    // A QPointer is only created for objects owned by the collecting thread. For
+    // those it is exact, and it also survives the address being reused. For an
+    // object on another thread it is not safe: one created after that thread has
+    // entered ~QObject, but before the registry's removal hook, never gets cleared.
+    if (ownedByCollectingThread) {
+      m_weak = raw;
+    }
+  }
+
+  QObject* m_raw = nullptr;
+  QPointer<QObject> m_weak;
+  bool m_ownedHere = false;
+};
 
 /// @brief Registry that tracks all QObjects in the target application.
 ///
@@ -82,7 +124,36 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// @brief Get all tracked objects, optionally within a subtree.
   /// @param root Optional root object to search within (nullptr = all objects).
   /// @return List of all objects currently in the registry or subtree.
+  /// @warning The pointers are only guaranteed valid while nothing else runs.
+  ///          Prefer collectLive() whenever application code or other threads
+  ///          may run before the last pointer is read.
   QList<QObject*> allObjects(QObject* root = nullptr);
+
+  /// @brief Collect the objects that satisfy @p filter as LiveObjectRefs.
+  /// @param filter Matched under the registry lock (see ObjectFilter).
+  /// @param root Optional root object to search within (nullptr = all objects).
+  QList<LiveObjectRef> collectLive(const ObjectFilter& filter, QObject* root = nullptr);
+
+  /// @brief Whether the object behind @p ref still exists.
+  bool isAlive(const LiveObjectRef& ref) const;
+
+  /// @brief Run @p fn on the object behind @p ref, if it still exists.
+  ///
+  /// The registry lock is held while @p fn runs. Every QObject destructor passes
+  /// through the registry's removal hook, which takes the same lock, so the
+  /// object cannot be freed out from under @p fn -- not even from another
+  /// thread. Code inside @p fn that may destroy the object itself (an
+  /// application getter) must check isAlive() again before touching it.
+  template <typename Fn>
+  auto withLive(const LiveObjectRef& ref, Fn&& fn)
+      -> std::expected<std::invoke_result_t<Fn, QObject*>, ObjectDestroyed> {
+    std::unique_lock<std::recursive_mutex> lock(m_mutex);
+    QObject* obj = liveObjectLocked(ref);
+    if (!obj) {
+      return std::unexpected(ObjectDestroyed{});
+    }
+    return std::forward<Fn>(fn)(obj);
+  }
 
   /// @brief Get the number of tracked objects.
   /// @return Object count.
@@ -183,6 +254,9 @@ class QTPILOT_EXPORT ObjectRegistry : public QObject {
   /// Caller must hold m_mutex. The suffix counter is monotonic per base ID, so a
   /// suffix freed by a destroyed object is never handed to a different object.
   QString allocateUniqueIdLocked(const QString& baseId, QObject* obj);
+
+  /// @brief The object behind @p ref, or nullptr if it is gone. Caller holds m_mutex.
+  QObject* liveObjectLocked(const LiveObjectRef& ref) const;
 
   /// @brief Lazily wire objectName-change auto-refresh for an object and its ancestors.
   /// Called from objectId() the first time an object is introspected, so never-queried
