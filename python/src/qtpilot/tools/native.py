@@ -296,13 +296,58 @@ def register_native_tools(mcp: FastMCP) -> None:
     @mcp.tool
     async def qt_signals_subscribe(objectId: str, signal: str, ctx: Context = None) -> dict:
         """Subscribe to a signal on an object.
+
+        Emissions are kept from this moment on, so qt_signals_wait on the
+        returned subscriptionId also sees one that fired before the wait.
         Example: qt_signals_subscribe(objectId="button", signal="clicked")
         """
         from qtpilot.server import require_probe
+        from qtpilot.signal_wait import signal_waiter_for
 
-        return await require_probe().call(
+        probe = require_probe()
+        signal_waiter_for(probe)  # listening before the first emission can arrive
+        return await probe.call(
             "qt.signals.subscribe", {"objectId": objectId, "signal": signal}
         )
+
+    @mcp.tool
+    async def qt_signals_wait(
+        objectId: str | None = None,
+        signal: str | None = None,
+        subscriptionId: str | None = None,
+        timeout: float = 5.0,
+        ctx: Context = None,
+    ) -> dict:
+        """Block until a signal fires, or until timeout seconds pass.
+
+        Either wait on a subscription made earlier with qt_signals_subscribe
+        (race-free: subscribe, act, then wait), or pass objectId and signal to
+        subscribe, wait and unsubscribe in one call. Returns {"emitted": true,
+        "signal", "arguments", ...} or {"emitted": false, "timedOut": true}.
+        Example: qt_signals_wait(subscriptionId="sub_1", timeout=10)
+        """
+        from qtpilot.server import require_probe
+        from qtpilot.signal_wait import signal_waiter_for
+
+        if subscriptionId is None and (objectId is None or signal is None):
+            raise ValueError("Pass subscriptionId, or both objectId and signal")
+
+        probe = require_probe()
+        waiter = signal_waiter_for(probe)
+        if subscriptionId is not None:
+            outcome = await waiter.wait(subscriptionId, timeout)
+            return outcome.fold(lambda emitted: emitted.to_dict(), lambda late: late.to_dict())
+
+        subscribed = await probe.call(
+            "qt.signals.subscribe", {"objectId": objectId, "signal": signal}
+        )
+        own_subscription = subscribed["subscriptionId"]
+        try:
+            outcome = await waiter.wait(own_subscription, timeout)
+        finally:
+            waiter.forget(own_subscription)
+            await probe.call("qt.signals.unsubscribe", {"subscriptionId": own_subscription})
+        return outcome.fold(lambda emitted: emitted.to_dict(), lambda late: late.to_dict())
 
     @mcp.tool
     async def qt_signals_unsubscribe(subscriptionId: str, ctx: Context = None) -> dict:
@@ -310,8 +355,11 @@ def register_native_tools(mcp: FastMCP) -> None:
         Example: qt_signals_unsubscribe(subscriptionId="sub_1")
         """
         from qtpilot.server import require_probe
+        from qtpilot.signal_wait import signal_waiter_for
 
-        return await require_probe().call(
+        probe = require_probe()
+        signal_waiter_for(probe).forget(subscriptionId)
+        return await probe.call(
             "qt.signals.unsubscribe", {"subscriptionId": subscriptionId}
         )
 

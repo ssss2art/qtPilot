@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from qtpilot.replay import ReplayResult
+    from qtpilot.signal_wait import SignalWaitResult
 
 
 class ReplayExpectation:
@@ -72,3 +73,34 @@ class ReplayExpectation:
 def expect_replay(result: ReplayResult) -> ReplayExpectation:
     """Entry point for fluent replay assertions."""
     return ReplayExpectation(result)
+
+
+class SignalWaitExpectation:
+    """Fluent expectation wrapper for the outcome of waiting on a signal."""
+
+    def __init__(self, result: SignalWaitResult) -> None:
+        self._result = result
+
+    def to_emit(
+        self, signal: str | None = None, arguments: list[Any] | None = None
+    ) -> SignalWaitExpectation:
+        """Assert the signal fired, optionally with this name and these arguments."""
+        assert self._result.is_ok(), f"Expected an emission, got {self._result.unwrap_err()}"
+        emitted = self._result.unwrap()
+        if signal is not None:
+            assert emitted.signal == signal, f"Expected signal {signal!r}, got {emitted.signal!r}"
+        if arguments is not None:
+            assert list(emitted.arguments) == arguments, (
+                f"Expected arguments {arguments!r}, got {list(emitted.arguments)!r}"
+            )
+        return self
+
+    def to_time_out(self) -> SignalWaitExpectation:
+        """Assert that nothing was emitted before the timeout."""
+        assert self._result.is_err(), f"Expected a timeout, got {self._result.unwrap()}"
+        return self
+
+
+def expect_signal_wait(result: SignalWaitResult) -> SignalWaitExpectation:
+    """Entry point for fluent signal-wait assertions."""
+    return SignalWaitExpectation(result)
