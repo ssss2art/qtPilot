@@ -97,7 +97,13 @@ class SignalWaitExpectation:
 
     def to_time_out(self) -> SignalWaitExpectation:
         """Assert that nothing was emitted before the timeout."""
-        assert self._result.is_err(), f"Expected a timeout, got {self._result.unwrap()}"
+        return self.to_fail_as("timedOut")
+
+    def to_fail_as(self, reason: str) -> SignalWaitExpectation:
+        """Assert the wait ended without an emission, for this reason."""
+        assert self._result.is_err(), f"Expected {reason}, got {self._result.unwrap()}"
+        actual = self._result.unwrap_err().reason
+        assert actual == reason, f"Expected {reason}, got {actual}"
         return self
 
 
