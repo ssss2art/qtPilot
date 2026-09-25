@@ -154,6 +154,28 @@ QString baseIdSegment(QObject* obj) {
   return QString::fromLatin1(obj->metaObject()->className());
 }
 
+/// @brief Where an object's segment lands among its effective siblings.
+struct SiblingSlot {
+  /// 1-based `#N` suffix, or -1 when the base segment is already unique.
+  int index = -1;
+  /// The base came from a QML id that siblings share, and this object's
+  /// objectName is unique among them, so the objectName is the segment instead.
+  bool useObjectName = false;
+};
+
+/// @brief The objectName a shared QML id could yield to, or empty if none.
+///
+/// Only objectName sits below a QML id in baseIdSegment()'s priorities, so a
+/// non-empty name that differs from the base means the base came from the id.
+/// A name containing '#' is refused: it could spell another sibling's `id#N`.
+QString promotableObjectName(QObject* obj, const QString& base) {
+  QString name = obj->objectName();
+  if (name.isEmpty() || name == base || name.contains(QLatin1Char('#'))) {
+    return QString();
+  }
+  return name;
+}
+
 /// @brief Per-parent sibling-suffix memo, live only inside an IdGenerationScope.
 ///
 /// Nesting is reference-counted so an inner scope shares the outer cache; only the
@@ -161,8 +183,7 @@ QString baseIdSegment(QObject* obj) {
 /// thread that owns the objects, and a scope must never leak across threads.
 struct SiblingIndexCache {
   int depth = 0;
-  // parent -> (child -> suffix, where -1 means "segment already unique")
-  QHash<QObject*, QHash<QObject*, int>> byParent;
+  QHash<QObject*, QHash<QObject*, SiblingSlot>> byParent;
 };
 
 thread_local SiblingIndexCache* g_siblingCache = nullptr;
@@ -174,11 +195,12 @@ thread_local SiblingIndexCache* g_siblingCache = nullptr;
 /// parent rather than once per child. Enumeration order and equality match the
 /// direct scan exactly, so the suffixes are the same ones the unscoped path would
 /// hand out.
-QHash<QObject*, int> buildSiblingIndices(QObject* parent) {
+QHash<QObject*, SiblingSlot> buildSiblingIndices(QObject* parent) {
   const QList<QObject*> children = effectiveChildren(parent);
 
   QHash<QString, QList<QObject*>> bySegment;
   bySegment.reserve(children.size());
+  QHash<QString, int> nameCounts;
   for (QObject* child : children) {
     if (!child) {
       continue;
@@ -187,29 +209,46 @@ QHash<QObject*, int> buildSiblingIndices(QObject* parent) {
     if (objectsDied()) {
       return {};  // the remaining children may be dead
     }
+    const QString name = child->objectName();
+    if (!name.isEmpty()) {
+      ++nameCounts[name];
+    }
   }
 
-  QHash<QObject*, int> indices;
+  QHash<QObject*, SiblingSlot> indices;
   indices.reserve(children.size());
   for (auto it = bySegment.constBegin(); it != bySegment.constEnd(); ++it) {
     const QList<QObject*>& group = it.value();
     if (group.size() <= 1) {
       // Unique segment: no suffix, so ids for unambiguous objects are unchanged.
       for (QObject* member : group) {
-        indices.insert(member, -1);
+        indices.insert(member, SiblingSlot{});
       }
       continue;
     }
     int position = 0;
     for (QObject* member : group) {
-      indices.insert(member, ++position);  // 1-based, for human readability
+      SiblingSlot slot;
+      slot.index = ++position;  // 1-based, for human readability
+      // The same test as the direct scan: no sibling shares the name, and none
+      // emits it as its own base segment.
+      const QString name = promotableObjectName(member, it.key());
+      slot.useObjectName = !name.isEmpty() && nameCounts.value(name) == 1 && !bySegment.contains(name);
+      indices.insert(member, slot);
     }
   }
   return indices;
 }
 
 /// @brief Position of this object among the effective siblings that would emit
-/// the same base segment. Returns -1 when the base segment is already unique.
+/// the same base segment (index -1 when the base segment is already unique), and
+/// whether a shared QML id yields to the object's unique objectName.
+///
+/// A QML id is per-declaration, so every delegate of a Repeater shares it and
+/// the position is all that tells them apart: `row#2` says nothing about which
+/// row it is. When the object's objectName is unique among its siblings and no
+/// sibling emits it as a segment, the objectName is the better segment. Members
+/// that cannot take their name keep the position they always had.
 ///
 /// Two things matter here, and both were previously wrong for QML delegates:
 ///
@@ -226,9 +265,9 @@ QHash<QObject*, int> buildSiblingIndices(QObject* parent) {
 /// resolves by path. The registry's `~N` collision suffix cannot be reproduced
 /// that way, which is why it must remain a last resort rather than the mechanism
 /// delegates rely on.
-int getSiblingIndex(QObject* obj, const QString& base) {
+SiblingSlot placeAmongSiblings(QObject* obj, const QString& base) {
   if (!obj || base.isEmpty()) {
-    return -1;
+    return {};
   }
 
   QObject* parent = effectiveParent(obj);
@@ -240,7 +279,7 @@ int getSiblingIndex(QObject* obj, const QString& base) {
     if (qobject_cast<QWindow*>(obj)) {
       auto* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
       if (!guiApp) {
-        return -1;
+        return {};
       }
       int sameSegmentCount = 0;
       int indexAmongSame = -1;
@@ -248,7 +287,7 @@ int getSiblingIndex(QObject* obj, const QString& base) {
       for (QWindow* w : windows) {
         const QString windowBase = baseIdSegment(w);
         if (objectsDied()) {
-          return -1;
+          return {};
         }
         if (windowBase == base) {
           if (w == obj) {
@@ -258,12 +297,12 @@ int getSiblingIndex(QObject* obj, const QString& base) {
         }
       }
       if (sameSegmentCount <= 1) {
-        return -1;
+        return {};
       }
-      return indexAmongSame + 1;
+      return SiblingSlot{indexAmongSame + 1, false};
     }
     // Other parentless objects: no disambiguation context.
-    return -1;
+    return {};
   }
 
   // Inside a traversal scope, the whole group was (or can be) settled in one pass.
@@ -273,9 +312,9 @@ int getSiblingIndex(QObject* obj, const QString& base) {
   if (g_siblingCache != nullptr) {
     auto parentIt = g_siblingCache->byParent.constFind(parent);
     if (parentIt == g_siblingCache->byParent.constEnd()) {
-      QHash<QObject*, int> indices = buildSiblingIndices(parent);
+      QHash<QObject*, SiblingSlot> indices = buildSiblingIndices(parent);
       if (objectsDied()) {
-        return -1;  // incomplete: must not be cached, and obj may be gone
+        return {};  // incomplete: must not be cached, and obj may be gone
       }
       parentIt = g_siblingCache->byParent.insert(parent, indices);
     }
@@ -315,6 +354,10 @@ int getSiblingIndex(QObject* obj, const QString& base) {
   // handing out duplicate IDs, which is the one thing an ID must never do.
   const QMetaObject* objMeta = obj->metaObject();
   const bool baseFromText = base.startsWith(QLatin1String("text_"));
+  const QString name = promotableObjectName(obj, base);
+  // Whether a sibling shares `name` or emits it as its segment. Tracked in the
+  // same pass; it only matters if the base turns out to collide.
+  bool nameTaken = name.isEmpty();
 
   const QList<QObject*> siblings = effectiveChildren(parent);
   for (QObject* sibling : siblings) {
@@ -335,27 +378,38 @@ int getSiblingIndex(QObject* obj, const QString& base) {
     // a declared QML id we cannot see without asking.
     const bool sameClass = qstrcmp(sibling->metaObject()->className(), objMeta->className()) == 0;
     const bool mayCarryQmlId = isQmlItem(sibling);
-    if (!sameClass && !baseFromText && !mayCarryQmlId && sibling->objectName() != base) {
+    const QString siblingName = sibling->objectName();
+    if (!nameTaken && siblingName == name) {
+      nameTaken = true;
+    }
+    // Could the sibling's base be `name`? Only through its objectName (just
+    // checked), a QML id, a `text` property, or its class name.
+    const bool mayEmitName = !nameTaken && (mayCarryQmlId || name.startsWith(QLatin1String("text_")) ||
+                                            name == QLatin1String(sibling->metaObject()->className()));
+    if (!sameClass && !baseFromText && !mayCarryQmlId && siblingName != base && !mayEmitName) {
       continue;
     }
 
     const QString siblingBase = baseIdSegment(sibling);
     if (objectsDied()) {
-      return -1;
+      return {};
     }
     if (siblingBase == base) {
       ++sameSegmentCount;
+    }
+    if (siblingBase == name) {
+      nameTaken = true;
     }
   }
 
   // Unique already: no suffix, so existing IDs for unambiguous objects are
   // unchanged.
   if (sameSegmentCount <= 1) {
-    return -1;
+    return {};
   }
 
   // 1-based for human readability.
-  return indexAmongSame + 1;
+  return SiblingSlot{indexAmongSame + 1, !nameTaken};
 }
 
 /// @brief Get all top-level objects (those without parents).
@@ -506,13 +560,16 @@ QString generateIdSegment(QObject* obj) {
   if (objectsDied()) {
     return QString();
   }
-  const int siblingIndex = getSiblingIndex(obj, base);
+  const SiblingSlot slot = placeAmongSiblings(obj, base);
   if (objectsDied()) {
     return QString();
   }
 
-  if (siblingIndex > 0) {
-    return base + QLatin1Char('#') + QString::number(siblingIndex);
+  if (slot.useObjectName) {
+    return obj->objectName();
+  }
+  if (slot.index > 0) {
+    return base + QLatin1Char('#') + QString::number(slot.index);
   }
 
   return base;

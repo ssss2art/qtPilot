@@ -191,7 +191,10 @@ Naming delegates is still worth doing, for legibility rather than correctness. A
 are restacked; an index-derived `objectName: "row" + index` is stable and reads
 better in a tree dump. Note that a QML `id:` and a constant `objectName` are
 per-declaration, not per-instance -- every row of `delegate: Rectangle { id: row }`
-produces the segment `row`, and the probe disambiguates them positionally.
+produces the segment `row`, and the probe disambiguates them positionally. Give
+those rows an objectName that is unique among them and each is addressed by that
+name instead, so `delegate: Rectangle { id: row; objectName: "row" + index }`
+yields `.../row0`, `.../row1` rather than `.../row#1`, `.../row#2`.
 
 ## Security
 
