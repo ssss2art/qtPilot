@@ -159,6 +159,7 @@ class TestNativeModeApi : public QObject {
 
   // System methods
   void testPing();
+  void testPingIdentifiesProcess();
   void testVersion();
   void testSync();
 
@@ -387,6 +388,17 @@ void TestNativeModeApi::testPing() {
   QEXPECT_THAT(obj, AllOf(HasJsonField("pong", Eq(true)), HasJsonField("eventLoopLatency")));
   QEXPECT_THAT(static_cast<qint64>(obj["timestamp"].toDouble()), Gt(0));
   QEXPECT_THAT(static_cast<qint64>(obj["eventLoopLatency"].toDouble()), Ge(0));
+}
+
+void TestNativeModeApi::testPingIdentifiesProcess() {
+  // A client that reached the wrong process must be able to tell from the ping.
+  QJsonObject obj = callResult("qt.ping", QJsonObject()).toObject();
+
+  QEXPECT_THAT(obj, AllOf(HasJsonField("appName", QStrEq(QCoreApplication::applicationName())),
+                          HasJsonField("appVersion", QStrEq(QCoreApplication::applicationVersion())),
+                          HasJsonField("executable", QStrEq(QCoreApplication::applicationFilePath())),
+                          HasJsonField("qtVersion", QStrEq(QString::fromLatin1(qVersion())))));
+  QEXPECT_THAT(static_cast<qint64>(obj["pid"].toDouble()), Eq(QCoreApplication::applicationPid()));
 }
 
 void TestNativeModeApi::testVersion() {

@@ -993,6 +993,12 @@ void NativeModeApi::registerSystemMethods() {
     result[QStringLiteral("pong")] = true;
     result[QStringLiteral("timestamp")] = now;
     result[QStringLiteral("eventLoopLatency")] = 0;
+    // Identify the process, so a client can tell it reached the wrong app.
+    result[QStringLiteral("pid")] = QCoreApplication::applicationPid();
+    result[QStringLiteral("appName")] = QCoreApplication::applicationName();
+    result[QStringLiteral("appVersion")] = QCoreApplication::applicationVersion();
+    result[QStringLiteral("executable")] = QCoreApplication::applicationFilePath();
+    result[QStringLiteral("qtVersion")] = QString::fromLatin1(qVersion());
 
     return envelopeToString(ResponseEnvelope::wrap(result));
   });

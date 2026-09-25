@@ -17,7 +17,7 @@ class TestReplayModes:
         """Computer Use methods must be recognized in MUTATING_METHODS and OBSERVING_METHODS."""
         assert "cu.click" in MUTATING_METHODS
         assert "cu.mouseMove" in MUTATING_METHODS
-        assert "cu.mouseDrag" in MUTATING_METHODS
+        assert "cu.drag" in MUTATING_METHODS
         assert "cu.type" in MUTATING_METHODS
         assert "cu.key" in MUTATING_METHODS
         assert "cu.scroll" in MUTATING_METHODS
@@ -57,8 +57,8 @@ class TestReplayModes:
     async def test_public_mouse_drag_and_menu_actions_are_replayed(self):
         """Wire methods emitted by public tools must each form a replay action."""
         entries = [
-            {"dir": "req", "id": 1, "method": "cu.mouseDrag", "params": {"startX": 1, "startY": 2, "endX": 3, "endY": 4}},
-            {"dir": "res", "id": 1, "method": "cu.mouseDrag", "result": {"ok": True}},
+            {"dir": "req", "id": 1, "method": "cu.drag", "params": {"startX": 1, "startY": 2, "endX": 3, "endY": 4}},
+            {"dir": "res", "id": 1, "method": "cu.drag", "result": {"ok": True}},
             {"dir": "req", "id": 2, "method": "qt.ui.contextMenu", "params": {"objectId": "tree"}},
             {"dir": "res", "id": 2, "method": "qt.ui.contextMenu", "result": {"ok": True}},
             {"dir": "req", "id": 3, "method": "qt.ui.activateMenuItem", "params": {"text": "Delete"}},
@@ -70,7 +70,7 @@ class TestReplayModes:
         assert scenario.is_replayable
         assert scenario.unsupported == {}
         assert [step.action.method for step in scenario.steps[1:]] == [
-            "cu.mouseDrag",
+            "cu.drag",
             "qt.ui.contextMenu",
             "qt.ui.activateMenuItem",
         ]
@@ -96,7 +96,7 @@ class TestReplayModes:
 
         assert result.divergences == []
         assert [method for method, _ in probe.calls if method != "qt.sync"] == [
-            "cu.mouseDrag",
+            "cu.drag",
             "qt.ui.contextMenu",
             "qt.ui.activateMenuItem",
         ]

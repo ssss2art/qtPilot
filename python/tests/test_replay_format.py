@@ -473,7 +473,7 @@ def test_fuzzed_notification_multisets_are_order_independent_and_strict(seed):
     request_id = 1
 
     for index in range(rng.randint(1, 12)):
-        method = rng.choice(["qt.ui.click", "cu.mouseDrag", "chr.click"])
+        method = rng.choice(["qt.ui.click", "cu.drag", "chr.click"])
         entries.append({
             "dir": "req",
             "id": request_id,

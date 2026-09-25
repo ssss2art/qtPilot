@@ -104,7 +104,7 @@ class TestSmartDefaults:
                     },
                 )
             mock_probe.call.assert_awaited_once_with(
-                "cu.mouseDrag",
+                "cu.drag",
                 {
                     "startX": 10,
                     "startY": 20,
