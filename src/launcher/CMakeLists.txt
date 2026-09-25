@@ -10,6 +10,7 @@ set(LAUNCHER_SOURCES
 set(LAUNCHER_HEADERS
     injector.h
     elevation_windows.h
+    child_wait_posix.h
     qt_env_setup.h
 )
 
@@ -17,9 +18,9 @@ set(LAUNCHER_HEADERS
 if(WIN32)
     list(APPEND LAUNCHER_SOURCES injector_windows.cpp elevation_windows.cpp)
 elseif(APPLE)
-    list(APPEND LAUNCHER_SOURCES injector_macos.cpp)
+    list(APPEND LAUNCHER_SOURCES injector_macos.cpp child_wait_posix.cpp)
 elseif(UNIX)
-    list(APPEND LAUNCHER_SOURCES injector_linux.cpp)
+    list(APPEND LAUNCHER_SOURCES injector_linux.cpp child_wait_posix.cpp)
 endif()
 
 add_executable(qtPilot_launcher

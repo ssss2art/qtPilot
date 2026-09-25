@@ -10,11 +10,48 @@
 #include <QDebug>
 #include <QPointer>
 #include <QScopeGuard>
+#include <QTcpSocket>
 #include <QUrl>
 #include <QWebSocket>
 #include <QWebSocketServer>
 
 namespace qtPilot {
+
+namespace {
+
+/// @brief Whether another process already accepts connections on `port` over
+/// loopback.
+///
+/// Qt binds with SO_REUSEADDR on Unix, which lets a wildcard socket and an
+/// address-specific one share a port, so listen() succeeds on a port another app
+/// already serves and a local client reaches whichever socket the kernel prefers.
+/// Asked before listening, when nothing of ours is bound yet, any answer means
+/// someone else. Connecting rather than test-binding keeps a port a previous
+/// probe just released usable: its TIME_WAIT connections accept nothing.
+/// Windows is left out: Qt binds there with exclusive address use, so listen()
+/// already reports the conflict, and a refused loopback connect takes seconds.
+bool portServedByAnotherProcess(quint16 port) {
+#ifdef Q_OS_WIN
+  Q_UNUSED(port);
+  return false;
+#else
+  if (port == 0) {
+    return false;  // the OS picks a free one
+  }
+  for (const QHostAddress& host :
+       {QHostAddress(QHostAddress::LocalHost), QHostAddress(QHostAddress::LocalHostIPv6)}) {
+    QTcpSocket socket;
+    socket.connectToHost(host, port);
+    if (socket.waitForConnected(250)) {
+      socket.abort();
+      return true;
+    }
+  }
+  return false;
+#endif
+}
+
+}  // namespace
 
 WebSocketServer::WebSocketServer(quint16 port, QObject* parent)
     : QObject(parent),
@@ -42,6 +79,15 @@ bool WebSocketServer::start() {
   // it for single-machine work. See bind_policy.h for why the exposure is not
   // the mitigation here; authentication is (R7, not yet implemented).
   const QHostAddress bindAddress = listenAddress();
+  if (portServedByAnotherProcess(m_port)) {
+    const QString error = QStringLiteral(
+                              "port %1 is already served by another process on this machine; "
+                              "set QTPILOT_PORT to a free port")
+                              .arg(m_port);
+    qCritical() << "[qtPilot] Failed to start WebSocket server:" << error;
+    emit errorOccurred(error);
+    return false;
+  }
   if (!m_server->listen(bindAddress, m_port)) {
     QString error = m_server->errorString();
     qCritical() << "[qtPilot] Failed to start WebSocket server on"

@@ -21,6 +21,7 @@ import asyncio
 import contextlib
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -102,6 +103,18 @@ def _wait_for_port(port: int, proc: subprocess.Popen, timeout: float = 25.0) -> 
     raise TimeoutError(f"probe never listened on {port}")
 
 
+def _stop_group(proc: subprocess.Popen) -> None:
+    """Stop the launcher and everything it started: the app is in its group."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGTERM)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=10)
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=5)
+
+
 @pytest.fixture(scope="module")
 def live_app():
     """A running test app with the probe injected. Yields its ws:// URL."""
@@ -111,16 +124,15 @@ def live_app():
         env=_app_env(_qt_dir()),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        # Its own process group, so teardown can stop the app along with the
+        # launcher even if the launcher dies without passing the signal on.
+        start_new_session=True,
     )
     try:
         _wait_for_port(port, proc)
         yield f"ws://127.0.0.1:{port}"
     finally:
-        proc.terminate()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            proc.wait(timeout=10)
-        if proc.poll() is None:
-            proc.kill()
+        _stop_group(proc)
         if proc.stdout:
             proc.stdout.close()
 

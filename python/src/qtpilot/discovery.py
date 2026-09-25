@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import socket
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -103,13 +104,20 @@ class DiscoveryListener:
 
         loop = asyncio.get_running_loop()
 
-        # Create socket manually with SO_REUSEADDR so multiple qtpilot
-        # server instances can listen for probe broadcasts concurrently.
+        # Create the socket by hand so several qtpilot servers on one host can
+        # all listen for probe broadcasts. SO_REUSEADDR is enough on Linux and
+        # Windows; BSD and macOS also need SO_REUSEPORT, set by every listener.
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.setblocking(False)
-        sock.bind(("0.0.0.0", self._port))
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT") and sys.platform != "win32":
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.setblocking(False)
+            sock.bind(("0.0.0.0", self._port))
+        except OSError:
+            sock.close()
+            raise
 
         self._transport, self._protocol = await loop.create_datagram_endpoint(
             lambda: DiscoveryProtocol(self),
