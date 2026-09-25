@@ -427,7 +427,9 @@ disambiguated with a `#N` suffix, which resolves by path like any other segment.
 Because `#N` is positional it shifts if rows are restacked, so an index-derived
 `objectName: "row" + index` is worth setting on delegates you address repeatedly. A
 QML `id:` or a constant `objectName` does not help on its own -- both are
-per-declaration, so every row yields the same segment.
+per-declaration, so every row yields the same segment. Where rows share an `id:`,
+a row whose `objectName` is unique among its siblings is addressed by that name
+instead of `id#N`.
 
 Parentless plain `QObject`s are a different case: a C++ object exposed as a QML
 context property typically has no parent and is not a `QQuickItem`, so it gets no

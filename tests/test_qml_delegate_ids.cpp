@@ -18,9 +18,9 @@
 // In a real Qt Quick app that covers the navigation bars, tab strips and list
 // rows: the controls most worth driving.
 
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "introspection/object_id.h"
-#include "common/qt_matchers.h"
 
 #include <memory>
 
@@ -94,9 +94,9 @@ Item {
 }
 )QML";
 
-// A declared QML `id` AND a per-instance objectName. The segment comes from the id
-// (priority 0), so disambiguating on objectName -- which differs per instance --
-// concluded every delegate was unique and emitted one shared id for all of them.
+// A declared QML `id` AND a per-instance objectName. Disambiguating on objectName
+// once concluded every delegate was unique and emitted one shared id for all of
+// them. The id is shared, so the unique objectName now names each delegate.
 constexpr const char* kIdPlusIndexedNameQml = R"QML(
 import QtQuick 2.0
 Item {
@@ -104,6 +104,47 @@ Item {
     Item {
         objectName: "strip"
         Repeater { model: 3; delegate: Rectangle { id: rowRoot; objectName: "row" + index } }
+    }
+}
+)QML";
+
+// Only some delegates carry an objectName unique among their siblings. Those take
+// it; the rest keep the shared id with the position they always had, so their ids
+// do not move when a neighbour gains a name.
+constexpr const char* kPartlyNamedQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Repeater { model: 4; delegate: Rectangle { id: rowRoot; objectName: ["alpha", "dup", "dup", ""][index] } }
+    }
+}
+)QML";
+
+// A static sibling whose own segment is `row1` (from its QML id). The delegate
+// named "row1" must not take it, or the two would share one id.
+constexpr const char* kNameTakenBySiblingSegmentQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Item { id: row1 }
+        Repeater { model: 3; delegate: Rectangle { id: rowRoot; objectName: "row" + index } }
+    }
+}
+)QML";
+
+// An objectName spelled like a positional segment. Promoting it would hand the
+// third delegate's `rowRoot#3` to the first.
+constexpr const char* kNameShapedLikeASuffixQml = R"QML(
+import QtQuick 2.0
+Item {
+    objectName: "root"
+    Item {
+        objectName: "strip"
+        Repeater { model: 3; delegate: Rectangle { id: rowRoot; objectName: index === 0 ? "rowRoot#3" : "" } }
     }
 }
 )QML";
@@ -150,6 +191,25 @@ void collectGeneratedIds(QObject* obj, QStringList& out) {
   for (QObject* child : children) {
     collectGeneratedIds(child, out);
   }
+}
+
+/// Generated ids under `root`, both directly and inside an IdGenerationScope. The
+/// scope answers from a per-parent cache, so it must agree with the direct path.
+QStringList generatedIdsBothWays(QObject* root) {
+  QStringList direct;
+  collectGeneratedIds(root, direct);
+  QStringList scoped;
+  {
+    IdGenerationScope scope;
+    collectGeneratedIds(root, scoped);
+  }
+  // Compared joined: Qt 5.15's QList::operator== trips MSVC's STL4043
+  // deprecation, which this build treats as an error. Ids never hold '\n'.
+  if (scoped.join(QLatin1Char('\n')) != direct.join(QLatin1Char('\n'))) {
+    qWarning() << "scoped ids" << scoped << "differ from direct ids" << direct;
+    return {};
+  }
+  return direct;
 }
 
 void collectIds(const QJsonObject& node, QStringList& out) {
@@ -362,7 +422,8 @@ class TestQmlDelegateIds : public QObject {
     strip->setObjectName(QStringLiteral("navStrip"));
     // The refresh is wired through a queued connection.
     QTRY_COMPARE(registry->objectId(tab0), QStringLiteral("root/navStrip/tab0"));
-    QEXPECT_THAT(registry->findById(QStringLiteral("root/navStrip/tab0")), Eq(static_cast<QObject*>(tab0)));
+    QEXPECT_THAT(registry->findById(QStringLiteral("root/navStrip/tab0")),
+                 Eq(static_cast<QObject*>(tab0)));
   }
 
   // A root-scoped search has to mean the same thing as "under this root in the
@@ -408,6 +469,65 @@ class TestQmlDelegateIds : public QObject {
     QEXPECT_THAT(id, QIsNotEmpty());
   }
 
+  // A QML id is per-declaration, so every delegate shares it and ends up `id#N`,
+  // which says nothing about which row it is. A unique objectName names the row.
+  void uniqueObjectNameWinsOverSharedQmlId() {
+    QQmlEngine engine;
+    auto root = build(&engine, kIdPlusIndexedNameQml);
+    QCHECK_THAT(root.get(), NotNull());
+
+    const QStringList ids = generatedIdsBothWays(root.get());
+    QEXPECT_THAT(ids, AllOf(Contains(QStringLiteral("root/strip/row0")),
+                            Contains(QStringLiteral("root/strip/row1")),
+                            Contains(QStringLiteral("root/strip/row2"))));
+    QEXPECT_THAT(ids, Not(Contains(QStringLiteral("root/strip/rowRoot#1"))));
+    for (const char* name : {"row0", "row1", "row2"}) {
+      const QString id = QStringLiteral("root/strip/%1").arg(QLatin1String(name));
+      QObject* found = findByObjectId(id, root.get());
+      QCHECK_THAT(found, NotNull());
+      QEXPECT_THAT(found->objectName(), QStrEq(QLatin1String(name)));
+    }
+  }
+
+  // Only a name no sibling shares is promoted, and the rest keep their positions.
+  void sharedObjectNameIsNotPromoted() {
+    QQmlEngine engine;
+    auto root = build(&engine, kPartlyNamedQml);
+    QCHECK_THAT(root.get(), NotNull());
+
+    const QStringList ids = generatedIdsBothWays(root.get());
+    QEXPECT_THAT(ids, AllOf(Contains(QStringLiteral("root/strip/alpha")),
+                            Contains(QStringLiteral("root/strip/rowRoot#2")),
+                            Contains(QStringLiteral("root/strip/rowRoot#3")),
+                            Contains(QStringLiteral("root/strip/rowRoot#4"))));
+    QEXPECT_THAT(ids, Not(Contains(QStringLiteral("root/strip/dup"))));
+  }
+
+  // A name a sibling already emits as its segment stays unpromoted.
+  void objectNameTakenBySiblingSegmentIsNotPromoted() {
+    QQmlEngine engine;
+    auto root = build(&engine, kNameTakenBySiblingSegmentQml);
+    QCHECK_THAT(root.get(), NotNull());
+
+    const QStringList ids = generatedIdsBothWays(root.get());
+    QEXPECT_THAT(ids, AllOf(Contains(QStringLiteral("root/strip/row0")),
+                            Contains(QStringLiteral("root/strip/row1")),
+                            Contains(QStringLiteral("root/strip/rowRoot#2")),
+                            Contains(QStringLiteral("root/strip/row2"))));
+  }
+
+  // A name spelled `id#N` cannot be promoted without colliding with a position.
+  void objectNameShapedLikeASuffixIsNotPromoted() {
+    QQmlEngine engine;
+    auto root = build(&engine, kNameShapedLikeASuffixQml);
+    QCHECK_THAT(root.get(), NotNull());
+
+    const QStringList ids = generatedIdsBothWays(root.get());
+    QEXPECT_THAT(ids, AllOf(Contains(QStringLiteral("root/strip/rowRoot#1")),
+                            Contains(QStringLiteral("root/strip/rowRoot#2")),
+                            Contains(QStringLiteral("root/strip/rowRoot#3"))));
+  }
+
   // Every id the GENERATOR produces must already be unique, before the registry's
   // `~N` collision suffix is applied. Asserting on registry ids instead would be
   // vacuous -- allocateUniqueIdLocked() uniquifies them by construction, so the
@@ -423,6 +543,9 @@ class TestQmlDelegateIds : public QObject {
         {"unnamed delegates", kUnnamedDelegateQml},
         {"shared declared name", kSharedNameDelegateQml},
         {"text-keyed", kTextKeyedQml},
+        {"partly named", kPartlyNamedQml},
+        {"name taken by sibling segment", kNameTakenBySiblingSegmentQml},
+        {"name shaped like a suffix", kNameShapedLikeASuffixQml},
     };
 
     for (const Fixture& fixture : fixtures) {
