@@ -7,7 +7,7 @@ re-drive what was driven, re-observe what was observed, and report what changed.
 
 A session divides cleanly into mutating actions and observations. Mutating methods *change* the application:
 
-- **Native Qt:** `qt.ui.click`, `qt.ui.doubleClick`, `qt.ui.clickItem`, `qt.ui.sendKeys`, `qt.properties.set`, `qt.methods.invoke`
+- **Native Qt:** `qt.ui.click`, `qt.ui.doubleClick`, `qt.ui.clickItem`, `qt.ui.wheel`, `qt.ui.sendKeys`, `qt.properties.set`, `qt.methods.invoke`
 - **Computer Use:** `cu.click`, `cu.rightClick`, `cu.middleClick`, `cu.doubleClick`, `cu.mouseMove`, `cu.drag`, `cu.mouseDown`, `cu.mouseUp`, `cu.type`, `cu.key`, `cu.scroll`, `cu.action`
 - **Chrome Mode:** `chr.click`, `chr.formInput`, `chr.navigate`
 

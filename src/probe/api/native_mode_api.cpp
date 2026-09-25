@@ -35,6 +35,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGraphicsObject>
+#include <QGraphicsProxyWidget>
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QJsonArray>
@@ -47,6 +48,7 @@
 #include <QSet>
 #include <QThread>
 #include <QTreeView>
+#include <QWheelEvent>
 #include <QWidget>
 #include <QWindow>
 
@@ -960,6 +962,252 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
   return QJsonObject{{QStringLiteral("ok"), true}};
 }
 
+/// @brief A widget point, walked out through any QGraphicsProxyWidget that embeds it.
+struct RoutedPoint {
+  QWidget* widget = nullptr;  ///< The widget a real pointer event at this point would reach first.
+  QPoint point;               ///< @p point in that widget's coordinates.
+  QJsonArray chain;           ///< Object ids from the starting widget out to @ref widget.
+  bool reachable = true;      ///< False when a proxy on the way is clipped or covered there.
+};
+
+/// @brief Follow @p point in @p widget out to the outermost widget it is drawn in.
+///
+/// A widget embedded in a scene through QGraphicsProxyWidget is not where the
+/// window system delivers pointer input: the event reaches the viewport of the
+/// view drawing that scene, and the application routes it inward from there
+/// (often by its own hit-testing). Delivering to the embedded widget directly
+/// would skip that routing, which is usually what a caller is trying to test.
+RoutedPoint routeThroughProxies(QWidget* widget, QPoint point) {
+  RoutedPoint routed{widget, point, QJsonArray{ObjectRegistry::instance()->objectId(widget)}};
+  // Nesting is shallow in practice; the bound only guards against a cycle.
+  for (int depth = 0; depth < 16; ++depth) {
+    QWidget* top = routed.widget->window();
+    QGraphicsProxyWidget* proxy = top ? top->graphicsProxyWidget() : nullptr;
+    if (!proxy || !proxy->scene()) {
+      break;
+    }
+    QGraphicsView* outer = nullptr;
+    const QList<QGraphicsView*> views = proxy->scene()->views();
+    for (QGraphicsView* view : views) {
+      if (view && view->isVisible()) {
+        outer = view;
+        break;
+      }
+    }
+    if (!outer) {
+      break;
+    }
+    const QPointF scenePoint = proxy->mapToScene(QPointF(routed.widget->mapTo(top, routed.point)));
+    const QPoint outerPoint = outer->mapFromScene(scenePoint);
+    // The proxy must be what a pointer there reaches: not clipped away by a parent
+    // item, and not covered by another item drawn over it.
+    const QList<QGraphicsItem*> under = outer->items(outerPoint);
+    routed.reachable = routed.reachable && !under.isEmpty() && under.first() == proxy;
+    routed.widget = outer->viewport();
+    routed.point = outerPoint;
+    routed.chain.append(ObjectRegistry::instance()->objectId(outer));
+  }
+  return routed;
+}
+
+QPoint optionalDelta(const QJsonObject& params, const QString& key, const QString& methodName) {
+  const QJsonValue raw = params.value(key);
+  if (raw.isUndefined() || raw.isNull()) {
+    return {};
+  }
+  if (!raw.isObject()) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameter '%1' must be an object with numeric x/y fields").arg(key),
+        QJsonObject{{QStringLiteral("method"), methodName}, {key, raw}});
+  }
+  const QJsonObject delta = raw.toObject();
+  return QPoint(qRound(requireCoordinate(delta, QStringLiteral("x"), methodName)),
+                qRound(requireCoordinate(delta, QStringLiteral("y"), methodName)));
+}
+
+QJsonObject handleUiWheel(const QJsonObject& params) {
+  const QString kMethod = QStringLiteral("qt.ui.wheel");
+  QObject* obj = resolveObjectParam(params, kMethod);
+  const QString objectId = params[QStringLiteral("objectId")].toString();
+  const Qt::KeyboardModifiers modifiers =
+      ModifierParser::parse(params.value(QStringLiteral("modifiers")), kMethod);
+
+  const QString device = params[QStringLiteral("device")].toString(QStringLiteral("mouse"));
+  if (device != QStringLiteral("mouse") && device != QStringLiteral("trackpad")) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameter 'device' must be 'mouse' or 'trackpad'"),
+        QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("device"), device}});
+  }
+  const QString route = params[QStringLiteral("route")].toString(QStringLiteral("window"));
+  if (route != QStringLiteral("window") && route != QStringLiteral("direct")) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameter 'route' must be 'window' or 'direct'"),
+        QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("route"), route}});
+  }
+  const QJsonValue rawNotches = params.value(QStringLiteral("notches"));
+  if (!rawNotches.isUndefined() && !rawNotches.isDouble()) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameter 'notches' must be a non-zero integer"),
+        QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("notches"), rawNotches}});
+  }
+  const int notches = rawNotches.isUndefined() ? 1 : rawNotches.toInt();
+  if (notches == 0 || qAbs(notches) > 100) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameter 'notches' must be between -100 and 100, not 0"),
+        QJsonObject{{QStringLiteral("method"), kMethod}, {QStringLiteral("notches"), notches}});
+  }
+
+  // One notch of a standard mouse wheel is 120 eighths of a degree, positive
+  // away from the user. A trackpad reports pixels as well; callers can override
+  // either delta per event.
+  const int sign = notches > 0 ? 1 : -1;
+  QPoint angleDelta = optionalDelta(params, QStringLiteral("angleDelta"), kMethod);
+  if (angleDelta.isNull()) {
+    angleDelta = QPoint(0, 120 * sign);
+  }
+  QPoint pixelDelta = optionalDelta(params, QStringLiteral("pixelDelta"), kMethod);
+  if (pixelDelta.isNull() && device == QStringLiteral("trackpad")) {
+    pixelDelta = QPoint(0, 20 * sign);
+  }
+
+  QWidget* target = nullptr;
+  QPoint point;
+  QString kind;
+  if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+    QGraphicsView* requestedView =
+        resolveViewParam(params, QStringLiteral("viewObjectId"), kMethod);
+    QGraphicsView* view = resolveGraphicsItemView(item, requestedView, kMethod);
+    const ItemTargeting::Target itemTarget = ItemTargeting::resolve(item, view, params, kMethod);
+    target = view->viewport();
+    point = itemTarget.viewportPoint;
+    kind = QStringLiteral("graphicsItem");
+  } else if (auto* widget = qobject_cast<QWidget*>(obj)) {
+    // A scroll area is addressed by its object, but input reaches its viewport, so a
+    // position is in viewport coordinates: the space item geometry and this reply use.
+    auto* area = qobject_cast<QAbstractScrollArea*>(widget);
+    target = area ? area->viewport() : widget;
+    const QJsonValue rawPosition = params.value(QStringLiteral("position"));
+    if (!rawPosition.isUndefined() && !rawPosition.isNull()) {
+      if (!rawPosition.isObject()) {
+        throw JsonRpcException(
+            JsonRpcError::kInvalidParams,
+            QStringLiteral("Parameter 'position' must be an object with numeric x/y fields"),
+            QJsonObject{{QStringLiteral("method"), kMethod},
+                        {QStringLiteral("position"), rawPosition}});
+      }
+      const QJsonObject position = rawPosition.toObject();
+      point = QPoint(qRound(requireCoordinate(position, QStringLiteral("x"), kMethod)),
+                     qRound(requireCoordinate(position, QStringLiteral("y"), kMethod)));
+    } else {
+      point = target->rect().center();
+    }
+    kind = QStringLiteral("widget");
+  } else {
+    throw JsonRpcException(
+        ErrorCode::kObjectNotWidget,
+        QStringLiteral("Object is neither a widget nor a graphics item: %1").arg(objectId),
+        QJsonObject{
+            {QStringLiteral("objectId"), objectId},
+            {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+  }
+
+  if (!target->rect().contains(point)) {
+    throw JsonRpcException(ErrorCode::kCoordinateOutOfBounds,
+                           QStringLiteral("Wheel point is outside the target widget"),
+                           QJsonObject{{QStringLiteral("method"), kMethod},
+                                       {QStringLiteral("objectId"), objectId},
+                                       {QStringLiteral("x"), point.x()},
+                                       {QStringLiteral("y"), point.y()}});
+  }
+
+  RoutedPoint routed =
+      route == QStringLiteral("window")
+          ? routeThroughProxies(target, point)
+          : RoutedPoint{target, point, QJsonArray{ObjectRegistry::instance()->objectId(target)}};
+  // Where the pointer would have to be must be somewhere a user can put it: inside the
+  // outermost viewport, not scrolled or zoomed out of its view.
+  if (!routed.widget->rect().contains(routed.point)) {
+    throw JsonRpcException(ErrorCode::kCoordinateOutOfBounds,
+                           QStringLiteral("Wheel point is not visible in the outermost view"),
+                           QJsonObject{{QStringLiteral("method"), kMethod},
+                                       {QStringLiteral("objectId"), objectId},
+                                       {QStringLiteral("chain"), routed.chain},
+                                       {QStringLiteral("x"), routed.point.x()},
+                                       {QStringLiteral("y"), routed.point.y()}});
+  }
+  if (!routed.reachable) {
+    throw JsonRpcException(
+        ErrorCode::kCoordinateOutOfBounds,
+        QStringLiteral("Wheel point is clipped or covered where the target is embedded"),
+        QJsonObject{{QStringLiteral("method"), kMethod},
+                    {QStringLiteral("objectId"), objectId},
+                    {QStringLiteral("chain"), routed.chain},
+                    {QStringLiteral("x"), routed.point.x()},
+                    {QStringLiteral("y"), routed.point.y()}});
+  }
+  const QPoint globalPoint = routed.widget->mapToGlobal(routed.point);
+  // A dry run answers "could a user put the pointer here, and where does it land?"
+  // without turning the wheel.
+  const bool dryRun = params.value(QStringLiteral("dryRun")).toBool(false);
+
+  // Queued, like clicks: the application's wheel handler may run arbitrary code
+  // (a zoom can relayout and repaint a whole scene), and must not run inside
+  // this request's dispatch.
+  const bool trackpad = device == QStringLiteral("trackpad");
+  const int count = qAbs(notches);
+  QPointer<QWidget> safeWidget(routed.widget);
+  const QPoint localPoint = routed.point;
+  if (!dryRun) {
+    QMetaObject::invokeMethod(
+        routed.widget,
+        [safeWidget, localPoint, globalPoint, angleDelta, pixelDelta, modifiers, trackpad,
+         count]() {
+          auto deliver = [&](Qt::ScrollPhase phase, QPoint pixels, QPoint angle) {
+            if (!safeWidget) {
+              return;
+            }
+            QWheelEvent event(
+                QPointF(localPoint), QPointF(globalPoint), pixels, angle, Qt::NoButton, modifiers,
+                phase, false,
+                trackpad ? Qt::MouseEventSynthesizedBySystem : Qt::MouseEventNotSynthesized);
+            QCoreApplication::sendEvent(safeWidget, &event);
+          };
+          if (trackpad) {
+            deliver(Qt::ScrollBegin, QPoint(), QPoint());
+            for (int i = 0; i < count; ++i) {
+              deliver(Qt::ScrollUpdate, pixelDelta, angleDelta);
+            }
+            deliver(Qt::ScrollEnd, QPoint(), QPoint());
+          } else {
+            for (int i = 0; i < count; ++i) {
+              deliver(Qt::NoScrollPhase, pixelDelta, angleDelta);
+            }
+          }
+        },
+        Qt::QueuedConnection);
+  }
+
+  return QJsonObject{
+      {QStringLiteral("ok"), true},
+      {QStringLiteral("deferred"), !dryRun},
+      {QStringLiteral("dryRun"), dryRun},
+      {QStringLiteral("target"), kind},
+      {QStringLiteral("device"), device},
+      {QStringLiteral("route"), route},
+      {QStringLiteral("deliveredTo"), ObjectRegistry::instance()->objectId(routed.widget)},
+      {QStringLiteral("chain"), routed.chain},
+      {QStringLiteral("position"), QJsonObject{{QStringLiteral("x"), routed.point.x()},
+                                               {QStringLiteral("y"), routed.point.y()}}},
+      {QStringLiteral("globalPosition"),
+       QJsonObject{{QStringLiteral("x"), globalPoint.x()}, {QStringLiteral("y"), globalPoint.y()}}},
+      {QStringLiteral("events"), dryRun ? 0 : (trackpad ? count + 2 : count)}};
+}
+
 }  // anonymous namespace
 
 // ============================================================================
@@ -1646,6 +1894,15 @@ void NativeModeApi::registerUiMethods() {
     QString objectId = p[QStringLiteral("objectId")].toString();
 
     QJsonObject result = handleUiSendKeys(p);
+    return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+  });
+
+  // qt.ui.wheel - a queued mouse-wheel or trackpad scroll at a widget or graphics item.
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.wheel"), [](const QString& params) -> QString {
+    auto p = parseParams(params);
+    QString objectId = p[QStringLiteral("objectId")].toString();
+
+    QJsonObject result = handleUiWheel(p);
     return envelopeToString(ResponseEnvelope::wrap(result, objectId));
   });
 

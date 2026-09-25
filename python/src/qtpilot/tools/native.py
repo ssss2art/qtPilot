@@ -483,6 +483,68 @@ def register_native_tools(mcp: FastMCP) -> None:
         return await require_probe().call("qt.ui.click", params)
 
     @mcp.tool
+    async def qt_ui_wheel(
+        objectId: str,
+        notches: int | None = None,
+        device: str | None = None,
+        route: str | None = None,
+        position: dict | list | tuple | None = None,
+        viewObjectId: str | None = None,
+        modifiers: str | list[str] | None = None,
+        angleDelta: dict | list | tuple | None = None,
+        pixelDelta: dict | list | tuple | None = None,
+        dryRun: bool | None = None,
+        ctx: Context = None,
+    ) -> dict:
+        """Turn the mouse wheel, or scroll a trackpad, over a widget or scene item.
+
+        notches: how far to turn; the sign is the direction (default 1, away
+        from the user). Each notch is one wheel event of 120 angleDelta.
+        device: "mouse" (default) or "trackpad" (a begin/update/end phase
+        sequence with pixel deltas).
+        route: "window" (default) delivers where a real wheel would land, the
+        outermost view the target is drawn in, so the app's own routing runs.
+        "direct" delivers to the target itself.
+        position: local to the target; omitted means its center. For
+        QGraphicsObject scene items, pass viewObjectId when several views
+        render the scene. modifiers as for qt_ui_click ("ctrl", "ctrl+shift").
+        angleDelta / pixelDelta override the per-event deltas.
+        dryRun: route the point and report where it lands, without sending
+        anything. Use it to check whether a user could point there at all.
+
+        Example: qt_ui_wheel(objectId="planView", notches=-2)
+        Example: qt_ui_wheel(objectId="canvas", modifiers="ctrl", position=[40, 60])
+        Example: qt_ui_wheel(objectId="detailPanel", dryRun=True)
+        """
+        from qtpilot.server import require_probe
+
+        def point(value: dict | list | tuple) -> dict:
+            if isinstance(value, (list, tuple)) and len(value) >= 2:
+                return {"x": value[0], "y": value[1]}
+            return value
+
+        params: dict = {"objectId": objectId}
+        if notches is not None:
+            params["notches"] = notches
+        if device is not None:
+            params["device"] = device
+        if route is not None:
+            params["route"] = route
+        if position is not None:
+            params["position"] = point(position)
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        if modifiers is not None:
+            params["modifiers"] = modifiers
+        if angleDelta is not None:
+            params["angleDelta"] = point(angleDelta)
+        if pixelDelta is not None:
+            params["pixelDelta"] = point(pixelDelta)
+        if dryRun is not None:
+            params["dryRun"] = dryRun
+        return await require_probe().call("qt.ui.wheel", params)
+
+    @mcp.tool
     async def qt_ui_doubleClick(
         objectId: str,
         button: str | None = None,
