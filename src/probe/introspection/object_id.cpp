@@ -233,7 +233,8 @@ QHash<QObject*, SiblingSlot> buildSiblingIndices(QObject* parent) {
       // The same test as the direct scan: no sibling shares the name, and none
       // emits it as its own base segment.
       const QString name = promotableObjectName(member, it.key());
-      slot.useObjectName = !name.isEmpty() && nameCounts.value(name) == 1 && !bySegment.contains(name);
+      slot.useObjectName =
+          !name.isEmpty() && nameCounts.value(name) == 1 && !bySegment.contains(name);
       indices.insert(member, slot);
     }
   }
@@ -384,8 +385,9 @@ SiblingSlot placeAmongSiblings(QObject* obj, const QString& base) {
     }
     // Could the sibling's base be `name`? Only through its objectName (just
     // checked), a QML id, a `text` property, or its class name.
-    const bool mayEmitName = !nameTaken && (mayCarryQmlId || name.startsWith(QLatin1String("text_")) ||
-                                            name == QLatin1String(sibling->metaObject()->className()));
+    const bool mayEmitName =
+        !nameTaken && (mayCarryQmlId || name.startsWith(QLatin1String("text_")) ||
+                       name == QLatin1String(sibling->metaObject()->className()));
     if (!sameClass && !baseFromText && !mayCarryQmlId && siblingName != base && !mayEmitName) {
       continue;
     }

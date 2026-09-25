@@ -18,9 +18,9 @@
 // In a real Qt Quick app that covers the navigation bars, tab strips and list
 // rows: the controls most worth driving.
 
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "introspection/object_id.h"
-#include "common/qt_matchers.h"
 
 #include <memory>
 
@@ -203,7 +203,9 @@ QStringList generatedIdsBothWays(QObject* root) {
     IdGenerationScope scope;
     collectGeneratedIds(root, scoped);
   }
-  if (scoped != direct) {
+  // Compared joined: Qt 5.15's QList::operator== trips MSVC's STL4043
+  // deprecation, which this build treats as an error. Ids never hold '\n'.
+  if (scoped.join(QLatin1Char('\n')) != direct.join(QLatin1Char('\n'))) {
     qWarning() << "scoped ids" << scoped << "differ from direct ids" << direct;
     return {};
   }
@@ -420,7 +422,8 @@ class TestQmlDelegateIds : public QObject {
     strip->setObjectName(QStringLiteral("navStrip"));
     // The refresh is wired through a queued connection.
     QTRY_COMPARE(registry->objectId(tab0), QStringLiteral("root/navStrip/tab0"));
-    QEXPECT_THAT(registry->findById(QStringLiteral("root/navStrip/tab0")), Eq(static_cast<QObject*>(tab0)));
+    QEXPECT_THAT(registry->findById(QStringLiteral("root/navStrip/tab0")),
+                 Eq(static_cast<QObject*>(tab0)));
   }
 
   // A root-scoped search has to mean the same thing as "under this root in the
