@@ -110,3 +110,21 @@ class SignalWaitExpectation:
 def expect_signal_wait(result: SignalWaitResult) -> SignalWaitExpectation:
     """Entry point for fluent signal-wait assertions."""
     return SignalWaitExpectation(result)
+
+
+class WireMethodsExpectation:
+    """Fluent expectation over the JSON-RPC method names a client sends."""
+
+    def __init__(self, sent: set[str]) -> None:
+        self._sent = sent
+
+    def to_be_registered_by(self, registered: set[str]) -> WireMethodsExpectation:
+        """Assert the probe registers every method sent, so none fails as method-not-found."""
+        unknown = sorted(self._sent - registered)
+        assert not unknown, f"Sent but never registered by the probe: {unknown}"
+        return self
+
+
+def expect_wire_methods(sent: set[str]) -> WireMethodsExpectation:
+    """Entry point for fluent assertions on sent JSON-RPC method names."""
+    return WireMethodsExpectation(sent)

@@ -203,7 +203,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
             params["screenAbsolute"] = True
         if modifiers is not None:
             params["modifiers"] = modifiers
-        return await require_probe().call("cu.mouseDrag", params)
+        return await require_probe().call("cu.drag", params)
 
     @mcp.tool
     async def cu_mouseDown(
