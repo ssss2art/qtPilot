@@ -1,11 +1,11 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "transport/websocket_server.h"
 
+#include <QTcpServer>
 #include <QtTest>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot;
 using namespace qtPilot::test;
@@ -66,6 +66,57 @@ class TestWebSocketServerBind : public QObject {
     QEXPECT_THAT(server.start(), IsTrue());
     QEXPECT_THAT(server.port(), Ne(0));
     server.stop();
+  }
+
+  /// Qt binds with SO_REUSEADDR on Unix, which lets a wildcard socket and an
+  /// address-specific one share a port. A second probe then "starts" on a port
+  /// another app already serves, and a client connecting to 127.0.0.1 reaches
+  /// whichever socket the kernel prefers. Starting must fail instead.
+  void refusesAPortAnotherServerHoldsOnLoopback_data() {
+    QTest::addColumn<QByteArray>("exposure");
+    // A SpecialAddress as int: Qt 5 has no QHostAddress metatype for test data.
+    QTest::addColumn<int>("heldOn");
+    QTest::newRow("lan probe, other on 127.0.0.1") << QByteArray() << int(QHostAddress::LocalHost);
+    QTest::newRow("lan probe, other on any") << QByteArray() << int(QHostAddress::Any);
+    QTest::newRow("loopback probe, other on any")
+        << QByteArray("loopback") << int(QHostAddress::Any);
+  }
+
+  void refusesAPortAnotherServerHoldsOnLoopback() {
+#ifdef Q_OS_WIN
+    QSKIP("Windows binds with exclusive address use; the port conflict is already reported");
+#endif
+    QFETCH(QByteArray, exposure);
+    QFETCH(int, heldOn);
+    if (!exposure.isEmpty()) {
+      qputenv("QTPILOT_BIND_ADDRESS", exposure);
+    }
+
+    QTcpServer other;
+    QCHECK_THAT(other.listen(QHostAddress(static_cast<QHostAddress::SpecialAddress>(heldOn)), 0),
+                IsTrue());
+
+    WebSocketServer server(other.serverPort());
+    QSignalSpy errors(&server, &WebSocketServer::errorOccurred);
+    QEXPECT_THAT(server.start(), IsFalse());
+    QEXPECT_THAT(server.isListening(), IsFalse());
+    QEXPECT_THAT(errors.count(), Eq(1));
+    server.stop();
+  }
+
+  /// A port freed by a previous probe must be reusable straight away. A check
+  /// that test-bound without SO_REUSEADDR would trip over TIME_WAIT here.
+  void reusesAPortAPreviousServerReleased() {
+    quint16 port = 0;
+    {
+      WebSocketServer first(kEphemeral);
+      QCHECK_THAT(first.start(), IsTrue());
+      port = first.port();
+      first.stop();
+    }
+    WebSocketServer second(port);
+    QEXPECT_THAT(second.start(), IsTrue());
+    second.stop();
   }
 
   // REMOVED: loopbackServerAcceptsALoopbackClient.

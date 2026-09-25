@@ -12,6 +12,8 @@
 
 #if defined(Q_OS_LINUX)
 
+#include "child_wait_posix.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <sys/types.h>
@@ -115,24 +117,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
       fprintf(stderr, "[injector] Waiting for process to exit...\n");
     }
 
-    int status = 0;
-    pid_t result = waitpid(pid, &status, 0);
-
-    if (result < 0) {
-      if (!options.quiet) {
-        perror("[injector] waitpid failed");
-      }
-    } else {
-      if (WIFEXITED(status)) {
-        if (!options.quiet) {
-          fprintf(stderr, "[injector] Process exited with code %d\n", WEXITSTATUS(status));
-        }
-      } else if (WIFSIGNALED(status)) {
-        if (!options.quiet) {
-          fprintf(stderr, "[injector] Process killed by signal %d\n", WTERMSIG(status));
-        }
-      }
-    }
+    waitForChildForwardingSignals(pid, options.quiet);
   }
 
   return static_cast<qint64>(pid);

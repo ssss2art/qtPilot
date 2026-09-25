@@ -101,9 +101,24 @@ Look for:
 
 #### Port Already in Use
 
+The probe refuses a port that another process already serves on this machine,
+and says so:
+
+```
+[qtPilot] Failed to start WebSocket server: "port 9222 is already served by another process on this machine; set QTPILOT_PORT to a free port"
+```
+
+Older probes could start on such a port anyway, bound alongside the other
+process, and a client connecting to `localhost` then reached whichever one the
+kernel picked. Call `qt_ping`: it reports the `appName` and `pid` of the process
+that answered.
+
 Check if something else is using the port:
 
 ```bash
+# macOS
+lsof -nP -iTCP:9222 -sTCP:LISTEN
+
 # Linux
 ss -tlnp | grep 9222
 netstat -tlnp | grep 9222
@@ -111,6 +126,9 @@ netstat -tlnp | grep 9222
 # Windows
 netstat -ano | findstr 9222
 ```
+
+On macOS, `iproxy` forwarding a device's probe to 9222 counts as something using
+the port.
 
 **Change the port:**
 
