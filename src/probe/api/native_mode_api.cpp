@@ -965,7 +965,7 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
 /// @brief A widget point, walked out through any QGraphicsProxyWidget that embeds it.
 struct RoutedPoint {
   QWidget* widget = nullptr;  ///< The widget a real pointer event at this point would reach first.
-  QPoint point;               ///< @p point in that widget's coordinates.
+  QPointF point;              ///< @p point in that widget's coordinates, unrounded.
   QJsonArray chain;           ///< Object ids from the starting widget out to @ref widget.
   bool reachable = true;      ///< False when a proxy on the way is clipped or covered there.
 };
@@ -977,7 +977,7 @@ struct RoutedPoint {
 /// view drawing that scene, and the application routes it inward from there
 /// (often by its own hit-testing). Delivering to the embedded widget directly
 /// would skip that routing, which is usually what a caller is trying to test.
-RoutedPoint routeThroughProxies(QWidget* widget, QPoint point) {
+RoutedPoint routeThroughProxies(QWidget* widget, QPointF point) {
   RoutedPoint routed{widget, point, QJsonArray{ObjectRegistry::instance()->objectId(widget)}};
   // Nesting is shallow in practice; the bound only guards against a cycle.
   for (int depth = 0; depth < 16; ++depth) {
@@ -997,11 +997,12 @@ RoutedPoint routeThroughProxies(QWidget* widget, QPoint point) {
     if (!outer) {
       break;
     }
-    const QPointF scenePoint = proxy->mapToScene(QPointF(routed.widget->mapTo(top, routed.point)));
-    const QPoint outerPoint = outer->mapFromScene(scenePoint);
+    const QPointF scenePoint = proxy->mapToScene(routed.widget->mapTo(top, routed.point));
+    // Kept unrounded: a high-resolution pointer lands between whole pixels.
+    const QPointF outerPoint = outer->viewportTransform().map(scenePoint);
     // The proxy must be what a pointer there reaches: not clipped away by a parent
     // item, and not covered by another item drawn over it.
-    const QList<QGraphicsItem*> under = outer->items(outerPoint);
+    const QList<QGraphicsItem*> under = outer->items(outerPoint.toPoint());
     routed.reachable = routed.reachable && !under.isEmpty() && under.first() == proxy;
     routed.widget = outer->viewport();
     routed.point = outerPoint;
@@ -1221,7 +1222,7 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
   }
 
   QWidget* target = nullptr;
-  QPoint point;
+  QPointF point;
   QString kind;
   if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
     QGraphicsView* requestedView =
@@ -1229,7 +1230,16 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
     QGraphicsView* view = resolveGraphicsItemView(item, requestedView, kMethod);
     const ItemTargeting::Target itemTarget = ItemTargeting::resolve(item, view, params, kMethod);
     target = view->viewport();
-    point = itemTarget.viewportPoint;
+    point = QPointF(itemTarget.viewportPoint);
+    // A position the caller gave is kept exact rather than rounded to the pixel the
+    // targeting validated: it is where a high-resolution pointer would be.
+    const QJsonValue rawPosition = params.value(QStringLiteral("position"));
+    if (rawPosition.isObject()) {
+      const QJsonObject position = rawPosition.toObject();
+      point = view->viewportTransform().map(
+          item->mapToScene(QPointF(requireCoordinate(position, QStringLiteral("x"), kMethod),
+                                   requireCoordinate(position, QStringLiteral("y"), kMethod))));
+    }
     kind = QStringLiteral("graphicsItem");
   } else if (auto* widget = qobject_cast<QWidget*>(obj)) {
     // A scroll area is addressed by its object, but input reaches its viewport, so a
@@ -1246,10 +1256,10 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
                         {QStringLiteral("position"), rawPosition}});
       }
       const QJsonObject position = rawPosition.toObject();
-      point = QPoint(qRound(requireCoordinate(position, QStringLiteral("x"), kMethod)),
-                     qRound(requireCoordinate(position, QStringLiteral("y"), kMethod)));
+      point = QPointF(requireCoordinate(position, QStringLiteral("x"), kMethod),
+                      requireCoordinate(position, QStringLiteral("y"), kMethod));
     } else {
-      point = target->rect().center();
+      point = QPointF(target->rect().center());
     }
     kind = QStringLiteral("widget");
   } else {
@@ -1261,7 +1271,7 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
             {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
   }
 
-  if (!target->rect().contains(point)) {
+  if (!QRectF(target->rect()).contains(point)) {
     throw JsonRpcException(ErrorCode::kCoordinateOutOfBounds,
                            QStringLiteral("Wheel point is outside the target widget"),
                            QJsonObject{{QStringLiteral("method"), kMethod},
@@ -1276,7 +1286,7 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
           : RoutedPoint{target, point, QJsonArray{ObjectRegistry::instance()->objectId(target)}};
   // Where the pointer would have to be must be somewhere a user can put it: inside the
   // outermost viewport, not scrolled or zoomed out of its view.
-  if (!routed.widget->rect().contains(routed.point)) {
+  if (!QRectF(routed.widget->rect()).contains(routed.point)) {
     throw JsonRpcException(ErrorCode::kCoordinateOutOfBounds,
                            QStringLiteral("Wheel point is not visible in the outermost view"),
                            QJsonObject{{QStringLiteral("method"), kMethod},
@@ -1295,7 +1305,7 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
                     {QStringLiteral("x"), routed.point.x()},
                     {QStringLiteral("y"), routed.point.y()}});
   }
-  const QPoint globalPoint = routed.widget->mapToGlobal(routed.point);
+  const QPointF globalPoint = routed.widget->mapToGlobal(routed.point);
   // A dry run answers "could a user put the pointer here, and where does it land?"
   // without turning the wheel.
   const bool dryRun = params.value(QStringLiteral("dryRun")).toBool(false);
@@ -1306,7 +1316,7 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
   const bool trackpad = device == QStringLiteral("trackpad");
   const int count = qAbs(notches);
   QPointer<QWidget> safeWidget(routed.widget);
-  const QPoint localPoint = routed.point;
+  const QPointF localPoint = routed.point;
   if (!dryRun) {
     QMetaObject::invokeMethod(
         routed.widget,
@@ -1317,8 +1327,7 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
               return;
             }
             QWheelEvent event(
-                QPointF(localPoint), QPointF(globalPoint), pixels, angle, Qt::NoButton, modifiers,
-                phase, false,
+                localPoint, globalPoint, pixels, angle, Qt::NoButton, modifiers, phase, false,
                 trackpad ? Qt::MouseEventSynthesizedBySystem : Qt::MouseEventNotSynthesized);
             QCoreApplication::sendEvent(safeWidget, &event);
           };
