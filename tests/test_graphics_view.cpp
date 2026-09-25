@@ -21,6 +21,7 @@
 #include <stdexcept>
 
 #include <QApplication>
+#include <QGraphicsProxyWidget>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QGraphicsView>
@@ -28,6 +29,7 @@
 #include <QJsonDocument>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QWheelEvent>
 #include <QtTest>
 
 using namespace qtPilot;
@@ -81,6 +83,32 @@ class GroupingSceneItem : public QGraphicsObject {
  public:
   QRectF boundingRect() const override { return QRectF(0, 0, 0, 0); }
   void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override {}
+};
+
+/// @brief A view that records every wheel event its viewport receives, then
+/// handles it as usual (so a scene can still route it on to embedded widgets).
+class WheelRecordingView : public QGraphicsView {
+ public:
+  struct Wheel {
+    QPoint position;
+    QPoint globalPosition;
+    QPoint angleDelta;
+    QPoint pixelDelta;
+    Qt::ScrollPhase phase;
+    Qt::KeyboardModifiers modifiers;
+    Qt::MouseEventSource source;
+  };
+
+  using QGraphicsView::QGraphicsView;
+  QList<Wheel> wheels;
+
+ protected:
+  void wheelEvent(QWheelEvent* event) override {
+    wheels.append({event->position().toPoint(), event->globalPosition().toPoint(),
+                   event->angleDelta(), event->pixelDelta(), event->phase(), event->modifiers(),
+                   event->source()});
+    QGraphicsView::wheelEvent(event);
+  }
 };
 
 }  // namespace
@@ -147,6 +175,16 @@ class TestGraphicsView : public QObject {
   void uiClickRejectsAnOffViewportGraphicsObject();
   void uiDoubleClickAcceptsAGraphicsObject();
   void uiSendKeysAcceptsAGraphicsObject();
+  void uiWheelOnAGraphicsObjectReachesItsViewportAtTheItem();
+  void uiWheelSendsOneEventPerNotchWithSignAndModifiers();
+  void uiWheelTrackpadSendsAPhasedGesture();
+  void uiWheelRoutesAnEmbeddedViewThroughItsProxy();
+  void uiWheelDirectRouteSkipsTheProxy();
+  void uiWheelRejectsBadParameters();
+  void uiWheelPositionOnAScrollAreaIsInViewportCoordinates();
+  void uiWheelRejectsAPointScrolledOutOfTheOuterView();
+  void uiWheelRejectsAPointClippedByTheEmbeddingItem();
+  void uiWheelDryRunRoutesWithoutSending();
 
  private:
   QJsonObject call(const QString& method, const QJsonObject& params);
@@ -974,6 +1012,267 @@ void TestGraphicsView::inspectGeometryPartCoversGraphicsObjects() {
 
   QEXPECT_THAT(result[QStringLiteral("geometry")],
                AllOf(JsonRectEq(300, 300, 40, 20), JsonField("visible", true)));
+}
+
+void TestGraphicsView::uiWheelOnAGraphicsObjectReachesItsViewportAtTheItem() {
+  WheelRecordingView view(m_scene);
+  view.setObjectName(QStringLiteral("wheelView"));
+  view.resize(1000, 1000);
+  view.show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(&view);
+
+  const QJsonObject result =
+      callResult(QStringLiteral("qt.ui.wheel"),
+                 QJsonObject{
+                     {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
+                     {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(&view)}})
+          .toObject();
+  QApplication::processEvents();
+
+  // The point is chosen the way qt.ui.click chooses one (the centre, or a lattice
+  // point when the centre is covered), so it is on the item and in the reply.
+  const QJsonObject position = result[QStringLiteral("position")].toObject();
+  const QPoint expected(position[QStringLiteral("x")].toInt(),
+                        position[QStringLiteral("y")].toInt());
+  QEXPECT_THAT(result, AllOf(JsonField("ok", true), JsonField("deferred", true),
+                             JsonField("target", QStrEq(QStringLiteral("graphicsItem")))));
+  QEXPECT_THAT(view.items(expected).contains(m_item), Eq(true));
+  QEXPECT_THAT(view.wheels.size(), Eq(1));
+  const auto& wheel = view.wheels.first();
+  QEXPECT_THAT(wheel.position, Eq(expected));
+  QEXPECT_THAT(wheel.globalPosition, Eq(view.viewport()->mapToGlobal(expected)));
+  QEXPECT_THAT(wheel.angleDelta, Eq(QPoint(0, 120)));
+  QEXPECT_THAT(wheel.pixelDelta, Eq(QPoint()));
+  QEXPECT_THAT(wheel.phase, Eq(Qt::NoScrollPhase));
+  QEXPECT_THAT(wheel.source, Eq(Qt::MouseEventNotSynthesized));
+}
+
+void TestGraphicsView::uiWheelSendsOneEventPerNotchWithSignAndModifiers() {
+  WheelRecordingView view(m_scene);
+  view.resize(1000, 1000);
+  view.show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(&view);
+
+  callResult(QStringLiteral("qt.ui.wheel"),
+             QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(&view)},
+                         {QStringLiteral("notches"), -3},
+                         {QStringLiteral("modifiers"), QJsonArray{QStringLiteral("shift")}}});
+  QApplication::processEvents();
+
+  QEXPECT_THAT(view.wheels.size(), Eq(3));
+  for (const auto& wheel : view.wheels) {
+    QEXPECT_THAT(wheel.angleDelta, Eq(QPoint(0, -120)));
+    QEXPECT_THAT(wheel.modifiers, Eq(Qt::KeyboardModifiers(Qt::ShiftModifier)));
+    QEXPECT_THAT(wheel.position, Eq(view.viewport()->rect().center()));
+  }
+}
+
+void TestGraphicsView::uiWheelTrackpadSendsAPhasedGesture() {
+  WheelRecordingView view(m_scene);
+  view.resize(1000, 1000);
+  view.show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(&view);
+
+  const QJsonObject result =
+      callResult(
+          QStringLiteral("qt.ui.wheel"),
+          QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(&view)},
+                      {QStringLiteral("device"), QStringLiteral("trackpad")},
+                      {QStringLiteral("notches"), 2}})
+          .toObject();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result, JsonField("events", 4));
+  QEXPECT_THAT(view.wheels.size(), Eq(4));
+  QEXPECT_THAT(view.wheels.at(0).phase, Eq(Qt::ScrollBegin));
+  QEXPECT_THAT(view.wheels.at(1).phase, Eq(Qt::ScrollUpdate));
+  QEXPECT_THAT(view.wheels.at(1).pixelDelta, Eq(QPoint(0, 20)));
+  QEXPECT_THAT(view.wheels.at(1).source, Eq(Qt::MouseEventSynthesizedBySystem));
+  QEXPECT_THAT(view.wheels.at(2).phase, Eq(Qt::ScrollUpdate));
+  QEXPECT_THAT(view.wheels.at(3).phase, Eq(Qt::ScrollEnd));
+}
+
+namespace {
+
+/// @brief A view embedded in another view's scene through a QGraphicsProxyWidget,
+/// the way a plan or layout editor nests a live view inside a sheet.
+struct EmbeddedViewFixture {
+  QGraphicsScene outerScene;
+  WheelRecordingView outer{&outerScene};
+  QGraphicsScene innerScene;
+  QWidget* container = new QWidget();
+  WheelRecordingView* inner = new WheelRecordingView(&innerScene, container);
+  QGraphicsProxyWidget* proxy = nullptr;
+  TestSceneItem* item = new TestSceneItem();
+
+  EmbeddedViewFixture() {
+    outer.setObjectName(QStringLiteral("sheetView"));
+    inner->setObjectName(QStringLiteral("nestedView"));
+    outerScene.setSceneRect(0, 0, 800, 600);
+    innerScene.setSceneRect(0, 0, 200, 150);
+    innerScene.addItem(item);
+    item->setObjectName(QStringLiteral("nestedItem"));
+    item->setPos(80, 60);
+    container->resize(240, 190);
+    inner->setGeometry(20, 20, 200, 150);
+    proxy = outerScene.addWidget(container);
+    proxy->setPos(150, 100);
+    outer.resize(800, 600);
+    outer.show();
+    QApplication::processEvents();
+    ObjectRegistry::instance()->scanExistingObjects(&outer);
+    ObjectRegistry::instance()->scanExistingObjects(container);
+  }
+
+  /// Where a point on @p item is drawn in the outer view's viewport.
+  QPoint outerPointOfItemCentre() const {
+    const QPoint innerPoint = inner->mapFromScene(item->sceneBoundingRect().center());
+    const QPoint inContainer = inner->viewport()->mapTo(container, innerPoint);
+    return outer.mapFromScene(proxy->mapToScene(QPointF(inContainer)));
+  }
+};
+
+}  // namespace
+
+void TestGraphicsView::uiWheelRoutesAnEmbeddedViewThroughItsProxy() {
+  // A real wheel over a nested view lands on the viewport of the view drawing
+  // it; the application routes it inward. Delivering to the nested view would
+  // skip exactly the routing a test of it wants to exercise.
+  EmbeddedViewFixture f;
+
+  const QJsonObject result =
+      callResult(
+          QStringLiteral("qt.ui.wheel"),
+          QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(f.item)}})
+          .toObject();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result,
+               AllOf(JsonField("route", QStrEq(QStringLiteral("window"))),
+                     JsonField("deliveredTo",
+                               QStrEq(ObjectRegistry::instance()->objectId(f.outer.viewport())))));
+  QEXPECT_THAT(result[QStringLiteral("chain")].toArray().size(), Eq(2));
+  QEXPECT_THAT(f.outer.wheels.size(), Eq(1));
+  QEXPECT_THAT(f.outer.wheels.first().position, Eq(f.outerPointOfItemCentre()));
+}
+
+void TestGraphicsView::uiWheelDirectRouteSkipsTheProxy() {
+  EmbeddedViewFixture f;
+
+  callResult(QStringLiteral("qt.ui.wheel"),
+             QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(f.item)},
+                         {QStringLiteral("route"), QStringLiteral("direct")}});
+  QApplication::processEvents();
+
+  QEXPECT_THAT(f.outer.wheels.size(), Eq(0));
+  QEXPECT_THAT(f.inner->wheels.size(), Eq(1));
+  QEXPECT_THAT(f.inner->wheels.first().position,
+               Eq(f.inner->mapFromScene(f.item->sceneBoundingRect().center())));
+}
+
+void TestGraphicsView::uiWheelRejectsBadParameters() {
+  const QString view = ObjectRegistry::instance()->objectId(m_view);
+  for (const QJsonObject& bad :
+       {QJsonObject{{QStringLiteral("objectId"), view},
+                    {QStringLiteral("device"), QStringLiteral("pen")}},
+        QJsonObject{{QStringLiteral("objectId"), view},
+                    {QStringLiteral("route"), QStringLiteral("x")}},
+        QJsonObject{{QStringLiteral("objectId"), view}, {QStringLiteral("notches"), 0}},
+        QJsonObject{{QStringLiteral("objectId"), view},
+                    {QStringLiteral("notches"), QStringLiteral("2")}},
+        QJsonObject{{QStringLiteral("objectId"), view}, {QStringLiteral("angleDelta"), 120}}}) {
+    QEXPECT_THAT(call(QStringLiteral("qt.ui.wheel"), bad),
+                 IsJsonRpcError(Eq(JsonRpcError::kInvalidParams)));
+  }
+  QEXPECT_THAT(
+      call(QStringLiteral("qt.ui.wheel"),
+           QJsonObject{{QStringLiteral("objectId"), view},
+                       {QStringLiteral("position"),
+                        QJsonObject{{QStringLiteral("x"), 9000}, {QStringLiteral("y"), 5}}}}),
+      IsJsonRpcError(Eq(ErrorCode::kCoordinateOutOfBounds)));
+}
+
+void TestGraphicsView::uiWheelPositionOnAScrollAreaIsInViewportCoordinates() {
+  // Item geometry and the reply's position are viewport coordinates, so a caller can
+  // feed a reply's position straight back to hold the pointer still.
+  WheelRecordingView view(m_scene);
+  view.resize(1000, 1000);
+  view.show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(&view);
+
+  const QJsonObject result =
+      callResult(
+          QStringLiteral("qt.ui.wheel"),
+          QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(&view)},
+                      {QStringLiteral("position"),
+                       QJsonObject{{QStringLiteral("x"), 40}, {QStringLiteral("y"), 50}}}})
+          .toObject();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(view.wheels.size(), Eq(1));
+  QEXPECT_THAT(view.wheels.first().position, Eq(QPoint(40, 50)));
+  QEXPECT_THAT(result[QStringLiteral("position")].toObject(),
+               AllOf(JsonField("x", 40), JsonField("y", 50)));
+}
+
+void TestGraphicsView::uiWheelRejectsAPointScrolledOutOfTheOuterView() {
+  // The nested view is fully inside its own viewport, but the outer view has been
+  // scrolled so the nested view is out of sight: no pointer can be there.
+  EmbeddedViewFixture f;
+  f.outer.resize(120, 90);
+  f.outer.setSceneRect(0, 0, 2000, 2000);
+  f.outer.horizontalScrollBar()->setValue(1500);
+  f.outer.verticalScrollBar()->setValue(1500);
+  QApplication::processEvents();
+
+  QEXPECT_THAT(
+      call(QStringLiteral("qt.ui.wheel"),
+           QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(f.item)}}),
+      IsJsonRpcError(Eq(ErrorCode::kCoordinateOutOfBounds)));
+  QEXPECT_THAT(f.outer.wheels.size(), Eq(0));
+}
+
+void TestGraphicsView::uiWheelRejectsAPointClippedByTheEmbeddingItem() {
+  // A frame item that clips its children to a small window over the nested view:
+  // the nested item sits outside that window, so no pointer can reach it there.
+  EmbeddedViewFixture f;
+  auto* frame = new QGraphicsRectItem(0, 0, 40, 40);
+  frame->setFlag(QGraphicsItem::ItemClipsChildrenToShape);
+  f.outerScene.addItem(frame);
+  frame->setPos(f.proxy->pos());
+  f.proxy->setParentItem(frame);
+  f.proxy->setPos(0, 0);
+  QApplication::processEvents();
+
+  QEXPECT_THAT(
+      call(QStringLiteral("qt.ui.wheel"),
+           QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(f.item)}}),
+      IsJsonRpcError(Eq(ErrorCode::kCoordinateOutOfBounds)));
+  QEXPECT_THAT(f.outer.wheels.size(), Eq(0));
+}
+
+void TestGraphicsView::uiWheelDryRunRoutesWithoutSending() {
+  EmbeddedViewFixture f;
+
+  const QJsonObject result =
+      callResult(
+          QStringLiteral("qt.ui.wheel"),
+          QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(f.item)},
+                      {QStringLiteral("dryRun"), true}})
+          .toObject();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result, AllOf(JsonField("dryRun", true), JsonField("deferred", false),
+                             JsonField("events", 0)));
+  const QJsonObject position = result[QStringLiteral("position")].toObject();
+  QEXPECT_THAT(QPoint(position[QStringLiteral("x")].toInt(), position[QStringLiteral("y")].toInt()),
+               Eq(f.outerPointOfItemCentre()));
+  QEXPECT_THAT(f.outer.wheels.size(), Eq(0));
+  QEXPECT_THAT(f.inner->wheels.size(), Eq(0));
 }
 
 QTEST_MAIN(TestGraphicsView)
