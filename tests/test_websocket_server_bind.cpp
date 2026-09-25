@@ -74,12 +74,12 @@ class TestWebSocketServerBind : public QObject {
   /// whichever socket the kernel prefers. Starting must fail instead.
   void refusesAPortAnotherServerHoldsOnLoopback_data() {
     QTest::addColumn<QByteArray>("exposure");
-    QTest::addColumn<QHostAddress>("heldOn");
-    QTest::newRow("lan probe, other on 127.0.0.1")
-        << QByteArray() << QHostAddress(QHostAddress::LocalHost);
-    QTest::newRow("lan probe, other on any") << QByteArray() << QHostAddress(QHostAddress::Any);
+    // A SpecialAddress as int: Qt 5 has no QHostAddress metatype for test data.
+    QTest::addColumn<int>("heldOn");
+    QTest::newRow("lan probe, other on 127.0.0.1") << QByteArray() << int(QHostAddress::LocalHost);
+    QTest::newRow("lan probe, other on any") << QByteArray() << int(QHostAddress::Any);
     QTest::newRow("loopback probe, other on any")
-        << QByteArray("loopback") << QHostAddress(QHostAddress::Any);
+        << QByteArray("loopback") << int(QHostAddress::Any);
   }
 
   void refusesAPortAnotherServerHoldsOnLoopback() {
@@ -87,13 +87,14 @@ class TestWebSocketServerBind : public QObject {
     QSKIP("Windows binds with exclusive address use; the port conflict is already reported");
 #endif
     QFETCH(QByteArray, exposure);
-    QFETCH(QHostAddress, heldOn);
+    QFETCH(int, heldOn);
     if (!exposure.isEmpty()) {
       qputenv("QTPILOT_BIND_ADDRESS", exposure);
     }
 
     QTcpServer other;
-    QCHECK_THAT(other.listen(heldOn, 0), IsTrue());
+    QCHECK_THAT(other.listen(QHostAddress(static_cast<QHostAddress::SpecialAddress>(heldOn)), 0),
+                IsTrue());
 
     WebSocketServer server(other.serverPort());
     QSignalSpy errors(&server, &WebSocketServer::errorOccurred);

@@ -28,7 +28,7 @@ void forwardToChild(int sig) {
 int waitForChildForwardingSignals(pid_t child, bool quiet) {
   g_child = child;
 
-  struct sigaction forward{};
+  struct sigaction forward {};
   forward.sa_handler = forwardToChild;
   sigemptyset(&forward.sa_mask);
   // No SA_RESTART: waitpid returns EINTR, and the loop below waits again.
