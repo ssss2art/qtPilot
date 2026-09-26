@@ -109,7 +109,7 @@ void BM_MapCentreOnly_NoVerification(benchmark::State& state) {
   QCoreApplication::processEvents();
 
   for (auto _ : state) {
-    const QPoint point =
+    QPoint point =
         fixture.view->mapFromScene(target->mapToScene(target->boundingRect().center()));
     benchmark::DoNotOptimize(point);
   }
