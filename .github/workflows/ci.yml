@@ -3,16 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "test_app/**"
-      - "CMakeLists.txt"
-      - "cmake/**"
-      - "CMakePresets.json"
-      - ".github/workflows/**"
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
   workflow_call:
 
@@ -20,8 +13,49 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  plan:
+    name: Validation scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      plan: ${{ steps.select.outputs.plan }}
+      desktop_matrix: ${{ steps.select.outputs.desktop_matrix }}
+      python_matrix: ${{ steps.select.outputs.python_matrix }}
+      lint: ${{ steps.select.outputs.lint }}
+      python: ${{ steps.select.outputs.python }}
+      build: ${{ steps.select.outputs.build }}
+      static_probe: ${{ steps.select.outputs.static_probe }}
+      mobile: ${{ steps.select.outputs.mobile }}
+      sanitizers: ${{ steps.select.outputs.sanitizers }}
+      benchmarks: ${{ steps.select.outputs.benchmarks }}
+      e2e: ${{ steps.select.outputs.e2e }}
+      release: ${{ steps.select.outputs.release }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Select complete changed scope
+        id: select
+        run: python scripts/ci_policy.py plan
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.1"
+          enable-cache: true
+          cache-dependency-glob: "python/uv.lock"
+      - name: Install policy-test dependencies from the lock
+        working-directory: python
+        run: uv sync --locked --extra dev --python 3.14
+      - name: Verify selection and required-job behavior
+        run: uv run --project python --no-sync pytest python/tests/test_ci_policy.py --noconftest -q
+
   lint:
+    needs: plan
+    if: needs.plan.outputs.lint == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -39,6 +73,8 @@ jobs:
   # matrix can catch that, so it is checked here by linking a real consumer against
   # the INSTALLED package and asserting the probe actually started.
   static-probe:
+    needs: [plan, build]
+    if: needs.plan.outputs.static_probe == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -137,6 +173,8 @@ jobs:
   # than deployed on its own. Without this, a mobile break is invisible until
   # somebody builds by hand.
   mobile:
+    needs: [plan, build]
+    if: needs.plan.outputs.mobile == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -227,6 +265,8 @@ jobs:
   # green -- which is worse than no check. What this gives you is a reviewable record:
   # the _BigO column lands in the step summary, and a jump from N to N^2 is obvious.
   benchmarks:
+    needs: [plan, build]
+    if: needs.plan.outputs.benchmarks == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     continue-on-error: true
@@ -286,6 +326,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   sanitizers:
+    needs: [plan, build]
+    if: needs.plan.outputs.sanitizers == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -333,24 +375,13 @@ jobs:
           QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 ctest --preset ${{ matrix.preset }} --output-on-failure
 
   build:
+    needs: [plan, lint, python]
+    if: >-
+      always() && needs.plan.result == 'success' && needs.plan.outputs.build == 'true' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.python.result == 'success' || needs.python.result == 'skipped')
     strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { qt: "5.15.2", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "" }
-          - { qt: "5.15.2", os: windows-2022, preset: windows-release,     platform: windows, compiler: msvc17, modules: "" }
-          - { qt: "5.15.2", os: windows-2022, preset: windows-x86-release, platform: windows, compiler: msvc17, modules: "", arch: "win32_msvc2019" }
-          - { qt: "6.8.0",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.8.0",  os: windows-2022, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
-          - { qt: "6.8.0",  os: macos-14,       preset: macos-release,   platform: macos,   compiler: clang,  modules: "qtwebsockets", arch_label: arm64 }
-          - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.10.0", os: windows-2022, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
-          - { qt: "6.10.0", os: macos-14,       preset: macos-release,   platform: macos,   compiler: clang,  modules: "qtwebsockets", arch_label: arm64 }
-          # QML-disabled build. Every other leg resolves Qt Quick, so
-          # QTPILOT_HAS_QML is ON everywhere and the #ifdef'd-out code is never
-          # compiled -- that is how a missing <QWindow> include reached a green
-          # run. Force it off here so the QML-less configuration stays buildable.
-          - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets", extra_cmake: "-DQTPILOT_ENABLE_QML=OFF", arch_label: noqml }
+      matrix: ${{ fromJSON(needs.plan.outputs.desktop_matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -407,12 +438,30 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }} -LE admin
 
+      - name: Set up uv for real-probe E2E
+        if: runner.os == 'Linux' && matrix.qt == '6.10.0' && !matrix.extra_cmake && needs.plan.outputs.e2e == 'true'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.1"
+          enable-cache: true
+          cache-dependency-glob: "python/uv.lock"
+
+      - name: Execute required real-probe E2E
+        if: runner.os == 'Linux' && matrix.qt == '6.10.0' && !matrix.extra_cmake && needs.plan.outputs.e2e == 'true'
+        env:
+          QTPILOT_TEST_BUILD_DIR: ${{ github.workspace }}/build/${{ matrix.preset }}
+          QTPILOT_REQUIRE_E2E: "1"
+        run: >-
+          uv run --project python --locked --extra dev --python 3.14 pytest
+          python/tests/test_replay_e2e.py python/tests/test_complicated_app_e2e.py -v
+
       - name: Install
+        if: needs.plan.outputs.release == 'true'
         shell: bash
         run: cmake --install build/${{ matrix.preset }} --prefix install/${{ matrix.preset }}
 
       - name: Bundle test app (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.plan.outputs.release == 'true'
         shell: bash
         run: |
           PRESET="${{ matrix.preset }}"
@@ -438,7 +487,7 @@ jobs:
           du -sh "install/$PRESET/testapp/"
 
       - name: Bundle test app (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && needs.plan.outputs.release == 'true'
         shell: bash
         run: |
           PRESET="${{ matrix.preset }}"
@@ -476,7 +525,7 @@ jobs:
           du -sh "install/$PRESET/testapp/"
 
       - name: Bundle test app (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && needs.plan.outputs.release == 'true'
         shell: bash
         run: |
           PRESET="${{ matrix.preset }}"
@@ -508,7 +557,7 @@ jobs:
           du -sh "install/$PRESET/testapp/"
 
       - name: Ad-hoc sign binaries (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && needs.plan.outputs.release == 'true'
         shell: bash
         run: |
           PRESET="${{ matrix.preset }}"
@@ -518,47 +567,20 @@ jobs:
           done
 
       - name: Upload artifact
+        if: needs.plan.outputs.release == 'true'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: qtpilot-${{ matrix.preset }}-qt${{ matrix.qt }}-${{ matrix.compiler }}${{ matrix.arch_label && format('-{0}', matrix.arch_label) || '' }}
           path: install/${{ matrix.preset }}
 
   python:
+    needs: plan
+    if: needs.plan.outputs.python == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # --- Python version coverage -------------------------------------
-          # Floor (3.11) and latest (3.14) supported interpreters.
-          # Primary development and CI defaults to Python 3.14 (.python-version).
-          - name: py3.11
-            python: "3.11"
-            uv_extras: "--extra dev"
-            expect_revision: ""
-          - name: py3.14
-            python: "3.14"
-            uv_extras: "--extra dev"
-            expect_revision: ""
-          # --- MCP revision coverage ---------------------------------------
-          # FastMCP 2.x -- declared floor on floor interpreter (3.11).
-          # Selects the register/unregister mode-switch path and private-manager fallback.
-          - name: mcp-legacy
-            python: "3.11"
-            uv_extras: "--extra dev"
-            floor_sdk: "fastmcp>=2.9,<3"
-            expect_revision: "2025-11-25"
-          # FastMCP 3.x (MCP 2025-11-25) on Python 3.14.
-          - name: mcp-stable
-            python: "3.14"
-            uv_extras: "--extra dev --extra mcp-stable"
-            expect_revision: "2025-11-25"
-          # FastMCP 4 (MCP 2026-07-28) on Python 3.14.
-          - name: mcp-next
-            python: "3.14"
-            uv_extras: "--extra dev --extra mcp-next"
-            expect_revision: "2026-07-28"
+      matrix: ${{ fromJSON(needs.plan.outputs.python_matrix) }}
     name: python (${{ matrix.name }})
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -619,3 +641,17 @@ jobs:
       - name: Test
         working-directory: python
         run: uv run --no-sync pytest -v
+
+  gate:
+    name: Validation gate
+    needs: [plan, lint, python, build, static-probe, mobile, sanitizers, benchmarks]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Every selected check must have succeeded
+        env:
+          VALIDATION_PLAN: ${{ needs.plan.outputs.plan }}
+          VALIDATION_RESULTS: ${{ toJSON(needs) }}
+        run: python scripts/ci_policy.py gate
