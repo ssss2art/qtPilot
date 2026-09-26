@@ -92,6 +92,8 @@ def select_validation(
     sdk = any(
         path in {"python/uv.lock", "python/pyproject.toml", "python/.python-version"}
         or path.endswith("/_mcp_compat.py")
+        or path == "python/src/qtpilot/server.py"
+        or path.startswith("python/src/qtpilot/tools/")
         or path.startswith("python/tests/test_mcp")
         for path in changed
     )

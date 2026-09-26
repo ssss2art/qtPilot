@@ -58,7 +58,8 @@ def test_python_wire_behavior_has_linux_probe_evidence(path: str) -> None:
     expect_pipeline(path).to_run_only("python", "build").to_build_on("linux").to_exercise_real_probe()
 
 
-@pytest.mark.parametrize("path", ["python/uv.lock", "python/pyproject.toml", "python/src/qtpilot/_mcp_compat.py"])
+@pytest.mark.parametrize("path", ["python/uv.lock", "python/pyproject.toml", "python/src/qtpilot/_mcp_compat.py",
+                                 "python/src/qtpilot/server.py", "python/src/qtpilot/tools/native.py"])
 def test_sdk_changes_cover_every_python_stack(path: str) -> None:
     plan = policy.select_validation((path,))
     assert plan.python == "all"
