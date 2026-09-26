@@ -20,6 +20,7 @@ import pytest
 from qtpilot.connection import ProbeConnection
 
 from tests.probe_app import probe_build
+from tests.probe_expectations import expect_probe
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILD = probe_build(Path(os.environ.get("QTPILOT_TEST_BUILD_DIR", str(REPO_ROOT / "build"))))
@@ -208,11 +209,10 @@ def test_app_embedded_qml_scene(live_complicated_app):
 
             # Verify QML bridge received the click
             bridges = await conn.call("qt.objects.search", {"className": "QmlTestBridge"})
-            if len(bridges["result"]["objects"]) >= 1:
-                bridge_id = bridges["result"]["objects"][0]["objectId"]
-                clicks = await conn.call(
-                    "qt.properties.get", {"objectId": bridge_id, "name": "clickCount"}
-                )
-                assert clicks["result"]["value"] >= 1
+            bridge_id = expect_probe(bridges).to_find("qmlBridge")
+            clicks = await conn.call(
+                "qt.properties.get", {"objectId": bridge_id, "name": "clickCount"}
+            )
+            expect_probe(clicks).to_have_value(1)
 
     asyncio.run(go())

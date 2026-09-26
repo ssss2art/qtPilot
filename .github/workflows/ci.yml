@@ -454,7 +454,8 @@ jobs:
           QTPILOT_REQUIRE_E2E: "1"
         run: >-
           uv run --project python --locked --extra dev --python 3.14 pytest
-          python/tests/test_replay_e2e.py python/tests/test_complicated_app_e2e.py -v
+          python/tests/test_replay_e2e.py python/tests/test_complicated_app_e2e.py
+          python/tests/test_probe_handshake_e2e.py -v
 
       - name: Install
         if: needs.plan.outputs.release == 'true'
