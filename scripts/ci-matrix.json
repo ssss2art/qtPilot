@@ -1,0 +1,145 @@
+{
+  "build": [
+    {
+      "qt": "5.15.2",
+      "os": "ubuntu-24.04",
+      "preset": "release",
+      "platform": "linux",
+      "compiler": "gcc13",
+      "modules": ""
+    },
+    {
+      "qt": "5.15.2",
+      "os": "windows-2022",
+      "preset": "windows-release",
+      "platform": "windows",
+      "compiler": "msvc17",
+      "modules": ""
+    },
+    {
+      "qt": "5.15.2",
+      "os": "windows-2022",
+      "preset": "windows-x86-release",
+      "platform": "windows",
+      "compiler": "msvc17",
+      "modules": "",
+      "arch": "win32_msvc2019"
+    },
+    {
+      "qt": "6.5.3",
+      "os": "ubuntu-24.04",
+      "preset": "release",
+      "platform": "linux",
+      "compiler": "gcc13",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.5.3",
+      "os": "windows-2022",
+      "preset": "windows-release",
+      "platform": "windows",
+      "compiler": "msvc17",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.8.0",
+      "os": "ubuntu-24.04",
+      "preset": "release",
+      "platform": "linux",
+      "compiler": "gcc13",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.8.0",
+      "os": "windows-2022",
+      "preset": "windows-release",
+      "platform": "windows",
+      "compiler": "msvc17",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.9.0",
+      "os": "ubuntu-24.04",
+      "preset": "release",
+      "platform": "linux",
+      "compiler": "gcc13",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.9.0",
+      "os": "windows-2022",
+      "preset": "windows-release",
+      "platform": "windows",
+      "compiler": "msvc17",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.10.0",
+      "os": "ubuntu-24.04",
+      "preset": "release",
+      "platform": "linux",
+      "compiler": "gcc13",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.10.0",
+      "os": "windows-2022",
+      "preset": "windows-release",
+      "platform": "windows",
+      "compiler": "msvc17",
+      "modules": "qtwebsockets"
+    },
+    {
+      "qt": "6.10.0",
+      "os": "macos-14",
+      "preset": "macos-release",
+      "platform": "macos",
+      "compiler": "clang",
+      "modules": "qtwebsockets",
+      "arch_label": "arm64"
+    },
+    {
+      "qt": "6.10.0",
+      "os": "ubuntu-24.04",
+      "preset": "release",
+      "platform": "linux",
+      "compiler": "gcc13",
+      "modules": "qtwebsockets",
+      "extra_cmake": "-DQTPILOT_ENABLE_QML=OFF",
+      "arch_label": "noqml"
+    }
+  ],
+  "python": [
+    {
+      "name": "py3.11",
+      "python": "3.11",
+      "uv_extras": "--extra dev",
+      "expect_revision": ""
+    },
+    {
+      "name": "py3.14",
+      "python": "3.14",
+      "uv_extras": "--extra dev",
+      "expect_revision": ""
+    },
+    {
+      "name": "mcp-legacy",
+      "python": "3.11",
+      "uv_extras": "--extra dev",
+      "floor_sdk": "fastmcp>=2.9,<3",
+      "expect_revision": "2025-11-25"
+    },
+    {
+      "name": "mcp-stable",
+      "python": "3.14",
+      "uv_extras": "--extra dev --extra mcp-stable",
+      "expect_revision": "2025-11-25"
+    },
+    {
+      "name": "mcp-next",
+      "python": "3.14",
+      "uv_extras": "--extra dev --extra mcp-next",
+      "expect_revision": "2026-07-28"
+    }
+  ]
+}
