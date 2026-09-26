@@ -25,6 +25,34 @@ This is the current top-down order after reconciling the catalog with `main`:
 
 Basic QML discovery and driving are shipped and are no longer a standalone epic.
 
+The [hardening and observability plan](plans/2026-09-26-hardening-and-observability.md)
+defines the implementation branches and contract gates. Before relying on Python
+Qt fixtures for replay checkpoints, NOTIFY watches, or model synchronization,
+complete its `test/pyside-probe-compatibility` prerequisite: prove the real C++
+probe can discover and drive a pinned PySide6 application, including Python-defined
+properties, slots, signal arguments, and object destruction. This compatibility
+is not yet established. PySide is an optional fixture dependency; existing C++
+coverage, desktop injection, LAN behavior, and static/mobile contracts remain
+required. Authentication work does not depend on this experiment. If qualification
+fails, document the limitation and continue with native C++ fixtures.
+The recently introduced replay scripts/formats are experimental and may change
+with their callers and tests; preserving them is not a hardening gate. Original
+LAN, delivery, API-mode, and host-safety contracts remain required.
+
+Fluent pytest specifications are an independent acceptance requirement in that
+plan: PySide provides controllable Qt fixtures, while typed scenario helpers and
+domain expectations express readiness, actions, completion, and evidence quality.
+Extend the existing `qtpilot.fluent` vocabulary in small red/green units and prove
+matcher failure diagnostics. Passing a PySide smoke test alone is not sufficient.
+
+The plan groups the initial work into three integration PRs: validation foundations
+(including CI selection and PySide qualification), authenticated operating profiles,
+and replay contracts/checkpoints. Numbered slices are small commit units, not a
+one-PR-per-slice requirement. Local red/green and fast Linux checks support iteration;
+macOS/Windows and full native coverage run on relevant ready revisions. Docs-only
+changes require lightweight checks. This CI selection policy is proposed; current
+workflow behavior has not yet changed.
+
 ---
 
 ## Already shipped / in flight

@@ -74,6 +74,10 @@ dist/
 
 # Standard entries for your stack (Node, Python, etc.) still apply
 # Test output and artifacts
+# Keep the collection convention, but ignore all generated run directories/files.
+# Tracking selected evidence requires an explicit exact-path git add -f.
+/logs/*
+!/logs/README.md
 stderr.txt
 stdout.txt
 test_*.txt

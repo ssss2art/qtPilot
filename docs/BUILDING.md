@@ -2,6 +2,11 @@
 
 This guide covers building the qtPilot probe and launcher from source code.
 
+Collect build/test output and red/green evidence under the ignored `logs/`
+directory using [the test-run evidence convention](../logs/README.md). Preserve
+the actual command and exit code; routine logs stay local, and tracking selected
+evidence is an explicit reviewed exception.
+
 ## Prerequisites
 
 ### Required
