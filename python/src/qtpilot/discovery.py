@@ -58,7 +58,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return
 
-        if msg.get("protocol") != "qtPilot-discovery":
+        if not isinstance(msg, dict) or msg.get("protocol") != "qtPilot-discovery":
             return
 
         msg_type = msg.get("type")
