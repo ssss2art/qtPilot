@@ -189,3 +189,13 @@ qt_ping()                                 # Check liveness
 - [docs/BUILDING.md](docs/BUILDING.md) - CMake presets, multi-compiler support, and static build options.
 - [docs/SANITIZERS.md](docs/SANITIZERS.md) - ASan/UBSan and TSan configuration and runtime diagnostics.
 <!-- promptlib:end -->
+
+## Local test-run evidence
+
+Collect test/build output and red/green evidence in `logs/` following
+[logs/README.md](logs/README.md). Use separate run directories and preserve the
+command, revision, relevant changes, environment versions, output, and exit code.
+Generated logs are ignored by default. Track only explicitly selected, reviewed
+artifacts when they provide useful debugging, demonstration, or regression
+evidence; never force-add a whole run directory. Apply the confidentiality rule
+before retaining any artifact. New runs must not overwrite tracked evidence.
