@@ -109,8 +109,7 @@ void BM_MapCentreOnly_NoVerification(benchmark::State& state) {
   QCoreApplication::processEvents();
 
   for (auto _ : state) {
-    QPoint point =
-        fixture.view->mapFromScene(target->mapToScene(target->boundingRect().center()));
+    QPoint point = fixture.view->mapFromScene(target->mapToScene(target->boundingRect().center()));
     benchmark::DoNotOptimize(point);
   }
   state.SetComplexityN(filler);
