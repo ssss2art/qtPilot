@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import warnings
+from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Filter third-party deprecation warnings inside older FastMCP/Authlib packages
@@ -24,10 +26,40 @@ except ImportError:
 
 import pytest
 import pytest_asyncio
+from pluggy import Result as HookResult
 
 from fastmcp import FastMCP
 
 from qtpilot.connection import ProbeConnection
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "real_probe: executes a native application through the real injected probe")
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    if os.environ.get("QTPILOT_REQUIRE_E2E") != "1":
+        return
+    if not any(item.get_closest_marker("real_probe") for item in session.items):
+        raise pytest.UsageError("Required E2E selected no real-probe tests")
+    from pathlib import Path
+    from tests.probe_app import probe_build
+
+    directory = Path(os.environ.get("QTPILOT_TEST_BUILD_DIR", str(Path(__file__).resolve().parents[2] / "build")))
+    build = probe_build(directory)
+    if not build.available:
+        raise pytest.UsageError(f"Required E2E binaries missing from {directory}")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None],
+) -> Generator[None, HookResult[pytest.TestReport], None]:
+    outcome = yield
+    report = outcome.get_result()
+    if os.environ.get("QTPILOT_REQUIRE_E2E") == "1" and item.get_closest_marker("real_probe") and report.skipped:
+        report.outcome = "failed"
+        report.longrepr = f"Required E2E unexpectedly skipped: {item.nodeid}"
 
 
 class MockWebSocket:
