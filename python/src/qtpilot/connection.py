@@ -10,7 +10,10 @@ import time
 import warnings
 from collections.abc import Callable
 
-from websockets.asyncio.client import connect
+from qtpilot.security import (
+    ProbeConnector as connect, SUPPORTS_PROXY_OPTION, resolve_client_security,
+    transport_logger, validate_probe_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +103,7 @@ class ProbeConnection:
     """
 
     def __init__(self, ws_url: str) -> None:
+        validate_probe_url(ws_url)
         self._ws_url = ws_url
         self._ws = None
         self._next_id = 1
@@ -204,13 +208,38 @@ class ProbeConnection:
 
     async def connect(self) -> None:
         """Establish the WebSocket connection and start receiving."""
+        resolved = resolve_client_security(self._ws_url, os.environ)
+        if resolved.is_err():
+            raise ValueError(resolved.unwrap_err())
+        security = resolved.unwrap()
+        options: dict[str, object] = {
+            "logger": transport_logger(security.token),
+            "ssl": security.tls,
+            "additional_headers": {"Authorization": f"Bearer {security.token}"} if security.token else None,
+        }
+        if SUPPORTS_PROXY_OPTION:
+            options["proxy"] = None
         logger.debug("Connecting to probe at %s", self._ws_url)
-        self._ws = await connect(
-            self._ws_url,
-            ping_interval=10,   # send ping every 10s to keep connection alive
-            ping_timeout=30,    # allow 30s for pong response
-            close_timeout=5,    # 5s grace period on close
-        )
+        try:
+            self._ws = await connect(
+                self._ws_url, open_timeout=5, ping_interval=10,
+                ping_timeout=30, close_timeout=5, **options,
+            )
+        except Exception as exc:
+            if security.token:
+                raise ConnectionError(f"Authenticated probe transport failed ({type(exc).__name__})") from None
+            raise
+        if security.token:
+            try:
+                response = json.loads(await asyncio.wait_for(self._ws.recv(), timeout=5))
+                if not isinstance(response, dict) or response.get("method") != "qtpilot.authenticated" or response.get("params") != {"protocolVersion": 1}:
+                    raise ConnectionError("Authenticated admission was not acknowledged")
+            except BaseException as exc:
+                await self._ws.close()
+                self._ws = None
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
+                raise ConnectionError("Authenticated admission failed") from None
         self._connected = True
         self._recv_task = asyncio.create_task(self._recv_loop())
         self._notification_task = asyncio.create_task(self._notification_dispatcher())
