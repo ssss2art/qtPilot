@@ -8,8 +8,10 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Protocol
+from uuid import uuid4
 
 from qtpilot.connection import ProbeError
+from qtpilot.evidence import BufferEvidence
 from qtpilot.replay_contract import Checkpoint, Json, incomplete_value
 
 
@@ -43,6 +45,11 @@ class ArmedCheckpoint:
         self.sequence = 0
         self.cursor = 0
         self.dropped = 0
+        self.epoch = str(uuid4())
+
+    def evidence(self) -> BufferEvidence:
+        return BufferEvidence("checkpoint", self.epoch, self.dropped,
+                              self.queue.maxsize, self.queue.qsize())
 
     def receive(self, method: str, params: dict[str, Json]) -> None:
         if method != "qtpilot.signalEmitted":
@@ -113,6 +120,9 @@ async def arm_checkpoint(probe: CheckpointProbe, checkpoint: Checkpoint,
                          capacity: int = 256) -> AsyncIterator[ArmedCheckpoint]:
     pending = ArmedCheckpoint(probe, checkpoint, capacity)
     async with AsyncExitStack() as cleanup:
+        # Run after unsubscribing and detaching, including on failed steps. An
+        # emission racing with cleanup must not evade the final loss decision.
+        cleanup.callback(pending.check_loss)
         probe.add_notification_handler(pending.receive)
         cleanup.callback(probe.remove_notification_handler, pending.receive)
         # QObject::destroyed comes first, so deletion cannot fall between the
@@ -131,4 +141,3 @@ async def arm_checkpoint(probe: CheckpointProbe, checkpoint: Checkpoint,
             cleanup.push_async_callback(_unsubscribe, probe, sub)
         pending.before_action()
         yield pending
-        pending.check_loss()

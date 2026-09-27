@@ -8,7 +8,7 @@ from contextlib import AsyncExitStack
 from dataclasses import asdict, dataclass, replace
 from typing import Literal, Protocol
 
-from qtpilot.checkpoints import CheckpointFailure, CheckpointProbe, arm_checkpoint
+from qtpilot.checkpoints import ArmedCheckpoint, CheckpointFailure, CheckpointProbe, arm_checkpoint
 from qtpilot.connection import ProbeError
 from qtpilot.evidence import BufferEvidence
 from qtpilot.replay_contract import Assertion, Json, MAX_CONTRACT_BYTES, ReplayContract, incomplete_value, parse_contract
@@ -48,11 +48,13 @@ class ContractResult:
     raw_actions: tuple[Json, ...] = ()
     loss_before: tuple[BufferEvidence, ...] = ()
     loss_after: tuple[BufferEvidence, ...] = ()
+    checkpoint_evidence: tuple[BufferEvidence, ...] = ()
 
     @property
     def passed(self) -> bool:
         return (self.failure_kind is None and self.loss_verified
                 and self.actions_driven == self.total_actions and bool(self.comparisons)
+                and all(item.known and item.dropped == 0 for item in self.checkpoint_evidence)
                 and all(c.matched and c.kind == "exact" for c in self.comparisons))
 
     def to_dict(self) -> dict[str, Json]:
@@ -62,6 +64,8 @@ class ContractResult:
                           kind: sum(c.kind == kind for c in self.comparisons)
                           for kind in ("exact", "normalized", "wildcard", "unavailable", "unsupported")
                       })
+        for name in ("loss_before", "loss_after", "checkpoint_evidence"):
+            report[name] = [item.to_dict() for item in getattr(self, name)]
         return report
 
 
@@ -79,6 +83,13 @@ def _selected(raw: Json, path: tuple[str | int, ...]) -> Json:
 
 def _exact(expected: Json, actual: Json) -> bool:
     return json.dumps(expected, sort_keys=True, allow_nan=False) == json.dumps(actual, sort_keys=True, allow_nan=False)
+
+
+def _unsupported(value: Json) -> bool:
+    if isinstance(value, dict):
+        return bool(value.get("_type") and value.get("value", object()) is None) or any(
+            _unsupported(child) for child in value.values())
+    return isinstance(value, list) and any(_unsupported(child) for child in value)
 
 
 def verify_loss(before: tuple[BufferEvidence, ...], after: tuple[BufferEvidence, ...]) -> Result[None, str]:
@@ -133,7 +144,7 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
                     kind = "unavailable"
                 elif incomplete_value(actual):
                     kind = "wildcard"
-                elif isinstance(actual, dict) and actual.get("_type") and actual.get("value", object()) is None:
+                elif _unsupported(actual):
                     kind = "unsupported"
                 matched = kind == "exact" and _exact(assertion.expected, actual)
             except (ProbeError, OSError) as exc:
@@ -147,6 +158,11 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
 
     def fail(reason: str) -> ContractResult:
         return replace(result, failure_kind=phase, failed_step=step_name, reason=reason)
+
+    def retain_checkpoint(pending: ArmedCheckpoint) -> None:
+        nonlocal result
+        evidence = replace(pending.evidence(), source=f"checkpoint:{step_name}")
+        result = replace(result, checkpoint_evidence=(*result.checkpoint_evidence, evidence))
 
     try:
         async with asyncio.timeout(contract.timeout):
@@ -167,11 +183,17 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
 
         for step in contract.steps:
             step_name, phase = step.name, "setup"
+            postcondition_failed = False
             # Cleanup sits outside the step deadline. Each unsubscribe has its
             # own bounded deadline and still runs after timeout or cancellation.
             async with AsyncExitStack() as cleanup:
                 async with asyncio.timeout(contract.timeout):
-                    pending = await cleanup.enter_async_context(arm_checkpoint(probe, step.checkpoint)) if step.checkpoint else None
+                    pending = None
+                    if step.checkpoint:
+                        owned = AsyncExitStack()
+                        pending = await owned.enter_async_context(arm_checkpoint(probe, step.checkpoint))
+                        cleanup.callback(retain_checkpoint, pending)
+                        await cleanup.enter_async_context(owned)
                     phase = "action"
                     result = replace(result, actions_driven=result.actions_driven + 1)
                     response = retain(await probe.call(step.action.method, step.action.params, timeout=contract.timeout))
@@ -187,8 +209,11 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
                                          expected, _selected(raw, path), raw, "exact", True)))
                     phase = "postcondition"
                     if not await compare(step.postconditions):
-                        return fail(f"postcondition {result.comparisons[-1].name!r} did not match exact evidence")
+                        postcondition_failed = True
                 phase = "cleanup"
+            if postcondition_failed:
+                phase = "postcondition"
+                return fail(f"postcondition {result.comparisons[-1].name!r} did not match exact evidence")
             phase = "evidence"
             async with asyncio.timeout(contract.timeout):
                 after = await probe.loss_evidence()

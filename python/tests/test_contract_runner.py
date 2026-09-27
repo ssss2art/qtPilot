@@ -137,3 +137,41 @@ def test_fluent_matchers_reject_missing_evidence_with_domain_diagnostics() -> No
         expect_contract_replay(result).to_have_evidence(exact=1)
     with pytest.raises(AssertionError, match="Expected verified lossless evidence"):
         expect_contract_replay(result).to_have_no_evidence_loss()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["none", "postcondition", "cleanup-overflow"])
+async def test_checkpoint_evidence_includes_cleanup_even_when_a_step_fails(fault: str) -> None:
+    probe = ContractProbe()
+    contract = ready_contract(checkpoint=True)
+    if fault == "postcondition":
+        step = contract.steps[0]
+        contract = replace(contract, steps=(replace(step, postconditions=(
+            replace(step.postconditions[0], expected="wrong"),)),))
+    if fault == "cleanup-overflow":
+        def overflow() -> None:
+            for _ in range(257):
+                probe.emit("destroyed")
+        probe.on_unsubscribe = overflow
+    result = await run_contract(contract, probe)
+    if fault == "none":
+        expect_contract_replay(result).to_pass_strictly().to_have_no_evidence_loss()
+    else:
+        expect_contract_replay(result).to_fail_as("cleanup" if fault == "cleanup-overflow" else "postcondition")
+    evidence = result.checkpoint_evidence
+    assert len(evidence) == 1
+    assert evidence[0].known and evidence[0].source == "checkpoint:edit"
+    assert evidence[0].capacity == 256
+    assert evidence[0].dropped == (1 if fault == "cleanup-overflow" else 0)
+    assert result.to_dict()["checkpoint_evidence"][0]["known"] is True
+    assert not probe.handlers and not probe.subscriptions
+
+
+@pytest.mark.asyncio
+async def test_nested_unsupported_native_value_cannot_match_exactly() -> None:
+    value: Json = {"nested": [{"_type": "UnregisteredValue", "value": None}]}
+    probe = ContractProbe()
+    probe.value = value
+    contract = ready_contract()
+    contract = replace(contract, preconditions=(replace(contract.preconditions[0], expected=value),))
+    expect_contract_replay(await run_contract(contract, probe)).to_fail_as("precondition").to_have_driven(0).to_have_evidence(unsupported=1)
