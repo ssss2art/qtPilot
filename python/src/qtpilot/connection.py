@@ -8,12 +8,14 @@ import logging
 import os
 import time
 import warnings
+from uuid import uuid4
 from collections.abc import Callable
 
 from qtpilot.security import (
     ProbeConnector as connect, SUPPORTS_PROXY_OPTION, resolve_client_security,
     transport_logger, validate_probe_url,
 )
+from qtpilot.evidence import BufferEvidence
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +118,7 @@ class ProbeConnection:
         self._notification_queue: asyncio.Queue = asyncio.Queue(maxsize=10000)
         self._notification_task: asyncio.Task | None = None
         self._notification_drops: int = 0
+        self._session_id: str | None = None
         self._probe_version: str | None = None
         self._probe_protocol_version: int | None = None
 
@@ -212,6 +215,8 @@ class ProbeConnection:
         if resolved.is_err():
             raise ValueError(resolved.unwrap_err())
         security = resolved.unwrap()
+        if self._ws is not None or self._recv_task is not None or self._notification_task is not None:
+            await self.disconnect()
         options: dict[str, object] = {
             "logger": transport_logger(security.token),
             "ssl": security.tls,
@@ -241,6 +246,9 @@ class ProbeConnection:
                     raise
                 raise ConnectionError("Authenticated admission failed") from None
         self._connected = True
+        self._session_id = uuid4().hex
+        self._notification_queue = asyncio.Queue(maxsize=self._notification_queue.maxsize)
+        self._notification_drops = 0
         self._recv_task = asyncio.create_task(self._recv_loop())
         self._notification_task = asyncio.create_task(self._notification_dispatcher())
         logger.debug("Connected to probe at %s", self._ws_url)
@@ -468,6 +476,27 @@ class ProbeConnection:
     def notification_drops(self) -> int:
         """Number of notifications dropped due to full queue."""
         return self._notification_drops
+
+    async def loss_evidence(self) -> tuple[BufferEvidence, BufferEvidence]:
+        """Sample probe/client queue counters without treating an old probe as lossless."""
+        native = BufferEvidence("probe", None)
+        if self.is_connected:
+            try:
+                stats = await self.call("getTransportStats", timeout=5)
+            except (ProbeError, OSError):
+                stats = {}
+            if not isinstance(stats, dict):
+                stats = {}
+            epoch = stats.get("sessionId")
+            native = BufferEvidence.from_wire(
+                "probe", epoch if isinstance(epoch, str) else None, stats.get("notifications"),
+            )
+        controller = BufferEvidence.from_wire(
+            "controller", self._session_id if self.is_connected else None,
+            {"dropped": self.notification_drops, "queued": self.notification_queue_size,
+             "capacity": self._notification_queue.maxsize},
+        )
+        return native, controller
 
     @property
     def notification_queue_size(self) -> int:
