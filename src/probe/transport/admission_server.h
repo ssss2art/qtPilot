@@ -5,6 +5,7 @@
 #include "transport/transport_credentials.h"
 
 #include <QHash>
+#include <QPointer>
 #include <QTcpServer>
 
 class QTcpSocket;
@@ -26,8 +27,13 @@ class AdmissionServer : public QTcpServer {
   void incomingConnection(qintptr descriptor) override;
 
  private:
+  void discard(QTcpSocket* socket, QTimer* deadline);
+  struct PendingAdmission {
+    QPointer<QTcpSocket> socket;
+    QTimer* deadline = nullptr;
+  };
   QWebSocketServer* m_websocket;
   TransportCredentials m_credentials;
-  QHash<QTcpSocket*, QTimer*> m_pending;
+  QHash<QTcpSocket*, PendingAdmission> m_pending;
 };
 }  // namespace qtPilot

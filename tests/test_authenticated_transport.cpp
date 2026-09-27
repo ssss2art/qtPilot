@@ -143,6 +143,47 @@ class TestAuthenticatedTransport : public QObject {
     QEXPECT_THAT(server.hasActiveClient(), IsFalse());
     QTRY_COMPARE_WITH_TIMEOUT(server.pendingAdmissionCount(), 0, 6500);
   }
+
+  void rejectedUpgradesReleaseAdmissionCapacity_data() {
+    QTest::addColumn<bool>("existingClient");
+    QTest::newRow("untrusted browser Origin") << false;
+    QTest::newRow("second client") << true;
+  }
+  void rejectedUpgradesReleaseAdmissionCapacity() {
+    QFETCH(bool, existingClient);
+    WebSocketServer server(0);
+    QVERIFY(server.start());
+    QWebSocket active;
+    if (existingClient) {
+      active.open(request(server, m_token));
+      QTRY_VERIFY_WITH_TIMEOUT(server.hasActiveClient(), 3000);
+    }
+    std::vector<std::unique_ptr<QTcpSocket>> rejected;
+    for (int i = 0; i < 16; ++i) {
+      auto socket = std::make_unique<QTcpSocket>();
+      socket->connectToHost(QHostAddress::LocalHost, server.port());
+      QTRY_COMPARE_WITH_TIMEOUT(socket->state(), QAbstractSocket::ConnectedState, 3000);
+      socket->write(
+          "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
+          "Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+          "Origin: https://untrusted.invalid\r\nAuthorization: Bearer " +
+          m_token + "\r\n\r\n");
+      QTRY_VERIFY_WITH_TIMEOUT(socket->bytesAvailable() > 0, 3000);
+      QVERIFY(socket->readAll().contains("101 Switching Protocols"));
+      // A raw TCP peer intentionally never acknowledges the WebSocket close.
+      rejected.push_back(std::move(socket));
+    }
+    QTRY_COMPARE_WITH_TIMEOUT(server.pendingAdmissionCount(), 0, 6500);
+    if (existingClient) {
+      QEXPECT_THAT(server.hasActiveClient(), IsTrue());
+      active.close();
+      QTRY_VERIFY_WITH_TIMEOUT(!server.hasActiveClient(), 3000);
+    }
+    QWebSocket recovered;
+    recovered.open(request(server, m_token));
+    QTRY_VERIFY_WITH_TIMEOUT(server.hasActiveClient(), 3000);
+  }
 };
 QTEST_GUILESS_MAIN(TestAuthenticatedTransport)
 #include "test_authenticated_transport.moc"

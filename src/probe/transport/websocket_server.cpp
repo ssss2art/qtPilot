@@ -244,9 +244,9 @@ void WebSocketServer::onNewConnection() {
   if (m_activeClient) {
     qWarning() << "[qtPilot] Rejecting connection from" << socket->peerAddress().toString()
                << "- another client is already connected";
+    connect(socket, &QWebSocket::disconnected, socket, &QObject::deleteLater);
     socket->close(QWebSocketProtocol::CloseCodePolicyViolated,
                   QStringLiteral("Another client is already connected"));
-    socket->deleteLater();
     return;
   }
 
@@ -265,9 +265,9 @@ void WebSocketServer::onNewConnection() {
          origin.startsWith(QStringLiteral("file://")));
     if (!trusted) {
       qWarning() << "[qtPilot] Rejecting connection with untrusted browser origin:" << origin;
+      connect(socket, &QWebSocket::disconnected, socket, &QObject::deleteLater);
       socket->close(QWebSocketProtocol::CloseCodePolicyViolated,
                     QStringLiteral("Cross-Site WebSocket Hijacking rejected"));
-      socket->deleteLater();
       return;
     }
   }
