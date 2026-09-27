@@ -78,6 +78,6 @@ async def test_mcp_report_distinguishes_initial_state_failure(monkeypatch: pytes
     monkeypatch.setattr("qtpilot.replay.load_scenario", lambda path: ready_scenario())
     server = FastMCP("synthetic-fixture")
     register_replay_tools(server)
-    report = await _call_tool(server, "qtpilot_replay_run", path="synthetic.jsonl", settle=0)
+    report = await _call_tool(server, "qtpilot_replay_run", exploratory=True, path="synthetic.jsonl", settle=0)
     assert report["failure_kind"] == "precondition"
     assert report["actions_driven"] == 0

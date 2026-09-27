@@ -64,6 +64,39 @@ CLEAR = FORM + "clearButton"
 RESULT_TEXT = FORM + "resultGroup/resultText"
 
 
+@pytest.mark.parametrize("deferred,ready", [(False, True), (True, True), (False, False)], ids=["immediate-signal", "queued-Qt-invoke", "wrong-initial-state"])
+def test_strict_contract_uses_real_qt_completion(live_app: str, deferred: bool, ready: bool) -> None:
+    from qtpilot.contract_runner import run_contract
+    from qtpilot.fluent import expect_contract_replay
+    from qtpilot.replay_contract import parse_contract
+    from tests.test_replay_contract import contract_document
+
+    async def check() -> None:
+        async with _connected(live_app) as connection:
+            await _set_text(connection, NAME_EDIT, "ready")
+            document = contract_document()
+            document["timeout"] = 3
+            document["preconditions"][0]["params"]["objectId"] = NAME_EDIT
+            if not ready:
+                document["preconditions"][0]["expected"] = "required-state"
+            step = document["steps"][0]
+            step["postconditions"][0]["params"]["objectId"] = NAME_EDIT
+            expected = "" if deferred else "user~1"
+            step["postconditions"][0]["expected"] = expected
+            step["checkpoint"] = {"objectId": NAME_EDIT, "signal": "textChanged", "arguments": [expected]}
+            step["action"] = (
+                {"method": "qt.methods.invoke", "params": {"objectId": NAME_EDIT, "method": "clear", "deferred": True}}
+                if deferred else {"method": "qt.properties.set", "params": {"objectId": NAME_EDIT, "name": "text", "value": expected}}
+            )
+            result = await run_contract(parse_contract(json.dumps(document)).unwrap(), connection)
+            if ready:
+                expect_contract_replay(result).to_pass_strictly().to_complete_checkpoint("edit").to_have_driven(1).to_have_no_evidence_loss()
+            else:
+                expect_contract_replay(result).to_fail_as("precondition").to_have_driven(0)
+            expect_probe(await connection.call("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"})).to_have_value(expected if ready else "ready")
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize("observer_first", [True, False], ids=["existing-observer", "later-observer"])
 def test_checkpoint_subscription_has_independent_qt_ownership(live_app: str, observer_first: bool) -> None:
     from qtpilot.fluent import expect_signal_wait
