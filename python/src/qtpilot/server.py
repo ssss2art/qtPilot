@@ -14,6 +14,7 @@ from fastmcp import FastMCP
 from qtpilot import _mcp_compat as mcp_compat
 from qtpilot.connection import ProbeConnection, ProbeError
 from qtpilot.discovery import DiscoveryListener
+from qtpilot.security import local_probe_url, operating_profile
 from qtpilot.event_recorder import EventRecorder
 from qtpilot.message_logger import MessageLogger
 
@@ -306,6 +307,8 @@ def create_server(
     """
     global _state
 
+    profile = operating_profile(os.environ)
+
     @asynccontextmanager
     async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
         state = get_state()
@@ -313,7 +316,7 @@ def create_server(
 
         try:
             # Start discovery listener
-            if discovery_enabled:
+            if discovery_enabled and profile not in {"local", "remote"}:
                 state.discovery = DiscoveryListener(port=discovery_port)
                 await state.discovery.start()
 
@@ -366,7 +369,7 @@ def create_server(
                         "Install with: qtpilot download-tools --qt-version <VERSION>"
                     ) from e
                 await asyncio.sleep(1.5)
-                actual_ws_url = f"ws://localhost:{port}"
+                actual_ws_url = local_probe_url(port, env)
 
             # Auto-connect only if an explicit URL was given or target was launched
             if actual_ws_url is not None:
@@ -374,9 +377,8 @@ def create_server(
                     await connect_to_probe(actual_ws_url)
                 except Exception as e:
                     logger.warning(
-                        "Could not auto-connect to %s: %s. "
+                        "Could not auto-connect to the configured probe: %s. "
                         "Use qtpilot_status and qtpilot_connect_probe to connect later.",
-                        actual_ws_url,
                         e,
                     )
 

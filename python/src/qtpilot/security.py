@@ -47,6 +47,21 @@ def _loopback(host: str) -> bool:
         return False
 
 
+def operating_profile(environment: Mapping[str, str]) -> str:
+    profile = environment.get("QTPILOT_PROFILE", "")
+    if profile not in {"", "local", "trusted-network", "remote"}:
+        raise ValueError("Invalid operating profile")
+    return profile
+
+
+def local_probe_url(port: int, environment: Mapping[str, str]) -> str:
+    """Choose an endpoint for a locally launched probe without downgrading its transport."""
+    profile = operating_profile(environment)
+    secure = "QTPILOT_TLS_CERT_FILE" in environment or profile in {"trusted-network", "remote"}
+    host = "127.0.0.1" if profile or secure or "QTPILOT_AUTH_TOKEN_FILE" in environment else "localhost"
+    return f"{'wss' if secure else 'ws'}://{host}:{port}"
+
+
 def _read_token(path: str) -> Result[str, str]:
     try:
         with Path(path).open("rb") as stream:
@@ -68,9 +83,10 @@ class ClientSecurity:
 
 def resolve_client_security(url: str, environment: Mapping[str, str]) -> Result[ClientSecurity, str]:
     endpoint = validate_probe_url(url)
-    profile = environment.get("QTPILOT_PROFILE", "")
-    if profile not in {"", "local", "trusted-network", "remote"}:
-        return Err("Invalid operating profile")
+    try:
+        profile = operating_profile(environment)
+    except ValueError as exc:
+        return Err(str(exc))
     has_token = "QTPILOT_AUTH_TOKEN_FILE" in environment
     if profile in {"trusted-network", "remote"} and (not has_token or endpoint.scheme != "wss"):
         return Err("Operating profile requires authentication and TLS")

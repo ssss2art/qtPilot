@@ -193,6 +193,18 @@ int main(int argc, char* argv[]) {
       QStringLiteral("path"));
   parser.addOption(qtDirOption);
 
+  const QList<QPair<QString, QByteArray>> securityOptions = {
+      {QStringLiteral("profile"), QByteArray("QTPILOT_PROFILE")},
+      {QStringLiteral("auth-token-file"), QByteArray("QTPILOT_AUTH_TOKEN_FILE")},
+      {QStringLiteral("tls-cert-file"), QByteArray("QTPILOT_TLS_CERT_FILE")},
+      {QStringLiteral("tls-key-file"), QByteArray("QTPILOT_TLS_KEY_FILE")}};
+  for (const auto& option : securityOptions) {
+    parser.addOption(QCommandLineOption(option.first,
+                                        QStringLiteral("Override %1 for the launched probe")
+                                            .arg(QString::fromLatin1(option.second)),
+                                        QStringLiteral("value")));
+  }
+
   QCommandLineOption runAsAdminOption(
       QStringLiteral("run-as-admin"),
       QStringLiteral("Launch target with administrator privileges (Windows only)"));
@@ -213,6 +225,18 @@ int main(int argc, char* argv[]) {
 
   // Parse arguments
   parser.process(app);
+
+  for (const auto& option : securityOptions) {
+    if (parser.isSet(option.first)) {
+      qputenv(option.second.constData(), parser.value(option.first).toUtf8());
+    }
+  }
+  const QByteArray profile = qgetenv("QTPILOT_PROFILE");
+  if (!profile.isEmpty() && profile != "local" && profile != "trusted-network" &&
+      profile != "remote") {
+    fprintf(stderr, "Error: Invalid operating profile\n");
+    return 1;
+  }
 
   // Handle --run-as-admin: self-elevate if not already elevated
 #ifdef Q_OS_WIN

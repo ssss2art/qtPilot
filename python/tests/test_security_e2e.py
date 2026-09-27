@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import os
+import json
+import socket
 import secrets
 import subprocess
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -22,14 +23,15 @@ pytestmark = [pytest.mark.real_probe, pytest.mark.skipif(not BUILD.available, re
 @dataclass(frozen=True)
 class SecureApplication:
     url: str
-    token: str
+    token: str = field(repr=False)
     token_file: Path
     certificate: Path
     process_log: Path
+    announcement: bytes | None
 
 
 @pytest.fixture
-def secure_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[SecureApplication]:
+def secure_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> Iterator[SecureApplication]:
     token = secrets.token_urlsafe(32)
     token_file = tmp_path / "token"
     token_file.write_text(token + "\n")
@@ -40,21 +42,30 @@ def secure_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Secu
         "-subj", "/CN=synthetic-fixture", "-addext", "subjectAltName=IP:127.0.0.1",
         "-keyout", str(private_key), "-out", str(certificate),
     ], check=True, capture_output=True)
-    monkeypatch.setenv("QTPILOT_PROFILE", "remote")
+    profile = getattr(request, "param", "remote")
+    monkeypatch.setenv("QTPILOT_PROFILE", profile)
     monkeypatch.setenv("QTPILOT_AUTH_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("QTPILOT_TLS_CA_FILE", str(certificate))
     environment = _app_env(str(BUILD.qt_prefix) if BUILD.qt_prefix else None)
     environment.update(QTPILOT_TLS_CERT_FILE=str(certificate), QTPILOT_TLS_KEY_FILE=str(private_key))
+    environment["QTPILOT_BIND_ADDRESS"] = "any" if profile == "trusted-network" else "loopback"
     port = _free_port()
     process_log = tmp_path / "process.log"
-    with process_log.open("w") as output:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as discovery, process_log.open("w") as output:
+        discovery.bind(("0.0.0.0", 0))
+        discovery.settimeout(0.3)
+        environment["QTPILOT_DISCOVERY_PORT"] = str(discovery.getsockname()[1])
         process = subprocess.Popen(
             [str(BUILD.launcher), "--port", str(port), str(BUILD.application)],
             env=environment, stdout=output, stderr=output, start_new_session=True,
         )
         try:
             _wait_for_port(port, process, timeout=10)
-            yield SecureApplication(f"wss://127.0.0.1:{port}", token, token_file, certificate, process_log)
+            try:
+                announcement = discovery.recv(8192)
+            except TimeoutError:
+                announcement = None
+            yield SecureApplication(f"wss://127.0.0.1:{port}", token, token_file, certificate, process_log, announcement)
         finally:
             _stop_group(process)
             assert token not in process_log.read_text(), "Probe output disclosed the credential"
@@ -122,3 +133,16 @@ def test_remote_profile_refuses_plaintext_downgrade(secure_app: SecureApplicatio
             await connection.connect()
         assert not connection.is_connected
     asyncio.run(check())
+
+
+def test_remote_profile_never_announces(secure_app: SecureApplication) -> None:
+    assert secure_app.announcement is None, "Remote profile disclosed discovery metadata"
+
+
+@pytest.mark.parametrize("secure_app", ["trusted-network"], indirect=True)
+def test_trusted_network_announces_secure_transport(secure_app: SecureApplication) -> None:
+    assert secure_app.announcement is not None, "Trusted-network profile lost LAN discovery"
+    packet = json.loads(secure_app.announcement)
+    assert packet.get("tls") is True, "Announcement would offer a plaintext endpoint"
+    assert packet.get("authRequired") is True, "Announcement omitted authenticated admission"
+    assert secure_app.token.encode() not in secure_app.announcement

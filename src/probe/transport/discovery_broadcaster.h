@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "transport/network_policy.h"
+
 #include <QElapsedTimer>
 #include <QObject>
 
@@ -23,7 +25,8 @@ class DiscoveryBroadcaster : public QObject {
   Q_OBJECT
 
  public:
-  explicit DiscoveryBroadcaster(quint16 wsPort, const QString& mode, QObject* parent = nullptr);
+  explicit DiscoveryBroadcaster(quint16 wsPort, const QString& mode, const NetworkPolicy& policy,
+                                QObject* parent = nullptr);
   ~DiscoveryBroadcaster() override;
 
   bool start();
@@ -43,6 +46,7 @@ class DiscoveryBroadcaster : public QObject {
   quint16 wsPort_;
   QString mode_;
   bool running_;
+  const NetworkPolicy m_policy;
 };
 
 }  // namespace qtPilot

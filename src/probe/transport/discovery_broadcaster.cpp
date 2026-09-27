@@ -17,14 +17,16 @@ namespace qtPilot {
 static constexpr quint16 kDefaultDiscoveryPort = 9221;
 static constexpr int kBroadcastIntervalMs = 5000;
 
-DiscoveryBroadcaster::DiscoveryBroadcaster(quint16 wsPort, const QString& mode, QObject* parent)
+DiscoveryBroadcaster::DiscoveryBroadcaster(quint16 wsPort, const QString& mode,
+                                           const NetworkPolicy& policy, QObject* parent)
     : QObject(parent),
       socket_(nullptr),
       timer_(nullptr),
       discoveryPort_(kDefaultDiscoveryPort),
       wsPort_(wsPort),
       mode_(mode),
-      running_(false) {
+      running_(false),
+      m_policy(policy) {
   // Read discovery port from environment
   QByteArray portEnv = qgetenv("QTPILOT_DISCOVERY_PORT");
   if (!portEnv.isEmpty()) {
@@ -41,6 +43,9 @@ DiscoveryBroadcaster::~DiscoveryBroadcaster() {
 }
 
 bool DiscoveryBroadcaster::start() {
+  if (!m_policy.discoveryEnabled) {
+    return false;
+  }
   if (running_) {
     return true;
   }
@@ -98,7 +103,10 @@ void DiscoveryBroadcaster::sendAnnounce() {
     return;
   }
   QByteArray payload = buildAnnouncePayload();
-  socket_->writeDatagram(payload, announceAddress(), discoveryPort_);
+  const QHostAddress destination(m_policy.exposure == NetworkExposure::Lan
+                                     ? QHostAddress::Broadcast
+                                     : QHostAddress::LocalHost);
+  socket_->writeDatagram(payload, destination, discoveryPort_);
 }
 
 void DiscoveryBroadcaster::sendGoodbye() {
@@ -106,7 +114,10 @@ void DiscoveryBroadcaster::sendGoodbye() {
     return;
   }
   QByteArray payload = buildGoodbyePayload();
-  socket_->writeDatagram(payload, announceAddress(), discoveryPort_);
+  const QHostAddress destination(m_policy.exposure == NetworkExposure::Lan
+                                     ? QHostAddress::Broadcast
+                                     : QHostAddress::LocalHost);
+  socket_->writeDatagram(payload, destination, discoveryPort_);
 }
 
 QByteArray DiscoveryBroadcaster::buildAnnouncePayload() const {
@@ -120,6 +131,8 @@ QByteArray DiscoveryBroadcaster::buildAnnouncePayload() const {
   obj["wsPort"] = static_cast<int>(wsPort_);
   obj["hostname"] = QHostInfo::localHostName();
   obj["mode"] = mode_;
+  obj["tls"] = m_policy.tlsEnabled();
+  obj["authRequired"] = m_policy.authenticationRequired();
   obj["uptime"] = uptime_.elapsed() / 1000.0;
   return QJsonDocument(obj).toJson(QJsonDocument::Compact);
 }

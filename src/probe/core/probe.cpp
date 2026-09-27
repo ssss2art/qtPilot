@@ -177,7 +177,7 @@ bool Probe::initialize() {
   m_running = true;
 
   // Start UDP discovery broadcaster
-  m_broadcaster = new DiscoveryBroadcaster(m_port, m_mode, this);
+  m_broadcaster = new DiscoveryBroadcaster(m_port, m_mode, m_server->networkPolicy(), this);
   m_broadcaster->start();
 
   // Install console message capture (before API registration so early messages are caught)
