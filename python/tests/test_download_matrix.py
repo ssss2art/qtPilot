@@ -30,16 +30,13 @@ from qtpilot.download import (
 # is caught by test review.
 EXPECTED_BUILDS = {
     ("5.15", "linux", "x64"),
-    ("6.5", "linux", "x64"),
     ("6.8", "linux", "x64"),
-    ("6.9", "linux", "x64"),
     ("6.10", "linux", "x64"),
     ("5.15", "windows", "x64"),
-    ("6.5", "windows", "x64"),
     ("6.8", "windows", "x64"),
-    ("6.9", "windows", "x64"),
     ("6.10", "windows", "x64"),
     ("5.15", "windows", "x86"),
+    ("6.8", "macos", "arm64"),
     ("6.10", "macos", "arm64"),
 }
 
@@ -75,9 +72,18 @@ class TestUnbuiltCombosFailFast:
         with pytest.raises((VersionNotFoundError, UnsupportedPlatformError)):
             build_archive_url("6.10", "v1.0.0", platform_name="macos", arch="x86_64")
 
-    def test_macos_non_610_not_built(self) -> None:
+    def test_macos_unsupported_qt_not_built(self) -> None:
         with pytest.raises((VersionNotFoundError, UnsupportedPlatformError)):
-            build_archive_url("6.8", "v1.0.0", platform_name="macos", arch="arm64")
+            build_archive_url("5.15", "v1.0.0", platform_name="macos", arch="arm64")
+        with pytest.raises((VersionNotFoundError, UnsupportedPlatformError)):
+            build_archive_url("6.5", "v1.0.0", platform_name="macos", arch="arm64")
+
+    def test_dropped_intermediate_versions_not_built(self) -> None:
+        for version in ("6.5", "6.9"):
+            with pytest.raises(VersionNotFoundError):
+                build_archive_url(version, "v1.0.0", platform_name="linux", arch="x64")
+            with pytest.raises(VersionNotFoundError):
+                build_archive_url(version, "v1.0.0", platform_name="windows", arch="x64")
 
     def test_windows_x86_only_for_515(self) -> None:
         # 5.15 x86 builds; 6.x x86 does not.
