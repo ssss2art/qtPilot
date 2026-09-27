@@ -180,7 +180,7 @@ qt_ping()                                 # Check liveness
 - **Property Access:** `qt_properties_get(objectId="...", name="text")` / `qt_properties_set(objectId="...", name="text", value="...")`
 - **UI Interaction:** `qt_ui_click(objectId="...")`, `qt_ui_sendKeys(objectId="...", text="Ada")`, `qt_ui_screenshot(objectId="...", fullWindow=True)`
 - **Item Views & Models:** `qt_models_list()`, `qt_models_data(objectId="...", role="display")`, `qt_models_search(objectId="...", text="SearchTerm")`
-- **Deterministic Replay:** `qtpilot replay <recording.jsonl> --target <app> --record <new_baseline.jsonl>`
+- **Strict Replay:** `qtpilot replay <contract.json> --json` against a caller-prepared running app; diagnostic JSONL requires `--exploratory`.
 
 ## Key References & Documentation
 

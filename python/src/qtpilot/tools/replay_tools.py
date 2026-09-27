@@ -33,7 +33,7 @@ def register_replay_tools(mcp: FastMCP) -> None:
         Args:
             path: Path to a .jsonl message log written by qtpilot_log_start.
 
-        Example: qtpilot_replay_inspect(path="qtPilot-log-20260906-101500.jsonl")
+        Example: qtpilot_replay_inspect(path="scenarios/form.json")
         """
         from qtpilot.replay import load_scenario
         from qtpilot.replay_contract import load_contract

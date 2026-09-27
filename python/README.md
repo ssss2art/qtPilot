@@ -70,19 +70,24 @@ qtpilot serve --mode chrome --target /path/to/app.exe
 qtpilot serve --mode cu --ws-url ws://localhost:9222
 ```
 
-## Deterministic Replay
+## Replay Contracts
 
-Record real application traffic and replay it deterministically:
+Validate a prepared application's state with a version-2 JSON contract:
 
 ```bash
-# Replay a recorded scenario against a live application
-qtpilot replay scenarios/submit-form.jsonl
+# Check readiness, drive actions, await declared completion and assert exact values
+qtpilot replay scenarios/submit-form.json --json
 
 # Inspect a scenario without connecting
-qtpilot replay scenarios/submit-form.jsonl --inspect
+qtpilot replay scenarios/submit-form.json --inspect
+
+# Explicit diagnostic replay of an experimental transcript (never a strict pass)
+qtpilot replay session.jsonl --exploratory --json
 ```
 
-See [docs/REPLAY.md](../docs/REPLAY.md) for full details on the replay engine, watch lists, and monadic Result API.
+Strict contracts refuse unknown/lost evidence and gate every mutation on verified
+readiness. See [docs/REPLAY.md](../docs/REPLAY.md) for the schema, migration,
+pytest/fluent DSL, signal checkpoints and diagnostic watch lists.
 
 ## Claude Desktop Configuration
 

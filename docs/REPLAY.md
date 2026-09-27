@@ -1,309 +1,223 @@
-# Deterministic Replay
+# Replay contracts and exploratory transcripts
 
-A message log written by `qtpilot_log_start` is a transcript. Replay turns one into a test:
-re-drive what was driven, re-observe what was observed, and report what changed.
+`qtpilot replay` and `qtpilot_replay_run` default to strict version-2 JSON
+contracts. A pass requires declared initial state, exact assertions, completion
+evidence and known loss counters. Diagnostic JSONL transcripts need an explicit
+`--exploratory` / `exploratory=True`; they never report `strict_passed: true`.
 
-## Why this works
+Replay drives an already running application. The caller prepares its fixture;
+the fixture label does not execute reset code or shell commands. Disconnect any
+other MCP client before using the CLI: a probe still has one active controller.
+These changes do not alter the original unconfigured LAN bind, UDP discovery,
+non-browser driving or independent Origin checks. See [authentication and
+profiles](AUTHENTICATION.md) for optional authenticated LAN access.
 
-A session divides cleanly into mutating actions and observations. Mutating methods *change* the application:
+## A strict contract
 
-- **Native Qt:** `qt.ui.click`, `qt.ui.doubleClick`, `qt.ui.clickItem`, `qt.ui.wheel`, `qt.ui.sendKeys`, `qt.properties.set`, `qt.methods.invoke`
-- **Computer Use:** `cu.click`, `cu.rightClick`, `cu.middleClick`, `cu.doubleClick`, `cu.mouseMove`, `cu.drag`, `cu.mouseDown`, `cu.mouseUp`, `cu.type`, `cu.key`, `cu.scroll`, `cu.action`
-- **Chrome Mode:** `chr.click`, `chr.formInput`, `chr.navigate`
-
-Everything else only *observes* it. Re-driving the first kind against a fresh application and
-comparing the second is an assertion about behaviour — and it needs no test written by hand for
-each flow, because the recording already is one.
-
-The observing set is an allow-list rather than "everything that is not mutating":
-
-- **Native Qt:** `qt.objects.tree`, `qt.objects.inspect`, `qt.objects.search`, `qt.properties.get`, `qt.models.list`, `qt.models.data`, `qt.models.search`, `qt.ui.geometry`, `qt.ui.hitTest`
-- **Computer Use:** `cu.cursorPosition`
-- **Chrome Mode:** `chr.readPage`, `chr.getPageText`, `chr.find`, `chr.tabsContext`, `chr.readConsoleMessages`
-
-`qt.ping` and `qt.version` describe the harness. The `qt.names.*` and `qt.signals.*` families
-describe the session's own bookkeeping. `qt.ui.screenshot` returns image bytes that belong in a
-visual golden. None of them say anything about the application under test, and asserting on them
-would fail runs for reasons a reader cannot act on.
-
-```mermaid
-flowchart TD
-    subgraph Recording["1. Recording Phase"]
-        AppLive["Live Qt Application<br/>(Probe Injected)"]
-        Client["Client / AI Agent<br/>(Driving Session)"]
-        Logger["MessageLogger<br/>(Level 2 or 3)"]
-        LogFile[("session.jsonl")]
-
-        Client -->|JSON-RPC| AppLive
-        AppLive -->|Responses & Events| Client
-        Client -.->|Tap Wire Traffic| Logger
-        Logger --> LogFile
-    end
-
-    subgraph Parsing["2. Parsing & Normalization"]
-        Parser["parse_entries()"]
-        Scenario["Scenario<br/>(Steps, Actions, Observations)"]
-
-        LogFile --> Parser
-        Parser --> Scenario
-    end
-
-    subgraph Replay["3. Deterministic Replay Phase"]
-        FreshApp["Fresh Target App<br/>(Clean State)"]
-        Driver["run_scenario()"]
-        Comparator["Observation Matcher<br/>(Masks Transient Handles)"]
-        ResultMonad["Result[list[Step], list[Divergence]]<br/>(Ok / Err)"]
-
-        Scenario --> Driver
-        Driver -->|Re-drive Mutating Actions| FreshApp
-        FreshApp -->|Query Observations| Comparator
-        Scenario -.->|Expected Baseline| Comparator
-        Comparator --> ResultMonad
-    end
-
-    subgraph Assertion["4. Verification & Assertions"]
-        Pass["expect_replay().to_pass()"]
-        Diverge["expect_replay().to_diverge_at()"]
-
-        ResultMonad --> Pass
-        ResultMonad --> Diverge
-    end
-```
-
-### Replay Execution Sequence
-
-The runtime execution sequence during `run_scenario()` coordinates mutating action delivery, deterministic Qt event loop flushing (`qt.sync`), async settle delays, observation queries, and signal notification buffering:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Test Runner / CLI
-    participant Runner as Replay Engine (run_scenario)
-    participant Client as ProbeConnection (WebSocket)
-    participant Server as qtPilot Probe (C++)
-    participant App as Qt App (Main Loop & Objects)
-
-    User->>Runner: run_scenario(scenario, conn, settle, sync)
-    Runner->>Client: add_notification_handler(collect)
-
-    loop For each Step in Scenario.steps
-        opt Has Action (Mutating Request)
-            Runner->>Client: call(action.method, action.params)
-            Client->>Server: JSON-RPC request (e.g. qt.ui.click)
-            Server->>App: InputSimulator::mouseClick / sendKey
-            App-->>Server: Event processed & signals emitted
-            Server-->>Client: Response (result / error)
-            Client-->>Runner: Ok / ProbeError
-        end
-
-        opt sync == True
-            Runner->>Client: call("qt.sync")
-            Client->>Server: JSON-RPC request: qt.sync
-            Server->>App: QCoreApplication::processEvents(AllEvents)<br/>sendPostedEvents(DeferredDelete)
-            App-->>Server: Deferred events flushed
-            Server-->>Client: {synced: true, elapsedMs, ...}
-            Client-->>Runner: Synced
-        end
-
-        opt Has Setups (e.g. Signal Subscriptions)
-            Runner->>Client: call(setup.method, setup.params)
-            Client->>Server: JSON-RPC request: qt.signals.subscribe
-            Server-->>Client: Setup acknowledged
-            Client-->>Runner: Acknowledged
-        end
-
-        opt settle > 0
-            Runner->>Runner: asyncio.sleep(settle)<br/>(Allow async signal delivery)
-        end
-
-        loop For each Observation (Recorded + Watch Targets)
-            Runner->>Client: call(obs.method, obs.params)
-            Client->>Server: Query (e.g. qt.properties.get)
-            Server->>App: ObjectRegistry lookup & property read
-            App-->>Server: Current state
-            Server-->>Client: Response (value / error)
-            Client-->>Runner: Normalized Observation
-        end
-
-        Note over Server,Runner: Asynchronous notifications (qtpilot.signalEmitted)<br/>buffered by collector during step
-    end
-
-    Runner->>Client: remove_notification_handler(collect)
-    Runner->>Runner: diff_steps(scenario.steps, observed)<br/>(Mask handles QObject~*, compare multisets)
-    Runner-->>User: ReplayResult / Result[ReplayResult, str]
-```
-
-## Recording a scenario
-
-```python
-qtpilot_log_start(path="scenarios/submit-form.jsonl", level=2)
-# ... drive the application ...
-qtpilot_log_stop()
-```
-
-**Level 2 or above.** A level-1 log records tool names but no wire traffic, so there is nothing
-to replay. Both the CLI and `qtpilot_replay_run` refuse such a log rather than running empty and
-reporting success. Use **level 3** if the scenario should also assert on signal emissions.
-
-**Separate recording from the replay baseline.** Stop
-`qtpilot_recording_*` (and any explicit `qt_events_start` capture) before
-starting `qtpilot_log_start`. A recording session enables lifecycle, signal,
-and event instrumentation; a clean replay log should contain only the
-notifications whose setup calls it also records. If you run the standalone
-`qtpilot replay` CLI, disconnect the MCP client first because the probe accepts
-one WebSocket client at a time.
-
-**Register names first.** An object with no registered name is reported as `QObject~<counter>`,
-and the counter follows the order objects happened to be constructed in. Replay masks it to
-`QObject~*` so it does not fail every run, but that also means it cannot tell two unnamed objects
-apart. `qt.names.register` / `qt.names.load` give a recording a stable identity, and are what
-makes a scenario survive a refactor.
-
-**QML type names carry an index that is not stable.** A type declared in QML reaches the wire as
-`Foo_QMLTYPE_58_QML_98` rather than `Foo`, and those numbers are the QML engine's registration
-indices — the same unchanged binary reports different ones from one run to the next. Any
-observation that carries a class name (`qt.objects.inspect`, `qt.objects.tree`) would otherwise
-diverge on every replay of a QML application. Replay compares the declared name instead, so the
-index cannot fail a run while a real change of type still can.
-
-**Observe deliberately, or use a watch list.** A replay can only assert on what the recording
-looked at, and an operator driving an application clicks far more readily than they inspect. A
-session of nothing but clicks replays as a sequence of clicks that cannot fail.
-
-Either inspect the things whose state is the point of the scenario while recording, or declare
-them once in a watch list and let replay query them after every action:
+Save this as `scenarios/form.json`, replacing the object ID and values with the
+prepared fixture's actual values. Assertions use probe wire methods, not MCP tool
+names. Each step needs a postcondition, a signal checkpoint, or both.
 
 ```json
 {
-  "watch": [
-    {"method": "qt.properties.get", "params": {"objectId": "statusBar.label", "name": "text"}},
-    {"method": "qt.objects.inspect", "params": {"objectId": "resultsView"}}
+  "format": 2,
+  "fixture": "prepared-form",
+  "timeout": 2,
+  "requirements": [
+    {"name": "protocol", "method": "getVersion", "params": {},
+     "path": ["protocolVersion"], "expected": 1}
+  ],
+  "preconditions": [
+    {"name": "initial-name", "method": "qt.properties.get",
+     "params": {"objectId": "form.nameEdit", "name": "text"},
+     "path": ["result", "value"], "expected": "ready"}
+  ],
+  "steps": [
+    {
+      "name": "edit-name",
+      "action": {"method": "qt.properties.set",
+                 "params": {"objectId": "form.nameEdit", "name": "text", "value": "Ada"}},
+      "checkpoint": {"objectId": "form.nameEdit", "signal": "textChanged",
+                     "arguments": ["Ada"]},
+      "postconditions": [
+        {"name": "updated-name", "method": "qt.properties.get",
+         "params": {"objectId": "form.nameEdit", "name": "text"},
+         "path": ["result", "value"], "expected": "Ada"}
+      ]
+    }
   ]
 }
 ```
 
 ```bash
-qtpilot replay session.jsonl --watch watch.json --record -o golden.jsonl   # capture a baseline
-qtpilot replay golden.jsonl                                               # check against it
+qtpilot replay scenarios/form.json --inspect  # validate without connecting
+qtpilot replay scenarios/form.json --json
+qtpilot replay scenarios/form.json --ws-url wss://probe-host:9222 \
+  --profile trusted-network --auth-token-file /private/path/token --tls-ca-file /private/path/ca.pem
 ```
 
-A watch list may only name observing methods. It runs after every action, so letting it drive
-input would silently rewrite the scenario it is supposed to be measuring.
+MCP accepts `qtpilot_replay_run(path="scenarios/form.json")` or the same JSON
+object as `contract=...`. Exactly one of `path`, `contract` or exploratory `steps`
+is allowed. `qtpilot_replay_inspect` also defaults to strict format validation.
 
-A watch list is a **recording-time** input. Once captured, those observations are part of the
-baseline, so replaying does not take `--watch` again -- passing it would query everything twice.
-Recorded observations also keep their original positions, so adding a watch list to an existing
-scenario cannot change what its baseline means.
+The parser rejects unknown/missing fields, unsupported formats/method categories,
+duplicate JSON keys, non-finite numbers, empty readiness/action lists and actions
+without completion assertions. `timeout` is a finite value greater than zero and
+at most 300 seconds. Lists are limited to 1,000 entries; contract input and retained
+raw evidence each have a 4 MiB budget. Exceeding the evidence budget fails instead
+of truncating it. Requirements and preconditions use an observing-method allowlist;
+actions use the native/Computer Use/Chrome mutating-method allowlist.
 
-## Running one
+## What establishes a pass
 
-```bash
-qtpilot replay scenarios/submit-form.jsonl                 # against ws://localhost:9222
-qtpilot replay scenarios/submit-form.jsonl --inspect       # summarise, connect to nothing
-qtpilot replay scenarios/submit-form.jsonl --settle 0.25   # slower async updates
-qtpilot replay scenarios/submit-form.jsonl --json          # machine-readable report
+1. Validate the complete contract before connecting or mutating the application.
+2. Obtain known probe/controller loss counters with session identities; evaluate
+   requirements and preconditions exactly. A failed initial state drives zero actions.
+3. If declared, subscribe to target destruction and completion **before** the action.
+   Establish a cursor that excludes prior buffered emissions, then drive literal
+   action parameters without handle masking or normalization.
+4. Await the declared signal, then sample postconditions once. Without a checkpoint,
+   sample after the action response. There is no settling sleep or implicit retry.
+5. Release owned subscriptions/handlers and check checkpoint and transport loss
+   before proceeding. Unknown/reset counters, session changes or dropped evidence
+   prevent a strict pass and stop subsequent actions.
+
+```mermaid
+flowchart LR
+    Validate[Validate contract] --> Ready[Check requirements and initial state]
+    Ready --> Arm[Arm owned Qt subscriptions]
+    Arm --> Drive[Drive literal action]
+    Drive --> Wait[Await declared completion]
+    Wait --> Assert[Compare exact postconditions]
+    Assert --> Clean[Clean up and verify loss]
+    Clean --> Next[Next action or strict result]
 ```
 
-The application must already be in the state the recording started from. **Replay drives input;
-it does not reset anything.**
+The readiness phase and each step have an `asyncio.timeout` deadline. Cleanup has
+a separate bounded unsubscribe deadline and runs on failure, timeout and task
+cancellation. Qt owns signal connections, object lifetimes and delivery; Python
+uses `asyncio.Queue` and `AsyncExitStack`. The checkpoint queue holds 256 emissions.
+Native exclusive subscriptions have a 64-permit `QSemaphore` limit; each checkpoint
+owns two. Existing ordinary subscriptions remain independent and are not removed
+when a checkpoint finishes. Older probes that do not acknowledge exclusive
+ownership or provide loss counters cannot certify strict acceptance.
 
-### Exit codes
+Immediate and queued signals are supported. A checkpoint's optional `arguments`
+matches the complete JSON argument array. Omit it to assert the signal occurrence
+only. Include an application correlation value when causality matters: observing a
+signal after an action does not prove that the action caused it. Qt values are
+compared as serialized on the wire; this is not proof of native metatype fidelity.
+Unsupported argument types may require an application-provided scalar completion
+signal. A timeout does not interrupt a blocking Qt application handler or undo
+an action already delivered.
 
-| Code | Meaning |
+## Evidence and failure reports
+
+Strict reports retain raw observation responses, action responses and matched
+checkpoint notifications. Each comparison includes the selected field `path`,
+expected/actual values, evidence kind and match result. An empty path asserts the
+entire response. A selected field explicitly narrows assertion scope; other fields
+remain in `raw`. Timestamps, IDs and generated handles are never silently masked.
+JSON types remain significant, including boolean versus number.
+
+`evidence_counts` distinguishes `exact`, `normalized`, `wildcard`, `unavailable`
+and `unsupported`, in units of assertions. A strict pass has only matching exact
+assertions. Truncation/image placeholders, generated-handle wildcards, missing
+fields, failed reads and unsupported-value markers cannot establish exactness.
+`loss_before`/`loss_after` include probe/controller session counters;
+`checkpoint_evidence` retains queue capacity, queued count and drops through cleanup.
+
+`qtpilot_status` and `qtpilot://status` expose the same transport, diagnostic signal
+waiter and event-capture counters. Unavailable transport counters are unknown, never
+invented zeroes. Diagnostic signal counters cover their **waiter lifetime**, not an
+inferred probe session; overflow and untracked-buffer eviction are separate counts.
+Explicit forget/fresh operations intentionally discard data. Strict checkpoints
+use their own owned buffers and do not rely on diagnostic waiter history.
+Event capture defaults to 10,000 retained events, drops the oldest on overflow and
+reports `buffer_dropped`/`buffer_capacity`; this is an event-count bound, not a byte bound.
+
+| CLI exit | Strict meaning |
 | --- | --- |
-| 0 | No divergence |
-| 1 | Ran, and the application behaved differently |
-| 2 | Could not run: missing or malformed log, nothing to drive, or no probe reachable |
-| 3 | Aborted partway: an action raised an error so subsequent steps could not be tested |
+| 0 | Every declared action and exact assertion completed with verified loss evidence |
+| 1 | Initial-state or postcondition comparison failed |
+| 2 | Invalid input/options or connection preparation failed |
+| 3 | Incomplete acceptance: requirement, action, checkpoint, cleanup or evidence failure |
 
-The split matters in CI. A probe that is not there has not "behaved differently", and reporting
-it as a divergence sends someone hunting a regression that does not exist. Similarly, an aborted
-run (exit code 3) distinguishes an execution failure during replay from an application regression
-(exit code 1).
+`failure_kind`, `failed_step`, `reason` and `actions_driven` distinguish failures;
+the action count includes attempted calls. Failed readiness never drives an action.
+Python task cancellation propagates after cleanup instead of returning a pass.
+There is no automatic baseline rewrite in strict mode.
 
-Before a scenario can drive the application, each JSONL line must be an object
-and every `res` or `err` entry must match both the request ID and method of an
-earlier `req`. A truncated or corrupt transcript is rejected instead of being
-reinterpreted as fresh UI input.
-
-## What is ignored, and why
-
-Five things differ between two runs of the same session and would otherwise fail every replay:
-
-| Ignored | Reason |
-| --- | --- |
-| `ts`, `dur_ms`, and the probe's `meta.timestamp` | Timing. Stripped at every depth. |
-| The JSON-RPC request `id` | A counter. Stripped at the **top level of an entry only** — a nested `id` names an *object*, and dropping it everywhere would leave a diff unable to tell one widget from another. |
-| `QObject~<n>` handles | The counter follows construction order. Masked to `QObject~*`; register names for identity that matters. |
-| The QML engine's generated type index | A type declared in QML is reported as `Foo_QMLTYPE_<n>_QML_<n>`, where the numbers are registration indices. They move between two runs of the same unchanged binary, so the suffix is stripped and the declared name compared. A genuine change of type still diverges. |
-| Logger-truncated values (`...<truncated Nc>`, `<image:Nb>`) | The recording does not hold what the application returned, so comparing the placeholder would fail over a difference the logger introduced. Treated as wildcards. |
-| Notification order within a step | Delivery order between independent objects is not promised. Compared as a multiset. |
-
-Signals also arrive asynchronously, so a replay that asserted the instant a call returned would
-report a race as a divergence. `--settle` (default 0.1s) is the window after each action; raise it
-for an application that updates slowly.
-
-## Failure handling
-
-An error on an **observation** is recorded and the run continues — an object that no longer
-exists is a finding worth reporting next to everything else that changed.
-
-Initial observations in step zero are checked before the first action, including
-when recording a new baseline. A mismatch or failed read stops with
-`failure_kind: "precondition"`, retains the observed difference, and reports
-`actions_driven: 0` through CLI JSON and MCP. The harness must prepare the intended
-initial state; replay does not reset the application. Fluent specifications use
-`expect_replay(result).to_fail_precondition().to_have_driven(0)`.
-
-When synchronization is enabled, a failed `qt.sync` aborts before the next action
-with `failure_kind: "synchronization"`. Method-not-found is reported as unavailable;
-timeouts, disconnections and handler errors retain their distinct cause. They are
-never swallowed. `--no-sync` explicitly disables this barrier; a pacing delay is
-not evidence that an asynchronous application operation completed.
-
-An error on an **action** aborts. Every later step assumes the earlier ones happened, so carrying
-on would report a cascade of differences that are all the same failure.
-
-## Using it from a test runner
-
-`qtpilot replay` is a process that exits non-zero, so a scenario drops into ctest next to
-ordinary tests:
-
-```cmake
-add_test(NAME Replay.SubmitForm
-         COMMAND qtpilot replay ${CMAKE_CURRENT_SOURCE_DIR}/scenarios/submit-form.jsonl)
-```
-
-This complements unit tests and a full GUI-automation suite rather than replacing either. Unit
-tests run without an application; a replay runs against a real one but is cheap to author,
-because recording a session is the authoring step.
-
-## Programmatic API, Monadic Results, and Fluent DSL
-
-For programmatic execution in pytest or CI runners, use `run_scenario` with fluent matchers or monadic results:
+## Pytest and fluent specifications
 
 ```python
+from __future__ import annotations
+
 from qtpilot.connection import ProbeConnection
-from qtpilot.fluent import expect_replay
-from qtpilot.replay import parse_entries, run_scenario
+from qtpilot.contract_runner import run_contract
+from qtpilot.fluent import expect_contract_replay
+from qtpilot.replay_contract import load_contract
 
-scenario = parse_entries(entries)
-result = await run_scenario(scenario, conn)
 
-# Fluent assertions
-expect_replay(result).to_pass()
-expect_replay(result).to_diverge_at(step=2, kind="value_mismatch")
-
-# Monadic Result pipeline
-outcome = result.to_result()  # Result[list[Step], list[Divergence]]
-outcome.map(lambda steps: print(f"Successfully replayed {len(steps)} steps!")) \
-       .map_err(lambda errs: print(f"Found {len(errs)} divergences: {errs}"))
+async def verify_prepared_form(connection: ProbeConnection) -> None:
+    contract = load_contract("scenarios/form.json").unwrap()
+    result = await run_contract(contract, connection)
+    (expect_contract_replay(result)
+        .to_pass_strictly()
+        .to_have_driven(1)
+        .to_complete_checkpoint("edit-name")
+        .to_have_no_evidence_loss())
 ```
 
-## Limits
+Keep pytest fixtures, parametrization and assertion diagnostics as the foundation.
+Use fluent assertions for domain outcomes, including
+`.to_fail_as("precondition").to_have_driven(0)` and `.to_have_evidence(wildcard=1)`.
+Parser/loading operations return the existing typed `Result`; contract/results are
+frozen dataclasses. Tests include negative matcher diagnostics and native injected
+Qt fixtures. [PySide qualification](PYSIDE-QUALIFICATION.md) remains partial;
+Python Qt bindings are not a runtime dependency or the native acceptance backend.
 
-- The recursive signal subscribe behind `qtpilot_recording_*` is still one level deep, so a
-  recording can miss nested widgets. See `O8` in
-  [OBSERVABILITY-GAPS.md](OBSERVABILITY-GAPS.md).
-- There are no emission timestamps, so signals are ordered per step but not timed within one.
-- Screenshots are excluded by design. Pair a replay with a visual golden if pixels matter.
+## Migrating diagnostic recordings
+
+The experimental JSONL formats are not strict contracts. Create a version-2 JSON
+document with a prepared fixture, readiness assertions and completion evidence.
+Do not convert normalized/truncated transcript values into supposedly exact
+baselines. Inspect fresh raw values, choose stable object names and explicitly
+select the fields that matter.
+
+For diagnostic replay, opt in:
+
+```bash
+qtpilot replay session.jsonl --exploratory --inspect
+qtpilot replay session.jsonl --exploratory --json
+qtpilot replay session.jsonl --exploratory --settle 0.25
+qtpilot replay session.jsonl --exploratory --watch watch.json --record -o diagnostic-baseline.jsonl
+```
+
+Record wire traffic with `qtpilot_log_start(path="session.jsonl", level=2)` and
+stop with `qtpilot_log_stop()`. Level 3 includes notifications; level 1 lacks wire
+actions and is rejected for replay. Watch files contain a `watch` list of observing
+`method`/`params` objects. `--record` requires `--watch` and a separate `--output`;
+an aborted run is not written as a partial baseline. Stop event recording before
+capturing a replay transcript so session instrumentation is not accidentally mixed.
+
+Exploratory mode retains handle/QML-type/timing normalization, truncated-value
+wildcards and unordered notification comparison. Its default 0.1-second settle
+delay is pacing, not completion evidence. Initial observations still gate actions;
+required `qt.sync` errors stop execution unless `--no-sync` explicitly opts out.
+Reports always set `mode: "exploratory"`, `strict_passed: false`,
+`raw_available: false` and `loss_verified: false`. Category counts cover collected
+observation/notification items, excluding actions and unexecuted observations;
+unclassified recorded calls appear separately in `unsupported_calls`.
+`run_scenario` / `expect_replay` remain the diagnostic Python API.
+
+## Remaining limits
+
+- Strict assertions prove declared wire values, not global application determinism,
+  a transactional snapshot, or the absence of unrelated background work.
+- General property/model watches, automatic fixture reset and mutation retry are
+  outside this change. Source emission timestamps and causal tracing remain open.
+- Recursive event-recording subscriptions still visit only one child level.
+- Screenshots require separate visual comparisons; this contract does not certify pixels.
+- Local tests and hosted cross-builds do not establish physical-device behavior or
+  separate-host LAN acceptance. Follow the [LAN runbook](AUTHENTICATION.md).
