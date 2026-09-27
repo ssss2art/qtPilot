@@ -75,3 +75,10 @@ def test_checkpoint_can_supply_completion_without_a_postcondition() -> None:
     result = parse_contract(json.dumps(document))
     assert result.is_ok(), result.unwrap_err()
     assert result.unwrap().steps[0].checkpoint.arguments == ("user~1",)
+
+
+def test_overflowing_json_number_is_rejected_before_inspection_or_execution() -> None:
+    text = json.dumps(contract_document()).replace('"expected": 1', '"expected": 1e400')
+    result = parse_contract(text)
+    assert result.is_err(), "An infinite expected value is not exact JSON evidence"
+    assert "JSON" in result.unwrap_err()

@@ -150,10 +150,18 @@ def _reject_constant(value: str) -> Json:
     raise ValueError(f"JSON: non-finite number {value}")
 
 
+def _finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("JSON: number exceeds the finite floating-point range")
+    return number
+
+
 def _parse(text: str) -> ReplayContract:
     if len(text.encode("utf-8")) > MAX_CONTRACT_BYTES:
         raise ValueError("contract exceeds 4 MiB")
-    value = json.loads(text, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+    value = json.loads(text, object_pairs_hook=_unique_object, parse_constant=_reject_constant,
+                       parse_float=_finite_float)
     obj = _object(value, {"format", "fixture", "timeout", "requirements", "preconditions", "steps"}, set(), "contract")
     if type(obj["format"]) is not int or obj["format"] != 2:
         raise ValueError("format: expected contract version 2; create an explicit contract or use exploratory replay")
