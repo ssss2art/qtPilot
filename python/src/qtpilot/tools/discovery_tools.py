@@ -53,6 +53,7 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         Example: qtpilot_status()
         """
         from qtpilot.server import get_discovery, get_probe, get_state
+        from qtpilot.status import evidence_status
 
         state = get_state()
         probe = get_probe()
@@ -90,6 +91,7 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             "available_modes": ["native", "cu", "chrome", "all"],
             "connection": connection,
             "discovery": disc_info,
+            "evidence": await evidence_status(),
             # Which MCP revision this process actually speaks. qtPilot supports
             # two; a bug report is ambiguous without it.
             "mcp": mcp_compat.describe(),
