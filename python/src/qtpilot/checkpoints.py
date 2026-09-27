@@ -54,9 +54,12 @@ class ArmedCheckpoint:
     def receive(self, method: str, params: dict[str, Json]) -> None:
         if method != "qtpilot.signalEmitted":
             return
+        if params.get("objectId") != self.checkpoint.objectId:
+            return
+        expected_subs = 1 if self.checkpoint.signal == "destroyed" else 2
         # During subscribe, a signal can arrive before its ID is returned. Keep
         # those too; the cursor established before driving discards old emissions.
-        if len(self.subscriptions) == 2 and params.get("subscriptionId") not in self.subscriptions:
+        if len(self.subscriptions) == expected_subs and params.get("subscriptionId") not in self.subscriptions:
             return
         self.sequence += 1
         try:
@@ -68,7 +71,7 @@ class ArmedCheckpoint:
         while not self.queue.empty():
             received = self.queue.get_nowait()
             self.queue.task_done()
-            if self.subscriptions.get(str(received.params.get("subscriptionId"))) == "destroyed":
+            if self.checkpoint.signal != "destroyed" and self.subscriptions.get(str(received.params.get("subscriptionId"))) == "destroyed":
                 raise CheckpointFailure("target destroyed before action")
         self.cursor = self.sequence
         self.check_loss()
@@ -91,7 +94,7 @@ class ArmedCheckpoint:
             self.queue.task_done()
             params = received.params
             signal = self.subscriptions.get(str(params.get("subscriptionId")))
-            if signal == "destroyed":
+            if signal == "destroyed" and self.checkpoint.signal != "destroyed":
                 raise CheckpointFailure("checkpoint target destroyed")
             if received.sequence <= self.cursor or signal != self.checkpoint.signal:
                 continue
@@ -127,7 +130,8 @@ async def arm_checkpoint(probe: CheckpointProbe, checkpoint: Checkpoint,
         cleanup.callback(probe.remove_notification_handler, pending.receive)
         # QObject::destroyed comes first, so deletion cannot fall between the
         # completion subscription and installation of the lifetime observer.
-        for signal in ("destroyed", checkpoint.signal):
+        signals = ("destroyed",) if checkpoint.signal == "destroyed" else ("destroyed", checkpoint.signal)
+        for signal in signals:
             response = await probe.call("qt.signals.subscribe", {
                 "objectId": checkpoint.objectId, "signal": signal, "exclusive": True,
             }, timeout=5)

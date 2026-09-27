@@ -175,3 +175,16 @@ async def test_nested_unsupported_native_value_cannot_match_exactly() -> None:
     contract = ready_contract()
     contract = replace(contract, preconditions=(replace(contract.preconditions[0], expected=value),))
     expect_contract_replay(await run_contract(contract, probe)).to_fail_as("precondition").to_have_driven(0).to_have_evidence(unsupported=1)
+
+
+@pytest.mark.asyncio
+async def test_corrupted_checkpoint_evidence_fails_cleanly_without_unhandled_crash() -> None:
+    from unittest.mock import patch
+    from qtpilot.checkpoints import ArmedCheckpoint
+
+    probe = ContractProbe()
+    contract = ready_contract(checkpoint=True)
+    with patch.object(ArmedCheckpoint, "wait", return_value="not-a-dict"):
+        result = await run_contract(contract, probe)
+    expect_contract_replay(result).to_fail_as("checkpoint")
+    assert result.reason == "checkpoint evidence was not a valid dictionary"

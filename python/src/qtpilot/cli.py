@@ -255,8 +255,9 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
     async def go() -> int:
         probe = None
+        default_port = int(os.environ.get("QTPILOT_PORT", "9222"))
         try:
-            probe = ProbeConnection(args.ws_url or local_probe_url(9222, os.environ))
+            probe = ProbeConnection(args.ws_url or local_probe_url(default_port, os.environ))
             await probe.connect()
             result = await run_contract(contract, probe)
         except (ProbeError, OSError, ValueError) as exc:
@@ -397,7 +398,8 @@ def _cmd_replay_exploratory(args: argparse.Namespace) -> int:
         # not running has not behaved differently, and reporting it as a divergence would send
         # someone hunting a regression that does not exist.
         try:
-            probe = ProbeConnection(args.ws_url or local_probe_url(9222, os.environ))
+            default_port = int(os.environ.get("QTPILOT_PORT", "9222"))
+            probe = ProbeConnection(args.ws_url or local_probe_url(default_port, os.environ))
             await probe.connect()
         except (OSError, ProbeError, ValueError) as exc:
             print(

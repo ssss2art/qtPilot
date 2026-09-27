@@ -201,7 +201,8 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
                     if pending is not None:
                         phase = "checkpoint"
                         raw = retain(await pending.wait())
-                        assert isinstance(raw, dict) and step.checkpoint is not None
+                        if not isinstance(raw, dict) or step.checkpoint is None:
+                            raise CheckpointFailure("checkpoint evidence was not a valid dictionary")
                         expected: Json = list(step.checkpoint.arguments) if step.checkpoint.arguments is not None else step.checkpoint.signal
                         path: tuple[str | int, ...] = ("arguments",) if step.checkpoint.arguments is not None else ("signal",)
                         result = replace(result, completed_checkpoints=(*result.completed_checkpoints, step.name),
@@ -222,5 +223,5 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
             if verified.is_err():
                 return fail(verified.unwrap_err())
         return replace(result, loss_verified=True)
-    except (CheckpointFailure, ProbeError, OSError, ValueError) as exc:
+    except (CheckpointFailure, ProbeError, OSError, ValueError, AssertionError) as exc:
         return fail(str(exc) or f"{phase} exceeded {contract.timeout:g}s deadline")

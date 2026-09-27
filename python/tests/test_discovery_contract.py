@@ -77,3 +77,16 @@ def test_invalid_transport_hints_cannot_create_a_plaintext_endpoint(tls: object)
     scenario = DiscoveryScenario()
     scenario.listener.on_announce({"pid": 100, "tls": tls}, "192.0.2.1")
     scenario.to_contain()
+
+
+def test_discovery_tls_uses_hostname_for_san_validation() -> None:
+    scenario = DiscoveryScenario()
+    scenario.listener.on_announce({
+        "pid": 100,
+        "tls": True,
+        "authRequired": True,
+        "hostname": "probe.lan.internal",
+    }, "192.0.2.1")
+    probe = next(iter(scenario.listener.probes.values()))
+    assert probe.ws_url == "wss://probe.lan.internal:9222"
+    assert probe.address == "192.0.2.1"

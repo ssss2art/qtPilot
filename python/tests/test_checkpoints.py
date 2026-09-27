@@ -127,3 +127,31 @@ async def test_old_probe_cannot_claim_exclusive_ownership() -> None:
             pytest.fail("Probe did not confirm independent Qt ownership")
     assert not probe.handlers
     assert "qt.signals.unsubscribe" not in probe.calls, "Must not remove an unowned subscription"
+
+
+@pytest.mark.asyncio
+async def test_armed_checkpoint_can_target_destroyed_signal_intentionally() -> None:
+    probe = SignalProbe()
+    async with asyncio.timeout(1):
+        async with arm_checkpoint(probe, Checkpoint("form", "destroyed")) as pending:
+            assert set(probe.subscriptions.values()) == {"destroyed"}
+            assert len(probe.subscriptions) == 1
+            probe.emit("destroyed")
+            result = await pending.wait()
+            assert result["signal"] == "destroyed"
+    assert not probe.handlers and not probe.subscriptions
+
+
+@pytest.mark.asyncio
+async def test_armed_checkpoint_ignores_emissions_from_different_object_id() -> None:
+    probe = SignalProbe()
+    async with arm_checkpoint(probe, Checkpoint("form", "saved")) as pending:
+        for handler in list(probe.handlers):
+            handler("qtpilot.signalEmitted", {
+                "subscriptionId": "sub_2",
+                "objectId": "other_object",
+                "signal": "saved",
+                "arguments": ["hello"],
+            })
+        assert pending.sequence == 0
+        assert pending.queue.empty()
