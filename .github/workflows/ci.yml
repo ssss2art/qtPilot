@@ -141,7 +141,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a, qt: "6.5.3" }
+          - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a, qt: "6.10.0" }
           - { name: ios,     os: macos-14,     target: ios,     arch: "",                qt: "6.10.0" }
     name: mobile (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -149,8 +149,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # Uses matrix.qt (6.5.3 for Android, 6.10.0 for iOS) so each HOST install
-      # shares a cache entry with the desktop build matrix (Ubuntu 6.5.3 and macOS 6.10.0)
+      # Mobile targets Qt latest (6.10.0) across Android and iOS. Each HOST install
+      # shares a cache entry with the desktop build matrix (Ubuntu 6.10.0 and macOS 6.10.0)
       # while using Qt versions with official prebuilt packages on the target SDK.
       - name: Install host Qt
         id: hostqt
@@ -340,12 +340,9 @@ jobs:
           - { qt: "5.15.2", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "" }
           - { qt: "5.15.2", os: windows-2022, preset: windows-release,     platform: windows, compiler: msvc17, modules: "" }
           - { qt: "5.15.2", os: windows-2022, preset: windows-x86-release, platform: windows, compiler: msvc17, modules: "", arch: "win32_msvc2019" }
-          - { qt: "6.5.3",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.5.3",  os: windows-2022, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
           - { qt: "6.8.0",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
           - { qt: "6.8.0",  os: windows-2022, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
-          - { qt: "6.9.0",  os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
-          - { qt: "6.9.0",  os: windows-2022, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
+          - { qt: "6.8.0",  os: macos-14,       preset: macos-release,   platform: macos,   compiler: clang,  modules: "qtwebsockets", arch_label: arm64 }
           - { qt: "6.10.0", os: ubuntu-24.04, preset: release,         platform: linux,   compiler: gcc13,  modules: "qtwebsockets" }
           - { qt: "6.10.0", os: windows-2022, preset: windows-release, platform: windows, compiler: msvc17, modules: "qtwebsockets" }
           - { qt: "6.10.0", os: macos-14,       preset: macos-release,   platform: macos,   compiler: clang,  modules: "qtwebsockets", arch_label: arm64 }
