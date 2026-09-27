@@ -179,7 +179,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a, qt: "6.5.3" }
+          - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a, qt: "6.10.0" }
           - { name: ios,     os: macos-14,     target: ios,     arch: "",                qt: "6.10.0" }
     name: mobile (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -187,8 +187,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # Uses matrix.qt (6.5.3 for Android, 6.10.0 for iOS) so each HOST install
-      # shares a cache entry with the desktop build matrix (Ubuntu 6.5.3 and macOS 6.10.0)
+      # Mobile targets Qt latest (6.10.0) across Android and iOS. Each HOST install
+      # shares a cache entry with the desktop build matrix (Ubuntu 6.10.0 and macOS 6.10.0)
       # while using Qt versions with official prebuilt packages on the target SDK.
       - name: Install host Qt
         id: hostqt

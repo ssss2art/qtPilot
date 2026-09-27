@@ -600,10 +600,10 @@ class TestAvailableVersions:
     def test_expected_versions_available(self) -> None:
         """All expected Qt versions should be available."""
         assert "5.15" in AVAILABLE_VERSIONS
-        assert "6.5" in AVAILABLE_VERSIONS
         assert "6.8" in AVAILABLE_VERSIONS
-        assert "6.9" in AVAILABLE_VERSIONS
         assert "6.10" in AVAILABLE_VERSIONS
+        assert "6.5" not in AVAILABLE_VERSIONS
+        assert "6.9" not in AVAILABLE_VERSIONS
         # 5.15-patched was advertised but never built by CI.
         assert "5.15-patched" not in AVAILABLE_VERSIONS
 

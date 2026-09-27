@@ -26,22 +26,6 @@
       "arch": "win32_msvc2019"
     },
     {
-      "qt": "6.5.3",
-      "os": "ubuntu-24.04",
-      "preset": "release",
-      "platform": "linux",
-      "compiler": "gcc13",
-      "modules": "qtwebsockets"
-    },
-    {
-      "qt": "6.5.3",
-      "os": "windows-2022",
-      "preset": "windows-release",
-      "platform": "windows",
-      "compiler": "msvc17",
-      "modules": "qtwebsockets"
-    },
-    {
       "qt": "6.8.0",
       "os": "ubuntu-24.04",
       "preset": "release",
@@ -58,20 +42,13 @@
       "modules": "qtwebsockets"
     },
     {
-      "qt": "6.9.0",
-      "os": "ubuntu-24.04",
-      "preset": "release",
-      "platform": "linux",
-      "compiler": "gcc13",
-      "modules": "qtwebsockets"
-    },
-    {
-      "qt": "6.9.0",
-      "os": "windows-2022",
-      "preset": "windows-release",
-      "platform": "windows",
-      "compiler": "msvc17",
-      "modules": "qtwebsockets"
+      "qt": "6.8.0",
+      "os": "macos-14",
+      "preset": "macos-release",
+      "platform": "macos",
+      "compiler": "clang",
+      "modules": "qtwebsockets",
+      "arch_label": "arm64"
     },
     {
       "qt": "6.10.0",
