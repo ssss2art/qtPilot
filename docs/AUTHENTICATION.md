@@ -100,7 +100,9 @@ qtpilot serve --profile trusted-network --ws-url wss://probe.example.invalid:922
 native launcher accepts profile, token-file and certificate/key-file options.
 The same environment variables work for injected and development-only static
 consumers. No raw token argument exists. Omitted CLI settings preserve the
-environment; an explicitly empty credential path is invalid.
+environment; an explicitly empty credential path or profile is invalid. Legacy
+behavior requires the profile variable to be absent. Passing `--profile ''` never
+clears a restrictive profile into unauthenticated LAN exposure.
 
 `remote` binds loopback unless `QTPILOT_BIND_ADDRESS=any` is explicitly supplied.
 It requires TLS and the token even through a forwarded port, and suppresses UDP
