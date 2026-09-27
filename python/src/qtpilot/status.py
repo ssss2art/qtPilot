@@ -7,6 +7,7 @@ import logging
 
 from fastmcp import FastMCP
 from qtpilot.evidence import BufferEvidence
+from qtpilot.signal_wait import signal_waiter_status
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,8 @@ async def evidence_status() -> dict[str, object]:
     counters = (BufferEvidence("probe", None), BufferEvidence("controller", None))
     if probe is not None and probe.is_connected:
         counters = await probe.loss_evidence()
-    return {"transport": [counter.to_dict() for counter in counters], "capture": get_recorder().status()}
+    return {"transport": [counter.to_dict() for counter in counters],
+            "signals": signal_waiter_status(probe), "capture": get_recorder().status()}
 
 
 def register_status_resource(mcp: FastMCP) -> None:
