@@ -3,11 +3,13 @@
 
 #include "transport/websocket_server.h"
 
+#include "transport/admission_server.h"
 #include "transport/bind_policy.h"
 #include "transport/jsonrpc_handler.h"
 #include "transport/notification_queue.h"
 
 #include <QDebug>
+#include <QNetworkRequest>
 #include <QPointer>
 #include <QScopeGuard>
 #include <QTcpSocket>
@@ -68,58 +70,62 @@ WebSocketServer::~WebSocketServer() {
 }
 
 bool WebSocketServer::start() {
-  if (m_server->isListening()) {
-    qWarning() << "[qtPilot] WebSocket server already listening on port" << m_port;
+  if (isListening()) {
     return true;
   }
-
-  // All interfaces by default -- reaching instrumented apps on other hosts is a
-  // requirement, and discovery is broadcast-based, so a loopback default would
-  // be an outage rather than a hardening. QTPILOT_BIND_ADDRESS=loopback narrows
-  // it for single-machine work. See bind_policy.h for why the exposure is not
-  // the mitigation here; authentication is (R7, not yet implemented).
-  const QHostAddress bindAddress = listenAddress();
+  auto policy = resolveNetworkPolicy(QProcessEnvironment::systemEnvironment());
+  auto credentials = policy.and_then(loadTransportCredentials);
+  if (!credentials) {
+    qCritical() << "[qtPilot] Cannot configure transport:" << credentials.error();
+    emit errorOccurred(credentials.error());
+    return false;
+  }
+  m_policy = *policy;
+  m_credentials = *credentials;
+  delete m_admission;
+  m_admission = nullptr;
+  delete m_server;
+  auto mode = QWebSocketServer::NonSecureMode;
+#ifndef QT_NO_SSL
+  if (m_credentials.tls) {
+    mode = QWebSocketServer::SecureMode;
+  }
+#endif
+  m_server = new QWebSocketServer(QStringLiteral("qtPilot"), mode, this);
+  m_server->setMaxPendingConnections(16);
+  m_server->setHandshakeTimeout(5000);
+  connect(m_server, &QWebSocketServer::newConnection, this, &WebSocketServer::onNewConnection);
+  m_admission = new AdmissionServer(m_server, m_credentials, this);
+  const QHostAddress bindAddress = m_policy.exposure == NetworkExposure::Lan
+                                       ? QHostAddress(QHostAddress::Any)
+                                       : QHostAddress(QHostAddress::LocalHost);
   if (portServedByAnotherProcess(m_port)) {
-    const QString error = QStringLiteral(
-                              "port %1 is already served by another process on this machine; "
-                              "set QTPILOT_PORT to a free port")
-                              .arg(m_port);
-    qCritical() << "[qtPilot] Failed to start WebSocket server:" << error;
+    const QString error =
+        QStringLiteral(
+            "port %1 is already served by another process; set QTPILOT_PORT to a free port")
+            .arg(m_port);
     emit errorOccurred(error);
+    qCritical() << "[qtPilot]" << error;
     return false;
   }
-  if (!m_server->listen(bindAddress, m_port)) {
-    QString error = m_server->errorString();
-    qCritical() << "[qtPilot] Failed to start WebSocket server on"
-                << QStringLiteral("%1:%2: %3").arg(bindAddress.toString()).arg(m_port).arg(error);
+  if (!m_admission->listen(bindAddress, m_port)) {
+    const QString error = m_admission->errorString();
     emit errorOccurred(error);
+    qCritical() << "[qtPilot] Failed to listen:" << error;
     return false;
   }
-
-  // When port 0 was requested, read back the OS-assigned ephemeral port
   if (m_port == 0) {
-    m_port = m_server->serverPort();
+    m_port = m_admission->serverPort();
   }
-
-  // Print startup message to stderr as specified in CONTEXT.md. The host is the
-  // address actually bound, not a hardcoded one -- the previous message claimed
-  // 0.0.0.0 unconditionally, which is exactly the detail an operator needs to be
-  // told truthfully.
-  fprintf(stderr, "qtPilot listening on ws://%s:%u\n", bindAddress.toString().toUtf8().constData(),
-          static_cast<unsigned>(m_port));
-  // Stated once at startup rather than shouted. Reaching instrumented apps on
-  // other hosts is the normal case, so this is not a misconfiguration to warn
-  // about -- but the probe invokes arbitrary slots and authenticates nobody, and
-  // an operator deciding where to run it should not have to read the source to
-  // learn that. Fact plus remedy, one line.
-  if (configuredExposure() == NetworkExposure::Lan) {
+  fprintf(stderr, "qtPilot listening on %s://%s:%u\n", m_credentials.tls ? "wss" : "ws",
+          bindAddress.toString().toUtf8().constData(), static_cast<unsigned>(m_port));
+  if (m_policy.exposure == NetworkExposure::Lan && !m_policy.authenticationRequired()) {
     fprintf(stderr,
-            "[qtPilot] Reachable from any host on this network, with no "
-            "authentication; any of them can invoke methods in this process. "
-            "Set QTPILOT_BIND_ADDRESS=loopback to restrict to this machine.\n");
+            "[qtPilot] Reachable from any host on this network, with no authentication; any of "
+            "them can invoke methods in this process. Set QTPILOT_BIND_ADDRESS=loopback to "
+            "restrict to this machine.\n");
   }
   fflush(stderr);
-
   return true;
 }
 
@@ -141,10 +147,10 @@ void WebSocketServer::stop() {
     client->deleteLater();
   }
 
-  // Close the server
-  if (m_server->isListening()) {
-    m_server->close();
+  if (m_admission) {
+    m_admission->shutdown();
   }
+  m_server->close();
 }
 
 QWebSocket* WebSocketServer::takeActiveClient() {
@@ -169,7 +175,7 @@ QWebSocket* WebSocketServer::takeActiveClient() {
 }
 
 bool WebSocketServer::isListening() const {
-  return m_server && m_server->isListening();
+  return m_admission && m_admission->isListening();
 }
 
 quint16 WebSocketServer::port() const {
@@ -177,11 +183,19 @@ quint16 WebSocketServer::port() const {
 }
 
 QHostAddress WebSocketServer::serverAddress() const {
-  return m_server ? m_server->serverAddress() : QHostAddress();
+  return m_admission ? m_admission->serverAddress() : QHostAddress();
 }
 
 bool WebSocketServer::hasActiveClient() const {
   return m_activeClient != nullptr;
+}
+
+int WebSocketServer::pendingAdmissionCount() const {
+  return m_admission ? m_admission->pendingCount() : 0;
+}
+
+const NetworkPolicy& WebSocketServer::networkPolicy() const {
+  return m_policy;
 }
 
 JsonRpcHandler* WebSocketServer::rpcHandler() const {
@@ -212,6 +226,17 @@ NotificationQueue* WebSocketServer::notificationQueue() const {
 void WebSocketServer::onNewConnection() {
   QWebSocket* socket = m_server->nextPendingConnection();
   if (!socket) {
+    return;
+  }
+
+  // HTTP credentials are never JSON-RPC data or message-observer input.
+  if (!m_credentials.accepts(socket->request().rawHeader("Authorization"))) {
+    // Flush the upgrade and close frame so the client can distinguish admission
+    // rejection from a broken TLS/HTTP peer. The admission timer still bounds a
+    // peer that never finishes this close handshake.
+    connect(socket, &QWebSocket::disconnected, socket, &QObject::deleteLater);
+    socket->close(QWebSocketProtocol::CloseCodePolicyViolated,
+                  QStringLiteral("Authentication rejected"));
     return;
   }
 
@@ -247,7 +272,8 @@ void WebSocketServer::onNewConnection() {
     }
   }
 
-  // Accept this client
+  // Accept this client only after credentials and independent Origin policy.
+  m_admission->finish(socket->peerAddress(), socket->peerPort());
   m_activeClient = socket;
 
   // Create notification queue for this client
@@ -259,6 +285,10 @@ void WebSocketServer::onNewConnection() {
   connect(socket, &QWebSocket::textMessageReceived, this, &WebSocketServer::onTextMessage);
   connect(socket, &QWebSocket::disconnected, this, &WebSocketServer::onClientDisconnected);
 
+  if (m_policy.authenticationRequired()) {
+    socket->sendTextMessage(QStringLiteral(
+        R"({"jsonrpc":"2.0","method":"qtpilot.authenticated","params":{"protocolVersion":1}})"));
+  }
   emit clientConnected();
 }
 

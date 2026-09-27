@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "transport/transport_credentials.h"
+
 #include <QHostAddress>
 #include <QObject>
 #include <QPointer>
@@ -17,6 +19,7 @@ namespace qtPilot {
 
 class JsonRpcHandler;
 class NotificationQueue;
+class AdmissionServer;
 
 /// @brief WebSocket server for JSON-RPC communication.
 ///
@@ -66,6 +69,10 @@ class QTPILOT_EXPORT WebSocketServer : public QObject {
   /// @brief Check if a client is currently connected.
   /// @return true if a client is connected.
   bool hasActiveClient() const;
+
+  /// Number of bounded TCP/TLS upgrades not yet admitted.
+  int pendingAdmissionCount() const;
+  const NetworkPolicy& networkPolicy() const;
 
   /// @brief Get the JSON-RPC handler.
   /// @return Pointer to the handler.
@@ -129,6 +136,9 @@ class QTPILOT_EXPORT WebSocketServer : public QObject {
   /// @brief Handle one request and answer @p client, outside frame processing.
   void handleRequest(const QPointer<QWebSocket>& client, const QString& message);
 
+  NetworkPolicy m_policy;
+  TransportCredentials m_credentials;
+  AdmissionServer* m_admission = nullptr;
   QWebSocketServer* m_server = nullptr;
   QWebSocket* m_activeClient = nullptr;
   JsonRpcHandler* m_rpcHandler = nullptr;
