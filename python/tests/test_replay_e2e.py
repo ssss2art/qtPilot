@@ -64,6 +64,32 @@ CLEAR = FORM + "clearButton"
 RESULT_TEXT = FORM + "resultGroup/resultText"
 
 
+@pytest.mark.parametrize("observer_first", [True, False], ids=["existing-observer", "later-observer"])
+def test_checkpoint_subscription_has_independent_qt_ownership(live_app: str, observer_first: bool) -> None:
+    from qtpilot.fluent import expect_signal_wait
+    from qtpilot.signal_wait import signal_waiter_for, subscription_id_of
+
+    async def check() -> None:
+        async with _connected(live_app) as connection:
+            waiter = signal_waiter_for(connection)
+            params = {"objectId": NAME_EDIT, "signal": "textChanged"}
+            await _set_text(connection, NAME_EDIT, "before-observation")
+            observer = subscription_id_of(await connection.call("qt.signals.subscribe", params)) if observer_first else None
+            checkpoint = subscription_id_of(await connection.call(
+                "qt.signals.subscribe", {**params, "exclusive": True},
+            ))
+            if observer is None:
+                observer = subscription_id_of(await connection.call("qt.signals.subscribe", params))
+            assert checkpoint != observer, "Checkpoint must own an independent Qt connection"
+            waiter.track(observer)
+            await connection.call("qt.signals.unsubscribe", {"subscriptionId": checkpoint})
+            await _set_text(connection, NAME_EDIT, "independent-observer")
+            expect_signal_wait(await waiter.wait(observer, 2)).to_emit("textChanged", ["independent-observer"])
+            await connection.call("qt.signals.unsubscribe", {"subscriptionId": observer})
+            waiter.forget(observer)
+    asyncio.run(check())
+
+
 def test_failed_precondition_preserves_real_application_state(live_app: str) -> None:
     async def check() -> None:
         async with _connected(live_app) as connection:

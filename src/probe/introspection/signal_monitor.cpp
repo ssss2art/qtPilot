@@ -149,7 +149,8 @@ SignalMonitor::~SignalMonitor() {
 }
 
 std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QString& objectId,
-                                                                     const QString& signalName) {
+                                                                     const QString& signalName,
+                                                                     bool exclusive) {
   // Find the object by ID monadically
   auto objRes = ObjectRegistry::instance()->findByIdExpected(objectId);
   if (!objRes) {
@@ -177,11 +178,11 @@ std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QStri
 
   int signalIndex = *it;
 
-  // Deduplicate: return existing subscription if already subscribed to this exact object and signal
-  {
+  // Ordinary subscriptions remain idempotent; checkpoints own a separate Qt connection.
+  if (!exclusive) {
     QMutexLocker lock(&m_mutex);
     for (auto subIt = m_subscriptions.begin(); subIt != m_subscriptions.end(); ++subIt) {
-      if (subIt->objectId == objectId && subIt->signalName == signalName &&
+      if (!subIt->exclusive && subIt->objectId == objectId && subIt->signalName == signalName &&
           subIt->object.data() == obj) {
         qDebug() << "[qtPilot] Reusing existing subscription for" << objectId << "::" << signalName
                  << "as" << subIt.key();
@@ -235,6 +236,7 @@ std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QStri
     sub.object = obj;
     sub.objectId = objectId;
     sub.signalName = signalName;
+    sub.exclusive = exclusive;
     sub.relay = relay;
     sub.connection = conn;
     m_subscriptions[subId] = sub;

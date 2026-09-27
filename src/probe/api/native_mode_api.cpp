@@ -1746,6 +1746,12 @@ void NativeModeApi::registerSignalMethods() {
         auto p = parseParams(params);
         QString objectId = p[QStringLiteral("objectId")].toString();
         QString signal = p[QStringLiteral("signal")].toString();
+        const auto exclusiveValue = p.value(QStringLiteral("exclusive"));
+        if (!exclusiveValue.isUndefined() && !exclusiveValue.isBool()) {
+          throw JsonRpcException(JsonRpcError::kInvalidParams,
+                                 QStringLiteral("exclusive must be a boolean"));
+        }
+        const bool exclusive = exclusiveValue.toBool(false);
 
         if (objectId.isEmpty() || signal.isEmpty()) {
           throw JsonRpcException(
@@ -1755,7 +1761,7 @@ void NativeModeApi::registerSignalMethods() {
         }
 
         auto res = SignalMonitor::instance()
-                       ->subscribeExpected(objectId, signal)
+                       ->subscribeExpected(objectId, signal, exclusive)
                        .transform_error([&](const SignalError& err) {
                          int code = (err.kind == SignalErrorKind::ObjectNotFound)
                                         ? ErrorCode::kObjectNotFound
@@ -1767,6 +1773,7 @@ void NativeModeApi::registerSignalMethods() {
                        .transform([&](const QString& subId) {
                          QJsonObject result;
                          result[QStringLiteral("subscriptionId")] = subId;
+                         result[QStringLiteral("exclusive")] = exclusive;
                          return envelopeToString(ResponseEnvelope::wrap(result, objectId));
                        });
 
