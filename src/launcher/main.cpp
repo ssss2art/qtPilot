@@ -232,8 +232,8 @@ int main(int argc, char* argv[]) {
     }
   }
   const QByteArray profile = qgetenv("QTPILOT_PROFILE");
-  if (!profile.isEmpty() && profile != "local" && profile != "trusted-network" &&
-      profile != "remote") {
+  if (qEnvironmentVariableIsSet("QTPILOT_PROFILE") && profile != "local" &&
+      profile != "trusted-network" && profile != "remote") {
     fprintf(stderr, "Error: Invalid operating profile\n");
     return 1;
   }

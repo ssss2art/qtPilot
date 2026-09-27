@@ -39,7 +39,8 @@ def test_all_drivers_accept_explicit_profile_credentials(command: list[str]) -> 
 ])
 def test_auto_launch_uses_profile_transport(profile: str, tls: bool, expected: str,
                                            monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("QTPILOT_PROFILE", profile)
+    if profile:
+        monkeypatch.setenv("QTPILOT_PROFILE", profile)
     if tls:
         monkeypatch.setenv("QTPILOT_TLS_CERT_FILE", "cert-file")
         monkeypatch.setenv("QTPILOT_TLS_KEY_FILE", "key-file")
@@ -62,7 +63,8 @@ def test_explicit_cli_settings_override_the_same_environment_key(monkeypatch: py
 @pytest.mark.parametrize("profile,discover", [("", True), ("local", False), ("remote", False), ("trusted-network", True)])
 async def test_mcp_listener_honors_profile_discovery(profile: str, discover: bool,
                                                   monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("QTPILOT_PROFILE", profile)
+    if profile:
+        monkeypatch.setenv("QTPILOT_PROFILE", profile)
     with patch("qtpilot.server.DiscoveryListener.start", new_callable=AsyncMock) as start:
         async with Client(create_server()) as client:
             await client.list_tools()

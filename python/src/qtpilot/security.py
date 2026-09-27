@@ -48,8 +48,10 @@ def _loopback(host: str) -> bool:
 
 
 def operating_profile(environment: Mapping[str, str]) -> str:
+    if "QTPILOT_PROFILE" not in environment:
+        return ""
     profile = environment.get("QTPILOT_PROFILE", "")
-    if profile not in {"", "local", "trusted-network", "remote"}:
+    if profile not in {"local", "trusted-network", "remote"}:
         raise ValueError("Invalid operating profile")
     return profile
 

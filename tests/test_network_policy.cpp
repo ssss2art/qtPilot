@@ -43,6 +43,8 @@ class TestNetworkPolicy : public QObject {
         << false << false << false;
     QTest::newRow("invalid profile cannot become legacy")
         << QStringLiteral(R"({"QTPILOT_PROFILE":"locla"})") << false << false << false << false;
+    QTest::newRow("explicit empty profile cannot become legacy")
+        << QStringLiteral(R"({"QTPILOT_PROFILE":""})") << false << false << false << false;
     QTest::newRow("authenticated LAN requires encryption")
         << QStringLiteral(R"({"QTPILOT_AUTH_TOKEN_FILE":"token"})") << false << false << false
         << false;

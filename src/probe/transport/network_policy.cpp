@@ -4,10 +4,11 @@
 
 namespace qtPilot {
 namespace {
-std::expected<OperatingProfile, QString> parseProfile(const QString& value) {
-  if (value.isEmpty()) {
+std::expected<OperatingProfile, QString> parseProfile(const QProcessEnvironment& environment) {
+  if (!environment.contains(QStringLiteral("QTPILOT_PROFILE"))) {
     return OperatingProfile::Legacy;
   }
+  const QString value = environment.value(QStringLiteral("QTPILOT_PROFILE"));
   if (value == QStringLiteral("local")) {
     return OperatingProfile::Local;
   }
@@ -22,7 +23,7 @@ std::expected<OperatingProfile, QString> parseProfile(const QString& value) {
 }  // namespace
 
 std::expected<NetworkPolicy, QString> resolveNetworkPolicy(const QProcessEnvironment& environment) {
-  return parseProfile(environment.value(QStringLiteral("QTPILOT_PROFILE")))
+  return parseProfile(environment)
       .and_then([&](OperatingProfile profile) -> std::expected<NetworkPolicy, QString> {
         NetworkPolicy policy;
         policy.profile = profile;

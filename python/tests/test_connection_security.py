@@ -37,7 +37,7 @@ async def test_credentials_never_cross_unverified_plaintext_networks(credential:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("profile", ["remote", "trusted-network", "locla"])
+@pytest.mark.parametrize("profile", ["remote", "trusted-network", "locla", ""])
 async def test_profiles_fail_closed_before_connecting(monkeypatch: pytest.MonkeyPatch, profile: str) -> None:
     monkeypatch.setenv("QTPILOT_PROFILE", profile)
     connection = ProbeConnection("ws://127.0.0.1:9222")

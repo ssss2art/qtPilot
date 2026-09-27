@@ -14,13 +14,14 @@ from tests.test_complicated_app_e2e import BUILD, _app_env, _free_port, _stop_gr
 pytestmark = [pytest.mark.real_probe, pytest.mark.skipif(not BUILD.available, reason="Native application not built")]
 
 
-@pytest.mark.parametrize("profile", ["", "local"])
-@pytest.mark.parametrize("via_cli", [False, True])
+@pytest.mark.parametrize("profile,via_cli", [("", False), ("local", False), ("local", True)])
 def test_local_is_quiet_while_legacy_loopback_still_announces(profile: str, via_cli: bool, tmp_path: Path) -> None:
     environment = _app_env(str(BUILD.qt_prefix) if BUILD.qt_prefix else None)
     for name in ("QTPILOT_AUTH_TOKEN_FILE", "QTPILOT_TLS_CERT_FILE", "QTPILOT_TLS_KEY_FILE"):
         environment.pop(name, None)
-    environment["QTPILOT_PROFILE"] = "remote" if via_cli else profile
+    environment.pop("QTPILOT_PROFILE", None)
+    if via_cli or profile:
+        environment["QTPILOT_PROFILE"] = "remote" if via_cli else profile
     arguments = ["--profile", profile] if via_cli else []
     port = _free_port()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as discovery:
@@ -43,3 +44,13 @@ def test_local_is_quiet_while_legacy_loopback_still_announces(profile: str, via_
                     assert announcement["protocol"] == "qtPilot-discovery"
             finally:
                 _stop_group(process)
+
+
+@pytest.mark.parametrize("inherited", ["local", "remote", "trusted-network"])
+def test_empty_cli_profile_cannot_erase_a_restriction(inherited: str) -> None:
+    environment = _app_env(str(BUILD.qt_prefix) if BUILD.qt_prefix else None)
+    environment["QTPILOT_PROFILE"] = inherited
+    result = subprocess.run([str(BUILD.launcher), "--profile", "", "synthetic-target-must-not-launch"],
+                            env=environment, capture_output=True, text=True, timeout=5)
+    assert result.returncode != 0
+    assert "Invalid operating profile" in result.stderr
