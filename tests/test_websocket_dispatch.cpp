@@ -44,8 +44,49 @@ class TestWebSocketDispatch : public QObject {
             .toJson(QJsonDocument::Compact));
   }
 
+  static QJsonObject replyTo(const QSignalSpy& replies, int id) {
+    for (const auto& reply : replies) {
+      const auto object = QJsonDocument::fromJson(reply.at(0).toString().toUtf8()).object();
+      if (object.value(QStringLiteral("id")).toInt(-1) == id) {
+        return object;
+      }
+    }
+    return {};
+  }
+
  private slots:
   void init() { qunsetenv("QTPILOT_BIND_ADDRESS"); }
+  void cleanup() { qunsetenv("QTPILOT_QUEUE_CAPACITY"); }
+
+  void diagnosticsExposeLossAndResetWithClientOwnership() {
+    qputenv("QTPILOT_QUEUE_CAPACITY", "2");
+    WebSocketServer server(0);
+    QVERIFY(server.start());
+    QWebSocket client;
+    QVERIFY(attachClient(server, client));
+    QSignalSpy replies(&client, &QWebSocket::textMessageReceived);
+    for (int i = 0; i < 5; ++i) {
+      server.sendNotification(QStringLiteral(R"({"jsonrpc":"2.0","method":"test.event"})"));
+    }
+    client.sendTextMessage(request(1, QStringLiteral("getTransportStats")));
+    QTRY_VERIFY_WITH_TIMEOUT(!replyTo(replies, 1).isEmpty(), 3000);
+    const auto stats = replyTo(replies, 1).value(QStringLiteral("result")).toObject();
+    QEXPECT_THAT(stats.value(QStringLiteral("notifications")).toObject(),
+                 AllOf(HasJsonField("dropped", Eq(3)), HasJsonField("capacity", Eq(2))));
+    const QString session = stats.value(QStringLiteral("sessionId")).toString();
+    QEXPECT_THAT(session.isEmpty(), IsFalse());
+    client.close();
+    QTRY_VERIFY_WITH_TIMEOUT(!server.hasActiveClient(), 3000);
+    QWebSocket next;
+    QVERIFY(attachClient(server, next));
+    QSignalSpy nextReplies(&next, &QWebSocket::textMessageReceived);
+    next.sendTextMessage(request(2, QStringLiteral("getTransportStats")));
+    QTRY_VERIFY_WITH_TIMEOUT(!replyTo(nextReplies, 2).isEmpty(), 3000);
+    const auto nextStats = replyTo(nextReplies, 2).value(QStringLiteral("result")).toObject();
+    QEXPECT_THAT(nextStats.value(QStringLiteral("sessionId")).toString(), Ne(session));
+    QEXPECT_THAT(nextStats.value(QStringLiteral("notifications")).toObject(),
+                 HasJsonField("dropped", Eq(0)));
+  }
 
   void aRequestRunsAfterItsFrameIsDelivered() {
     WebSocketServer server(0);

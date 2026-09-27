@@ -14,6 +14,7 @@
 #include <QScopeGuard>
 #include <QTcpSocket>
 #include <QUrl>
+#include <QUuid>
 #include <QWebSocket>
 #include <QWebSocketServer>
 
@@ -63,6 +64,17 @@ WebSocketServer::WebSocketServer(quint16 port, QObject* parent)
       m_rpcHandler(new JsonRpcHandler(this)),
       m_port(port) {
   connect(m_server, &QWebSocketServer::newConnection, this, &WebSocketServer::onNewConnection);
+  m_rpcHandler->RegisterMethod(QStringLiteral("getTransportStats"), [this](const QString&) {
+    QJsonObject stats{{QStringLiteral("sessionId"), m_sessionId},
+                      {QStringLiteral("notifications"), QJsonValue(QJsonValue::Null)}};
+    if (m_notificationQueue) {
+      stats[QStringLiteral("notifications")] =
+          QJsonObject{{QStringLiteral("dropped"), m_notificationQueue->dropCount()},
+                      {QStringLiteral("queued"), m_notificationQueue->queueSize()},
+                      {QStringLiteral("capacity"), m_notificationQueue->capacity()}};
+    }
+    return QString::fromUtf8(QJsonDocument(stats).toJson(QJsonDocument::Compact));
+  });
 }
 
 WebSocketServer::~WebSocketServer() {
@@ -279,6 +291,7 @@ void WebSocketServer::onNewConnection() {
   // Accept this client only after credentials and independent Origin policy.
   m_admission->finish(socket->peerAddress(), socket->peerPort());
   m_activeClient = socket;
+  m_sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
   // Create notification queue for this client
   m_notificationQueue = new NotificationQueue(socket, 10000, 50, this);
