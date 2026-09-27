@@ -8,6 +8,7 @@
 #include <expected>
 #include <stdexcept>
 
+#include <QByteArray>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -63,6 +64,7 @@ class QTPILOT_EXPORT PreparedInvocation {
   QMetaMethod m_method;
   QString m_methodName;
   QList<QVariant> m_arguments;
+  QList<QByteArray> m_paramTypeNames;
   /// Object arguments, watched so a call that runs later never passes a dead one.
   QList<QPointer<QObject>> m_objectArguments;
 };

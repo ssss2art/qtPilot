@@ -400,7 +400,7 @@ std::expected<PreparedInvocation, MethodError> MetaInspector::prepareInvocation(
                                        QStringLiteral("Cannot invoke method on null object")});
   }
 
-  if (args.count() > 10) {
+  if (args.size() > 10) {
     return std::unexpected(
         MethodError{MethodErrorKind::TooManyArguments, methodName,
                     QStringLiteral("Too many arguments (max 10): %1").arg(methodName)});
@@ -416,7 +416,7 @@ std::expected<PreparedInvocation, MethodError> MetaInspector::prepareInvocation(
       if (method.methodType() != QMetaMethod::Slot && method.methodType() != QMetaMethod::Method) {
         continue;
       }
-      if (method.parameterCount() == args.count()) {
+      if (method.parameterCount() == args.size()) {
         foundMethod = method;
         break;
       }
@@ -432,9 +432,11 @@ std::expected<PreparedInvocation, MethodError> MetaInspector::prepareInvocation(
   PreparedInvocation prepared;
   prepared.m_method = foundMethod;
   prepared.m_methodName = methodName;
-  prepared.m_arguments.reserve(args.count());
+  prepared.m_arguments.reserve(args.size());
+  prepared.m_paramTypeNames.reserve(args.size());
 
-  for (int i = 0; i < args.count(); ++i) {
+  for (int i = 0; i < args.size(); ++i) {
+    prepared.m_paramTypeNames.append(compat::methodParameterTypeName(foundMethod, i));
     int paramType = foundMethod.parameterType(i);
     if (qtPilot::compat::isQObjectPointerType(paramType)) {
       auto ptrRes = tryResolvePointerArgument(args[i], paramType, methodName, i);
@@ -463,11 +465,11 @@ std::expected<QJsonValue, MethodError> PreparedInvocation::invoke(QObject* obj) 
     }
   }
 
-  // Build QGenericArgument array - points into m_arguments, which outlives the call
+  // Build QGenericArgument array - points into m_paramTypeNames and m_arguments, which outlive the call
   QGenericArgument genericArgs[10];
-  for (int i = 0; i < m_arguments.count(); ++i) {
+  for (int i = 0; i < m_arguments.size(); ++i) {
     genericArgs[i] =
-        QGenericArgument(compat::methodParameterTypeName(m_method, i), m_arguments[i].constData());
+        QGenericArgument(m_paramTypeNames[i].constData(), m_arguments[i].constData());
   }
 
   // Prepare return value storage

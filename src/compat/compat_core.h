@@ -23,12 +23,12 @@ inline int metaTypeIdFromName(const char* name) {
 
 /// Returns the parameter type name for a QMetaMethod at given index.
 /// Qt6: QMetaMethod::parameterTypeName(index)
-/// Qt5: QMetaMethod::parameterTypes().at(index).constData()
-inline const char* methodParameterTypeName(const QMetaMethod& method, int index) {
+/// Qt5: QMetaMethod::parameterTypes().value(index)
+inline QByteArray methodParameterTypeName(const QMetaMethod& method, int index) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
   return method.parameterTypeName(index);
 #else
-  return method.parameterTypes().at(index).constData();
+  return method.parameterTypes().value(index);
 #endif
 }
 
