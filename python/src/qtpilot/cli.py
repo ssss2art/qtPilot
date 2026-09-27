@@ -200,6 +200,8 @@ def _print_report(result, as_json: bool) -> None:
             "summary": result.summary(),
             "aborted_at": result.aborted_at,
             "abort_reason": result.abort_reason,
+            "failure_kind": result.failure_kind,
+            "actions_driven": result.actions_driven,
             "divergences": [
                 {
                     "step": d.step,

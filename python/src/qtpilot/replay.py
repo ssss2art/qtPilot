@@ -24,7 +24,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from qtpilot.connection import ProbeError
 from qtpilot.result import Err, Ok, Result
@@ -687,6 +687,12 @@ class ReplayResult:
     divergences: list[Divergence]
     aborted_at: int | None = None
     abort_reason: str | None = None
+    failure_kind: Literal["precondition", "setup", "action"] | None = None
+
+    @property
+    def actions_driven(self) -> int:
+        """Number of action calls attempted, excluding baseline observations."""
+        return sum(step.action is not None for step in self.steps)
 
     @property
     def passed(self) -> bool:
@@ -838,6 +844,8 @@ async def run_scenario(
     observed: list[Step] = []
     aborted_at: int | None = None
     abort_reason: str | None = None
+    failure_kind: Literal["precondition", "setup", "action"] | None = None
+    precondition_differences: list[Divergence] = []
 
     try:
         for recorded in scenario.steps:
@@ -897,13 +905,22 @@ async def run_scenario(
 
             step.notifications = list(collected)
             observed.append(step)
+            if recorded.index == 0 and recorded.action is None:
+                precondition_differences = _diff_observations(recorded, step)
+                if precondition_differences:
+                    aborted_at = 0
+                    failure_kind = "precondition"
+                    abort_reason = "initial-state precondition failed"
+                    break
     finally:
         # Detached on every path: a handler left behind keeps feeding a dead run's collector for
         # the rest of the session.
         probe.remove_notification_handler(collect)
 
     # A record run is producing the golden, so there is nothing to compare against yet.
-    if record or aborted_at is not None:
+    if precondition_differences:
+        divergences = precondition_differences
+    elif record or aborted_at is not None:
         divergences: list[Divergence] = []
     else:
         divergences = diff_steps(scenario.steps, observed)
@@ -914,6 +931,7 @@ async def run_scenario(
         divergences=divergences,
         aborted_at=aborted_at,
         abort_reason=abort_reason,
+        failure_kind=failure_kind,
     )
 
 

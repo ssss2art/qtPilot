@@ -92,6 +92,8 @@ def register_replay_tools(mcp: FastMCP) -> None:
             "steps_driven": len(result.steps),
             "aborted_at": result.aborted_at,
             "abort_reason": result.abort_reason,
+            "failure_kind": result.failure_kind,
+            "actions_driven": result.actions_driven,
             "divergence_count": len(result.divergences),
             "divergences": _divergence_dicts(result.divergences),
         }

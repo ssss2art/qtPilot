@@ -69,6 +69,18 @@ class ReplayExpectation:
             )
         return self
 
+    def to_fail_precondition(self) -> ReplayExpectation:
+        """Require an initial-state failure before any application action."""
+        assert self._result.failure_kind == "precondition" and self._result.aborted_at == 0, (
+            f"Expected failed precondition, got {self._result.failure_kind!r}: {self._result.summary()}"
+        )
+        return self.to_have_driven(0)
+
+    def to_have_driven(self, count: int) -> ReplayExpectation:
+        actual = self._result.actions_driven
+        assert actual == count, f"Expected {count} actions driven, got {actual}: {self._result.summary()}"
+        return self
+
 
 def expect_replay(result: ReplayResult) -> ReplayExpectation:
     """Entry point for fluent replay assertions."""

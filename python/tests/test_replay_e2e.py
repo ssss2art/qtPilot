@@ -33,6 +33,9 @@ import pytest
 from qtpilot.connection import ProbeConnection
 from qtpilot.message_logger import MessageLogger
 from qtpilot.replay import parse_entries, run_scenario
+from qtpilot.replay import Action, Observation, Scenario, Step
+from qtpilot.fluent import expect_replay
+from tests.probe_expectations import expect_probe
 
 # --- locating the build ----------------------------------------------------
 
@@ -59,6 +62,22 @@ EMAIL_EDIT = FORM + "emailEdit"
 SUBMIT = FORM + "submitButton"
 CLEAR = FORM + "clearButton"
 RESULT_TEXT = FORM + "resultGroup/resultText"
+
+
+def test_failed_precondition_preserves_real_application_state(live_app: str) -> None:
+    async def check() -> None:
+        async with _connected(live_app) as connection:
+            await _set_text(connection, NAME_EDIT, "initial-state")
+            expected = await connection.call("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"})
+            expected["result"]["value"] = "required-state"
+            scenario = Scenario(steps=[
+                Step(index=0, observations=[Observation("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"}, expected)]),
+                Step(index=1, action=Action("qt.properties.set", {"objectId": NAME_EDIT, "name": "text", "value": "mutated"})),
+            ])
+            result = await run_scenario(scenario, connection, settle=0)
+            expect_replay(result).to_fail_precondition().to_have_driven(0)
+            expect_probe(await connection.call("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"})).to_have_value("initial-state")
+    asyncio.run(check())
 
 
 def _free_port() -> int:

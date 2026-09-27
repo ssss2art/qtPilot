@@ -248,6 +248,13 @@ for an application that updates slowly.
 An error on an **observation** is recorded and the run continues — an object that no longer
 exists is a finding worth reporting next to everything else that changed.
 
+Initial observations in step zero are checked before the first action, including
+when recording a new baseline. A mismatch or failed read stops with
+`failure_kind: "precondition"`, retains the observed difference, and reports
+`actions_driven: 0` through CLI JSON and MCP. The harness must prepare the intended
+initial state; replay does not reset the application. Fluent specifications use
+`expect_replay(result).to_fail_precondition().to_have_driven(0)`.
+
 An error on an **action** aborts. Every later step assumes the earlier ones happened, so carrying
 on would report a cascade of differences that are all the same failure.
 
