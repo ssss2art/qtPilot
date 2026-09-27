@@ -61,3 +61,19 @@ def test_malformed_or_unrelated_datagrams_do_not_discover_anything(packet: bytes
 def test_discovery_matcher_rejects_a_collapsed_identity() -> None:
     with pytest.raises(AssertionError, match="Discovered instances"):
         DiscoveryScenario().announces("192.0.2.1", 100).to_contain("192.0.2.2:100:9222")
+
+
+@pytest.mark.parametrize("tls,scheme", [(False, "ws"), (True, "wss")])
+def test_discovery_preserves_the_advertised_transport(tls: bool, scheme: str) -> None:
+    scenario = DiscoveryScenario()
+    scenario.listener.on_announce({"pid": 100, "tls": tls, "authRequired": tls}, "192.0.2.1")
+    probe = next(iter(scenario.listener.probes.values()))
+    assert probe.ws_url == f"{scheme}://192.0.2.1:9222", "Discovery weakened the advertised transport"
+    assert probe.auth_required is tls
+
+
+@pytest.mark.parametrize("tls", ["false", "true", 1, None, []])
+def test_invalid_transport_hints_cannot_create_a_plaintext_endpoint(tls: object) -> None:
+    scenario = DiscoveryScenario()
+    scenario.listener.on_announce({"pid": 100, "tls": tls}, "192.0.2.1")
+    scenario.to_contain()

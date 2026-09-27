@@ -8,9 +8,34 @@ import logging
 import os
 import sys
 
+from qtpilot.security import local_probe_url, operating_profile
+
+
+def _apply_security_options(args: argparse.Namespace) -> None:
+    for option in ("profile", "auth_token_file", "tls_ca_file", "tls_cert_file", "tls_key_file"):
+        value = getattr(args, option, None)
+        if value is not None:
+            os.environ[f"QTPILOT_{option.upper()}"] = value
+    operating_profile(os.environ)
+
+
+def _add_security_options(parser: argparse.ArgumentParser, *, launches: bool) -> None:
+    parser.add_argument("--profile", choices=["local", "trusted-network", "remote"],
+                        help="Operating profile (default: QTPILOT_PROFILE, or legacy LAN behavior)")
+    parser.add_argument("--auth-token-file", metavar="PATH", help="File containing the shared admission token")
+    parser.add_argument("--tls-ca-file", metavar="PATH", help="Trusted CA for verifying the probe TLS identity")
+    if launches:
+        parser.add_argument("--tls-cert-file", metavar="PATH", help="PEM certificate chain for the launched probe")
+        parser.add_argument("--tls-key-file", metavar="PATH", help="PEM private key for the launched probe")
+
 
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the MCP server."""
+    try:
+        _apply_security_options(args)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     # Handle --demo flag
     if getattr(args, "demo", False):
         if args.target:
@@ -34,7 +59,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     # ws_url is None unless explicitly provided or a target is specified
     ws_url = None
     if args.target:
-        ws_url = f"ws://localhost:{args.port}"
+        ws_url = local_probe_url(args.port, os.environ)
     elif args.ws_url:
         ws_url = args.ws_url
 
@@ -57,6 +82,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 def cmd_demo(args: argparse.Namespace) -> int:
     """One-command demo: download tools if needed, then launch."""
+    try:
+        _apply_security_options(args)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     from qtpilot.download import (
         ChecksumError,
         DownloadError,
@@ -201,6 +231,12 @@ def cmd_replay(args: argparse.Namespace) -> int:
     """
     import asyncio
 
+    try:
+        _apply_security_options(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return REPLAY_EXIT_USAGE
+
     for noisy in ("websockets", "websockets.client", "qtpilot.connection", "asyncio"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
@@ -296,16 +332,15 @@ def cmd_replay(args: argparse.Namespace) -> int:
     from qtpilot.connection import ProbeConnection, ProbeError
 
     async def go() -> int:
-        probe = ProbeConnection(args.ws_url)
-
         # Reaching the application is a precondition, not part of the comparison. An app that is
         # not running has not behaved differently, and reporting it as a divergence would send
         # someone hunting a regression that does not exist.
         try:
+            probe = ProbeConnection(args.ws_url or local_probe_url(9222, os.environ))
             await probe.connect()
-        except (OSError, ProbeError) as exc:
+        except (OSError, ProbeError, ValueError) as exc:
             print(
-                f"error: cannot connect to a probe at {args.ws_url}: {exc}\n"
+                f"error: cannot connect to the configured probe: {exc}\n"
                 "Start the application with the qtPilot probe before replaying.",
                 file=sys.stderr,
             )
@@ -556,8 +591,8 @@ def create_parser() -> argparse.ArgumentParser:
     )
     replay_parser.add_argument(
         "--ws-url",
-        default=os.environ.get("QTPILOT_WS_URL", "ws://localhost:9222"),
-        help="WebSocket URL of the qtPilot probe (default: ws://localhost:9222)",
+        default=os.environ.get("QTPILOT_WS_URL"),
+        help="WebSocket URL of the qtPilot probe (default: local port 9222, honoring the profile)",
     )
     replay_parser.add_argument(
         "--settle",
@@ -615,6 +650,10 @@ def create_parser() -> argparse.ArgumentParser:
         help="Emit the report as JSON",
     )
     replay_parser.set_defaults(func=cmd_replay)
+
+    for command_parser in (serve_parser, demo_parser):
+        _add_security_options(command_parser, launches=True)
+    _add_security_options(replay_parser, launches=False)
 
     return parser
 

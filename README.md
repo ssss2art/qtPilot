@@ -207,6 +207,10 @@ See [`.claude/skills/test-mcp-modes/SKILL.md`](.claude/skills/test-mcp-modes/SKI
 
 ## Documentation
 
+Opt-in authenticated TLS and local/trusted-network/remote operation are described
+in [Authentication and profiles](docs/AUTHENTICATION.md). An unset profile retains
+the existing unauthenticated LAN default.
+
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/GETTING-STARTED.md) | Installation and first steps |

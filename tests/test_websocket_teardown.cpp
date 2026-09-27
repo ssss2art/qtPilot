@@ -1,14 +1,13 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "transport/websocket_server.h"
 
 #include <QCoreApplication>
 #include <QSignalSpy>
 #include <QWebSocket>
 #include <QtTest>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot;
 using namespace qtPilot::test;
@@ -75,7 +74,9 @@ class TestWebSocketTeardown : public QObject {
     QWebSocket client;
     QEXPECT_THAT(attachClient(server, client), IsTrue());
 
+    QSignalSpy gone(&server, &WebSocketServer::clientDisconnected);
     server.stop();
+    QEXPECT_THAT(gone.size(), Eq(1));
     QEXPECT_THAT(server.hasActiveClient(), IsFalse());
     QEXPECT_THAT(server.isListening(), IsFalse());
     QCoreApplication::processEvents(QEventLoop::AllEvents, 100);

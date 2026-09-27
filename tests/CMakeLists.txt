@@ -255,3 +255,10 @@ qtPilot_add_test(NAME test_admin_injection
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 set_tests_properties(test_admin_injection PROPERTIES LABELS "admin")
+
+qtPilot_add_test(NAME test_network_policy SOURCES test_network_policy.cpp
+    ENV "QTPILOT_ENABLED=0")
+
+qtPilot_add_test(NAME test_authenticated_transport SOURCES test_authenticated_transport.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::WebSockets
+    ENV "QTPILOT_ENABLED=0")

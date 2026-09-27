@@ -30,11 +30,14 @@ class DiscoveredProbe:
     address: str
     last_seen: float = field(default_factory=time.monotonic)
     uptime: float = 0.0
+    tls: bool = False
+    auth_required: bool = False
 
     @property
     def ws_url(self) -> str:
         """WebSocket URL to connect to this probe."""
-        return f"ws://{self.address}:{self.ws_port}"
+        scheme = "wss" if self.tls else "ws"
+        return f"{scheme}://{self.address}:{self.ws_port}"
 
     @property
     def key(self) -> str:
@@ -140,6 +143,10 @@ class DiscoveryListener:
 
     def on_announce(self, msg: dict, source_addr: str) -> None:
         """Handle an announce message from a probe."""
+        tls = msg.get("tls", False)
+        auth_required = msg.get("authRequired", False)
+        if not isinstance(tls, bool) or not isinstance(auth_required, bool):
+            return
         probe = DiscoveredProbe(
             app_name=msg.get("appName", "unknown"),
             pid=msg.get("pid", 0),
@@ -150,6 +157,8 @@ class DiscoveryListener:
             address=source_addr,
             last_seen=time.monotonic(),
             uptime=msg.get("uptime", 0.0),
+            tls=tls,
+            auth_required=auth_required,
         )
 
         is_new = probe.key not in self._probes
