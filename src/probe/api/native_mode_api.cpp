@@ -1766,6 +1766,9 @@ void NativeModeApi::registerSignalMethods() {
                          int code = (err.kind == SignalErrorKind::ObjectNotFound)
                                         ? ErrorCode::kObjectNotFound
                                         : ErrorCode::kSignalNotFound;
+                         if (err.kind == SignalErrorKind::CapacityExceeded) {
+                           code = JsonRpcError::kServerError;
+                         }
                          return JsonRpcException(code, err.message,
                                                  QJsonObject{{QStringLiteral("objectId"), objectId},
                                                              {QStringLiteral("signal"), signal}});

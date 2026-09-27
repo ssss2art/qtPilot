@@ -15,6 +15,7 @@
 #include <QMetaMethod>
 #include <QMetaType>
 #include <QMutexLocker>
+#include <QScopeGuard>
 #include <QVariant>
 
 namespace qtPilot {
@@ -178,6 +179,17 @@ std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QStri
 
   int signalIndex = *it;
 
+  if (exclusive && !m_exclusiveSlots.tryAcquire()) {
+    return std::unexpected(
+        SignalError{SignalErrorKind::CapacityExceeded,
+                    QStringLiteral("Exclusive subscription capacity reached (64)")});
+  }
+  auto releasePermit = qScopeGuard([this, exclusive] {
+    if (exclusive) {
+      m_exclusiveSlots.release();
+    }
+  });
+
   // Ordinary subscriptions remain idempotent; checkpoints own a separate Qt connection.
   if (!exclusive) {
     QMutexLocker lock(&m_mutex);
@@ -241,6 +253,7 @@ std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QStri
     sub.connection = conn;
     m_subscriptions[subId] = sub;
   }
+  releasePermit.dismiss();
 
   qDebug() << "[qtPilot] Subscribed to" << objectId << "::" << signalName << "as" << subId;
   return subId;
@@ -276,6 +289,9 @@ void SignalMonitor::unsubscribe(const QString& subscriptionId) {
   qDebug() << "[qtPilot] Unsubscribed" << subscriptionId << "from" << it->objectId
            << "::" << it->signalName;
 
+  if (it->exclusive) {
+    m_exclusiveSlots.release();
+  }
   m_subscriptions.erase(it);
 }
 
@@ -292,6 +308,9 @@ void SignalMonitor::unsubscribeAll(const QString& objectId) {
         it->relay->deleteLater();
       }
       toRemove.append(it.key());
+      if (it->exclusive) {
+        m_exclusiveSlots.release();
+      }
     }
   }
 
@@ -313,6 +332,9 @@ void SignalMonitor::clearSubscriptions() {
     }
     if (it->relay) {
       it->relay->deleteLater();
+    }
+    if (it->exclusive) {
+      m_exclusiveSlots.release();
     }
   }
   m_subscriptions.clear();
@@ -419,6 +441,9 @@ void SignalMonitor::onSubscribedObjectDestroyed(QObject* obj) {
         it->relay->deleteLater();
       }
       toRemove.append(it.key());
+      if (it->exclusive) {
+        m_exclusiveSlots.release();
+      }
     }
   }
 

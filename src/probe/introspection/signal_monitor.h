@@ -13,6 +13,7 @@
 #include <QMutex>
 #include <QObject>
 #include <QPointer>
+#include <QSemaphore>
 
 namespace qtPilot {
 
@@ -24,6 +25,7 @@ enum class SignalErrorKind {
   ObjectNotFound,
   SignalNotFound,
   ConnectionFailed,
+  CapacityExceeded,
 };
 
 /// @brief Structured error for signal operations.
@@ -184,6 +186,7 @@ class QTPILOT_EXPORT SignalMonitor : public QObject {
 
   /// @brief Map from subscription ID to subscription data.
   QHash<QString, Subscription> m_subscriptions;
+  QSemaphore m_exclusiveSlots{64};
 
   /// @brief Cache of recently destroyed object IDs for lifecycle notifications.
   /// Populated by onSubscribedObjectDestroyed (DirectConnection), read by
