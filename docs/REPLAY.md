@@ -255,6 +255,12 @@ when recording a new baseline. A mismatch or failed read stops with
 initial state; replay does not reset the application. Fluent specifications use
 `expect_replay(result).to_fail_precondition().to_have_driven(0)`.
 
+When synchronization is enabled, a failed `qt.sync` aborts before the next action
+with `failure_kind: "synchronization"`. Method-not-found is reported as unavailable;
+timeouts, disconnections and handler errors retain their distinct cause. They are
+never swallowed. `--no-sync` explicitly disables this barrier; a pacing delay is
+not evidence that an asynchronous application operation completed.
+
 An error on an **action** aborts. Every later step assumes the earlier ones happened, so carrying
 on would report a cascade of differences that are all the same failure.
 

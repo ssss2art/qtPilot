@@ -687,7 +687,7 @@ class ReplayResult:
     divergences: list[Divergence]
     aborted_at: int | None = None
     abort_reason: str | None = None
-    failure_kind: Literal["precondition", "setup", "action"] | None = None
+    failure_kind: Literal["precondition", "setup", "action", "synchronization"] | None = None
 
     @property
     def actions_driven(self) -> int:
@@ -844,7 +844,7 @@ async def run_scenario(
     observed: list[Step] = []
     aborted_at: int | None = None
     abort_reason: str | None = None
-    failure_kind: Literal["precondition", "setup", "action"] | None = None
+    failure_kind: Literal["precondition", "setup", "action", "synchronization"] | None = None
     precondition_differences: list[Divergence] = []
 
     try:
@@ -855,17 +855,22 @@ async def run_scenario(
             if recorded.action is not None:
                 try:
                     await probe.call(recorded.action.method, recorded.action.params, **call_kwargs)
-                    if sync:
-                        try:
-                            await probe.call("qt.sync", {}, **call_kwargs)
-                        except Exception:
-                            # Gracefully continue if probe lacks qt.sync
-                            pass
                 except ProbeError as exc:
                     aborted_at = recorded.index
                     abort_reason = f"{recorded.action.method}: {exc}"
                     observed.append(step)
                     break
+                if sync:
+                    try:
+                        await probe.call("qt.sync", {}, **call_kwargs)
+                    except (ProbeError, OSError) as exc:
+                        aborted_at = recorded.index
+                        failure_kind = "synchronization"
+                        unavailable = isinstance(exc, ProbeError) and exc.code == -32601
+                        cause = "unavailable" if unavailable else type(exc).__name__
+                        abort_reason = f"qt.sync {cause}: {exc}"
+                        observed.append(step)
+                        break
 
             # Re-establish session state before observing. A failure here is not an
             # application divergence -- it means the replay could not be set up -- so it aborts
