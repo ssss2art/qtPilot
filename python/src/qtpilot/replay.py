@@ -678,6 +678,16 @@ def diff_steps(expected: list[Step], actual: list[Step]) -> list[Divergence]:
     return divergences
 
 
+def _diagnostic_evidence_kind(value: object) -> str:
+    if isinstance(value, str) and (_is_truncated(value) or value.endswith("~*")):
+        return "wildcard"
+    if isinstance(value, dict) and value.get("_type") and value.get("value", object()) is None:
+        return "unsupported"
+    children = value.values() if isinstance(value, dict) else value if isinstance(value, (list, tuple)) else ()
+    kinds = {_diagnostic_evidence_kind(child) for child in children}
+    return "wildcard" if "wildcard" in kinds else "unsupported" if "unsupported" in kinds else "normalized"
+
+
 @dataclass
 class ReplayResult:
     """The outcome of driving a scenario against a running application."""
@@ -698,6 +708,22 @@ class ReplayResult:
     def passed(self) -> bool:
         """Whether the application still behaves as recorded."""
         return not self.divergences and self.aborted_at is None
+
+    def evidence_report(self) -> dict[str, object]:
+        """Classify collected diagnostic items without inventing original values.
+
+        Counts exclude actions and unexecuted observations. Unsupported recorded
+        calls are listed separately because they produced no collected evidence.
+        """
+        counts = {kind: 0 for kind in ("exact", "normalized", "wildcard", "unavailable", "unsupported")}
+        for step in self.steps:
+            for observation in step.observations:
+                kind = "unavailable" if observation.error is not None else _diagnostic_evidence_kind(observation.result)
+                counts[kind] += 1
+            for _, params in step.notifications:
+                counts[_diagnostic_evidence_kind(params)] += 1
+        return {"evidence_counts": counts, "comparison_units": "collected observations and notifications",
+                "raw_available": False, "loss_verified": False, "unsupported_calls": self.scenario.unsupported}
 
     def to_result(self) -> Result[list[Step], list[Divergence]]:
         """Return a monadic Result containing either the driven steps (Ok) or the divergences (Err)."""

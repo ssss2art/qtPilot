@@ -107,6 +107,7 @@ def register_replay_tools(mcp: FastMCP) -> None:
         return {
             "mode": "exploratory",
             "strict_passed": False,
+            **result.evidence_report(),
             "source": result.scenario.source,
             "passed": result.passed,
             "summary": result.summary(),

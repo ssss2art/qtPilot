@@ -197,6 +197,7 @@ def _print_report(result, as_json: bool) -> None:
         print(json.dumps({
             "mode": "exploratory",
             "strict_passed": False,
+            **result.evidence_report(),
             "source": result.scenario.source,
             "passed": result.passed,
             "summary": result.summary(),

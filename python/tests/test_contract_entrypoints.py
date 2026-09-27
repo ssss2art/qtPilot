@@ -11,6 +11,7 @@ from fastmcp import FastMCP
 
 from qtpilot import _mcp_compat
 from qtpilot.cli import cmd_replay, create_parser
+from qtpilot.replay import Observation, ReplayResult, Scenario, Step
 from qtpilot.tools.replay_tools import register_replay_tools
 from tests.test_contract_runner import ContractProbe
 from tests.test_replay_contract import contract_document
@@ -74,3 +75,31 @@ async def test_mcp_requires_explicit_exploration_for_unasserted_inline_actions(p
     with pytest.raises(ValueError, match="exploratory"):
         await tool.fn(steps=[{"method": "qt.properties.set", "params": {"value": "changed"}}])
     assert "qt.properties.set" not in probe.calls
+
+
+@pytest.mark.asyncio
+async def test_exploratory_reports_never_relabel_normalized_evidence_as_exact(
+    probe: ContractProbe, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    from qtpilot.cli import _print_report
+
+    collected = Step(0, observations=[
+        Observation("qt.properties.get", {}, "visible"),
+        Observation("qt.properties.get", {}, "generated~*"),
+        Observation("qt.properties.get", {}, "...<truncated 100c>"),
+        Observation("qt.properties.get", {}, None, error="unavailable"),
+        Observation("qt.properties.get", {}, {"_type": "Opaque", "value": None}),
+    ])
+    result = ReplayResult(Scenario([collected]), [collected], [])
+    monkeypatch.setattr("qtpilot.replay.run_scenario", AsyncMock(return_value=result))
+    server = FastMCP("synthetic-exploration")
+    register_replay_tools(server)
+    tool = await _mcp_compat.find_tool(server, "qtpilot_replay_run")
+    report = await tool.fn(steps=[{"method": "qt.properties.set", "params": {"value": "changed"}}], exploratory=True)
+    _print_report(result, True)
+    cli_report = json.loads(capsys.readouterr().out)
+    for view in (report, cli_report):
+        assert view["strict_passed"] is False
+        assert view["comparison_units"] == "collected observations and notifications"
+        assert view["evidence_counts"] == {"exact": 0, "normalized": 1, "wildcard": 2, "unavailable": 1, "unsupported": 1}
+        assert view["raw_available"] is False and view["loss_verified"] is False
