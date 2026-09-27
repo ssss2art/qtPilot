@@ -17,7 +17,7 @@ notes why it matters and a rough effort estimate (S/M/L).
 This is the current top-down order after reconciling the catalog with `main`:
 
 1. **R7 authentication** for the default LAN-reachable probe.
-2. **R8 blocking real-probe E2E in CI**; the suites exist, but CI currently skips them.
+2. **R8 blocking real-probe E2E in CI**; implemented and hosted-verified in PR #67; repository required-check configuration remains external.
 3. **Release the post-v0.1.5 work** so PyPI and downloadable probes match the documented surface.
 4. **T1 wait primitives + O5 NOTIFY watch** for deterministic automation.
 5. **Native diagnostics and transport resilience** (O1/O2/O7, R2/R3/R5/R6).
@@ -113,8 +113,8 @@ compatibility); **T1** wait primitive and **O5** NOTIFY-watch.
 | O4 | objectIds are **positional/text-derived → unstable** across runs & on text change | breaks cross-run reproducibility | `object_id.cpp` sibling `#N`; text segments | M |
 | O5 | No **property-change (NOTIFY) watch** | observing state evolve is mostly properties, not clicks | no API in `native_mode_api.cpp` | M |
 | O6 | No **full-state snapshot** for golden/diff comparison | multi-call assembly is a torn read | no `qt.snapshot` | M |
-| O7 | **Notification drops are counted but not surfaced through MCP status/results** | internal probe/Python counters exist, but a caller can still report a false pass without seeing them | `connection.py`, `notification_queue.cpp`, `status.py` | S |
-| O8 | Recording: **recursive subscribe only 1 level deep**; no emission timestamps; ~~no **replay**~~ | **Replay: DONE.** A level-2+ message log is now re-runnable. A session splits into the five methods that change the application and everything else, which only observes it; re-driving the first and diffing the second is a behavioural assertion needing no hand-written test per flow. Determinism comes from stripping timing (including the probe's own `meta.timestamp`), stripping the request id at the top level only (a nested `id` names an *object*), masking generated `QObject~N` handles (the counter follows construction order -- registered names are the stable identity), treating logger-truncated values as wildcards, and comparing notifications as a multiset. `qtpilot_replay_inspect` / `qtpilot_replay_run`. **Still open:** recursive subscribe remains 1 level deep, so a recording still misses nested widgets, and there are still no emission timestamps -- signals are ordered per step but not timed within one | `replay.py`; `event_recorder.py` | S–L |
+| O7 | **Implemented on PR 3 branch:** probe/controller session loss, checkpoint cleanup evidence, signal waiter counters and bounded event capture are exposed | unknown/lost evidence blocks strict acceptance; diagnostic waiter lifetime and event-count limits are explicit | `evidence.py`, `contract_runner.py`, `status.py`, `event_recorder.py`; [replay](REPLAY.md) | S |
+| O8 | **Strict replay implemented on PR 3 branch**; recursive recording and source timestamps remain open | version-2 contracts require readiness, exact scoped values, owned Qt completion and known loss; normalized JSONL is explicitly exploratory and cannot certify a strict pass. Recursive recording still visits one child level; receipt time is not source emission time | `replay_contract.py`, `contract_runner.py`, `checkpoints.py`, `event_recorder.py`; [replay](REPLAY.md) | S–L |
 | O9 | ~~Event capture was QWidget-only~~ **DONE** | `QQuickItem` and `QQuickWindow` input events are captured and live-validated | `event_capture.cpp`, `test_qml_interaction.cpp` | M |
 
 ## Models & QML
@@ -133,7 +133,7 @@ compatibility); **T1** wait primitive and **O5** NOTIFY-watch.
 
 | ID | Gap | Why it matters | Evidence | Effort |
 |----|-----|----------------|----------|--------|
-| T1 | **No wait-for-condition/signal/property** | racy sleep-poll is the #1 flaky-test cause | no `qt.wait*` registered | L |
+| T1 | **Signal waits available; owned replay checkpoints implemented on PR 3 branch.** General property/model conditions remain open | asyncio waits buffer early emissions and do not block probe handlers; strict replay uses exclusive Qt subscriptions and action-scoped evidence | `signal_wait.py`, `checkpoints.py`, `test_replay_e2e.py` | L |
 | T2 | **No general server-side assertion DSL** | inline replay observations provide structured equality/divergence assertions, but ad-hoc clients still assemble assertions themselves | `replay.py` | M |
 | T3 | ~~No **modifiers on mouse actions**~~ **DONE** | Every method that synthesizes a mouse event takes an optional `modifiers` (`"ctrl"`, `"ctrl+shift"`, `["ctrl","shift"]`, case-insensitive), parsed in one place by `ModifierParser` and shared by `qt.ui.click`, `qt.ui.doubleClick`, the `cu.*` mouse methods and `qt.ui.sendKeys` text input. `InputSimulator` had always accepted modifiers on every entry point -- only the JSON-RPC layer could not say so. Names map onto **Qt's enum, not the keycaps**: Qt reports macOS Command as `ControlModifier`, so `"ctrl"` is Command there and `"meta"` reaches the physical Control key, which is what an app's own `Qt::ControlModifier` checks compare against. Unknown names are refused with `kInvalidParams` rather than silently dropped. Found driving a plan-view desktop app, where a Ctrl+click selection test could not be reproduced at all because the probe had no way to hold a modifier. Key down/up and multi-chord sequences are split out as T11 and T12 | `modifier_parser.cpp`, `native_mode_api.cpp`, `computer_use_mode_api.cpp` | M |
 | T4 | No **hover / tooltip / mouse-enter** | hover-reveal UI & `:hover` styling untestable | `input_simulator.cpp` mouseMove | M |
@@ -155,9 +155,9 @@ compatibility); **T1** wait primitive and **O5** NOTIFY-watch.
 | R3 | **No auto-reconnect**; reconnect loses probe link | app restart / blip kills the session until manual re-connect | `connection.py`, `server.py` | M |
 | R4 | ~~**No probe↔python version handshake**; probe version stale~~ **DONE** -- version generated from `PROJECT_VERSION`; `protocolVersion` on the wire; client warns on skew at connect | silent skew → opaque "method not found" | `core/version.h.in`, `connection.py` | S |
 | R5 | Legacy `qtpilot.*` handlers throw **generic errors** (good `ErrorCode` taxonomy unused there) | clients can't branch on failure type | `jsonrpc_handler.cpp` | S/M |
-| R6 | **Single-client server**; no multi-probe / parallel sessions | can't drive two apps; stale client blocks new connects | `websocket_server.cpp`, `server.py` | M |
-| R7 | Probe binds **all interfaces + LAN broadcast, no auth** -> `invokeMethod` = remote code exec | **Reduced, not closed.** The bind is now a policy (`QTPILOT_BIND_ADDRESS`) that an operator can narrow to loopback, an unrecognised value restricts rather than widens, announcements follow the bind, and the probe states the exposure at startup. The **default remains all-interfaces**: reaching instrumented apps on other hosts is a product requirement and discovery is broadcast-based, so a loopback default is an outage rather than a hardening. **Opt-in authenticated TLS and explicit profiles are implemented on the PR 2 branch**, with local red/green admission, Origin, certificate and discovery coverage. The unconfigured default remains unauthenticated. Hosted platform and separate-host acceptance remain pending; see [authentication](AUTHENTICATION.md) | `bind_policy.cpp`, `websocket_server.cpp` | M |
-| R8 | **Real-probe Python E2E gate awaiting hosted proof** | PR 1 wires native Widgets/QML, replay and Origin/client-ownership E2E into the representative Linux build with explicit artifact paths and failure on missing/empty/skipped required runs. Local native runs pass; hosted execution and required-check configuration remain to verify | `python/tests/test_*_e2e.py`, `.github/workflows/ci.yml` | M |
+| R6 | **One active controller per probe remains intentional**; multiple probes and discovery listeners are supported | independent processes can be selected without introducing multi-writer ownership. General parallel sessions remain a separate design | `websocket_server.cpp`, `test_discovery_concurrency.py` | M |
+| R7 | Probe defaults to **all interfaces + LAN broadcast without auth** | **Opt-in authenticated TLS and explicit profiles implemented in PR #68**, with local red/green and 29/29 hosted jobs at `219a233`. Default exposure remains the original LAN contract; explicit restrictions never widen. Separate-host acceptance remains pending; see [authentication](AUTHENTICATION.md) | `bind_policy.cpp`, `network_policy.cpp`, `websocket_server.cpp` | M |
+| R8 | **Hosted real-probe Python E2E verified in PR #67; merge requirement still external** | native Widgets/QML, replay and Origin/client-ownership E2E run in the representative Linux build and fail on missing/empty/skipped required cases. All 29 hosted jobs passed at `da58691`. Main is unprotected; requiring `Validation gate` needs a repository-setting decision | `python/tests/test_*_e2e.py`, `.github/workflows/ci.yml` | M |
 | R9 | ~~**Server teardown with a live client crashes on some Qt versions**~~ **DONE** | `QWebSocket::close()` may emit `disconnected()` synchronously, re-entering `onClientDisconnected()`, which nulled `m_activeClient` -- `stop()` then dereferenced it. SEGFAULTed on Qt 6.8/6.9 (Linux and Windows) and survived on 5.15.2/6.5.3/6.10.0/6.11.1, the signature of a timing-dependent re-entrancy hole. **Fix:** both teardown paths go through `takeActiveClient()`, which clears the state before anything that can re-enter. Reproduced as a CI red on exactly those four legs before fixing, and covered by `tests/test_websocket_teardown.cpp` | `websocket_server.cpp` | M |
 | R10 | ~~**`invokeMethod` segfaulted the host on a pointer argument**~~ **DONE** | a `Q_INVOKABLE` taking a pointer received whatever `jsonToVariant` coerced the JSON value into, so `describeObject(1)` handed the application the address `0x1` to dereference. A probe must never crash the app it is inspecting. Pointer parameters are now resolved rather than converted: `null` passes through, an object id is looked up **and type-checked** against the parameter's `QMetaObject` (a resolved-but-wrong-type object would otherwise reach the callee's own `qobject_cast` and come back as garbage), and anything else is `kInvalidParams`. Reproduced as a SIGSEGV in `test_meta_inspector` before fixing. Resolving ids also makes pointer-taking helpers callable for the first time | `meta_inspector.cpp` | S |
 
@@ -165,7 +165,10 @@ compatibility); **T1** wait primitive and **O5** NOTIFY-watch.
 
 ## Proposed branch / PR split
 
-Ordered by value × independence. Each row is one PR off `main` unless noted.
+The historical component backlog below is not a request for one PR per row.
+The active work uses [three stacked integration PRs](plans/2026-09-26-hardening-and-observability.md):
+validation foundations, authenticated operating profiles, and replay contracts/checkpoints.
+Implementation status on those branches does not mean merged or released.
 
 | Branch | Contents | Status |
 |--------|----------|--------|
@@ -179,7 +182,7 @@ Ordered by value × independence. Each row is one PR off `main` unless noted.
 | `feat/qml-support` | Q2 visual tree, Q3 drive Quick items, QML a11y/events/models | ✅ done and live-validated; only advanced Q1 metadata remains |
 | `feature/input-modifiers` | T3 mouse/key modifiers across `qt.ui.*` and `cu.*`, R10 `invokeMethod` pointer-argument crash | ✅ done |
 | `feat/interaction-enhancements` *(epic)* | T4 hover, T5 multi-select, remaining T6 menu depth, T7 diff, T9 focus, T11 multi-chord, T12 held keys | ⏳ planned; T3 modifiers and T8 DPR are shipped |
-| `ci/real-probe-python-e2e` | Run the existing complicated-app and replay E2E suites against built CI artifacts | ⏳ planned — closes R8 |
+| `test/validation-foundations` | Required real-probe E2E, fluent contracts, PySide qualification and CI scope selection | Implemented in PR #67; hosted green; unmerged |
 | `release/post-v0.1.5` | Publish the accumulated probe, Python, MCP, QML, replay, and mobile work | ⏳ operational next step |
 
 Dependency / push notes:

@@ -1,7 +1,9 @@
 # Hardening and observability implementation plan
 
-Status: proposed implementation sequence; no implementation branches created.
-Reviewed against local `main` at `640773a` on 2026-09-26.
+Status: three stacked implementation branches, published as PRs #67, #68 and #69.
+Nothing is merged or released.
+Original review baseline: local `main` at `640773a` on 2026-09-26. The findings
+below describe that baseline; implementation evidence is recorded at the end.
 
 ## Direction and review findings
 
@@ -710,8 +712,8 @@ Run outputs remain in ignored `logs/`; no raw test/process logs are tracked.
 at `da58691447b853f10a72cb653fd4a7a0fb34695e` (run `36281227602`). GitHub reports `main` as
 unprotected with no repository rulesets: YAML supplies a stable `Validation gate`,
 but requiring it for merges needs a separate repository-setting decision.
-PRs 2 and 3 remain the next integration milestones; this branch does not claim
-that authentication, operating profiles or replay checkpoint hardening are done.
+This first branch supplies validation foundations; PRs 2 and 3 below supply
+authentication/profiles and replay acceptance respectively.
 
 ## PR 2 implementation evidence
 
@@ -723,7 +725,7 @@ local/remote discovery is disabled from the same resolved native policy.
 
 - Native suite: **31/31 executables passed** on macOS/Qt 6.11.2, including new
   configuration and admission tests plus original bind, dispatch and teardown gates.
-- Python suite: **1088 passed, 6 optional/SDK-dependent skips**, including real
+- Python suite: **1092 passed, 6 optional/SDK-dependent skips**, including real
   native TLS, rejection, recording redaction, discovery and launcher tests.
 - Saved behavioral red/green includes rejected credentials with zero effects,
   missing/invalid configuration, TLS CA/hostname failures, remote downgrade,
@@ -737,7 +739,59 @@ local/remote discovery is disabled from the same resolved native policy.
 - CI policy/catalog: **45 passed**; actionlint passed. The workflow accepts stacked
   PR bases and includes TLS/profile E2E in its required representative Linux job.
 
-Hosted platform/static/mobile/sanitizer validation on this branch and the
-separate-host runbook remain gates; local results do not substitute for them.
-Raw red/green logs remain ignored. PR 3 replay integrity/preconditions/checkpoints
-remain the next implementation milestone.
+The Qt skill review subsequently reproduced two admission issues: an explicitly
+empty profile downgraded to legacy, and Origin/second-client rejection retained
+pending socket capacity. Both are fixed with red/green cases. Only an absent
+profile selects legacy; the established empty **bind-address** behavior remains
+unchanged. Rejected wrappers survive until disconnection, independently owned Qt
+timers reclaim pending capacity, and stale timer/socket identities are guarded.
+
+[PR #68](https://github.com/ssss2art/qtPilot/pull/68) passed **29/29 hosted jobs**
+at corrected revision `219a233` in run `36287690646`, including supported desktop,
+static/mobile, sanitizers and the final Validation gate.
+The separate-host runbook remains an external gate. Local or
+single-host UDP/socket results do not substitute for cross-machine proof.
+
+## PR 3 implementation evidence
+
+`feat/replay-contracts-and-checkpoints` stacks on PR 2. See the
+[design decisions](replay-contract-v2.md) and [public replay contract](../REPLAY.md).
+
+- Version-2 JSON contracts are strict by default in CLI/MCP. Exact requirements
+  and preconditions gate mutations; every action declares postconditions and/or
+  a Qt signal checkpoint. Raw responses and selected assertion paths are retained.
+- Owned Qt subscriptions are installed before driving. A bounded asyncio queue,
+  pre-action cursor, argument correlation, deadline and `AsyncExitStack` provide
+  controller orchestration. Qt owns delivery/lifetimes and a 64-permit semaphore
+  bounds exclusive connections. Ordinary observers retain their own subscriptions.
+- Probe/controller loss is session scoped; checkpoint loss includes cleanup.
+  Unknown/reset/dropped evidence cannot produce a strict pass. MCP status also
+  exposes diagnostic signal-buffer loss/eviction and bounded capture counters.
+- Experimental transcripts/macros require explicit exploration. Their reports
+  disclose normalized/wildcard/unavailable/unsupported evidence and never claim
+  exact or loss-verified acceptance. Existing unsafe replay defaults are not a
+  compatibility commitment; literal request semantics remain covered.
+- Behavioral red/green covers schema rejection, readiness, required sync failure,
+  raw fidelity, loss/reconnect, subscription ownership/capacity, early/queued
+  completion, stale/wrong correlation, destruction, timeout, cancellation and
+  cleanup overflow. Reordering native subscriptions after action delivery fails
+  both real Qt completion cases; restoring the order passes them.
+- Final local code revision `d5514f9`: **1,183 Python passed, 6 optional/SDK skips**;
+  **31/31 native suites passed**; warning-as-error C++ build passed on macOS/Qt
+  6.11.2. This includes the original bind/discovery/Origin/client-ownership gates.
+  Raw outputs remain ignored under `logs/20260927T0221*`.
+- The `qt-agent-skills` review (skill `qt-cpp-review`, revision `71d6c10`) ran
+  deterministic lint and all six focused review missions. Its three confirmed
+  deep findings have reproduced fixes: the two PR 2 admission cases above and
+  unbounded exclusive subscriptions in PR 3. No proprietary application data
+  is included in fixtures, documentation or tracked evidence.
+
+[PR #69](https://github.com/ssss2art/qtPilot/pull/69) requests the full supported
+matrix for review. Its first hosted run caught a missing direct `QJsonDocument`
+include in the transport diagnostics handler on older Qt versions; Qt 6.11
+transitively supplied it locally. The superseded run was cancelled to save runner
+time, the direct include was added, and hosted validation must prove that fix.
+Cross-host LAN acceptance,
+physical-device runtime behavior and a required GitHub merge gate remain separate
+external gates. Broader console capture, recursive recording, property/model
+watches, health/topology/fleet semantics and automatic mutation retry are deferred.

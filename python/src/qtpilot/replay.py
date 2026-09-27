@@ -24,7 +24,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from qtpilot.connection import ProbeError
 from qtpilot.result import Err, Ok, Result
@@ -678,6 +678,16 @@ def diff_steps(expected: list[Step], actual: list[Step]) -> list[Divergence]:
     return divergences
 
 
+def _diagnostic_evidence_kind(value: object) -> str:
+    if isinstance(value, str) and (_is_truncated(value) or value.endswith("~*")):
+        return "wildcard"
+    if isinstance(value, dict) and value.get("_type") and value.get("value", object()) is None:
+        return "unsupported"
+    children = value.values() if isinstance(value, dict) else value if isinstance(value, (list, tuple)) else ()
+    kinds = {_diagnostic_evidence_kind(child) for child in children}
+    return "wildcard" if "wildcard" in kinds else "unsupported" if "unsupported" in kinds else "normalized"
+
+
 @dataclass
 class ReplayResult:
     """The outcome of driving a scenario against a running application."""
@@ -687,11 +697,33 @@ class ReplayResult:
     divergences: list[Divergence]
     aborted_at: int | None = None
     abort_reason: str | None = None
+    failure_kind: Literal["precondition", "setup", "action", "synchronization"] | None = None
+
+    @property
+    def actions_driven(self) -> int:
+        """Number of action calls attempted, excluding baseline observations."""
+        return sum(step.action is not None for step in self.steps)
 
     @property
     def passed(self) -> bool:
         """Whether the application still behaves as recorded."""
         return not self.divergences and self.aborted_at is None
+
+    def evidence_report(self) -> dict[str, object]:
+        """Classify collected diagnostic items without inventing original values.
+
+        Counts exclude actions and unexecuted observations. Unsupported recorded
+        calls are listed separately because they produced no collected evidence.
+        """
+        counts = {kind: 0 for kind in ("exact", "normalized", "wildcard", "unavailable", "unsupported")}
+        for step in self.steps:
+            for observation in step.observations:
+                kind = "unavailable" if observation.error is not None else _diagnostic_evidence_kind(observation.result)
+                counts[kind] += 1
+            for _, params in step.notifications:
+                counts[_diagnostic_evidence_kind(params)] += 1
+        return {"evidence_counts": counts, "comparison_units": "collected observations and notifications",
+                "raw_available": False, "loss_verified": False, "unsupported_calls": self.scenario.unsupported}
 
     def to_result(self) -> Result[list[Step], list[Divergence]]:
         """Return a monadic Result containing either the driven steps (Ok) or the divergences (Err)."""
@@ -838,6 +870,8 @@ async def run_scenario(
     observed: list[Step] = []
     aborted_at: int | None = None
     abort_reason: str | None = None
+    failure_kind: Literal["precondition", "setup", "action", "synchronization"] | None = None
+    precondition_differences: list[Divergence] = []
 
     try:
         for recorded in scenario.steps:
@@ -847,17 +881,22 @@ async def run_scenario(
             if recorded.action is not None:
                 try:
                     await probe.call(recorded.action.method, recorded.action.params, **call_kwargs)
-                    if sync:
-                        try:
-                            await probe.call("qt.sync", {}, **call_kwargs)
-                        except Exception:
-                            # Gracefully continue if probe lacks qt.sync
-                            pass
                 except ProbeError as exc:
                     aborted_at = recorded.index
                     abort_reason = f"{recorded.action.method}: {exc}"
                     observed.append(step)
                     break
+                if sync:
+                    try:
+                        await probe.call("qt.sync", {}, **call_kwargs)
+                    except (ProbeError, OSError) as exc:
+                        aborted_at = recorded.index
+                        failure_kind = "synchronization"
+                        unavailable = isinstance(exc, ProbeError) and exc.code == -32601
+                        cause = "unavailable" if unavailable else type(exc).__name__
+                        abort_reason = f"qt.sync {cause}: {exc}"
+                        observed.append(step)
+                        break
 
             # Re-establish session state before observing. A failure here is not an
             # application divergence -- it means the replay could not be set up -- so it aborts
@@ -897,13 +936,22 @@ async def run_scenario(
 
             step.notifications = list(collected)
             observed.append(step)
+            if recorded.index == 0 and recorded.action is None:
+                precondition_differences = _diff_observations(recorded, step)
+                if precondition_differences:
+                    aborted_at = 0
+                    failure_kind = "precondition"
+                    abort_reason = "initial-state precondition failed"
+                    break
     finally:
         # Detached on every path: a handler left behind keeps feeding a dead run's collector for
         # the rest of the session.
         probe.remove_notification_handler(collect)
 
     # A record run is producing the golden, so there is nothing to compare against yet.
-    if record or aborted_at is not None:
+    if precondition_differences:
+        divergences = precondition_differences
+    elif record or aborted_at is not None:
         divergences: list[Divergence] = []
     else:
         divergences = diff_steps(scenario.steps, observed)
@@ -914,6 +962,7 @@ async def run_scenario(
         divergences=divergences,
         aborted_at=aborted_at,
         abort_reason=abort_reason,
+        failure_kind=failure_kind,
     )
 
 

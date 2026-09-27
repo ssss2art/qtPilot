@@ -137,6 +137,7 @@ class QTPILOT_EXPORT WebSocketServer : public QObject {
   void handleRequest(const QPointer<QWebSocket>& client, const QString& message);
 
   NetworkPolicy m_policy;
+  QString m_sessionId;
   TransportCredentials m_credentials;
   AdmissionServer* m_admission = nullptr;
   QWebSocketServer* m_server = nullptr;

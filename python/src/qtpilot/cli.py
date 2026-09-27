@@ -195,11 +195,16 @@ def _print_report(result, as_json: bool) -> None:
     """Write a replay report to stdout, for a person or for a machine."""
     if as_json:
         print(json.dumps({
+            "mode": "exploratory",
+            "strict_passed": False,
+            **result.evidence_report(),
             "source": result.scenario.source,
             "passed": result.passed,
             "summary": result.summary(),
             "aborted_at": result.aborted_at,
             "abort_reason": result.abort_reason,
+            "failure_kind": result.failure_kind,
+            "actions_driven": result.actions_driven,
             "divergences": [
                 {
                     "step": d.step,
@@ -213,12 +218,69 @@ def _print_report(result, as_json: bool) -> None:
         }, indent=2))
         return
 
-    print(result.summary())
+    print("Exploratory replay: " + result.summary())
     for divergence in result.divergences:
         print(f"  {divergence}")
 
 
 def cmd_replay(args: argparse.Namespace) -> int:
+    """Strict version-2 acceptance by default; transcripts require opt-in."""
+    import asyncio
+    from qtpilot.connection import ProbeConnection, ProbeError
+    from qtpilot.contract_runner import run_contract
+    from qtpilot.replay_contract import load_contract
+
+    if getattr(args, "exploratory", False):
+        if args.settle is None:
+            args.settle = 0.1
+        return _cmd_replay_exploratory(args)
+    if args.record or args.watch or args.output or args.settle is not None or not args.sync:
+        print("error: --record/--watch/--output/--settle/--no-sync require --exploratory. "
+              "Strict contracts declare their own observations and completion evidence.", file=sys.stderr)
+        return REPLAY_EXIT_USAGE
+    parsed = load_contract(args.path)
+    if parsed.is_err():
+        print(f"error: {parsed.unwrap_err()}. Supply a version-2 JSON contract; "
+              "diagnostic JSONL requires --exploratory.", file=sys.stderr)
+        return REPLAY_EXIT_USAGE
+    contract = parsed.unwrap()
+    if args.inspect:
+        print(json.dumps({"mode": "strict", "contract": contract.to_dict()}, indent=2))
+        return REPLAY_EXIT_OK
+    try:
+        _apply_security_options(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return REPLAY_EXIT_USAGE
+
+    async def go() -> int:
+        probe = None
+        default_port = int(os.environ.get("QTPILOT_PORT", "9222"))
+        try:
+            probe = ProbeConnection(args.ws_url or local_probe_url(default_port, os.environ))
+            await probe.connect()
+            result = await run_contract(contract, probe)
+        except (ProbeError, OSError, ValueError) as exc:
+            print(f"error: cannot prepare strict replay: {exc}", file=sys.stderr)
+            return REPLAY_EXIT_USAGE
+        finally:
+            if probe is not None:
+                await probe.disconnect()
+        if args.json:
+            print(json.dumps(result.to_dict(), indent=2))
+        elif result.passed:
+            print(f"Strict contract passed: {result.fixture}; {result.actions_driven} actions, "
+                  f"{len(result.comparisons)} exact assertions; loss verified.")
+        else:
+            print(f"Strict contract failed: {result.failed_step}: {result.failure_kind}: {result.reason}")
+        if result.passed:
+            return REPLAY_EXIT_OK
+        return REPLAY_EXIT_DIVERGED if result.failure_kind in {"precondition", "postcondition"} else REPLAY_EXIT_ABORTED
+
+    return asyncio.run(go())
+
+
+def _cmd_replay_exploratory(args: argparse.Namespace) -> int:
     """Replay a recorded session against a running application.
 
     Quietens the transport loggers first. main() turns on DEBUG for everything, which is useful
@@ -336,7 +398,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
         # not running has not behaved differently, and reporting it as a divergence would send
         # someone hunting a regression that does not exist.
         try:
-            probe = ProbeConnection(args.ws_url or local_probe_url(9222, os.environ))
+            default_port = int(os.environ.get("QTPILOT_PORT", "9222"))
+            probe = ProbeConnection(args.ws_url or local_probe_url(default_port, os.environ))
             await probe.connect()
         except (OSError, ProbeError, ValueError) as exc:
             print(
@@ -568,38 +631,35 @@ def create_parser() -> argparse.ArgumentParser:
     # --- replay subcommand ---
     replay_parser = subparsers.add_parser(
         "replay",
-        help="Re-drive a recorded session and report what changed",
+        help="Validate a replay contract or explicitly explore a diagnostic transcript",
         description=(
-            "Replay a .jsonl message log against a running application.\n\n"
-            "Re-issues the recorded actions in order, re-issues the recorded observations after\n"
-            "each one, and compares. Timings, request ids and generated object handles are\n"
-            "ignored, so a difference means the application behaved differently.\n\n"
-            "The application must already be in the state the recording started from -- replay\n"
-            "drives input, it does not reset anything.\n\n"
-            "Exit codes: 0 no divergence, 1 diverged, 2 the log cannot be replayed, 3 aborted partway.\n\n"
-            "Example:\n"
-            "  qtpilot replay scenarios/submit-form.jsonl\n"
-            "  qtpilot replay scenarios/submit-form.jsonl --inspect\n"
-            "  qtpilot replay scenarios/submit-form.jsonl --settle 0.25 --json"
+            "Validate a version-2 JSON contract against a running application.\n"
+            "The caller prepares the fixture; readiness gates every mutation.\n"
+            "Declared signals/postconditions establish completion without settling sleeps.\n"
+            "Use --exploratory for legacy JSONL diagnostics or unasserted macros.\n\n"
+            "Exit codes: 0 passed, 1 state mismatch, 2 invalid input/setup, 3 incomplete.\n"
+            "Example: qtpilot replay scenarios/form.json --json"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     replay_parser.add_argument(
         "path",
-        metavar="LOG",
-        help="Path to a .jsonl message log recorded at level 2 or above",
+        metavar="CONTRACT",
+        help="Version-2 JSON contract; --exploratory accepts a diagnostic JSONL transcript",
     )
     replay_parser.add_argument(
         "--ws-url",
         default=os.environ.get("QTPILOT_WS_URL"),
         help="WebSocket URL of the qtPilot probe (default: local port 9222, honoring the profile)",
     )
+    replay_parser.add_argument("--exploratory", action="store_true",
+                               help="Use weaker transcript/macro replay; never certifies a strict pass")
     replay_parser.add_argument(
         "--settle",
         type=float,
-        default=0.1,
+        default=None,
         help=(
-            "Seconds to wait after each action for signals to arrive (default: 0.1). "
+            "Exploratory only: seconds to wait after each action for signals to arrive (default: 0.1). "
             "Raise it for an application that updates asynchronously; too short reports a race "
             "as a divergence."
         ),

@@ -13,6 +13,7 @@
 #include <QMutex>
 #include <QObject>
 #include <QPointer>
+#include <QSemaphore>
 
 namespace qtPilot {
 
@@ -24,6 +25,7 @@ enum class SignalErrorKind {
   ObjectNotFound,
   SignalNotFound,
   ConnectionFailed,
+  CapacityExceeded,
 };
 
 /// @brief Structured error for signal operations.
@@ -75,9 +77,11 @@ class QTPILOT_EXPORT SignalMonitor : public QObject {
   /// @brief Monadically subscribe to a signal on an object.
   /// @param objectId Object's hierarchical ID.
   /// @param signalName Signal name without parameters (e.g., "clicked").
+  /// @param exclusive Create an independently owned connection rather than reuse one.
   /// @return Subscription ID, or SignalError on failure.
   std::expected<QString, SignalError> subscribeExpected(const QString& objectId,
-                                                        const QString& signalName);
+                                                        const QString& signalName,
+                                                        bool exclusive = false);
 
   /// @brief Unsubscribe from a signal (SIG-02).
   ///
@@ -177,10 +181,12 @@ class QTPILOT_EXPORT SignalMonitor : public QObject {
     QString signalName;                  ///< Signal name without parameters
     QMetaObject::Connection connection;  ///< Connection handle for disconnect
     SignalRelay* relay = nullptr;        ///< Relay object for dynamic signal connection
+    bool exclusive = false;              ///< Never reused by another subscriber
   };
 
   /// @brief Map from subscription ID to subscription data.
   QHash<QString, Subscription> m_subscriptions;
+  QSemaphore m_exclusiveSlots{64};
 
   /// @brief Cache of recently destroyed object IDs for lifecycle notifications.
   /// Populated by onSubscribedObjectDestroyed (DirectConnection), read by

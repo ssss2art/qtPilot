@@ -38,6 +38,7 @@ MCP_ONLY_SESSION = [
 def args_for(path: str, **overrides) -> argparse.Namespace:
     base = {
         "path": path,
+        "exploratory": True,
         "ws_url": "ws://localhost:9222",
         "settle": 0.0,
         "sync": True,
@@ -112,7 +113,8 @@ def test_replay_defaults_are_usable_without_flags():
 
     assert args.inspect is False
     assert args.json is False
-    assert args.settle > 0, "a default replay should allow signals time to arrive"
+    assert args.settle is None, "strict replay uses declared completion, not a settling delay"
+    assert args.exploratory is False
 
 
 def test_replay_accepts_the_flags_ci_needs():

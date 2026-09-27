@@ -23,7 +23,7 @@ def register_replay_tools(mcp: FastMCP) -> None:
     """Register scenario replay tools on the MCP server."""
 
     @mcp.tool
-    async def qtpilot_replay_inspect(path: str, ctx: Context = None) -> dict:
+    async def qtpilot_replay_inspect(path: str, exploratory: bool = False, ctx: Context = None) -> dict:
         """Summarise a recorded message log without driving anything.
 
         Reports how many actions the log would replay, what it would assert on, and whether it
@@ -33,14 +33,22 @@ def register_replay_tools(mcp: FastMCP) -> None:
         Args:
             path: Path to a .jsonl message log written by qtpilot_log_start.
 
-        Example: qtpilot_replay_inspect(path="qtPilot-log-20260906-101500.jsonl")
+        Example: qtpilot_replay_inspect(path="scenarios/form.json")
         """
         from qtpilot.replay import load_scenario
+        from qtpilot.replay_contract import load_contract
+
+        if not exploratory:
+            parsed = load_contract(path)
+            if parsed.is_err():
+                raise ValueError(f"{parsed.unwrap_err()}; diagnostic transcripts require exploratory=True")
+            return {"mode": "strict", "contract": parsed.unwrap().to_dict()}
 
         scenario = load_scenario(path)
         actions = [s.action.method for s in scenario.steps if s.action]
 
         return {
+            "mode": "exploratory",
             "source": scenario.source,
             "replayable": scenario.is_replayable,
             "steps": len(scenario.steps),
@@ -53,45 +61,61 @@ def register_replay_tools(mcp: FastMCP) -> None:
     async def qtpilot_replay_run(
         path: str | None = None,
         steps: list[dict] | None = None,
-        settle: float = 0.1,
+        settle: float | None = None,
+        contract: dict[str, object] | None = None,
+        exploratory: bool = False,
         ctx: Context = None,
     ) -> dict:
-        """Re-drive a recorded session or inline steps against the connected application and report differences.
+        """Validate a version-2 contract against the connected application.
 
-        Pass either `path` (to replay a recorded .jsonl session) or `steps` (to execute
-        a batch sequence of actions directly in memory without writing to disk).
-
-        Args:
-            path: Path to a .jsonl message log written by qtpilot_log_start.
-            steps: In-memory list of action step dictionaries: `[{"method": "qt.ui.click", "params": {...}}, ...]`.
-            settle: Seconds to wait after each action for signals to arrive.
-
-        Example: qtpilot_replay_run(path="scenarios/submit-form.jsonl", settle=0.25)
-        Example: qtpilot_replay_run(steps=[{"method": "qt.ui.click", "params": {"objectId": "btn"}}])
+        Supply exactly one of path, contract (inline version-2 JSON), or steps.
+        Diagnostic JSONL paths and unasserted inline steps require exploratory=True;
+        their normalized comparisons never certify strict acceptance. settle is
+        exploratory-only. Strict completion uses the contract's signals/postconditions.
         """
+        import json
+        from qtpilot.contract_runner import run_contract
+        from qtpilot.replay_contract import load_contract, parse_contract
         from qtpilot.replay import load_scenario, run_scenario, scenario_from_steps
         from qtpilot.server import get_probe
 
-        if (path is None) == (steps is None):
-            raise ValueError("Provide exactly one of 'path' or 'steps'")
+        if sum(value is not None for value in (path, steps, contract)) != 1:
+            raise ValueError("Provide exactly one of 'path', 'contract' or 'steps'")
+
+        if not exploratory:
+            if steps is not None or settle is not None:
+                raise ValueError("Inline steps and settling delays require exploratory=True; use a version-2 contract for acceptance")
+            parsed = load_contract(path) if path is not None else parse_contract(json.dumps(contract, allow_nan=False))
+            if parsed.is_err():
+                raise ValueError(f"{parsed.unwrap_err()}; diagnostic transcripts require exploratory=True")
+        elif contract is not None:
+            raise ValueError("Version-2 contracts must run in strict mode")
 
         probe = get_probe()
         if probe is None or not probe.is_connected:
             raise RuntimeError("Not connected to a probe -- replay drives a running application.")
 
+        if not exploratory:
+            return (await run_contract(parsed.unwrap(), probe)).to_dict()
+
         if path is not None:
             scenario = load_scenario(path)
         else:
             scenario = scenario_from_steps(steps or [])
-        result = await run_scenario(scenario, probe, settle=settle)
+        result = await run_scenario(scenario, probe, settle=0.1 if settle is None else settle)
 
         return {
+            "mode": "exploratory",
+            "strict_passed": False,
+            **result.evidence_report(),
             "source": result.scenario.source,
             "passed": result.passed,
             "summary": result.summary(),
             "steps_driven": len(result.steps),
             "aborted_at": result.aborted_at,
             "abort_reason": result.abort_reason,
+            "failure_kind": result.failure_kind,
+            "actions_driven": result.actions_driven,
             "divergence_count": len(result.divergences),
             "divergences": _divergence_dicts(result.divergences),
         }

@@ -37,7 +37,8 @@ class DiscoveredProbe:
     def ws_url(self) -> str:
         """WebSocket URL to connect to this probe."""
         scheme = "wss" if self.tls else "ws"
-        return f"{scheme}://{self.address}:{self.ws_port}"
+        host = self.hostname if (self.tls and self.hostname and self.hostname != "unknown") else self.address
+        return f"{scheme}://{host}:{self.ws_port}"
 
     @property
     def key(self) -> str:

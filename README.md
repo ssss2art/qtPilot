@@ -214,7 +214,7 @@ the existing unauthenticated LAN default.
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/GETTING-STARTED.md) | Installation and first steps |
-| [Deterministic Replay](docs/REPLAY.md) | Record and replay sessions deterministically |
+| [Replay Contracts](docs/REPLAY.md) | Strict acceptance with exact state, Qt checkpoints and loss evidence; explicit exploratory replay |
 | [Building from Source](docs/BUILDING.md) | Compile qtPilot yourself |
 | [Mobile (Android/iOS)](docs/MOBILE.md) | Linking the probe into a device build |
 | [MCP Tooling](docs/MCP-TOOLS.md) | Current modes, tool surface, resources, and inspection workflow |

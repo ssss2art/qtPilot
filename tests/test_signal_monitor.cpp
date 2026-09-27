@@ -39,6 +39,8 @@ class TestSignalMonitor : public QObject {
   void testSubscribeExpectedSuccess();
   void testSubscribeExpectedNonexistentObject();
   void testSubscribeExpectedNonexistentSignal();
+  void testExclusiveCapacityReleased_data();
+  void testExclusiveCapacityReleased();
 
  private:
   // Track objects created during tests for cleanup
@@ -103,6 +105,48 @@ void TestSignalMonitor::testSubscribeReturnsValidId() {
   SignalMonitor::instance()->unsubscribe(subId);
 }
 
+void TestSignalMonitor::testExclusiveCapacityReleased_data() {
+  QTest::addColumn<QString>("release");
+  QTest::newRow("unsubscribe") << QStringLiteral("unsubscribe");
+  QTest::newRow("destroyed target") << QStringLiteral("destroy");
+  QTest::newRow("disconnected session") << QStringLiteral("clear");
+}
+
+void TestSignalMonitor::testExclusiveCapacityReleased() {
+  QFETCH(QString, release);
+  auto* monitor = SignalMonitor::instance();
+  auto* button = new QPushButton();
+  button->setObjectName("exclusiveCapacity");
+  m_testObjects.append(button);
+  const QString objectId = ObjectRegistry::instance()->objectId(button);
+  QStringList subscriptions;
+  for (int i = 0; i < 64; ++i) {
+    const auto subscription = monitor->subscribeExpected(objectId, "clicked", true);
+    QVERIFY(subscription.has_value());
+    subscriptions.append(*subscription);
+  }
+  const auto overflow = monitor->subscribeExpected(objectId, "clicked", true);
+  QEXPECT_THAT(overflow.has_value(), IsFalse());
+  QEXPECT_THAT(overflow.error().message, QStrContains("capacity"));
+  const auto ordinary = monitor->subscribeExpected(objectId, "clicked");
+  QVERIFY(ordinary.has_value());
+  if (release == QStringLiteral("unsubscribe")) {
+    monitor->unsubscribe(subscriptions.first());
+  } else if (release == QStringLiteral("destroy")) {
+    m_testObjects.removeOne(button);
+    delete button;
+    QCoreApplication::processEvents();
+  } else {
+    monitor->clearSubscriptions();
+  }
+  auto* next = new QPushButton();
+  next->setObjectName("nextExclusive");
+  m_testObjects.append(next);
+  const auto recovered =
+      monitor->subscribeExpected(ObjectRegistry::instance()->objectId(next), "clicked", true);
+  QEXPECT_THAT(recovered.has_value(), IsTrue());
+}
+
 void TestSignalMonitor::testUnsubscribe() {
   auto* btn = new QPushButton();
   btn->setObjectName("unsubBtn");
@@ -145,11 +189,10 @@ void TestSignalMonitor::testSignalEmission() {
 
   // Verify notification content
   QJsonObject notification = spy.at(0).at(0).toJsonObject();
-  QEXPECT_THAT(notification, AllOf(
-      HasJsonField("subscriptionId", QStrEq(subId)),
-      HasJsonField("objectId", QStrEq(objId)),
-      HasJsonField("signal", QStrEq("clicked")),
-      HasJsonField("arguments")));
+  QEXPECT_THAT(
+      notification,
+      AllOf(HasJsonField("subscriptionId", QStrEq(subId)), HasJsonField("objectId", QStrEq(objId)),
+            HasJsonField("signal", QStrEq("clicked")), HasJsonField("arguments")));
   // clicked(bool checked) emits its argument value (false for a plain click).
   QJsonArray args = notification["arguments"].toArray();
   QEXPECT_THAT(args.size(), Eq(1));
@@ -178,9 +221,8 @@ void TestSignalMonitor::testSignalArgumentValues() {
 
   QEXPECT_THAT(spy.count(), Eq(1));
   QJsonObject notification = spy.at(0).at(0).toJsonObject();
-  QEXPECT_THAT(notification, AllOf(
-      HasJsonField("signal", QStrEq("textChanged")),
-      HasJsonField("arguments", JsonArrayContains(QStrEq("hello")))));
+  QEXPECT_THAT(notification, AllOf(HasJsonField("signal", QStrEq("textChanged")),
+                                   HasJsonField("arguments", JsonArrayContains(QStrEq("hello")))));
 
   SignalMonitor::instance()->unsubscribe(subId);
 }

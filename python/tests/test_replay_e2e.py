@@ -33,6 +33,9 @@ import pytest
 from qtpilot.connection import ProbeConnection
 from qtpilot.message_logger import MessageLogger
 from qtpilot.replay import parse_entries, run_scenario
+from qtpilot.replay import Action, Observation, Scenario, Step
+from qtpilot.fluent import expect_replay
+from tests.probe_expectations import expect_probe
 
 # --- locating the build ----------------------------------------------------
 
@@ -59,6 +62,81 @@ EMAIL_EDIT = FORM + "emailEdit"
 SUBMIT = FORM + "submitButton"
 CLEAR = FORM + "clearButton"
 RESULT_TEXT = FORM + "resultGroup/resultText"
+
+
+@pytest.mark.parametrize("deferred,ready", [(False, True), (True, True), (False, False)], ids=["immediate-signal", "queued-Qt-invoke", "wrong-initial-state"])
+def test_strict_contract_uses_real_qt_completion(live_app: str, deferred: bool, ready: bool) -> None:
+    from qtpilot.contract_runner import run_contract
+    from qtpilot.fluent import expect_contract_replay
+    from qtpilot.replay_contract import parse_contract
+    from tests.test_replay_contract import contract_document
+
+    async def check() -> None:
+        async with _connected(live_app) as connection:
+            await _set_text(connection, NAME_EDIT, "ready")
+            document = contract_document()
+            document["timeout"] = 3
+            document["preconditions"][0]["params"]["objectId"] = NAME_EDIT
+            if not ready:
+                document["preconditions"][0]["expected"] = "required-state"
+            step = document["steps"][0]
+            step["postconditions"][0]["params"]["objectId"] = NAME_EDIT
+            expected = "" if deferred else "user~1"
+            step["postconditions"][0]["expected"] = expected
+            step["checkpoint"] = {"objectId": NAME_EDIT, "signal": "textChanged", "arguments": [expected]}
+            step["action"] = (
+                {"method": "qt.methods.invoke", "params": {"objectId": NAME_EDIT, "method": "clear", "deferred": True}}
+                if deferred else {"method": "qt.properties.set", "params": {"objectId": NAME_EDIT, "name": "text", "value": expected}}
+            )
+            result = await run_contract(parse_contract(json.dumps(document)).unwrap(), connection)
+            if ready:
+                expect_contract_replay(result).to_pass_strictly().to_complete_checkpoint("edit").to_have_driven(1).to_have_no_evidence_loss()
+            else:
+                expect_contract_replay(result).to_fail_as("precondition").to_have_driven(0)
+            expect_probe(await connection.call("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"})).to_have_value(expected if ready else "ready")
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("observer_first", [True, False], ids=["existing-observer", "later-observer"])
+def test_checkpoint_subscription_has_independent_qt_ownership(live_app: str, observer_first: bool) -> None:
+    from qtpilot.fluent import expect_signal_wait
+    from qtpilot.signal_wait import signal_waiter_for, subscription_id_of
+
+    async def check() -> None:
+        async with _connected(live_app) as connection:
+            waiter = signal_waiter_for(connection)
+            params = {"objectId": NAME_EDIT, "signal": "textChanged"}
+            await _set_text(connection, NAME_EDIT, "before-observation")
+            observer = subscription_id_of(await connection.call("qt.signals.subscribe", params)) if observer_first else None
+            checkpoint = subscription_id_of(await connection.call(
+                "qt.signals.subscribe", {**params, "exclusive": True},
+            ))
+            if observer is None:
+                observer = subscription_id_of(await connection.call("qt.signals.subscribe", params))
+            assert checkpoint != observer, "Checkpoint must own an independent Qt connection"
+            waiter.track(observer)
+            await connection.call("qt.signals.unsubscribe", {"subscriptionId": checkpoint})
+            await _set_text(connection, NAME_EDIT, "independent-observer")
+            expect_signal_wait(await waiter.wait(observer, 2)).to_emit("textChanged", ["independent-observer"])
+            await connection.call("qt.signals.unsubscribe", {"subscriptionId": observer})
+            waiter.forget(observer)
+    asyncio.run(check())
+
+
+def test_failed_precondition_preserves_real_application_state(live_app: str) -> None:
+    async def check() -> None:
+        async with _connected(live_app) as connection:
+            await _set_text(connection, NAME_EDIT, "initial-state")
+            expected = await connection.call("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"})
+            expected["result"]["value"] = "required-state"
+            scenario = Scenario(steps=[
+                Step(index=0, observations=[Observation("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"}, expected)]),
+                Step(index=1, action=Action("qt.properties.set", {"objectId": NAME_EDIT, "name": "text", "value": "mutated"})),
+            ])
+            result = await run_scenario(scenario, connection, settle=0)
+            expect_replay(result).to_fail_precondition().to_have_driven(0)
+            expect_probe(await connection.call("qt.properties.get", {"objectId": NAME_EDIT, "name": "text"})).to_have_value("initial-state")
+    asyncio.run(check())
 
 
 def _free_port() -> int:

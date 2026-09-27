@@ -42,7 +42,7 @@ class TestAgentErgonomics:
                 ]
                 res = await client.call_tool(
                     "qtpilot_replay_run",
-                    {"steps": steps},
+                    {"steps": steps, "exploratory": True},
                 )
                 parsed = json.loads(res.content[0].text)
                 assert parsed["passed"] is True

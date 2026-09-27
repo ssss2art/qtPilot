@@ -22,6 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 from weakref import WeakKeyDictionary, ref
+from uuid import uuid4
 
 from qtpilot.result import Err, Ok, Result
 
@@ -110,6 +111,26 @@ class SignalWaiter:
         self._buffered: OrderedDict[str, deque[SignalEmission]] = OrderedDict()
         self._dropped: dict[str, int] = {}
         self._waiting: dict[str, deque[asyncio.Future[SignalEmission]]] = {}
+        self._epoch = str(uuid4())
+        self._total_dropped = 0
+        self._evicted = 0
+
+    def status(self) -> dict[str, object]:
+        """Diagnostic counters cover this waiter, not an inferred probe session.
+
+        Explicit forget/fresh operations intentionally discard buffered events;
+        overflow and automatic untracked eviction are counted separately.
+        """
+        return {
+            "active": True, "known": self._is_connected(),
+            "scope": "waiter-lifetime", "epoch": self._epoch,
+            "capacity_per_subscription": self._max_buffered,
+            "max_untracked_subscriptions": self._max_untracked,
+            "dropped": self._total_dropped, "evicted": self._evicted,
+            "subscriptions": {sub: {"queued": self.pending(sub), "dropped": self.dropped(sub),
+                                    "tracked": sub in self._tracked}
+                              for sub in sorted(self._tracked | self._buffered.keys())},
+        }
 
     def track(self, subscription_id: str) -> None:
         """Start treating a subscription as live: waits on it are accepted."""
@@ -150,6 +171,7 @@ class SignalWaiter:
             self._evict_untracked()
         if len(buffer) == buffer.maxlen:
             self._dropped[sub] = self._dropped.get(sub, 0) + 1
+            self._total_dropped += 1
         buffer.append(emitted)
 
     async def wait(
@@ -194,11 +216,18 @@ class SignalWaiter:
     def _evict_untracked(self) -> None:
         untracked = [sub for sub in self._buffered if sub not in self._tracked]
         for sub in untracked[: max(0, len(untracked) - self._max_untracked)]:
+            self._evicted += len(self._buffered[sub])
             del self._buffered[sub]
             self._dropped.pop(sub, None)
 
 
 _waiters: WeakKeyDictionary[NotificationSource, SignalWaiter] = WeakKeyDictionary()
+
+
+def signal_waiter_status(source: NotificationSource | None) -> dict[str, object]:
+    """Inspect existing diagnostics without installing a notification handler."""
+    waiter = _waiters.get(source) if source is not None else None
+    return waiter.status() if waiter is not None else {"active": False, "known": False}
 
 
 def signal_waiter_for(source: NotificationSource) -> SignalWaiter:

@@ -55,7 +55,7 @@ class TestReplayInspect:
         register_replay_tools(mock_mcp)
         path = write_log(tmp_path, CLICK_SESSION)
 
-        result = await _call_tool(mock_mcp, "qtpilot_replay_inspect", path=path)
+        result = await _call_tool(mock_mcp, "qtpilot_replay_inspect", exploratory=True, path=path)
 
         assert result["replayable"] is True
         assert result["actions"] == ["qt.ui.click"]
@@ -69,7 +69,7 @@ class TestReplayInspect:
         register_replay_tools(mock_mcp)
         path = write_log(tmp_path, MCP_ONLY_SESSION)
 
-        result = await _call_tool(mock_mcp, "qtpilot_replay_inspect", path=path)
+        result = await _call_tool(mock_mcp, "qtpilot_replay_inspect", exploratory=True, path=path)
 
         assert result["replayable"] is False
         assert result["actions"] == []
@@ -86,7 +86,7 @@ class TestReplayInspect:
         monkeypatch.setattr(server, "get_probe", explode)
         register_replay_tools(mock_mcp)
 
-        await _call_tool(mock_mcp, "qtpilot_replay_inspect", path=write_log(tmp_path, CLICK_SESSION))
+        await _call_tool(mock_mcp, "qtpilot_replay_inspect", exploratory=True, path=write_log(tmp_path, CLICK_SESSION))
 
 
 class TestReplayRun:
@@ -98,7 +98,7 @@ class TestReplayRun:
         register_replay_tools(mock_mcp)
 
         with pytest.raises(RuntimeError, match="Not connected"):
-            await _call_tool(mock_mcp, "qtpilot_replay_run", path=write_log(tmp_path, CLICK_SESSION))
+            await _call_tool(mock_mcp, "qtpilot_replay_run", exploratory=True, path=write_log(tmp_path, CLICK_SESSION))
 
     @pytest.mark.asyncio
     async def test_reports_a_clean_replay(self, mock_mcp, tmp_path, monkeypatch):
@@ -123,7 +123,7 @@ class TestReplayRun:
         register_replay_tools(mock_mcp)
 
         result = await _call_tool(
-            mock_mcp, "qtpilot_replay_run", path=write_log(tmp_path, CLICK_SESSION), settle=0
+            mock_mcp, "qtpilot_replay_run", exploratory=True, path=write_log(tmp_path, CLICK_SESSION), settle=0
         )
 
         assert result["passed"] is True
@@ -155,7 +155,7 @@ class TestReplayRun:
         register_replay_tools(mock_mcp)
 
         result = await _call_tool(
-            mock_mcp, "qtpilot_replay_run", path=write_log(tmp_path, CLICK_SESSION), settle=0
+            mock_mcp, "qtpilot_replay_run", exploratory=True, path=write_log(tmp_path, CLICK_SESSION), settle=0
         )
 
         assert result["passed"] is False

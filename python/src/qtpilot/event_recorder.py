@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from collections import deque
 
 from qtpilot.connection import ProbeConnection
 
@@ -108,10 +109,14 @@ class RecordedInputEvent:
 class EventRecorder:
     """Buffers probe notifications between start() and stop() calls."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_events: int = 10000) -> None:
+        if type(max_events) is not int or max_events <= 0:
+            raise ValueError("Capture capacity must be a positive integer")
+        self._max_events = max_events
+        self._buffer_dropped = 0
         self._recording: bool = False
         self._start_time: float = 0.0
-        self._events: list[RecordedEvent | RecordedInputEvent] = []
+        self._events: deque[RecordedEvent | RecordedInputEvent] = deque(maxlen=max_events)
         self._subscriptions: list[str] = []  # subscription IDs for cleanup
         self._include_lifecycle: bool = True
         self._capture_events: bool = False
@@ -129,6 +134,8 @@ class EventRecorder:
         result: dict = {
             "recording": self._recording,
             "event_count": len(self._events),
+            "buffer_dropped": self._buffer_dropped,
+            "buffer_capacity": self._max_events,
         }
         if self._recording:
             result["duration"] = round(time.monotonic() - self._start_time, 3)
@@ -157,7 +164,8 @@ class EventRecorder:
             await self._cleanup_subscriptions(probe)
 
         self._recording = True
-        self._events = []
+        self._buffer_dropped = 0
+        self._events = deque(maxlen=self._max_events)
         self._subscriptions = []
         self._include_lifecycle = include_lifecycle
         self._capture_events = capture_events
@@ -229,14 +237,21 @@ class EventRecorder:
 
         events = [e.to_dict() for e in self._events]
         event_count = len(events)
-        self._events = []
+        self._events = deque(maxlen=self._max_events)
 
         return {
             "recording": False,
             "duration": duration,
             "event_count": event_count,
+            "buffer_dropped": self._buffer_dropped,
+            "buffer_capacity": self._max_events,
             "events": events,
         }
+
+    def _append_event(self, event: RecordedEvent | RecordedInputEvent) -> None:
+        if len(self._events) == self._max_events:
+            self._buffer_dropped += 1
+        self._events.append(event)
 
     def _handle_notification(self, method: str, params: dict) -> None:
         """Synchronous handler called by ProbeConnection for each notification."""
@@ -246,7 +261,7 @@ class EventRecorder:
         timestamp = time.monotonic() - self._start_time
 
         if method == "qtpilot.signalEmitted":
-            self._events.append(RecordedEvent(
+            self._append_event(RecordedEvent(
                 timestamp=timestamp,
                 event_type="signal",
                 object_id=params.get("objectId", ""),
@@ -255,7 +270,7 @@ class EventRecorder:
                 arguments=params.get("arguments", params.get("args", [])),
             ))
         elif method == "qtpilot.objectCreated" and self._include_lifecycle:
-            self._events.append(RecordedEvent(
+            self._append_event(RecordedEvent(
                 timestamp=timestamp,
                 event_type="object_created",
                 object_id=params.get("objectId", ""),
@@ -283,7 +298,7 @@ class EventRecorder:
             elif event_type.startswith("Focus"):
                 detail["reason"] = params.get("reason", "")
 
-            self._events.append(RecordedInputEvent(
+            self._append_event(RecordedInputEvent(
                 timestamp=timestamp,
                 event_type=event_type,
                 object_id=params.get("objectId", ""),
