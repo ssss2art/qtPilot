@@ -189,8 +189,9 @@ and push cadence, not by combining unrelated changes into a giant PR.
 
 ## CI selection and runner consumption
 
-This is a proposed policy to implement and test in PR 1; workflows have not yet
-been changed. Current `ci.yml` has no PR path filter or job selection and expands
+PR 1 implements this policy in `scripts/ci_policy.py`, with tested scope
+selection and a final `Validation gate`. Hosted execution and branch-protection
+wiring remain separate validation gates. The original full workflow expands
 to 27 jobs: 13 desktop builds, 3 static-probe builds, 2 mobile builds, 2 sanitizers,
 5 Python stacks, lint, and benchmarks. Six desktop jobs use Windows; three jobs
 use macOS across desktop/static/iOS. Cancellation of superseded runs already
@@ -309,6 +310,10 @@ job reports executed tests. Making the job required in hosting branch protection
 is a separate repository-setting action, not accomplished by YAML alone.
 
 ### 1a. `test/pyside-probe-compatibility` (depends on 0, 1)
+
+Local qualification is recorded in [PYSIDE-QUALIFICATION.md](../PYSIDE-QUALIFICATION.md).
+Widgets/property access passed, but a typed Python slot failed. Retain native
+acceptance fixtures; binding qualification remains incomplete.
 
 **Purpose:** qualify Qt for Python as a source of expressive real-Qt test fixtures
 before checkpoint and watch work relies on it. This is a prerequisite exploration,
@@ -679,3 +684,30 @@ discovery concurrency. The initial sandbox run prevented UDP binding (512 passed
 no code changes. No fresh C++ build, live LAN test, device test, or full matrix was
 performed for this documentation-only review. New branches' red/green evidence
 remains work to execute, not evidence claimed by this plan.
+
+## PR 1 implementation evidence
+
+Work is on `test/validation-foundations`, in small commits. Local validation:
+
+- Python suite: **1042 passed, 6 skipped**; the opt-in PySide suite and existing
+  SDK feature-dependent tests account for optional coverage. Native E2E executed.
+- Native CTest: **29/29 executables passed**, including bind, teardown, dispatch,
+  introspection, input, model, QML and static initialization-related tests.
+- CI selector/catalog suite: **45 passed**; selected-job failures/cancellations/
+  skips cannot pass the final gate. SDK registration changes retain all stacks.
+- Actionlint `1.7.12`: CI and release workflows passed syntax/context validation.
+- Saved behavioral red/green: missing/empty required E2E, malformed discovery
+  values, missing property evidence and SDK scope. Isolated native mutations
+  changing the LAN default and bypassing Origin protection failed their contract
+  assertions; original sources were restored and rebuilt.
+- Benchmark deprecation: warning check failed on the old const-reference
+  `DoNotOptimize` overload and passed after using mutable output storage.
+- PySide: **one property/runtime pass, one typed-slot failure**. See
+  [qualification evidence and decision](../PYSIDE-QUALIFICATION.md).
+
+Run outputs remain in ignored `logs/`; no raw test/process logs are tracked.
+Hosted matrix execution is still required. GitHub currently reports `main` as
+unprotected with no repository rulesets: YAML supplies a stable `Validation gate`,
+but requiring it for merges needs a separate repository-setting decision.
+PRs 2 and 3 remain the next integration milestones; this branch does not claim
+that authentication, operating profiles or replay checkpoint hardening are done.
