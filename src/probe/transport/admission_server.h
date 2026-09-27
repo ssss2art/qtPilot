@@ -22,6 +22,7 @@ class AdmissionServer : public QTcpServer {
   void shutdown();
   int pendingCount() const;
   void finish(const QHostAddress& peer, quint16 port);
+  void releaseRejection(const QHostAddress& peer, quint16 port);
 
  protected:
   void incomingConnection(qintptr descriptor) override;

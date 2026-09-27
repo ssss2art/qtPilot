@@ -58,11 +58,36 @@ int AdmissionServer::pendingCount() const {
 
 void AdmissionServer::finish(const QHostAddress& peer, quint16 port) {
   for (auto it = m_pending.begin(); it != m_pending.end(); ++it) {
-    if (it->socket && it->socket->peerAddress() == peer && it->socket->peerPort() == port) {
+    if (it->socket && it->socket->peerAddress().isEqual(peer, QHostAddress::TolerantConversion) &&
+        it->socket->peerPort() == port) {
       it->deadline->stop();
       it->deadline->deleteLater();
       it->socket->setReadBufferSize(0);
       m_pending.erase(it);
+      return;
+    }
+  }
+}
+
+void AdmissionServer::releaseRejection(const QHostAddress& peer, quint16 port) {
+  for (auto it = m_pending.begin(); it != m_pending.end(); ++it) {
+    if (it->socket && it->socket->peerAddress().isEqual(peer, QHostAddress::TolerantConversion) &&
+        it->socket->peerPort() == port) {
+      QTcpSocket* socket = it->socket;
+      QTimer* deadline = it->deadline;
+      m_pending.erase(it);
+      if (deadline) {
+        deadline->stop();
+        deadline->disconnect(this);
+        connect(deadline, &QTimer::timeout, this, [socket, deadline] {
+          if (socket) {
+            socket->abort();
+            socket->deleteLater();
+          }
+          deadline->deleteLater();
+        });
+        deadline->start(std::chrono::milliseconds(200));
+      }
       return;
     }
   }

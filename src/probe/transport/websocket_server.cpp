@@ -145,6 +145,7 @@ void WebSocketServer::stop() {
   if (QWebSocket* client = takeActiveClient()) {
     client->close();
     client->deleteLater();
+    emit clientDisconnected();
   }
 
   if (m_admission) {
@@ -232,8 +233,9 @@ void WebSocketServer::onNewConnection() {
   // HTTP credentials are never JSON-RPC data or message-observer input.
   if (!m_credentials.accepts(socket->request().rawHeader("Authorization"))) {
     // Flush the upgrade and close frame so the client can distinguish admission
-    // rejection from a broken TLS/HTTP peer. The admission timer still bounds a
-    // peer that never finishes this close handshake.
+    // rejection from a broken TLS/HTTP peer. releaseRejection immediately frees
+    // the admission slot and sets a short flush timer.
+    m_admission->releaseRejection(socket->peerAddress(), socket->peerPort());
     connect(socket, &QWebSocket::disconnected, socket, &QObject::deleteLater);
     socket->close(QWebSocketProtocol::CloseCodePolicyViolated,
                   QStringLiteral("Authentication rejected"));
@@ -244,6 +246,7 @@ void WebSocketServer::onNewConnection() {
   if (m_activeClient) {
     qWarning() << "[qtPilot] Rejecting connection from" << socket->peerAddress().toString()
                << "- another client is already connected";
+    m_admission->releaseRejection(socket->peerAddress(), socket->peerPort());
     connect(socket, &QWebSocket::disconnected, socket, &QObject::deleteLater);
     socket->close(QWebSocketProtocol::CloseCodePolicyViolated,
                   QStringLiteral("Another client is already connected"));
@@ -265,6 +268,7 @@ void WebSocketServer::onNewConnection() {
          origin.startsWith(QStringLiteral("file://")));
     if (!trusted) {
       qWarning() << "[qtPilot] Rejecting connection with untrusted browser origin:" << origin;
+      m_admission->releaseRejection(socket->peerAddress(), socket->peerPort());
       connect(socket, &QWebSocket::disconnected, socket, &QObject::deleteLater);
       socket->close(QWebSocketProtocol::CloseCodePolicyViolated,
                     QStringLiteral("Cross-Site WebSocket Hijacking rejected"));

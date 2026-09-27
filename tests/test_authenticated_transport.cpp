@@ -174,7 +174,7 @@ class TestAuthenticatedTransport : public QObject {
       // A raw TCP peer intentionally never acknowledges the WebSocket close.
       rejected.push_back(std::move(socket));
     }
-    QTRY_COMPARE_WITH_TIMEOUT(server.pendingAdmissionCount(), 0, 6500);
+    QTRY_COMPARE_WITH_TIMEOUT(server.pendingAdmissionCount(), 0, 1000);
     if (existingClient) {
       QEXPECT_THAT(server.hasActiveClient(), IsTrue());
       active.close();
