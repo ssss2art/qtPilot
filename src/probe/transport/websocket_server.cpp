@@ -9,6 +9,7 @@
 #include "transport/notification_queue.h"
 
 #include <QDebug>
+#include <QJsonDocument>
 #include <QNetworkRequest>
 #include <QPointer>
 #include <QScopeGuard>

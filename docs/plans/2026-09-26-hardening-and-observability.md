@@ -1,7 +1,7 @@
 # Hardening and observability implementation plan
 
-Status: three stacked implementation branches; PRs #67 and #68 are published,
-PR 3 is locally implemented and validated. Nothing is merged or released.
+Status: three stacked implementation branches, published as PRs #67, #68 and #69.
+Nothing is merged or released.
 Original review baseline: local `main` at `640773a` on 2026-09-26. The findings
 below describe that baseline; implementation evidence is recorded at the end.
 
@@ -746,9 +746,10 @@ profile selects legacy; the established empty **bind-address** behavior remains
 unchanged. Rejected wrappers survive until disconnection, independently owned Qt
 timers reclaim pending capacity, and stale timer/socket identities are guarded.
 
-[PR #68](https://github.com/ssss2art/qtPilot/pull/68) is at `219a233`; the earlier
-revision passed 29 hosted jobs and the corrected revision's run `36287690646` is
-being refreshed. The separate-host runbook remains an external gate. Local or
+[PR #68](https://github.com/ssss2art/qtPilot/pull/68) passed **29/29 hosted jobs**
+at corrected revision `219a233` in run `36287690646`, including supported desktop,
+static/mobile, sanitizers and the final Validation gate.
+The separate-host runbook remains an external gate. Local or
 single-host UDP/socket results do not substitute for cross-machine proof.
 
 ## PR 3 implementation evidence
@@ -785,7 +786,12 @@ single-host UDP/socket results do not substitute for cross-machine proof.
   unbounded exclusive subscriptions in PR 3. No proprietary application data
   is included in fixtures, documentation or tracked evidence.
 
-PR 3 hosted validation remains to run on publication. Cross-host LAN acceptance,
+[PR #69](https://github.com/ssss2art/qtPilot/pull/69) requests the full supported
+matrix for review. Its first hosted run caught a missing direct `QJsonDocument`
+include in the transport diagnostics handler on older Qt versions; Qt 6.11
+transitively supplied it locally. The superseded run was cancelled to save runner
+time, the direct include was added, and hosted validation must prove that fix.
+Cross-host LAN acceptance,
 physical-device runtime behavior and a required GitHub merge gate remain separate
 external gates. Broader console capture, recursive recording, property/model
 watches, health/topology/fleet semantics and automatic mutation retry are deferred.
