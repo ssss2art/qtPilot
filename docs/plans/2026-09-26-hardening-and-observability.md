@@ -706,8 +706,38 @@ Work is on `test/validation-foundations`, in small commits. Local validation:
   [qualification evidence and decision](../PYSIDE-QUALIFICATION.md).
 
 Run outputs remain in ignored `logs/`; no raw test/process logs are tracked.
-Hosted matrix execution is still required. GitHub currently reports `main` as
+[PR #67](https://github.com/ssss2art/qtPilot/pull/67) passed all 29 hosted jobs
+at `da58691447b853f10a72cb653fd4a7a0fb34695e` (run `36281227602`). GitHub reports `main` as
 unprotected with no repository rulesets: YAML supplies a stable `Validation gate`,
 but requiring it for merges needs a separate repository-setting decision.
 PRs 2 and 3 remain the next integration milestones; this branch does not claim
 that authentication, operating profiles or replay checkpoint hardening are done.
+
+## PR 2 implementation evidence
+
+`feat/authenticated-operating-profiles` stacks on PR 1. The
+[authentication design and runbook](../AUTHENTICATION.md) document bearer admission,
+verified TLS, bounded pending sockets, CLI/environment precedence and unchanged
+unconfigured LAN behavior. Admission is enforced before client ownership/dispatch;
+local/remote discovery is disabled from the same resolved native policy.
+
+- Native suite: **31/31 executables passed** on macOS/Qt 6.11.2, including new
+  configuration and admission tests plus original bind, dispatch and teardown gates.
+- Python suite: **1088 passed, 6 optional/SDK-dependent skips**, including real
+  native TLS, rejection, recording redaction, discovery and launcher tests.
+- Saved behavioral red/green includes rejected credentials with zero effects,
+  missing/invalid configuration, TLS CA/hostname failures, remote downgrade,
+  local/remote discovery leakage, TLS announcement parsing, profile precedence
+  and startup URL redaction. A launcher-forwarding mutation fails real TLS admission.
+- C++ builds retain `-Werror` for GCC/Clang and `/WX` for MSVC. Python retains
+  `filterwarnings = ["error"]`. Explicit deprecation-warning negative controls
+  failed under the actual local compiler flags and pytest configuration, then
+  passed after removing the deprecated use/warning. Existing narrow third-party
+  import-warning exceptions have not been broadened.
+- CI policy/catalog: **45 passed**; actionlint passed. The workflow accepts stacked
+  PR bases and includes TLS/profile E2E in its required representative Linux job.
+
+Hosted platform/static/mobile/sanitizer validation on this branch and the
+separate-host runbook remain gates; local results do not substitute for them.
+Raw red/green logs remain ignored. PR 3 replay integrity/preconditions/checkpoints
+remain the next implementation milestone.

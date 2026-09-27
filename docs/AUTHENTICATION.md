@@ -29,10 +29,11 @@ A missing TLS backend, invalid settings or unreadable credentials refuses probe
 startup while the host application remains usable. TLS does not protect a
 compromised host or another process able to read the credential file.
 
-Qt controls upgrade parsing and TLS negotiation. Handshake deadlines and pending
-connection bounds must be verified against supported Qt versions; do not claim
-unbounded Internet-facing denial-of-service resistance. Admission failures must
-not consume the active client slot or prevent a later valid client.
+Qt controls upgrade parsing and TLS negotiation. The probe limits admission to
+16 pending sockets, a five-second TCP/TLS/upgrade deadline and a 16 KiB upgrade
+read buffer. These bounds are not a claim of Internet-facing denial-of-service
+resistance. Admission failures do not consume the active client slot. Platform
+validation must exercise the supported Qt versions and TLS backends.
 
 ## Configuration and lifetime
 
@@ -66,6 +67,75 @@ probe resolves one effective configuration for listening and discovery rather
 than re-reading policy independently after the server has started. Discovery is
 an untrusted hint and may advertise TLS/auth requirements, never secrets; the
 client's configured requirements cannot be weakened by an announcement.
+
+## Launch examples
+
+For one-machine development, with no UDP discovery:
+
+```sh
+build/bin/qtPilot-launcher --profile local /path/to/synthetic-app
+qtpilot serve --profile local --ws-url ws://127.0.0.1:9222
+```
+
+For an authenticated LAN probe, provision a random token file and a certificate
+whose subject alternative name matches the intended IP or hostname. Keep the
+private key on the target host; distribute only the token and trusted CA to the
+controller through your existing secure provisioning channel. Restrict credential
+files to the operator account. PEM RSA and EC private keys are supported.
+
+```sh
+# Target host
+build/bin/qtPilot-launcher --profile trusted-network \
+  --auth-token-file /private/probe.token \
+  --tls-cert-file /private/probe-chain.pem --tls-key-file /private/probe-key.pem \
+  /path/to/synthetic-app
+
+# Controller host; the certificate must cover this example hostname
+qtpilot serve --profile trusted-network --ws-url wss://probe.example.invalid:9222 \
+  --auth-token-file /private/probe.token --tls-ca-file /private/probe-ca.pem
+```
+
+`serve` and `demo` accept the certificate/key options when launching a target.
+`serve`, `demo` and `replay` accept profile, token-file and CA-file options. The
+native launcher accepts profile, token-file and certificate/key-file options.
+The same environment variables work for injected and development-only static
+consumers. No raw token argument exists. Omitted CLI settings preserve the
+environment; an explicitly empty credential path is invalid.
+
+`remote` binds loopback unless `QTPILOT_BIND_ADDRESS=any` is explicitly supplied.
+It requires TLS and the token even through a forwarded port, and suppresses UDP
+on both probe and controller. Use a URL matching the certificate through your
+tunnel. Client redirects and implicit proxy routing are disabled. Changing a
+certificate or token file requires restarting the probe/client session.
+
+## Separate-host acceptance
+
+The local suite proves native admission, certificate validation and UDP behavior
+on one machine. Before claiming a completed LAN acceptance gate, use two real
+hosts on the intended network and retain sanitized evidence under ignored `logs/`:
+
+1. Start two synthetic target instances on host A, using `trusted-network` and
+   distinct ports. Start the controller on host B with the matching token and CA.
+2. Read `qtpilot_status`: both address/PID/port identities must appear independently
+   with `wss://` URLs. Announcements are hints; select the intended endpoint and
+   verify `qt_ping` identifies the expected PID before driving it.
+3. Connect to each instance in turn; use an object property write/read to verify
+   effects through the wire. A second controller must not displace the owner.
+4. Repeat with a wrong token, wrong CA and wrong certificate hostname. None may
+   expose a connected session or drive a property change. Restore credentials and
+   verify a successful connection without restarting a healthy probe.
+5. Restart one target and verify its new PID is distinct; disconnect/reconnect,
+   then verify stale discovery expiry for the departed instance.
+6. Repeat the discovery check with `local` and `remote`: neither announces. With
+   profile and credentials unset, the existing LAN discovery/control contract
+   remains enabled. Use only an isolated trusted development network for that
+   legacy unauthenticated check.
+
+Record the two OS/Qt/runtime versions, revisions, selected endpoint shapes,
+observed results and exit codes. Remove host/application identifiers and secrets
+before selecting any tracked evidence. This separate-host gate is **pending**;
+same-host tests do not establish it. Mobile builds likewise establish compilation
+and static startup, not on-device TLS backend availability.
 
 ## Acceptance evidence
 

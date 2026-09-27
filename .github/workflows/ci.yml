@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Include stacked integration PRs; the classifier examines their own base diff.
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
   workflow_call:
@@ -454,7 +454,8 @@ jobs:
         run: >-
           uv run --project python --locked --extra dev --python 3.14 pytest
           python/tests/test_replay_e2e.py python/tests/test_complicated_app_e2e.py
-          python/tests/test_probe_handshake_e2e.py -v
+          python/tests/test_probe_handshake_e2e.py python/tests/test_security_e2e.py
+          python/tests/test_profile_e2e.py -v
 
       - name: Install
         if: needs.plan.outputs.release == 'true'

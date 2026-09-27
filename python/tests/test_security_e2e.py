@@ -42,13 +42,19 @@ def secure_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.
         "-subj", "/CN=synthetic-fixture", "-addext", "subjectAltName=IP:127.0.0.1",
         "-keyout", str(private_key), "-out", str(certificate),
     ], check=True, capture_output=True)
-    profile = getattr(request, "param", "remote")
+    fixture_mode = getattr(request, "param", "remote")
+    profile = fixture_mode.removesuffix("-cli")
     monkeypatch.setenv("QTPILOT_PROFILE", profile)
     monkeypatch.setenv("QTPILOT_AUTH_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("QTPILOT_TLS_CA_FILE", str(certificate))
     environment = _app_env(str(BUILD.qt_prefix) if BUILD.qt_prefix else None)
     environment.update(QTPILOT_TLS_CERT_FILE=str(certificate), QTPILOT_TLS_KEY_FILE=str(private_key))
     environment["QTPILOT_BIND_ADDRESS"] = "any" if profile == "trusted-network" else "loopback"
+    arguments: list[str] = []
+    if fixture_mode.endswith("-cli"):
+        for flag, key in (("profile", "QTPILOT_PROFILE"), ("auth-token-file", "QTPILOT_AUTH_TOKEN_FILE"),
+                          ("tls-cert-file", "QTPILOT_TLS_CERT_FILE"), ("tls-key-file", "QTPILOT_TLS_KEY_FILE")):
+            arguments.extend([f"--{flag}", environment.pop(key)])
     port = _free_port()
     process_log = tmp_path / "process.log"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as discovery, process_log.open("w") as output:
@@ -56,7 +62,7 @@ def secure_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.
         discovery.settimeout(0.3)
         environment["QTPILOT_DISCOVERY_PORT"] = str(discovery.getsockname()[1])
         process = subprocess.Popen(
-            [str(BUILD.launcher), "--port", str(port), str(BUILD.application)],
+            [str(BUILD.launcher), *arguments, "--port", str(port), str(BUILD.application)],
             env=environment, stdout=output, stderr=output, start_new_session=True,
         )
         try:
@@ -71,6 +77,7 @@ def secure_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.
             assert token not in process_log.read_text(), "Probe output disclosed the credential"
 
 
+@pytest.mark.parametrize("secure_app", ["remote", "remote-cli"], indirect=True)
 def test_verified_tls_and_token_admit_real_controller(secure_app: SecureApplication, tmp_path: Path) -> None:
     async def check() -> None:
         connection = ProbeConnection(secure_app.url)
