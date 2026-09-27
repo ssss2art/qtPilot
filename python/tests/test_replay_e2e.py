@@ -97,6 +97,42 @@ def test_strict_contract_uses_real_qt_completion(live_app: str, deferred: bool, 
     asyncio.run(check())
 
 
+def test_strict_contract_can_name_every_object_symbolically(live_app: str) -> None:
+    """A contract written against registered names, checkpoint included, passes strictly.
+
+    Hierarchical ids shift whenever the widget tree does, which is what symbolic names are for.
+    Properties and actions already resolved them; the checkpoint subscription did not, so a
+    contract could only name its completion signal by path.
+    """
+    from qtpilot.contract_runner import run_contract
+    from qtpilot.fluent import expect_contract_replay
+    from qtpilot.replay_contract import parse_contract
+    from tests.test_replay_contract import contract_document
+
+    field = "e2eNameField"
+
+    async def check() -> None:
+        async with _connected(live_app) as connection:
+            await _set_text(connection, NAME_EDIT, "ready")
+            await connection.call("qt.names.register", {"name": field, "path": NAME_EDIT})
+            try:
+                document = contract_document()
+                document["timeout"] = 3
+                document["preconditions"][0]["params"]["objectId"] = field
+                step = document["steps"][0]
+                step["action"] = {"method": "qt.properties.set", "params": {"objectId": field, "name": "text", "value": "named"}}
+                step["checkpoint"] = {"objectId": field, "signal": "textChanged", "arguments": ["named"]}
+                step["postconditions"][0]["params"]["objectId"] = field
+                step["postconditions"][0]["expected"] = "named"
+
+                result = await run_contract(parse_contract(json.dumps(document)).unwrap(), connection)
+
+                expect_contract_replay(result).to_pass_strictly().to_complete_checkpoint("edit").to_have_driven(1).to_have_no_evidence_loss()
+            finally:
+                await connection.call("qt.names.unregister", {"name": field})
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize("observer_first", [True, False], ids=["existing-observer", "later-observer"])
 def test_checkpoint_subscription_has_independent_qt_ownership(live_app: str, observer_first: bool) -> None:
     from qtpilot.fluent import expect_signal_wait

@@ -4,6 +4,7 @@
 #include "introspection/signal_monitor.h"
 
 #include "core/object_registry.h"
+#include "core/object_resolver.h"
 #include "introspection/variant_json.h"
 
 #include <ranges>
@@ -149,18 +150,22 @@ SignalMonitor::~SignalMonitor() {
   qDebug() << "[qtPilot] SignalMonitor destroyed";
 }
 
-std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QString& objectId,
+std::expected<QString, SignalError> SignalMonitor::subscribeExpected(const QString& requestedId,
                                                                      const QString& signalName,
                                                                      bool exclusive) {
-  // Find the object by ID monadically
-  auto objRes = ObjectRegistry::instance()->findByIdExpected(objectId);
+  // Resolve the way every other object parameter does, so a symbolic name or numeric id works
+  // here too; replay checkpoints subscribe with the same id their contract's properties use.
+  auto objRes = ObjectResolver::resolveExpected(requestedId);
   if (!objRes) {
     return std::unexpected(SignalError{
         SignalErrorKind::ObjectNotFound,
-        QStringLiteral("Object not found: %1").arg(objectId),
+        QStringLiteral("Object not found: %1").arg(requestedId),
     });
   }
   QObject* obj = *objRes;
+  // Notifications name the object as the subscriber did: a replay checkpoint compares that id
+  // with its own, and treats any other as evidence about a different object.
+  const QString& objectId = requestedId;
   const QMetaObject* meta = obj->metaObject();
 
   // Find signal by name using C++23 range views
