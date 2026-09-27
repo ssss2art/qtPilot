@@ -2,6 +2,49 @@
 
 from __future__ import annotations
 
+from qtpilot.contract_runner import ContractResult
+
+
+class ContractReplayExpectation:
+    """Assertions about contract outcomes; never drives, retries or sleeps."""
+
+    def __init__(self, result: ContractResult) -> None:
+        self.result = result
+
+    def to_pass_strictly(self) -> ContractReplayExpectation:
+        assert self.result.passed, f"Expected strict pass, got {self.result}"
+        return self
+
+    def to_fail_as(self, kind: str, step: str | None = None) -> ContractReplayExpectation:
+        assert self.result.failure_kind == kind, (
+            f"Expected {kind} failure, got {self.result.failure_kind}: {self.result.reason}"
+        )
+        if step is not None:
+            assert self.result.failed_step == step, f"Expected step {step}, got {self.result.failed_step}"
+        return self
+
+    def to_have_driven(self, count: int) -> ContractReplayExpectation:
+        assert self.result.actions_driven == count, f"Expected {count} actions driven, got {self.result.actions_driven}"
+        return self
+
+    def to_complete_checkpoint(self, name: str) -> ContractReplayExpectation:
+        assert name in self.result.completed_checkpoints, f"Expected checkpoint {name}, got {self.result.completed_checkpoints}"
+        return self
+
+    def to_have_evidence(self, **counts: int) -> ContractReplayExpectation:
+        for kind, count in counts.items():
+            actual = sum(c.kind == kind for c in self.result.comparisons)
+            assert actual == count, f"Expected {count} {kind} comparisons, got {actual}"
+        return self
+
+    def to_have_no_evidence_loss(self) -> ContractReplayExpectation:
+        assert self.result.loss_verified, f"Expected verified lossless evidence, got {self.result.reason}"
+        return self
+
+
+def expect_contract_replay(result: ContractResult) -> ContractReplayExpectation:
+    return ContractReplayExpectation(result)
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
