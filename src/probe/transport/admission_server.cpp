@@ -73,8 +73,8 @@ void AdmissionServer::releaseRejection(const QHostAddress& peer, quint16 port) {
   for (auto it = m_pending.begin(); it != m_pending.end(); ++it) {
     if (it->socket && it->socket->peerAddress().isEqual(peer, QHostAddress::TolerantConversion) &&
         it->socket->peerPort() == port) {
-      QTcpSocket* socket = it->socket;
-      QTimer* deadline = it->deadline;
+      QPointer<QTcpSocket> socket = it->socket;
+      QPointer<QTimer> deadline = it->deadline;
       m_pending.erase(it);
       if (deadline) {
         deadline->stop();
@@ -84,7 +84,9 @@ void AdmissionServer::releaseRejection(const QHostAddress& peer, quint16 port) {
             socket->abort();
             socket->deleteLater();
           }
-          deadline->deleteLater();
+          if (deadline) {
+            deadline->deleteLater();
+          }
         });
         deadline->start(std::chrono::milliseconds(200));
       }
