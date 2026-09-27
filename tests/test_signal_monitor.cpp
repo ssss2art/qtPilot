@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "api/symbolic_name_map.h"
 #include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "introspection/signal_monitor.h"
@@ -37,6 +38,7 @@ class TestSignalMonitor : public QObject {
   void testSubscribeNonexistentObject();
   void testSubscribeNonexistentSignal();
   void testSubscribeExpectedSuccess();
+  void testSubscribeExpectedResolvesSymbolicName();
   void testSubscribeExpectedNonexistentObject();
   void testSubscribeExpectedNonexistentSignal();
   void testExclusiveCapacityReleased_data();
@@ -377,6 +379,35 @@ void TestSignalMonitor::testSubscribeExpectedSuccess() {
   QEXPECT_THAT(*res, QStrStartsWith("sub_"));
 
   // Clean up
+  SignalMonitor::instance()->unsubscribe(*res);
+}
+
+// Replay checkpoints subscribe by the same object id the contract's properties use. A registered
+// symbolic name resolves everywhere else, so a checkpoint that only accepted a hierarchical path
+// forced contracts to hard-code the paths that names exist to avoid.
+void TestSignalMonitor::testSubscribeExpectedResolvesSymbolicName() {
+  auto* btn = new QPushButton();
+  btn->setObjectName("symbolicCheckpointBtn");
+  m_testObjects.append(btn);
+
+  QCoreApplication::processEvents();
+
+  const QString path = ObjectRegistry::instance()->objectId(btn);
+  QEXPECT_THAT(path, QIsNotEmpty());
+  SymbolicNameMap::instance()->registerName("checkpointButton", path);
+
+  auto res = SignalMonitor::instance()->subscribeExpected("checkpointButton", "clicked");
+  QVERIFY2(res.has_value(), qPrintable(res.has_value() ? QString() : res.error().message));
+
+  // The notification must name the object the way the subscriber did: a replay checkpoint takes
+  // an emission naming any other id as evidence about some other object.
+  QSignalSpy spy(SignalMonitor::instance(), &SignalMonitor::signalEmitted);
+  btn->click();
+  QEXPECT_THAT(spy.count(), Eq(1));
+  QEXPECT_THAT(spy.at(0).at(0).toJsonObject(),
+               HasJsonField("objectId", QStrEq("checkpointButton")));
+
+  SymbolicNameMap::instance()->unregisterName("checkpointButton");
   SignalMonitor::instance()->unsubscribe(*res);
 }
 
