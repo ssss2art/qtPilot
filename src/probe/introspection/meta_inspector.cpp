@@ -465,11 +465,11 @@ std::expected<QJsonValue, MethodError> PreparedInvocation::invoke(QObject* obj) 
     }
   }
 
-  // Build QGenericArgument array - points into m_paramTypeNames and m_arguments, which outlive the call
+  // Build QGenericArgument array - points into m_paramTypeNames and m_arguments, which outlive the
+  // call
   QGenericArgument genericArgs[10];
   for (int i = 0; i < m_arguments.size(); ++i) {
-    genericArgs[i] =
-        QGenericArgument(m_paramTypeNames[i].constData(), m_arguments[i].constData());
+    genericArgs[i] = QGenericArgument(m_paramTypeNames[i].constData(), m_arguments[i].constData());
   }
 
   // Prepare return value storage
