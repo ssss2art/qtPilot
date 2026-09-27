@@ -36,16 +36,19 @@ from qtpilot.replay import parse_entries, run_scenario
 
 # --- locating the build ----------------------------------------------------
 
+from tests.probe_app import probe_build
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BUILD_DIR = REPO_ROOT / "build"
-LAUNCHER = BUILD_DIR / "bin" / "qtPilot-launcher"
-TEST_APP = BUILD_DIR / "bin" / "qtPilot-test-app"
+BUILD = probe_build(Path(os.environ.get("QTPILOT_TEST_BUILD_DIR", str(REPO_ROOT / "build"))))
+BUILD_DIR = BUILD.directory
+LAUNCHER = BUILD.launcher
+TEST_APP = BUILD.application
 CMAKE_CACHE = BUILD_DIR / "CMakeCache.txt"
 
-pytestmark = pytest.mark.skipif(
-    not (LAUNCHER.exists() and TEST_APP.exists()),
-    reason="qtPilot-launcher / qtPilot-test-app not built; run cmake --build build",
-)
+pytestmark = [
+    pytest.mark.real_probe,
+    pytest.mark.skipif(not BUILD.available, reason="Native probe/test application not built"),
+]
 
 # Widget ids in the test app's form tab. Written out in full rather than
 # assembled, because the shape of a real objectId -- a slash-joined path, not a
@@ -67,17 +70,15 @@ def _free_port() -> int:
 
 
 def _qt_dir() -> str | None:
-    if not CMAKE_CACHE.exists():
-        return None
-    for line in CMAKE_CACHE.read_text().splitlines():
-        if line.startswith("QTPILOT_QT_DIR:PATH="):
-            return line.split("=", 1)[1].strip()
-    return None
+    return str(BUILD.qt_prefix) if BUILD.qt_prefix else None
 
 
 def _app_env(qt_dir: str | None) -> dict:
     env = dict(os.environ)
     env["QT_QPA_PLATFORM"] = "offscreen"
+    env["QT_STYLE_OVERRIDE"] = "Fusion"
+    env["QSG_RHI_BACKEND"] = "software"
+    env["QT_QUICK_BACKEND"] = "software"
     # The bind policy defaults to all interfaces; a test process has no business
     # accepting connections from the network.
     env["QTPILOT_BIND_ADDRESS"] = "loopback"
@@ -86,7 +87,10 @@ def _app_env(qt_dir: str | None) -> dict:
             env["DYLD_FRAMEWORK_PATH"] = f"{qt_dir}/lib"
         else:
             env["LD_LIBRARY_PATH"] = f"{qt_dir}/lib:" + env.get("LD_LIBRARY_PATH", "")
-        env["QT_PLUGIN_PATH"] = f"{qt_dir}/plugins"
+        plugins = Path(qt_dir) / "plugins"
+        if not plugins.is_dir():
+            plugins = Path(qt_dir) / "share/qt/plugins"
+        env["QT_PLUGIN_PATH"] = str(plugins)
     return env
 
 
