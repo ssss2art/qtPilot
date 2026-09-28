@@ -37,6 +37,12 @@ class QTPILOT_EXPORT NativeModeApi : public QObject {
   /// @param parent Parent QObject.
   explicit NativeModeApi(JsonRpcHandler* handler, QObject* parent = nullptr);
 
+  /// @brief Release the button qt.ui.mouseDown left held, at the target that took the press.
+  ///
+  /// Held state belongs to the probe, not to a connection: call this when the client that
+  /// pressed goes away, so the app is not left mid-drag and the next client can press again.
+  static void releaseHeldMouse();
+
  private:
   void registerObjectMethods();    ///< qt.objects.*
   void registerPropertyMethods();  ///< qt.properties.*

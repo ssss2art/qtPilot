@@ -37,6 +37,12 @@ class QTPILOT_EXPORT ComputerUseModeApi : public QObject {
   /// @param parent Parent QObject.
   explicit ComputerUseModeApi(JsonRpcHandler* handler, QObject* parent = nullptr);
 
+  /// @brief Release every button cu.mouseDown left held, at the widget that took the press.
+  ///
+  /// Held state belongs to the probe, not to a connection: call this when the client that
+  /// pressed goes away, so the app is not left mid-drag and the next client starts clean.
+  static void releaseHeldButtons();
+
  private:
   void registerScreenshotMethods();  ///< cu.screenshot
   void registerMouseMethods();       ///< cu.click, cu.rightClick, cu.middleClick, cu.doubleClick,
