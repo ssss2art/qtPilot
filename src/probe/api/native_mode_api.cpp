@@ -1026,6 +1026,151 @@ QPoint optionalDelta(const QJsonObject& params, const QString& key, const QStrin
                 qRound(requireCoordinate(delta, QStringLiteral("y"), methodName)));
 }
 
+// A press held by qt.ui.mouseDown until qt.ui.mouseUp. Moves and the release go to the same
+// viewport as the press, whatever lies under the pointer by then: that is what a real drag does,
+// because the widget that took the press keeps the mouse until the button is released.
+struct HeldMouse {
+  QPointer<QWidget> target;
+  QPoint origin;
+  QPoint last;
+  InputSimulator::MouseButton button = InputSimulator::MouseButton::Left;
+};
+static HeldMouse s_heldMouse;
+
+/// Whether @p key is present, i.e. neither absent nor null.
+bool hasParam(const QJsonObject& params, const QString& key) {
+  const QJsonValue raw = params.value(key);
+  return !raw.isUndefined() && !raw.isNull();
+}
+
+/// The point a held gesture moves to: the press point plus ``delta`` (viewport pixels).
+QPoint heldMousePoint(const QJsonObject& params, const QString& methodName, bool deltaRequired) {
+  const QString key = QStringLiteral("delta");
+  if (!hasParam(params, key)) {
+    if (deltaRequired) {
+      throw JsonRpcException(
+          JsonRpcError::kInvalidParams,
+          QStringLiteral("Parameter 'delta' ({x, y} pixels from the press) is required"),
+          QJsonObject{{QStringLiteral("method"), methodName}});
+    }
+    return s_heldMouse.last;
+  }
+  return s_heldMouse.origin + optionalDelta(params, key, methodName);
+}
+
+void requireHeldMouse(const QString& methodName) {
+  if (!s_heldMouse.target) {
+    throw JsonRpcException(JsonRpcError::kInvalidParams,
+                           QStringLiteral("No mouse button is held: call qt.ui.mouseDown first"),
+                           QJsonObject{{QStringLiteral("method"), methodName}});
+  }
+}
+
+QJsonObject heldMouseResult(const QPoint& point) {
+  return QJsonObject{{QStringLiteral("ok"), true},
+                     {QStringLiteral("deferred"), true},
+                     {QStringLiteral("position"), QJsonObject{{QStringLiteral("x"), point.x()},
+                                                              {QStringLiteral("y"), point.y()}}}};
+}
+
+/// qt.ui.mouseDown: press and hold a button on a graphics item or widget. Queued, like qt.ui.click.
+QJsonObject handleUiMouseDown(const QJsonObject& params) {
+  const QString methodName = QStringLiteral("qt.ui.mouseDown");
+  if (s_heldMouse.target) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("A mouse button is already held: call qt.ui.mouseUp first"),
+        QJsonObject{{QStringLiteral("method"), methodName}});
+  }
+  QObject* obj = resolveObjectParam(params, methodName);
+  const InputSimulator::MouseButton button =
+      parseMouseButton(params[QStringLiteral("button")].toString(QStringLiteral("left")));
+  const Qt::KeyboardModifiers modifiers =
+      ModifierParser::parse(params.value(QStringLiteral("modifiers")), methodName);
+
+  QWidget* target = nullptr;
+  QPoint point;
+  if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+    QGraphicsView* requestedView =
+        resolveViewParam(params, QStringLiteral("viewObjectId"), methodName);
+    QGraphicsView* view = resolveGraphicsItemView(item, requestedView, methodName);
+    point = ItemTargeting::resolve(item, view, params, methodName).viewportPoint;
+    if (!QRect(QPoint(0, 0), view->viewport()->size()).contains(point)) {
+      throw JsonRpcException(
+          ErrorCode::kCoordinateOutOfBounds,
+          QStringLiteral("Graphics item press point is outside the view viewport"),
+          QJsonObject{{QStringLiteral("method"), methodName},
+                      {QStringLiteral("x"), point.x()},
+                      {QStringLiteral("y"), point.y()}});
+    }
+    target = view->viewport();
+  } else if (auto* widget = qobject_cast<QWidget*>(obj)) {
+    const QString key = QStringLiteral("position");
+    point =
+        hasParam(params, key) ? optionalDelta(params, key, methodName) : widget->rect().center();
+    target = widget;
+  } else {
+    throw JsonRpcException(ErrorCode::kObjectNotWidget,
+                           QStringLiteral("qt.ui.mouseDown needs a widget or a graphics item"),
+                           QJsonObject{{QStringLiteral("method"), methodName}});
+  }
+
+  s_heldMouse = HeldMouse{target, point, point, button};
+  QPointer<QWidget> safe(target);
+  QMetaObject::invokeMethod(
+      target,
+      [safe, button, point, modifiers]() {
+        if (safe)
+          InputSimulator::mousePress(safe, button, point, modifiers);
+      },
+      Qt::QueuedConnection);
+  QJsonObject result = heldMouseResult(point);
+  result[QStringLiteral("targetObjectId")] = ObjectRegistry::instance()->objectId(target);
+  return result;
+}
+
+/// qt.ui.mouseMove: move the held pointer to the press point plus ``delta``, button still down.
+QJsonObject handleUiMouseMove(const QJsonObject& params) {
+  const QString methodName = QStringLiteral("qt.ui.mouseMove");
+  requireHeldMouse(methodName);
+  const QPoint point = heldMousePoint(params, methodName, true);
+  const Qt::KeyboardModifiers modifiers =
+      ModifierParser::parse(params.value(QStringLiteral("modifiers")), methodName);
+  const Qt::MouseButtons buttons = InputSimulator::toQtButton(s_heldMouse.button);
+  s_heldMouse.last = point;
+  QPointer<QWidget> safe(s_heldMouse.target);
+  QMetaObject::invokeMethod(
+      s_heldMouse.target.data(),
+      [safe, point, buttons, modifiers]() {
+        if (safe)
+          InputSimulator::mouseMove(safe, point, buttons, modifiers);
+      },
+      Qt::QueuedConnection);
+  return heldMouseResult(point);
+}
+
+/// qt.ui.mouseUp: release the held button, at ``delta`` if given, else where the pointer last was.
+QJsonObject handleUiMouseUp(const QJsonObject& params) {
+  const QString methodName = QStringLiteral("qt.ui.mouseUp");
+  requireHeldMouse(methodName);
+  const QPoint point = heldMousePoint(params, methodName, false);
+  const Qt::KeyboardModifiers modifiers =
+      ModifierParser::parse(params.value(QStringLiteral("modifiers")), methodName);
+  const InputSimulator::MouseButton button = s_heldMouse.button;
+  QPointer<QWidget> safe(s_heldMouse.target);
+  s_heldMouse = HeldMouse{};
+  if (safe) {
+    QMetaObject::invokeMethod(
+        safe.data(),
+        [safe, button, point, modifiers]() {
+          if (safe)
+            InputSimulator::mouseRelease(safe, button, point, modifiers);
+        },
+        Qt::QueuedConnection);
+  }
+  return heldMouseResult(point);
+}
+
 QJsonObject handleUiWheel(const QJsonObject& params) {
   const QString kMethod = QStringLiteral("qt.ui.wheel");
   QObject* obj = resolveObjectParam(params, kMethod);
@@ -1916,6 +2061,22 @@ void NativeModeApi::registerUiMethods() {
     return envelopeToString(ResponseEnvelope::wrap(result, objectId));
   });
 
+  // qt.ui.mouseDown / mouseMove / mouseUp - a held-button gesture (a drag that can be observed
+  // mid-way). The press targets an item or widget; moves and the release are pixel deltas from it.
+  m_handler->RegisterMethod(
+      QStringLiteral("qt.ui.mouseDown"), [](const QString& params) -> QString {
+        auto p = parseParams(params);
+        return envelopeToString(
+            ResponseEnvelope::wrap(handleUiMouseDown(p), p[QStringLiteral("objectId")].toString()));
+      });
+  m_handler->RegisterMethod(
+      QStringLiteral("qt.ui.mouseMove"), [](const QString& params) -> QString {
+        return envelopeToString(ResponseEnvelope::wrap(handleUiMouseMove(parseParams(params))));
+      });
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.mouseUp"), [](const QString& params) -> QString {
+    return envelopeToString(ResponseEnvelope::wrap(handleUiMouseUp(parseParams(params))));
+  });
+
   // qt.ui.clickItem - select/click/edit an item by itemPath (string[]) or path (int[]).
   m_handler->RegisterMethod(
       QStringLiteral("qt.ui.clickItem"), [](const QString& params) -> QString {
@@ -2578,6 +2739,13 @@ void NativeModeApi::registerModelMethods() {
         result[QStringLiteral("truncated")] = truncated;
         return envelopeToString(ResponseEnvelope::wrap(result, objectId));
       });
+}
+
+void NativeModeApi::releaseHeldMouse() {
+  const HeldMouse held = s_heldMouse;
+  s_heldMouse = HeldMouse{};
+  if (held.target)
+    InputSimulator::mouseRelease(held.target, held.button, held.last);
 }
 
 }  // namespace qtPilot

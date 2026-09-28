@@ -14,6 +14,7 @@
 #include <QApplication>
 #include <QCursor>
 #include <QDateTime>
+#include <QGraphicsProxyWidget>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
@@ -78,11 +79,23 @@ CuTarget getActiveTarget() {
   if (qobject_cast<QApplication*>(coreApp)) {
     if (QWidget* window = QApplication::activeWindow())
       return {window, nullptr};
+    // No active window: the app is in the background, which on macOS it stays unless the user
+    // brings it forward. Fall back to a real on-screen window, preferring a main window. A widget
+    // embedded in a QGraphicsScene is also "top-level" and visible, but it is drawn into the
+    // scene and never shown on screen, so events resolved against it never reach the window the
+    // caller is looking at.
+    QWidget* fallback = nullptr;
     const auto topLevels = QApplication::topLevelWidgets();
     for (QWidget* w : topLevels) {
-      if (w->isVisible())
+      if (!w->isVisible() || w->graphicsProxyWidget())
+        continue;
+      if (w->inherits("QMainWindow"))
         return {w, nullptr};
+      if (!fallback)
+        fallback = w;
     }
+    if (fallback)
+      return {fallback, nullptr};
   }
 
   if (guiApp) {
@@ -253,17 +266,6 @@ void dispatchDoubleClick(const CuTarget& t, int x, int y, bool sa,
   }
 }
 
-/// @brief Dispatch a mouse-button press to a widget or window target.
-void dispatchPress(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
-                   Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
-  if (t.isWindow()) {
-    InputSimulator::mousePress(t.window, button, resolveWindowLocal(t.window, x, y, sa), modifiers);
-  } else {
-    auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::mousePress(r.widget, button, r.localPos, modifiers);
-  }
-}
-
 /// @brief Dispatch a mouse-button release to a widget or window target.
 void dispatchRelease(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
                      Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
@@ -306,6 +308,35 @@ QJsonObject imageWithDimensions(const QByteArray& base64) {
 // Stored as screen-absolute (global) coordinates for consistency with QCursor::pos().
 static QPoint s_lastSimulatedPosition(-1, -1);
 static bool s_hasSimulatedPosition = false;
+
+// Buttons held by cu.mouseDown and not yet released by cu.mouseUp. A move made while one is held
+// is part of a drag, so it has to reach the app as a mouse event carrying that button: a bare
+// cursor warp (or a move with no buttons) is a hover, and nothing in the app sees a drag.
+//
+// Widget events are sent straight to a widget, bypassing QApplication's implicit grab, so the
+// grab is kept here by hand: the widget that took the first press gets every move, press and
+// release until the last button comes up, wherever the pointer has got to, as with a real mouse.
+struct HeldButtons {
+  Qt::MouseButtons buttons = Qt::NoButton;
+  QPointer<QWidget> grabber;
+  bool grabbedWidget = false;  ///< The press went to a widget, not to a QWindow.
+};
+static HeldButtons s_held;
+
+/// @brief The buttons still held. A grab whose widget has since been destroyed holds nothing.
+Qt::MouseButtons heldButtons() {
+  if (s_held.grabbedWidget && !s_held.grabber)
+    s_held = HeldButtons{};
+  return s_held.buttons;
+}
+
+/// @brief A CU point in the grabbing widget's own coordinates.
+///
+/// Not bounded by the window: a drag can leave it, and the grabber still has the mouse.
+QPoint grabberLocal(QWidget* grabber, int x, int y, bool screenAbsolute) {
+  return screenAbsolute ? grabber->mapFromGlobal(QPoint(x, y))
+                        : grabber->mapFrom(grabber->window(), QPoint(x, y));
+}
 
 /// @brief Update the tracked virtual cursor position after a coordinate-based action.
 /// @param t The active target (for mapToGlobal when using window-relative coords).
@@ -503,7 +534,18 @@ void ComputerUseModeApi::registerMouseMethods() {
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseMove"));
 
-    if (screenAbsolute) {
+    if (const Qt::MouseButtons held = heldButtons(); held != Qt::NoButton) {
+      if (QWidget* grabber = s_held.grabber) {
+        InputSimulator::mouseMove(grabber, grabberLocal(grabber, x, y, screenAbsolute), held,
+                                  modifiers);
+      } else if (t.isWindow()) {
+        InputSimulator::mouseMove(t.window, resolveWindowLocal(t.window, x, y, screenAbsolute),
+                                  held, modifiers);
+      } else {
+        auto target = resolveWindowCoordinate(t.widget, x, y, screenAbsolute);
+        InputSimulator::mouseMove(target.widget, target.localPos, held, modifiers);
+      }
+    } else if (screenAbsolute) {
       QCursor::setPos(QPoint(x, y));
     } else if (t.isWindow()) {
       InputSimulator::mouseMove(t.window, resolveWindowLocal(t.window, x, y, false), Qt::NoButton,
@@ -597,7 +639,25 @@ void ComputerUseModeApi::registerMouseMethods() {
 
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseDown"));
-    dispatchPress(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
+    const InputSimulator::MouseButton button = parseMouseButton(buttonStr);
+    // Resolve (which can throw) before touching the held state, and record the press before
+    // sending it: the send pumps the event loop, and a pipelined request may run inside it.
+    if (heldButtons() != Qt::NoButton && s_held.grabber) {
+      QPointer<QWidget> grabber = s_held.grabber;
+      const QPoint local = grabberLocal(grabber, x, y, screenAbsolute);
+      s_held.buttons |= InputSimulator::toQtButton(button);
+      InputSimulator::mousePress(grabber, button, local, modifiers);
+    } else if (t.isWindow()) {
+      const QPoint local = resolveWindowLocal(t.window, x, y, screenAbsolute);
+      s_held.buttons |= InputSimulator::toQtButton(button);
+      InputSimulator::mousePress(t.window, button, local, modifiers);
+    } else {
+      const ResolvedTarget r = resolveWindowCoordinate(t.widget, x, y, screenAbsolute);
+      if (s_held.buttons == Qt::NoButton)
+        s_held = HeldButtons{Qt::NoButton, r.widget, true};
+      s_held.buttons |= InputSimulator::toQtButton(button);
+      InputSimulator::mousePress(r.widget, button, r.localPos, modifiers);
+    }
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -619,7 +679,24 @@ void ComputerUseModeApi::registerMouseMethods() {
 
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseUp"));
-    dispatchRelease(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
+    const InputSimulator::MouseButton button = parseMouseButton(buttonStr);
+    const Qt::MouseButton qtButton = InputSimulator::toQtButton(button);
+    auto forgetButton = [qtButton]() {
+      s_held.buttons &= ~Qt::MouseButtons(qtButton);
+      if (s_held.buttons == Qt::NoButton)
+        s_held = HeldButtons{};
+    };
+    if ((heldButtons() & qtButton) && s_held.grabber) {
+      QPointer<QWidget> grabber = s_held.grabber;
+      const QPoint local = grabberLocal(grabber, x, y, screenAbsolute);
+      forgetButton();
+      InputSimulator::mouseRelease(grabber, button, local, modifiers);
+    } else {
+      // Forget the button only once the release has gone out: an out-of-bounds point throws,
+      // and the button is still down in the app.
+      dispatchRelease(t, button, x, y, screenAbsolute, modifiers);
+      forgetButton();
+    }
 
     trackPosition(t, x, y, screenAbsolute);
 
@@ -852,6 +929,21 @@ void ComputerUseModeApi::registerQueryMethods() {
 
         return envelopeToString(ResponseEnvelope::wrap(result));
       });
+}
+
+void ComputerUseModeApi::releaseHeldButtons() {
+  const Qt::MouseButtons held = heldButtons();
+  QPointer<QWidget> grabber = s_held.grabber;
+  s_held = HeldButtons{};
+  if (!grabber)
+    return;
+  const QPoint local =
+      grabber->mapFromGlobal(s_hasSimulatedPosition ? s_lastSimulatedPosition : QCursor::pos());
+  for (auto button : {InputSimulator::MouseButton::Left, InputSimulator::MouseButton::Right,
+                      InputSimulator::MouseButton::Middle}) {
+    if (grabber && (held & InputSimulator::toQtButton(button)))
+      InputSimulator::mouseRelease(grabber, button, local);
+  }
 }
 
 }  // namespace qtPilot

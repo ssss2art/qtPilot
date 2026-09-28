@@ -193,7 +193,6 @@ class QTPILOT_EXPORT InputSimulator {
   /// @param sequence Key sequence string in QKeySequence::PortableText format
   static void sendKeySequence(QWindow* window, const QString& sequence);
 
- private:
   /// Convert MouseButton enum to Qt::MouseButton
   static Qt::MouseButton toQtButton(MouseButton button);
 };

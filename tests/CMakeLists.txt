@@ -199,6 +199,10 @@ qtPilot_add_test(NAME test_input_modifiers SOURCES test_input_modifiers.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
 
+qtPilot_add_test(NAME test_held_mouse_gestures SOURCES test_held_mouse_gestures.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+
 qtPilot_add_test(NAME test_key_name_mapper SOURCES test_key_name_mapper.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
