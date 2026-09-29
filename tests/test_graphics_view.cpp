@@ -97,6 +97,7 @@ class WheelRecordingView : public QGraphicsView {
     Qt::ScrollPhase phase;
     Qt::KeyboardModifiers modifiers;
     Qt::MouseEventSource source;
+    QPointF exactPosition;  ///< Unrounded, as a high-resolution pointer reports it.
   };
 
   using QGraphicsView::QGraphicsView;
@@ -106,7 +107,7 @@ class WheelRecordingView : public QGraphicsView {
   void wheelEvent(QWheelEvent* event) override {
     wheels.append({event->position().toPoint(), event->globalPosition().toPoint(),
                    event->angleDelta(), event->pixelDelta(), event->phase(), event->modifiers(),
-                   event->source()});
+                   event->source(), event->position()});
     QGraphicsView::wheelEvent(event);
   }
 };
@@ -185,6 +186,8 @@ class TestGraphicsView : public QObject {
   void uiWheelRejectsAPointScrolledOutOfTheOuterView();
   void uiWheelRejectsAPointClippedByTheEmbeddingItem();
   void uiWheelDryRunRoutesWithoutSending();
+  void uiWheelKeepsASubPixelWidgetPosition();
+  void uiWheelKeepsASubPixelPositionThroughAProxy();
 
  private:
   QJsonObject call(const QString& method, const QJsonObject& params);
@@ -1127,6 +1130,15 @@ struct EmbeddedViewFixture {
     ObjectRegistry::instance()->scanExistingObjects(container);
   }
 
+  /// Where an item-local point on @p item is drawn in the outer view's viewport, unrounded.
+  QPointF outerPointOfItemLocal(const QPointF& local) const {
+    const QPointF innerPoint = inner->viewportTransform().map(item->mapToScene(local));
+    // Widget-to-widget mapping is a translation; Qt 5 has no QPointF overload to do it unrounded.
+    const QPointF inContainer =
+        innerPoint + QPointF(inner->viewport()->mapTo(container, QPoint(0, 0)));
+    return outer.viewportTransform().map(proxy->mapToScene(inContainer));
+  }
+
   /// Where a point on @p item is drawn in the outer view's viewport.
   QPoint outerPointOfItemCentre() const {
     const QPoint innerPoint = inner->mapFromScene(item->sceneBoundingRect().center());
@@ -1273,6 +1285,51 @@ void TestGraphicsView::uiWheelDryRunRoutesWithoutSending() {
                Eq(f.outerPointOfItemCentre()));
   QEXPECT_THAT(f.outer.wheels.size(), Eq(0));
   QEXPECT_THAT(f.inner->wheels.size(), Eq(0));
+}
+
+void TestGraphicsView::uiWheelKeepsASubPixelWidgetPosition() {
+  // A high-resolution pointer (a Retina display reports half pixels) lands between
+  // whole pixels. Rounding it would put the zoom anchor up to half a pixel off,
+  // which a cursor-anchored zoom then magnifies with every notch.
+  WheelRecordingView view(m_scene);
+  view.resize(1000, 1000);
+  view.show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(&view);
+
+  const QJsonObject result =
+      callResult(
+          QStringLiteral("qt.ui.wheel"),
+          QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(&view)},
+                      {QStringLiteral("position"),
+                       QJsonObject{{QStringLiteral("x"), 40.25}, {QStringLiteral("y"), 50.75}}}})
+          .toObject();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(view.wheels.size(), Eq(1));
+  QEXPECT_THAT(view.wheels.first().exactPosition.x(), Eq(40.25));
+  QEXPECT_THAT(view.wheels.first().exactPosition.y(), Eq(50.75));
+  QEXPECT_THAT(result[QStringLiteral("position")].toObject(),
+               AllOf(JsonField("x", 40.25), JsonField("y", 50.75)));
+}
+
+void TestGraphicsView::uiWheelKeepsASubPixelPositionThroughAProxy() {
+  EmbeddedViewFixture f;
+  f.outer.scale(0.76, 0.76);  // the embedding view zoomed, as a sheet at its fit is
+  QApplication::processEvents();
+  const QPointF local(12.3, 7.7);
+
+  callResult(
+      QStringLiteral("qt.ui.wheel"),
+      QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(f.item)},
+                  {QStringLiteral("position"), QJsonObject{{QStringLiteral("x"), local.x()},
+                                                           {QStringLiteral("y"), local.y()}}}});
+  QApplication::processEvents();
+
+  const QPointF expected = f.outerPointOfItemLocal(local);
+  QEXPECT_THAT(f.outer.wheels.size(), Eq(1));
+  QEXPECT_THAT(std::abs(f.outer.wheels.first().exactPosition.x() - expected.x()), Lt(1e-6));
+  QEXPECT_THAT(std::abs(f.outer.wheels.first().exactPosition.y() - expected.y()), Lt(1e-6));
 }
 
 QTEST_MAIN(TestGraphicsView)
