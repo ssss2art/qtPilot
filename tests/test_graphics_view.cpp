@@ -1133,7 +1133,9 @@ struct EmbeddedViewFixture {
   /// Where an item-local point on @p item is drawn in the outer view's viewport, unrounded.
   QPointF outerPointOfItemLocal(const QPointF& local) const {
     const QPointF innerPoint = inner->viewportTransform().map(item->mapToScene(local));
-    const QPointF inContainer = inner->viewport()->mapTo(container, innerPoint);
+    // Widget-to-widget mapping is a translation; Qt 5 has no QPointF overload to do it unrounded.
+    const QPointF inContainer =
+        innerPoint + QPointF(inner->viewport()->mapTo(container, QPoint(0, 0)));
     return outer.viewportTransform().map(proxy->mapToScene(inContainer));
   }
 

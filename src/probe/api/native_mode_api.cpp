@@ -970,6 +970,25 @@ struct RoutedPoint {
   bool reachable = true;      ///< False when a proxy on the way is clipped or covered there.
 };
 
+/// @p point in @p from mapped into @p to, unrounded. Qt 5 widgets map whole pixels only, but
+/// widget-to-widget mapping is a pure translation, so the fraction carries over unchanged.
+QPointF mapToUnrounded(const QWidget* from, const QWidget* to, const QPointF& point) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  return from->mapTo(to, point);
+#else
+  return point + QPointF(from->mapTo(to, QPoint(0, 0)));
+#endif
+}
+
+/// @p point in @p widget mapped to global coordinates, unrounded (see mapToUnrounded).
+QPointF mapToGlobalUnrounded(const QWidget* widget, const QPointF& point) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  return widget->mapToGlobal(point);
+#else
+  return point + QPointF(widget->mapToGlobal(QPoint(0, 0)));
+#endif
+}
+
 /// @brief Follow @p point in @p widget out to the outermost widget it is drawn in.
 ///
 /// A widget embedded in a scene through QGraphicsProxyWidget is not where the
@@ -997,7 +1016,7 @@ RoutedPoint routeThroughProxies(QWidget* widget, QPointF point) {
     if (!outer) {
       break;
     }
-    const QPointF scenePoint = proxy->mapToScene(routed.widget->mapTo(top, routed.point));
+    const QPointF scenePoint = proxy->mapToScene(mapToUnrounded(routed.widget, top, routed.point));
     // Kept unrounded: a high-resolution pointer lands between whole pixels.
     const QPointF outerPoint = outer->viewportTransform().map(scenePoint);
     // The proxy must be what a pointer there reaches: not clipped away by a parent
@@ -1305,7 +1324,7 @@ QJsonObject handleUiWheel(const QJsonObject& params) {
                     {QStringLiteral("x"), routed.point.x()},
                     {QStringLiteral("y"), routed.point.y()}});
   }
-  const QPointF globalPoint = routed.widget->mapToGlobal(routed.point);
+  const QPointF globalPoint = mapToGlobalUnrounded(routed.widget, routed.point);
   // A dry run answers "could a user put the pointer here, and where does it land?"
   // without turning the wheel.
   const bool dryRun = params.value(QStringLiteral("dryRun")).toBool(false);
