@@ -254,7 +254,10 @@ jobs:
           "$QT_ROOT_DIR/bin/qt-cmake" -B build/mobile -S . \
             -DCMAKE_BUILD_TYPE=Release \
             -DQT_HOST_PATH="$HOST_QT"
-          cmake --build build/mobile --parallel
+          # --config is ignored by the single-config Android generator, but Qt's
+          # iOS kit generates Xcode, which builds Debug unless told otherwise and
+          # disregards CMAKE_BUILD_TYPE.
+          cmake --build build/mobile --parallel --config Release
           find build/mobile -name '*.a' -print
 
       # Building the probe is not the integration a mobile app performs; consuming
@@ -267,7 +270,7 @@ jobs:
         shell: bash
         run: |
           HOST_QT="$(find "${{ runner.temp }}/qt-host" -maxdepth 3 -type d -name 'gcc_64' -o -maxdepth 3 -type d -name 'macos' | head -1)"
-          cmake --install build/mobile --prefix "$PWD/install/mobile"
+          cmake --install build/mobile --prefix "$PWD/install/mobile" --config Release
           "$QT_ROOT_DIR/bin/qt-cmake" -B build/mobile-consumer -S tests/static_consumer \
             -DCMAKE_BUILD_TYPE=Release \
             -DQT_HOST_PATH="$HOST_QT" \
