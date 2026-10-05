@@ -70,6 +70,13 @@ get_filename_component(QTPILOT_PREFIX "${QTPILOT_CMAKE_DIR}/../../.." ABSOLUTE)
 set(QTPILOT_LIB_DIR "${QTPILOT_PREFIX}/lib")
 set(QTPILOT_INCLUDE_DIR "${QTPILOT_PREFIX}/include/qtpilot")
 
+# Every find_file() below searches only QTPILOT_LIB_DIR, a host path computed
+# from this file's own location, so each one passes NO_CMAKE_FIND_ROOT_PATH.
+# Cross toolchains -- Qt's Android and iOS ones included -- set
+# CMAKE_FIND_ROOT_PATH_MODE_INCLUDE to ONLY, which re-roots PATHS under the
+# target sysroot. The lookup then never sees this package's lib/, and a static
+# probe that is installed correctly fails with "archive ... not found".
+
 # ---------------------------------------------------------------------------
 # Create imported target: qtPilot::Probe
 # ---------------------------------------------------------------------------
@@ -101,6 +108,7 @@ if(NOT TARGET qtPilot::Probe)
                   "lib${_probe_base_name}d.a" "${_probe_base_name}d.lib"
             PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
         )
         if(_probe_archive)
             set_target_properties(qtPilot::Probe PROPERTIES
@@ -142,11 +150,13 @@ if(NOT TARGET qtPilot::Probe)
             NAMES "${_probe_base_name}.dll"
             PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
         )
         find_file(_probe_implib
             NAMES "${_probe_base_name}.lib" "${_probe_base_name}.dll.a"
             PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
         )
         if(_probe_dll)
             set_target_properties(qtPilot::Probe PROPERTIES
@@ -165,6 +175,7 @@ if(NOT TARGET qtPilot::Probe)
             NAMES "lib${_probe_base_name}.dylib" "lib${_probe_base_name}.so"
             PATHS "${QTPILOT_LIB_DIR}"
             NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
         )
         if(_probe_so)
             set_target_properties(qtPilot::Probe PROPERTIES

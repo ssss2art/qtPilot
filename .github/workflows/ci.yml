@@ -254,8 +254,27 @@ jobs:
           "$QT_ROOT_DIR/bin/qt-cmake" -B build/mobile -S . \
             -DCMAKE_BUILD_TYPE=Release \
             -DQT_HOST_PATH="$HOST_QT"
-          cmake --build build/mobile --parallel
+          # --config is ignored by the single-config Android generator, but Qt's
+          # iOS kit generates Xcode, which builds Debug unless told otherwise and
+          # disregards CMAKE_BUILD_TYPE.
+          cmake --build build/mobile --parallel --config Release
           find build/mobile -name '*.a' -print
+
+      # Building the probe is not the integration a mobile app performs; consuming
+      # the INSTALLED package under the same cross toolchain is. Qt's Android and
+      # iOS toolchains re-root find_file() under the target sysroot, which once hid
+      # the archive from qtPilotConfig.cmake ("static probe archive ... not found")
+      # while every job here stayed green. Configure-only: what failed was
+      # find_package(qtPilot), and a mobile executable cannot be run here anyway.
+      - name: Consume the installed package with the cross toolchain
+        shell: bash
+        run: |
+          HOST_QT="$(find "${{ runner.temp }}/qt-host" -maxdepth 3 -type d -name 'gcc_64' -o -maxdepth 3 -type d -name 'macos' | head -1)"
+          cmake --install build/mobile --prefix "$PWD/install/mobile" --config Release
+          "$QT_ROOT_DIR/bin/qt-cmake" -B build/mobile-consumer -S tests/static_consumer \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH="$HOST_QT" \
+            -DqtPilot_DIR="$PWD/install/mobile/share/cmake/qtPilot"
 
   # Records the fitted complexity of the probe's hot paths in the run log, so a
   # change of exponent is visible in review instead of being discovered later.
