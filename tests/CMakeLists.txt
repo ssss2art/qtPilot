@@ -173,6 +173,35 @@ if(QTPILOT_HAS_QML)
     qtPilot_add_test(NAME test_qml_delegate_ids SOURCES test_qml_delegate_ids.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
         ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+    # qt.ui.screenshot on Qt Quick targets asserts on pixels, so it needs a
+    # platform that really renders: the offscreen plugin, not minimal.
+    find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS QuickWidgets)
+    set(_screenshot_quick_libs
+        Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick)
+    if(TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        list(APPEND _screenshot_quick_libs Qt${QT_VERSION_MAJOR}::QuickWidgets)
+    endif()
+    set(_screenshot_quick_env "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+
+    qtPilot_add_test(NAME test_ui_screenshot_quick SOURCES test_ui_screenshot_quick.cpp
+        LIBS ${_screenshot_quick_libs}
+        ENV "${_screenshot_quick_env}")
+    if(TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        target_compile_definitions(test_ui_screenshot_quick PRIVATE QTPILOT_TEST_HAS_QUICKWIDGETS)
+    endif()
+
+    # The same cases at a device pixel ratio of 2, so the crop's DPR scaling is
+    # checked against real numbers rather than a ratio of 1 that hides it.
+    add_test(NAME test_ui_screenshot_quick_dpr2 COMMAND test_ui_screenshot_quick
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_ui_screenshot_quick>")
+    set(_screenshot_quick_dpr2_env ${_screenshot_quick_env} "QT_SCALE_FACTOR=2")
+    if(APPLE)
+        list(APPEND _screenshot_quick_dpr2_env "QT_STYLE_OVERRIDE=Fusion")
+    endif()
+    set_tests_properties(test_ui_screenshot_quick_dpr2 PROPERTIES
+        ENVIRONMENT "${_screenshot_quick_dpr2_env}")
 endif()
 
 qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp

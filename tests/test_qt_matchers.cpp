@@ -1,9 +1,12 @@
 // Copyright (c) 2024-2026 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/image_matchers.h"
 #include "common/qt_matchers.h"
 
+#include <QBuffer>
 #include <QHostAddress>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
@@ -343,6 +346,56 @@ class TestQtMatchers : public QObject {
         {QStringLiteral("data"), pngBase64},
     };
     QEXPECT_THAT(screenshotPayload, IsValidPng());
+  }
+
+  // =========================================================================
+  // Image matchers (image_matchers.h)
+  // =========================================================================
+  void testImageMatchers() {
+    // 4x3 red, with one green pixel at (1, 1).
+    QImage image(4, 3, QImage::Format_RGB32);
+    image.fill(QColor(0xff, 0x00, 0x00));
+    image.setPixelColor(1, 1, QColor(0x00, 0xff, 0x00));
+    QByteArray png;
+    QBuffer buffer(&png);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QVERIFY(image.save(&buffer, "PNG"));
+    const QString base64 = QString::fromLatin1(png.toBase64());
+    const QJsonObject result{{QStringLiteral("image"), base64}};
+    const QJsonObject dataResult{{QStringLiteral("data"), base64}};
+    const QJsonObject unrelated{{QStringLiteral("other"), base64}};
+
+    // The payload shapes a screenshot arrives in.
+    QEXPECT_THAT(base64, DecodesToImage(ImageSizeIs(QSize(4, 3))));
+    QEXPECT_THAT(result, DecodesToImage(ImageSizeIs(QSize(4, 3))));
+    QEXPECT_THAT(QJsonValue(result), DecodesToImage(ImageSizeIs(QSize(4, 3))));
+    QEXPECT_THAT(dataResult, DecodesToImage(ImageSizeIs(QSize(4, 3))));
+
+    // Each matcher can fail: a wrong size, a wrong pixel, one stray pixel.
+    QEXPECT_THAT(result, Not(DecodesToImage(ImageSizeIs(QSize(3, 4)))));
+    QEXPECT_THAT(result, DecodesToImage(PixelAt(QPoint(0, 0), ColorNear(Qt::red))));
+    QEXPECT_THAT(result, DecodesToImage(PixelAt(QPoint(1, 1), ColorNear(Qt::green))));
+    QEXPECT_THAT(result, Not(DecodesToImage(PixelAt(QPoint(1, 1), ColorNear(Qt::red)))));
+    QEXPECT_THAT(result, Not(DecodesToImage(AllPixels(ColorNear(Qt::red)))));
+    QEXPECT_THAT(result, DecodesToImage(AllPixels(ColorNear(Qt::red, 255))));
+
+    // A point outside the image is a mismatch, never an out-of-bounds read.
+    QEXPECT_THAT(result, Not(DecodesToImage(PixelAt(QPoint(4, 0), ColorNear(Qt::red)))));
+
+    // Tolerance is per channel, both ways.
+    QEXPECT_THAT(QColor(250, 4, 4), ColorNear(QColor(Qt::red)));
+    QEXPECT_THAT(QColor(200, 0, 0), Not(ColorNear(QColor(Qt::red))));
+
+    // Not image data at all.
+    QEXPECT_THAT(QStringLiteral("bm90IGEgcG5n"), Not(DecodesToImage(ImageSizeIs(QSize(4, 3)))));
+    QEXPECT_THAT(unrelated, Not(DecodesToImage(ImageSizeIs(QSize(4, 3)))));
+
+    // Failures name what was found, not raw bytes.
+    QEXPECT_THAT(::testing::PrintToString(image), HasSubstr("QImage(4x3"));
+    ::testing::StringMatchResultListener listener;
+    const ::testing::Matcher<QJsonObject> wrongSize = DecodesToImage(ImageSizeIs(QSize(9, 9)));
+    QEXPECT_THAT(wrongSize.MatchAndExplain(result, &listener), IsFalse());
+    QEXPECT_THAT(listener.str(), HasSubstr("is 4x3 pixels"));
   }
 };
 
