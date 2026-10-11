@@ -14,6 +14,7 @@
 #include <QWindow>
 
 #ifdef QTPILOT_HAS_QML
+#include <QQuickItem>
 #include <QQuickWindow>
 #endif
 
@@ -171,6 +172,25 @@ QByteArray Screenshot::captureWindowLogical(QWidget* window) {
 
 namespace {
 
+#ifdef QTPILOT_HAS_QML
+/// @brief Render a Qt Quick window offscreen.
+/// @return A pixmap tagged with the window's device pixel ratio, or a null
+///         pixmap if the scene graph could not render it.
+QPixmap grabQuickWindow(QQuickWindow* window) {
+  const QImage image = window->grabWindow();
+  if (image.isNull()) {
+    return {};
+  }
+  QPixmap pixmap = QPixmap::fromImage(image);
+  // Ensure the device pixel ratio is set so the downstream logical/region
+  // scaling is correct on HiDPI displays even if grabWindow() left it 1.0.
+  if (pixmap.devicePixelRatio() <= 1.0) {
+    pixmap.setDevicePixelRatio(window->devicePixelRatio());
+  }
+  return pixmap;
+}
+#endif
+
 /// @brief Grab a QWindow as a QPixmap.
 ///
 /// Prefers QQuickWindow::grabWindow() (offscreen render, no screen-recording
@@ -181,20 +201,13 @@ QPixmap grabWindowPixmap(QWindow* window, const char* context) {
   if (auto* quickWindow = qobject_cast<QQuickWindow*>(window)) {
     // grabWindow() re-renders the scene graph to an offscreen surface, so it
     // captures the actual UI even when the window is occluded or on a background
-    // Space (unlike a screen grab, which would capture whatever is on top). Try
-    // it whenever the window has been shown; only fall back to the screen grab
-    // if it yields nothing.
-    if (quickWindow->isVisible()) {
-      QImage image = quickWindow->grabWindow();
-      if (!image.isNull()) {
-        QPixmap pixmap = QPixmap::fromImage(image);
-        // Ensure the device pixel ratio is set so the downstream logical/region
-        // scaling is correct on HiDPI displays even if grabWindow() left it 1.0.
-        if (pixmap.devicePixelRatio() <= 1.0) {
-          pixmap.setDevicePixelRatio(quickWindow->devicePixelRatio());
-        }
-        return pixmap;
-      }
+    // Space (unlike a screen grab, which would capture whatever is on top). It
+    // renders offscreen when the window is not exposed too, where a screen grab
+    // could only capture whatever lies under it, so try it whether or not the
+    // window is showing; only fall back to the screen grab if it yields nothing.
+    QPixmap pixmap = grabQuickWindow(quickWindow);
+    if (!pixmap.isNull()) {
+      return pixmap;
     }
   }
 #endif
@@ -279,5 +292,68 @@ QByteArray Screenshot::captureWindowLogical(QWindow* window) {
 
   return encodePixmap(pixmap, "captureWindowLogical");
 }
+
+#ifdef QTPILOT_HAS_QML
+
+namespace {
+
+/// @brief A logical scene rect as the device pixels it covers at @p dpr.
+///
+/// Each edge is rounded on its own, so an integral logical rect becomes
+/// exactly size * dpr and adjacent rects share an edge rather than overlapping
+/// or leaving a gap -- toAlignedRect() would grow a fractional rect outward by
+/// a pixel of whatever surrounds it.
+QRect toDevicePixels(const QRectF& logical, qreal dpr) {
+  const int left = qRound(logical.left() * dpr);
+  const int top = qRound(logical.top() * dpr);
+  const int right = qRound(logical.right() * dpr);
+  const int bottom = qRound(logical.bottom() * dpr);
+  return QRect(QPoint(left, top), QSize(right - left, bottom - top));
+}
+
+/// @brief Render @p item's window and crop to @p sceneRect (logical pixels).
+QByteArray captureSceneRect(QQuickItem* item, const QRectF& sceneRect, const char* context) {
+  if (!item) {
+    throw std::invalid_argument(std::string(context) + ": item cannot be null");
+  }
+  QQuickWindow* window = item->window();
+  if (!window) {
+    throw std::invalid_argument(std::string(context) + ": item is not on a window");
+  }
+
+  const QRectF visible = sceneRect.intersected(QRectF(QPointF(0, 0), QSizeF(window->size())));
+  if (visible.isEmpty()) {
+    throw std::runtime_error(std::string(context) + ": the area lies outside the item's window");
+  }
+
+  const QPixmap full = grabQuickWindow(window);
+  if (full.isNull()) {
+    throw std::runtime_error(std::string(context) +
+                             ": the scene graph could not render the item's window");
+  }
+  QPixmap cropped = full.copy(toDevicePixels(visible, full.devicePixelRatio()));
+  return encodePixmap(cropped, context);
+}
+
+}  // namespace
+
+QByteArray Screenshot::captureItem(QQuickItem* item) {
+  if (!item) {
+    throw std::invalid_argument("captureItem: item cannot be null");
+  }
+  // The item's own rect rather than boundingRect(), which a subclass may grow
+  // to include painting outside the item; this is the area the item occupies.
+  return captureSceneRect(item, item->mapRectToScene(QRectF(QPointF(0, 0), item->size())),
+                          "captureItem");
+}
+
+QByteArray Screenshot::captureItemRegion(QQuickItem* item, const QRectF& region) {
+  if (!item) {
+    throw std::invalid_argument("captureItemRegion: item cannot be null");
+  }
+  return captureSceneRect(item, item->mapRectToScene(region), "captureItemRegion");
+}
+
+#endif  // QTPILOT_HAS_QML
 
 }  // namespace qtPilot

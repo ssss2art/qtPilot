@@ -100,23 +100,6 @@ std::expected<QObject*, JsonRpcException> tryResolveObjectParam(const QJsonObjec
       });
 }
 
-/// @brief Monadic resolution of objectId parameter to QWidget* via .and_then().
-std::expected<QWidget*, JsonRpcException> tryResolveWidgetParam(const QJsonObject& params,
-                                                                const QString& methodName) {
-  return tryResolveObjectParam(params, methodName)
-      .and_then([&](QObject* obj) -> std::expected<QWidget*, JsonRpcException> {
-        if (auto* widget = qobject_cast<QWidget*>(obj)) {
-          return widget;
-        }
-        QString objectId = params[QStringLiteral("objectId")].toString();
-        return std::unexpected(JsonRpcException(
-            ErrorCode::kObjectNotWidget, QStringLiteral("Object is not a widget: %1").arg(objectId),
-            QJsonObject{
-                {QStringLiteral("objectId"), objectId},
-                {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}}));
-      });
-}
-
 /// @brief Monadic resolution of objectId parameter to QAbstractItemModel* via .and_then().
 std::expected<QAbstractItemModel*, JsonRpcException> tryResolveModelParam(
     const QJsonObject& params, const QString& methodName) {
@@ -168,13 +151,70 @@ QObject* resolveObjectParam(const QJsonObject& params, const QString& methodName
   return *res;
 }
 
-/// @brief Resolve objectId param to QWidget*, throw JsonRpcException on failure.
-QWidget* resolveWidgetParam(const QJsonObject& params, const QString& methodName) {
-  auto res = tryResolveWidgetParam(params, methodName);
-  if (!res) {
-    throw res.error();
+/// @brief What qt.ui.screenshot can capture: exactly one pointer is non-null.
+struct ScreenshotTarget {
+  QWidget* widget = nullptr;
+#ifdef QTPILOT_HAS_QML
+  QQuickWindow* quickWindow = nullptr;
+  QQuickItem* item = nullptr;
+#endif
+};
+
+#ifdef QTPILOT_HAS_QML
+/// @brief Reject a Quick item that would capture nothing, saying why.
+///
+/// Checked here rather than left to the capture: a hidden or empty item still
+/// crops to *something* -- the background where it would be, or a zero-pixel
+/// image -- which reads as a successful screenshot of the wrong thing.
+std::expected<QQuickItem*, JsonRpcException> requireCapturableItem(QQuickItem* item,
+                                                                   const QString& objectId) {
+  auto notCapturable = [&](const QString& why) {
+    return std::unexpected(JsonRpcException(
+        ErrorCode::kWidgetNotVisible, QStringLiteral("Qt Quick item %1: %2").arg(why, objectId),
+        QJsonObject{{QStringLiteral("objectId"), objectId},
+                    {QStringLiteral("width"), item->width()},
+                    {QStringLiteral("height"), item->height()}}));
+  };
+  if (!item->window()) {
+    return notCapturable(QStringLiteral("is not on a window (not rendered)"));
   }
-  return *res;
+  if (!item->isVisible()) {
+    return notCapturable(QStringLiteral("is not visible"));
+  }
+  if (item->width() <= 0 || item->height() <= 0) {
+    return notCapturable(QStringLiteral("has zero size"));
+  }
+  return item;
+}
+#endif
+
+/// @brief Monadic resolution of objectId to something qt.ui.screenshot can capture.
+std::expected<ScreenshotTarget, JsonRpcException> tryResolveScreenshotTarget(
+    const QJsonObject& params, const QString& methodName) {
+  const QString objectId = params[QStringLiteral("objectId")].toString();
+  return tryResolveObjectParam(params, methodName)
+      .and_then([&](QObject* obj) -> std::expected<ScreenshotTarget, JsonRpcException> {
+        if (auto* widget = qobject_cast<QWidget*>(obj)) {
+          return ScreenshotTarget{.widget = widget};
+        }
+#ifdef QTPILOT_HAS_QML
+        if (auto* quickWindow = qobject_cast<QQuickWindow*>(obj)) {
+          return ScreenshotTarget{.quickWindow = quickWindow};
+        }
+        if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+          return requireCapturableItem(item, objectId).transform([](QQuickItem* capturable) {
+            return ScreenshotTarget{.item = capturable};
+          });
+        }
+#endif
+        return std::unexpected(JsonRpcException(
+            ErrorCode::kObjectNotWidget,
+            QStringLiteral("Object is not a widget, Qt Quick window, or Qt Quick item: %1")
+                .arg(objectId),
+            QJsonObject{
+                {QStringLiteral("objectId"), objectId},
+                {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}}));
+      });
 }
 
 /// @brief Resolve an optional view id param to a QGraphicsView*.
@@ -2334,23 +2374,53 @@ void NativeModeApi::registerUiMethods() {
   m_handler->RegisterMethod(
       QStringLiteral("qt.ui.screenshot"), [](const QString& params) -> QString {
         auto p = parseParams(params);
-        QWidget* widget = resolveWidgetParam(p, QStringLiteral("qt.ui.screenshot"));
+        auto target = tryResolveScreenshotTarget(p, QStringLiteral("qt.ui.screenshot"));
+        if (!target) {
+          throw target.error();
+        }
         QString objectId = p[QStringLiteral("objectId")].toString();
 
-        bool fullWindow = p[QStringLiteral("fullWindow")].toBool(false);
-        QJsonObject region = p[QStringLiteral("region")].toObject();
+        const bool fullWindow = p.value(QStringLiteral("fullWindow")).toBool(false);
+        // const: a non-const operator[] would insert the keys it reads, and
+        // turn an absent region into a present one.
+        const QJsonObject region = p.value(QStringLiteral("region")).toObject();
+        const QRect rect(region[QStringLiteral("x")].toInt(), region[QStringLiteral("y")].toInt(),
+                         region[QStringLiteral("width")].toInt(),
+                         region[QStringLiteral("height")].toInt());
 
         QByteArray base64;
-        if (fullWindow) {
-          base64 = Screenshot::captureWindow(widget);
-        } else if (!region.isEmpty()) {
-          QRect rect(region[QStringLiteral("x")].toInt(), region[QStringLiteral("y")].toInt(),
-                     region[QStringLiteral("width")].toInt(),
-                     region[QStringLiteral("height")].toInt());
-          base64 = Screenshot::captureRegion(widget, rect);
-        } else {
-          base64 = Screenshot::captureWidget(widget);
+        if (QWidget* widget = target->widget) {
+          if (fullWindow) {
+            base64 = Screenshot::captureWindow(widget);
+          } else if (!region.isEmpty()) {
+            base64 = Screenshot::captureRegion(widget, rect);
+          } else {
+            base64 = Screenshot::captureWidget(widget);
+          }
         }
+#ifdef QTPILOT_HAS_QML
+        else {
+          // Qt Quick has no QWidget to grab(): render the QQuickWindow offscreen
+          // and, for an item, crop to it. A region is relative to the target,
+          // as it is for a widget -- window coordinates for a window, item
+          // coordinates for an item.
+          try {
+            if (QQuickWindow* window = target->quickWindow) {
+              base64 = region.isEmpty() ? Screenshot::captureWindow(window)
+                                        : Screenshot::captureRegion(window, rect);
+            } else if (fullWindow) {
+              base64 = Screenshot::captureWindow(target->item->window());
+            } else if (!region.isEmpty()) {
+              base64 = Screenshot::captureItemRegion(target->item, QRectF(rect));
+            } else {
+              base64 = Screenshot::captureItem(target->item);
+            }
+          } catch (const std::exception& e) {
+            throw JsonRpcException(ErrorCode::kScreenCaptureError, QString::fromUtf8(e.what()),
+                                   QJsonObject{{QStringLiteral("objectId"), objectId}});
+          }
+        }
+#endif
 
         QJsonObject result;
         result[QStringLiteral("image")] = QString::fromLatin1(base64);
