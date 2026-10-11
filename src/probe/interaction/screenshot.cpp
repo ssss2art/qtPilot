@@ -201,13 +201,23 @@ QPixmap grabWindowPixmap(QWindow* window, const char* context) {
   if (auto* quickWindow = qobject_cast<QQuickWindow*>(window)) {
     // grabWindow() re-renders the scene graph to an offscreen surface, so it
     // captures the actual UI even when the window is occluded or on a background
-    // Space (unlike a screen grab, which would capture whatever is on top). It
-    // renders offscreen when the window is not exposed too, where a screen grab
-    // could only capture whatever lies under it, so try it whether or not the
-    // window is showing; only fall back to the screen grab if it yields nothing.
-    QPixmap pixmap = grabQuickWindow(quickWindow);
-    if (!pixmap.isNull()) {
-      return pixmap;
+    // Space (unlike a screen grab, which would capture whatever is on top).
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
+    // Qt 6 renders offscreen when the window is not exposed too, where a screen
+    // grab could only capture whatever lies under it, so try it whether or not
+    // the window is showing; only fall back to the screen grab if it yields
+    // nothing.
+    const bool canGrab = true;
+#else
+    // Qt 5 renders a window that is not showing through an OpenGL context it
+    // creates there and then, and aborts the process if it cannot.
+    const bool canGrab = quickWindow->isVisible();
+#endif
+    if (canGrab) {
+      QPixmap pixmap = grabQuickWindow(quickWindow);
+      if (!pixmap.isNull()) {
+        return pixmap;
+      }
     }
   }
 #endif
@@ -293,7 +303,7 @@ QByteArray Screenshot::captureWindowLogical(QWindow* window) {
   return encodePixmap(pixmap, "captureWindowLogical");
 }
 
-#ifdef QTPILOT_HAS_QML
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
 
 namespace {
 
@@ -354,6 +364,6 @@ QByteArray Screenshot::captureItemRegion(QQuickItem* item, const QRectF& region)
   return captureSceneRect(item, item->mapRectToScene(region), "captureItemRegion");
 }
 
-#endif  // QTPILOT_HAS_QML
+#endif  // QTPILOT_HAS_QUICK_CAPTURE
 
 }  // namespace qtPilot

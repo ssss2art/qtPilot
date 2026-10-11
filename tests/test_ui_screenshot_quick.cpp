@@ -18,6 +18,7 @@
 #include "common/image_matchers.h"
 #include "common/qt_matchers.h"
 #include "core/object_registry.h"
+#include "interaction/screenshot.h"
 #include "transport/jsonrpc_handler.h"
 
 #include <memory>
@@ -40,6 +41,15 @@
 
 using namespace qtPilot;
 using namespace qtPilot::test;
+
+// Quick capture is a Qt 6 feature (see screenshot.h). On Qt 5 the cases that
+// render are skipped, visibly, and testQuickTargetsNeedQt6 pins what Qt 5 says
+// instead; the widget and error cases run on both.
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
+#define REQUIRE_QUICK_CAPTURE()
+#else
+#define REQUIRE_QUICK_CAPTURE() QSKIP("Qt Quick screenshots need Qt 6")
+#endif
 
 namespace {
 
@@ -190,6 +200,9 @@ class TestUiScreenshotQuick : public QObject {
   void testNonVisualObjectIsRejected();
   void testDestroyedItemIsNotFound();
 
+  // Qt 5
+  void testQuickTargetsNeedQt6();
+
  private:
   /// @brief qt.ui.screenshot of @p target, with any further @p params.
   QJsonObject screenshot(QObject* target, QJsonObject params = {});
@@ -231,6 +244,7 @@ QJsonObject TestUiScreenshotQuick::callScreenshot(const QJsonObject& params) {
 // --- Windows ----------------------------------------------------------------
 
 void TestUiScreenshotQuick::testQuickWindowCapturesTheWholeScene() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
   const qreal dpr = scene.dpr();
 
@@ -242,6 +256,7 @@ void TestUiScreenshotQuick::testQuickWindowCapturesTheWholeScene() {
 }
 
 void TestUiScreenshotQuick::testQuickWindowRegionIsInWindowCoordinates() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
   const qreal dpr = scene.dpr();
 
@@ -255,6 +270,7 @@ void TestUiScreenshotQuick::testQuickWindowRegionIsInWindowCoordinates() {
 // --- Items ------------------------------------------------------------------
 
 void TestUiScreenshotQuick::testItemIsCroppedToItsSceneRect() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
   const qreal dpr = scene.dpr();
 
@@ -265,6 +281,7 @@ void TestUiScreenshotQuick::testItemIsCroppedToItsSceneRect() {
 }
 
 void TestUiScreenshotQuick::testNestedItemIsCroppedToItsSceneRect() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
   const qreal dpr = scene.dpr();
 
@@ -278,6 +295,7 @@ void TestUiScreenshotQuick::testNestedItemIsCroppedToItsSceneRect() {
 }
 
 void TestUiScreenshotQuick::testTransformedItemIsCroppedToItsTransformedBounds() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
   const qreal dpr = scene.dpr();
 
@@ -288,6 +306,7 @@ void TestUiScreenshotQuick::testTransformedItemIsCroppedToItsTransformedBounds()
 }
 
 void TestUiScreenshotQuick::testItemRegionIsInItemCoordinates() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
   const qreal dpr = scene.dpr();
 
@@ -300,6 +319,7 @@ void TestUiScreenshotQuick::testItemRegionIsInItemCoordinates() {
 }
 
 void TestUiScreenshotQuick::testItemFullWindowCapturesItsWindow() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
   const qreal dpr = scene.dpr();
 
@@ -310,6 +330,7 @@ void TestUiScreenshotQuick::testItemFullWindowCapturesItsWindow() {
 }
 
 void TestUiScreenshotQuick::testItemInUnexposedWindowIsRenderedOffscreen() {
+  REQUIRE_QUICK_CAPTURE();
   // Never shown, so never exposed: there is nothing on any screen to grab, and
   // a screen grab would capture whatever lies under it. The scene graph can
   // still render it offscreen, which is what a headless driver needs.
@@ -325,6 +346,7 @@ void TestUiScreenshotQuick::testItemInUnexposedWindowIsRenderedOffscreen() {
 // --- Hosts ------------------------------------------------------------------
 
 void TestUiScreenshotQuick::testItemInQuickViewIsCaptured() {
+  REQUIRE_QUICK_CAPTURE();
   QTemporaryDir dir;
   QVERIFY(dir.isValid());
   const QString path = dir.filePath(QStringLiteral("Hosted.qml"));
@@ -348,6 +370,7 @@ void TestUiScreenshotQuick::testItemInQuickViewIsCaptured() {
 }
 
 void TestUiScreenshotQuick::testQuickWidgetIsCapturedAsAWidget() {
+  REQUIRE_QUICK_CAPTURE();
 #ifndef QTPILOT_TEST_HAS_QUICKWIDGETS
   QSKIP("Qt Quick Widgets is not available in this Qt build");
 #else
@@ -377,6 +400,7 @@ void TestUiScreenshotQuick::testQuickWidgetIsCapturedAsAWidget() {
 }
 
 void TestUiScreenshotQuick::testItemInQuickWidgetIsCaptured() {
+  REQUIRE_QUICK_CAPTURE();
 #ifndef QTPILOT_TEST_HAS_QUICKWIDGETS
   QSKIP("Qt Quick Widgets is not available in this Qt build");
 #else
@@ -427,6 +451,7 @@ void TestUiScreenshotQuick::testWidgetCaptureIsUnchanged() {
 // --- Errors -----------------------------------------------------------------
 
 void TestUiScreenshotQuick::testInvisibleItemIsRejected() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
 
   QEXPECT_THAT(screenshot(scene.item("hiddenBox")),
@@ -434,6 +459,7 @@ void TestUiScreenshotQuick::testInvisibleItemIsRejected() {
 }
 
 void TestUiScreenshotQuick::testZeroSizeItemIsRejected() {
+  REQUIRE_QUICK_CAPTURE();
   QuickScene scene(kSceneQml);
 
   QEXPECT_THAT(screenshot(scene.item("emptyItem")),
@@ -441,6 +467,7 @@ void TestUiScreenshotQuick::testZeroSizeItemIsRejected() {
 }
 
 void TestUiScreenshotQuick::testItemNotOnAWindowIsRejected() {
+  REQUIRE_QUICK_CAPTURE();
   QQuickItem item;
   item.setSize(QSizeF(10, 10));
 
@@ -464,6 +491,22 @@ void TestUiScreenshotQuick::testDestroyedItemIsNotFound() {
 
   const QJsonObject response = callScreenshot(QJsonObject{{QStringLiteral("objectId"), id}});
   QEXPECT_THAT(response, IsJsonRpcError(ErrorCode::kObjectNotFound));
+}
+
+// --- Qt 5 -------------------------------------------------------------------
+
+void TestUiScreenshotQuick::testQuickTargetsNeedQt6() {
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
+  QSKIP("Qt Quick screenshots are supported on this Qt");
+#else
+  // Never shown: on Qt 5 even an attempt to render it could abort the process.
+  QuickScene scene(kSceneQml, QuickScene::Shown::No);
+
+  QEXPECT_THAT(screenshot(scene.window()),
+               IsJsonRpcError(ErrorCode::kObjectNotWidget, QStrContains("need Qt 6")));
+  QEXPECT_THAT(screenshot(scene.item("redBox")),
+               IsJsonRpcError(ErrorCode::kObjectNotWidget, QStrContains("need Qt 6")));
+#endif
 }
 
 QTEST_MAIN(TestUiScreenshotQuick)

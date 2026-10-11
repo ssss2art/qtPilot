@@ -154,13 +154,13 @@ QObject* resolveObjectParam(const QJsonObject& params, const QString& methodName
 /// @brief What qt.ui.screenshot can capture: exactly one pointer is non-null.
 struct ScreenshotTarget {
   QWidget* widget = nullptr;
-#ifdef QTPILOT_HAS_QML
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
   QQuickWindow* quickWindow = nullptr;
   QQuickItem* item = nullptr;
 #endif
 };
 
-#ifdef QTPILOT_HAS_QML
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
 /// @brief Reject a Quick item that would capture nothing, saying why.
 ///
 /// Checked here rather than left to the capture: a hidden or empty item still
@@ -197,7 +197,7 @@ std::expected<ScreenshotTarget, JsonRpcException> tryResolveScreenshotTarget(
         if (auto* widget = qobject_cast<QWidget*>(obj)) {
           return ScreenshotTarget{.widget = widget};
         }
-#ifdef QTPILOT_HAS_QML
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
         if (auto* quickWindow = qobject_cast<QQuickWindow*>(obj)) {
           return ScreenshotTarget{.quickWindow = quickWindow};
         }
@@ -205,6 +205,16 @@ std::expected<ScreenshotTarget, JsonRpcException> tryResolveScreenshotTarget(
           return requireCapturableItem(item, objectId).transform([](QQuickItem* capturable) {
             return ScreenshotTarget{.item = capturable};
           });
+        }
+#elif defined(QTPILOT_HAS_QML)
+        if (qobject_cast<QQuickWindow*>(obj) || qobject_cast<QQuickItem*>(obj)) {
+          return std::unexpected(JsonRpcException(
+              ErrorCode::kObjectNotWidget,
+              QStringLiteral("Qt Quick screenshots need Qt 6; this probe is built with Qt %1: %2")
+                  .arg(QString::fromLatin1(qVersion()), objectId),
+              QJsonObject{{QStringLiteral("objectId"), objectId},
+                          {QStringLiteral("className"),
+                           QString::fromUtf8(obj->metaObject()->className())}}));
         }
 #endif
         return std::unexpected(JsonRpcException(
@@ -2398,7 +2408,7 @@ void NativeModeApi::registerUiMethods() {
             base64 = Screenshot::captureWidget(widget);
           }
         }
-#ifdef QTPILOT_HAS_QML
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
         else {
           // Qt Quick has no QWidget to grab(): render the QQuickWindow offscreen
           // and, for an item, crop to it. A region is relative to the target,

@@ -13,6 +13,15 @@
 class QWindow;
 class QQuickItem;
 
+// Qt Quick items and windows are captured by rendering the scene graph with
+// QQuickWindow::grabWindow(). Qt 5 does that through an OpenGL context it
+// creates on demand, and aborts the process (qFatal) where none can be made --
+// a headless machine, or a window never shown -- so it is offered on Qt 6 only,
+// whose grab renders through whichever graphics API is available, or none.
+#if defined(QTPILOT_HAS_QML) && QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#define QTPILOT_HAS_QUICK_CAPTURE
+#endif
+
 namespace qtPilot {
 
 /// @brief Screenshot capture utility (UI-03).
@@ -94,7 +103,7 @@ class QTPILOT_EXPORT Screenshot {
   /// @brief Capture a window scaled to logical pixel dimensions.
   static QByteArray captureWindowLogical(QWindow* window);
 
-#ifdef QTPILOT_HAS_QML
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
   // --- QQuickItem capture ---
   //
   // An item has no surface of its own, so it is captured by rendering its

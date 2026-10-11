@@ -179,6 +179,12 @@ if(QTPILOT_HAS_QML)
         list(APPEND _screenshot_quick_libs Qt${QT_VERSION_MAJOR}::QuickWidgets)
     endif()
     set(_screenshot_quick_env "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+    # A headless Linux or Windows runner may have no GPU API the scene graph can
+    # render through, so render in software there. macOS keeps its default RHI
+    # backend (Metal), so the hardware path is covered too.
+    if(NOT APPLE)
+        list(APPEND _screenshot_quick_env "QT_QUICK_BACKEND=software")
+    endif()
 
     qtPilot_add_test(NAME test_ui_screenshot_quick SOURCES test_ui_screenshot_quick.cpp
         LIBS ${_screenshot_quick_libs}
