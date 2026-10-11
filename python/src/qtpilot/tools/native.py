@@ -704,16 +704,24 @@ def register_native_tools(mcp: FastMCP) -> None:
         as_image: bool = True,
         ctx: Context = None,
     ) -> types.ImageContent | dict:
-        """Capture a screenshot of a widget or window.
+        """Capture a screenshot of a widget, Qt Quick window, or Qt Quick item.
+
+        A Qt Quick item is captured by rendering its window offscreen and
+        cropping to the item's on-screen bounds, so it works for hidden or
+        headless windows too. Images are in device pixels, as for widgets: an
+        item of logical size w x h at device pixel ratio r is round(w*r) x round(h*r).
 
         By default, returns an MCP ImageContent object so vision-capable models
         consume image tokens rather than raw text tokens. Pass `save_to` to save
         the PNG to disk and return lean metadata (~30 tokens).
 
         Args:
-            objectId: The object to screenshot
+            objectId: The widget, QQuickWindow, or QQuickItem to screenshot. An
+                item that is not visible, has zero size, or is not on a window
+                is rejected with error -32040.
             fullWindow: Whether to capture the entire top-level window
-            region: Optional crop rect `{"x": int, "y": int, "width": int, "height": int}`
+            region: Optional crop rect `{"x": int, "y": int, "width": int, "height": int}`,
+                in the target's own coordinates (widget, window, or item)
             save_to: Optional file path to save PNG artifact directly to disk
             as_image: When True (default), returns native MCP ImageContent. Set False for base64 dict.
 

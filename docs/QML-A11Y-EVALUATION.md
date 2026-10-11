@@ -32,7 +32,7 @@ How each subsystem discovers its root objects — this predicts QML coverage:
 | Subsystem | Root enumeration | Reaches QML? | Source |
 |---|---|---|---|
 | **Native mode** (`qt_objects_*`, `qt_properties_*`, `qt_methods_*`) | `QGuiApplication::allWindows()` → `QQuickWindow` → `contentItem` children | **Yes (expected)** | `src/probe/core/probe.cpp:131` |
-| **Screenshot** (`qt_ui_screenshot`) | `QGuiApplication::primaryScreen()` grab | **Yes (expected)** | `src/probe/interaction/screenshot.cpp:84` |
+| **Screenshot** (`qt_ui_screenshot`) | `QWidget::grab()`; `QQuickWindow::grabWindow()` (cropped for an item) | **Yes** | `src/probe/interaction/screenshot.cpp` |
 | **Chrome mode + a11y walk** (`chr_*`) | `QApplication::activeWindow()` / `topLevelWidgets()` | **No (suspected)** — QWidget-only; a pure Qt Quick app has zero top-level QWidgets | `src/probe/api/chrome_mode_api.cpp:83,88` |
 | **Computer-use mode** (`cu_*` window-relative) | `QApplication::activeWindow()` / `topLevelWidgets()` | **No (suspected)** for window resolution; screen-absolute coords may still work | `src/probe/api/computer_use_mode_api.cpp:44,49` |
 
@@ -113,8 +113,8 @@ Nothing here is QML-specific — the probe injects and serves identically for a
 | Native click | `qt_ui_click` | clicks QML control | ✅ was ❌, **fixed on this branch** | test (`test_qml_interaction`) |
 | Send keys | `qt_ui_sendKeys` | types into focused QML input | ✅ was ❌, **fixed on this branch** | test (`test_qml_interaction`) |
 | Hit test | `qt_ui_hitTest` | resolves the QML item at a point | ✅ was ❌, **fixed on this branch** | test (`test_qml_interaction`) |
-| Screenshot (window) | `qt_ui_screenshot(fullWindow=true)` | renders QML scene | ✅ | test (`test_qml_screenshot`) + live 2026-07-17 |
-| Screenshot (item) | `qt_ui_screenshot(objectId=...)` | crops a QML item | ✅ | test (`test_qml_screenshot`) |
+| Screenshot (window) | `qt_ui_screenshot(objectId=<QQuickWindow>)` | renders QML scene | ✅ was ❌ "Object is not a widget", **fixed on this branch** | test (`test_ui_screenshot_quick`) |
+| Screenshot (item) | `qt_ui_screenshot(objectId=<QQuickItem>)` | crops a QML item, at the widget path's DPR | ✅ was ❌ "Object is not a widget", **fixed on this branch** | test (`test_ui_screenshot_quick`, pixel-sampled at DPR 1 and 2) |
 | Computer-use click | `cu_leftClick` | drives the QQuickWindow | ✅ | live 2026-07-09 |
 
 ### 3e. Events & signals

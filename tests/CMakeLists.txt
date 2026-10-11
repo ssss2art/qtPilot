@@ -2,40 +2,35 @@
 
 enable_testing()
 
-# Deploy the minimal platform plugin for headless testing (QT_QPA_PLATFORM=minimal).
-# windeployqt only deploys 'qwindows' — we need 'qminimal' explicitly.
+# Deploy the headless platform plugins the tests run on: minimal for most, and
+# offscreen for the tests that sample rendered pixels (QT_QPA_PLATFORM=offscreen).
+# windeployqt only deploys 'qwindows', so these are copied explicitly.
 if(WIN32)
     get_target_property(_qt_plugins_dir Qt${QT_VERSION_MAJOR}::Core LOCATION)
     get_filename_component(_qt_bin_dir "${_qt_plugins_dir}" DIRECTORY)
 
     # Deploy both Debug and Release variants so tests work in either config.
-    set(_qminimal_debug_src "${_qt_bin_dir}/../plugins/platforms/qminimald.dll")
-    set(_qminimal_release_src "${_qt_bin_dir}/../plugins/platforms/qminimal.dll")
     set(_deploy_outputs "")
-
-    if(EXISTS "${_qminimal_debug_src}")
-        set(_debug_dest "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Debug/platforms/qminimald.dll")
-        add_custom_command(OUTPUT "${_debug_dest}"
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Debug/platforms"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${_qminimal_debug_src}" "${_debug_dest}"
-            COMMENT "Deploying qminimald.dll for headless tests (Debug)..."
-        )
-        list(APPEND _deploy_outputs "${_debug_dest}")
-    endif()
-
-    if(EXISTS "${_qminimal_release_src}")
-        set(_release_dest "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Release/platforms/qminimal.dll")
-        add_custom_command(OUTPUT "${_release_dest}"
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Release/platforms"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${_qminimal_release_src}" "${_release_dest}"
-            COMMENT "Deploying qminimal.dll for headless tests (Release)..."
-        )
-        list(APPEND _deploy_outputs "${_release_dest}")
-    endif()
+    foreach(_plugin qminimal qoffscreen)
+        foreach(_config Debug Release)
+            if(_config STREQUAL "Debug")
+                set(_dll "${_plugin}d.dll")
+            else()
+                set(_dll "${_plugin}.dll")
+            endif()
+            set(_src "${_qt_bin_dir}/../plugins/platforms/${_dll}")
+            if(EXISTS "${_src}")
+                set(_dest "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${_config}/platforms/${_dll}")
+                add_custom_command(OUTPUT "${_dest}"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${_config}/platforms"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "${_dest}"
+                    COMMENT "Deploying ${_dll} for headless tests (${_config})..."
+                )
+                list(APPEND _deploy_outputs "${_dest}")
+            endif()
+        endforeach()
+    endforeach()
 
     if(_deploy_outputs)
         add_custom_target(deploy_qminimal ALL DEPENDS ${_deploy_outputs})
@@ -173,6 +168,48 @@ if(QTPILOT_HAS_QML)
     qtPilot_add_test(NAME test_qml_delegate_ids SOURCES test_qml_delegate_ids.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
         ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+    # qt.ui.screenshot on Qt Quick targets asserts on pixels, so it needs a
+    # platform that really renders: the offscreen plugin, not minimal.
+    find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS QuickWidgets)
+    set(_screenshot_quick_libs
+        Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick)
+    if(TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        list(APPEND _screenshot_quick_libs Qt${QT_VERSION_MAJOR}::QuickWidgets)
+    endif()
+    set(_screenshot_quick_env "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+    # A headless Linux or Windows runner may have no GPU API the scene graph can
+    # render through, so render in software there. macOS keeps its default RHI
+    # backend (Metal), so the hardware path is covered too.
+    if(NOT APPLE)
+        list(APPEND _screenshot_quick_env "QT_QUICK_BACKEND=software")
+    endif()
+
+    qtPilot_add_test(NAME test_ui_screenshot_quick SOURCES test_ui_screenshot_quick.cpp
+        LIBS ${_screenshot_quick_libs}
+        ENV "${_screenshot_quick_env}")
+    if(TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        target_compile_definitions(test_ui_screenshot_quick PRIVATE QTPILOT_TEST_HAS_QUICKWIDGETS)
+    endif()
+
+    # The same cases at a device pixel ratio of 2, so the crop's DPR scaling is
+    # checked against real numbers rather than a ratio of 1 that hides it.
+    add_test(NAME test_ui_screenshot_quick_dpr2 COMMAND test_ui_screenshot_quick
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_ui_screenshot_quick>")
+    set(_screenshot_quick_dpr2_env ${_screenshot_quick_env} "QT_SCALE_FACTOR=2")
+    if(APPLE)
+        list(APPEND _screenshot_quick_dpr2_env "QT_STYLE_OVERRIDE=Fusion")
+    endif()
+    set_tests_properties(test_ui_screenshot_quick_dpr2 PROPERTIES
+        ENVIRONMENT "${_screenshot_quick_dpr2_env}")
+
+    # On Qt 6 with Quick Widgets every case must run: a skip there would mean the
+    # pixel checks passed by not looking, and CTest counts a skip as a pass.
+    if(QT_VERSION_MAJOR EQUAL 6 AND TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        set_tests_properties(test_ui_screenshot_quick test_ui_screenshot_quick_dpr2 PROPERTIES
+            FAIL_REGULAR_EXPRESSION "SKIP   :")
+    endif()
 endif()
 
 qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp

@@ -7,9 +7,20 @@
 
 #include <QByteArray>
 #include <QRect>
+#include <QRectF>
 #include <QWidget>
 
 class QWindow;
+class QQuickItem;
+
+// Qt Quick items and windows are captured by rendering the scene graph with
+// QQuickWindow::grabWindow(). Qt 5 does that through an OpenGL context it
+// creates on demand, and aborts the process (qFatal) where none can be made --
+// a headless machine, or a window never shown -- so it is offered on Qt 6 only,
+// whose grab renders through whichever graphics API is available, or none.
+#if defined(QTPILOT_HAS_QML) && QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#define QTPILOT_HAS_QUICK_CAPTURE
+#endif
 
 namespace qtPilot {
 
@@ -91,6 +102,44 @@ class QTPILOT_EXPORT Screenshot {
 
   /// @brief Capture a window scaled to logical pixel dimensions.
   static QByteArray captureWindowLogical(QWindow* window);
+
+#ifdef QTPILOT_HAS_QUICK_CAPTURE
+  // --- QQuickItem capture ---
+  //
+  // An item has no surface of its own, so it is captured by rendering its
+  // window with QQuickWindow::grabWindow() and cropping to where the item is in
+  // the scene. grabWindow() renders the scene graph synchronously, and renders
+  // offscreen when the window is not exposed -- a hidden window, a window under
+  // the offscreen platform, or the internal window of a QQuickWidget -- so no
+  // screen-recording permission is involved and no frame needs to be awaited.
+
+  /// @brief Capture a Qt Quick item, cropped to its bounds in the scene.
+  ///
+  /// The crop is the item's own rect mapped to the scene, so a transformed
+  /// item is captured by its on-screen bounding box. Like QWidget::grab(), the
+  /// image is in device pixels: an item of logical size w x h on a window with
+  /// device pixel ratio r yields a round(w*r) x round(h*r) image.
+  ///
+  /// @param item Item to capture; must be on a window, visible, and non-empty.
+  /// @return Base64-encoded PNG image
+  /// @throws std::invalid_argument if @p item is null or not on a window
+  /// @throws std::runtime_error if the item lies wholly outside its window, or
+  ///         the window cannot be rendered
+  static QByteArray captureItem(QQuickItem* item);
+
+  /// @brief Capture a rectangle of a Qt Quick item.
+  ///
+  /// Like captureRegion(QWidget*, QRect), @p region is relative to the target:
+  /// here it is in the item's own coordinates, and is mapped to the scene.
+  ///
+  /// @param item Item to capture from; must be on a window.
+  /// @param region Rectangle in item coordinates (logical pixels)
+  /// @return Base64-encoded PNG image
+  /// @throws std::invalid_argument if @p item is null or not on a window
+  /// @throws std::runtime_error if the region lies wholly outside the window,
+  ///         or the window cannot be rendered
+  static QByteArray captureItemRegion(QQuickItem* item, const QRectF& region);
+#endif
 };
 
 }  // namespace qtPilot
