@@ -43,7 +43,7 @@ using namespace qtPilot;
 using namespace qtPilot::test;
 
 // Quick capture is a Qt 6 feature (see screenshot.h). On Qt 5 the cases that
-// render are skipped, visibly, and testQuickTargetsNeedQt6 pins what Qt 5 says
+// render are skipped, visibly, and testQuickSupportFollowsTheQtVersion pins what Qt 5 says
 // instead; the widget and error cases run on both.
 #ifdef QTPILOT_HAS_QUICK_CAPTURE
 #define REQUIRE_QUICK_CAPTURE()
@@ -200,8 +200,8 @@ class TestUiScreenshotQuick : public QObject {
   void testNonVisualObjectIsRejected();
   void testDestroyedItemIsNotFound();
 
-  // Qt 5
-  void testQuickTargetsNeedQt6();
+  // Qt versions
+  void testQuickSupportFollowsTheQtVersion();
 
  private:
   /// @brief qt.ui.screenshot of @p target, with any further @p params.
@@ -493,13 +493,18 @@ void TestUiScreenshotQuick::testDestroyedItemIsNotFound() {
   QEXPECT_THAT(response, IsJsonRpcError(ErrorCode::kObjectNotFound));
 }
 
-// --- Qt 5 -------------------------------------------------------------------
+// --- Qt versions ------------------------------------------------------------
 
-void TestUiScreenshotQuick::testQuickTargetsNeedQt6() {
+void TestUiScreenshotQuick::testQuickSupportFollowsTheQtVersion() {
 #ifdef QTPILOT_HAS_QUICK_CAPTURE
-  QSKIP("Qt Quick screenshots are supported on this Qt");
+  // Qt 6: a Quick window is a capture target, even one never shown.
+  QuickScene scene(kSceneQml, QuickScene::Shown::No);
+
+  QEXPECT_THAT(screenshot(scene.window()),
+               IsScreenshot(ImageSizeIs(physical(QSizeF(200, 150), scene.dpr()))));
 #else
-  // Never shown: on Qt 5 even an attempt to render it could abort the process.
+  // Qt 5: refused by name. Never shown, because on Qt 5 even an attempt to
+  // render it could abort the process.
   QuickScene scene(kSceneQml, QuickScene::Shown::No);
 
   QEXPECT_THAT(screenshot(scene.window()),

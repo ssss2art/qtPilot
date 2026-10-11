@@ -203,6 +203,13 @@ if(QTPILOT_HAS_QML)
     endif()
     set_tests_properties(test_ui_screenshot_quick_dpr2 PROPERTIES
         ENVIRONMENT "${_screenshot_quick_dpr2_env}")
+
+    # On Qt 6 with Quick Widgets every case must run: a skip there would mean the
+    # pixel checks passed by not looking, and CTest counts a skip as a pass.
+    if(QT_VERSION_MAJOR EQUAL 6 AND TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        set_tests_properties(test_ui_screenshot_quick test_ui_screenshot_quick_dpr2 PROPERTIES
+            FAIL_REGULAR_EXPRESSION "SKIP   :")
+    endif()
 endif()
 
 qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp
