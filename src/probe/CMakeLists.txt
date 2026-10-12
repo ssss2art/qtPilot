@@ -15,6 +15,7 @@ set(PROBE_SOURCES
     interaction/item_targeting.cpp
     interaction/screenshot.cpp
     interaction/hit_test.cpp
+    interaction/touch_simulator.cpp
     transport/websocket_server.cpp
     transport/notification_queue.cpp
     transport/jsonrpc_handler.cpp
@@ -54,6 +55,7 @@ set(PROBE_HEADERS
     interaction/item_targeting.h
     interaction/screenshot.h
     interaction/hit_test.h
+    interaction/touch_simulator.h
     transport/websocket_server.h
     transport/notification_queue.h
     transport/jsonrpc_handler.h

@@ -212,6 +212,14 @@ if(QTPILOT_HAS_QML)
     endif()
 endif()
 
+if(QTPILOT_HAS_QML AND QT_VERSION_MAJOR EQUAL 6)
+    # qt.ui.touch is Qt 6 only: it delivers through QPointingDevice, which Qt 5 lacks.
+    # Offscreen, like the Quick screenshot test, so windows are really exposed.
+    qtPilot_add_test(NAME test_ui_touch SOURCES test_ui_touch.cpp
+        LIBS Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick
+        ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+endif()
+
 qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
