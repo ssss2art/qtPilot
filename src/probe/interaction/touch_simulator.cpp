@@ -107,7 +107,7 @@ QList<TouchReport> TouchSimulator::frame(QWindow* window, const QList<TouchFinge
       window,
       [target, device, points]() {
         if (target) {
-          qt_handleTouchEventv2(target, device, points);
+          qt_handleTouchEvent(target, device, points);
         }
       },
       Qt::QueuedConnection);
