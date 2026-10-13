@@ -346,11 +346,12 @@ void TestUiTouch::testTwoFingersPinch() {
   }
   QEXPECT_THAT(touch(pinchPad, QJsonArray{}), IsJsonRpcSuccess());
 
-  // PinchHandler measures from where it activated, a touch drag threshold into
-  // the spread rather than at the press, so it reports less than the full 9.
-  // Well over 1 is what only two fingers moving apart can produce.
+  // PinchHandler measures from where it activated, some way into the spread
+  // rather than at the press, so it reports less than the full 9; how far in
+  // depends on the Qt version and the machine's frame timing (5.1 on one, 3.6 on
+  // another). Well over 1 is what only two fingers moving apart can produce.
   const qreal scale = pinchPad->property("largestScale").toReal();
-  QVERIFY2(scale > 4.0 && scale <= 9.0, qPrintable(QString::number(scale)));
+  QVERIFY2(scale > 2.0 && scale <= 9.0, qPrintable(QString::number(scale)));
 }
 
 void TestUiTouch::testPositionsAreInTheTargetsCoordinates() {
