@@ -1334,7 +1334,7 @@ QList<TouchFinger> parseTouchFingers(const QJsonObject& params, const TouchSurfa
 #endif  // QTPILOT_HAS_TOUCH
 
 /// qt.ui.touch: one frame of touchscreen input -- the fingers down after it.
-QJsonObject handleUiTouch(const QJsonObject& params) {
+QJsonObject handleUiTouch([[maybe_unused]] const QJsonObject& params) {
   const QString methodName = QStringLiteral("qt.ui.touch");
 #ifndef QTPILOT_HAS_TOUCH
   throw JsonRpcException(JsonRpcError::kInvalidParams, QStringLiteral("qt.ui.touch needs Qt 6"),
