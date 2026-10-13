@@ -134,7 +134,7 @@ class TestSetMode:
 class TestCreateServerModes:
     @pytest.mark.parametrize(
         ("mode", "expected_count"),
-        [("native", 45), ("cu", 25), ("chrome", 20), ("all", 66)],
+        [("native", 46), ("cu", 25), ("chrome", 20), ("all", 67)],
     )
     @pytest.mark.asyncio
     async def test_public_tool_counts(self, mode, expected_count):

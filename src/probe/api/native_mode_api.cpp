@@ -14,6 +14,7 @@
 #include "interaction/item_targeting.h"
 #include "interaction/modifier_parser.h"
 #include "interaction/screenshot.h"
+#include "interaction/touch_simulator.h"
 #include "introspection/event_capture.h"
 #include "introspection/meta_inspector.h"
 #include "introspection/model_navigator.h"
@@ -22,7 +23,9 @@
 #include "introspection/signal_monitor.h"
 
 #include <algorithm>
+#include <cmath>
 #include <expected>
+#include <functional>
 #include <iterator>
 
 #include <QAbstractItemView>
@@ -1241,6 +1244,130 @@ QJsonObject handleUiMouseUp(const QJsonObject& params) {
   return heldMouseResult(point);
 }
 
+#ifdef QTPILOT_HAS_TOUCH
+/// @brief Where qt.ui.touch puts its fingers: a window, and a map from the target's
+/// coordinates into it.
+struct TouchSurface {
+  QWindow* window = nullptr;
+  std::function<QPointF(const QPointF&)> toWindow;
+};
+
+TouchSurface resolveTouchSurface(QObject* obj, const QString& objectId, const QString& methodName) {
+#ifdef QTPILOT_HAS_QML
+  if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+    if (!item->window()) {
+      throw JsonRpcException(
+          ErrorCode::kWidgetNotVisible,
+          QStringLiteral("QQuickItem is not on a window (not rendered): %1").arg(objectId),
+          QJsonObject{{QStringLiteral("method"), methodName},
+                      {QStringLiteral("objectId"), objectId}});
+    }
+    QPointer<QQuickItem> safe(item);
+    return TouchSurface{item->window(), [safe](const QPointF& point) {
+                          return safe ? safe->mapToScene(point) : point;
+                        }};
+  }
+#endif
+  if (auto* window = qobject_cast<QWindow*>(obj)) {
+    return TouchSurface{window, [](const QPointF& point) { return point; }};
+  }
+  if (auto* widget = qobject_cast<QWidget*>(obj)) {
+    QWidget* top = widget->window();
+    if (!widget->isVisible() || !top->windowHandle()) {
+      throw JsonRpcException(ErrorCode::kWidgetNotVisible,
+                             QStringLiteral("Widget is not shown on a window: %1").arg(objectId),
+                             QJsonObject{{QStringLiteral("method"), methodName},
+                                         {QStringLiteral("objectId"), objectId}});
+    }
+    QPointer<QWidget> safe(widget);
+    return TouchSurface{top->windowHandle(), [safe, top](const QPointF& point) {
+                          return safe ? mapToUnrounded(safe, top, point) : point;
+                        }};
+  }
+  throw JsonRpcException(
+      ErrorCode::kObjectNotWidget,
+      QStringLiteral("qt.ui.touch needs a Qt Quick item, a window or a widget: %1").arg(objectId),
+      QJsonObject{
+          {QStringLiteral("method"), methodName},
+          {QStringLiteral("objectId"), objectId},
+          {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
+}
+
+/// @brief The fingers of a qt.ui.touch frame, validated: distinct integer ids and numeric x/y.
+QList<TouchFinger> parseTouchFingers(const QJsonObject& params, const TouchSurface& surface,
+                                     const QString& methodName) {
+  const QJsonValue raw = params.value(QStringLiteral("points"));
+  if (!raw.isArray()) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Parameter 'points' must be an array of {id, x, y}: the fingers down "
+                       "after this frame, [] to lift them all"),
+        QJsonObject{{QStringLiteral("method"), methodName}, {QStringLiteral("points"), raw}});
+  }
+  QList<TouchFinger> fingers;
+  QSet<int> ids;
+  for (const QJsonValue& value : raw.toArray()) {
+    const QJsonObject point = value.toObject();
+    const QJsonValue id = point.value(QStringLiteral("id"));
+    const double idNumber = id.toDouble(-1);
+    if (!value.isObject() || !id.isDouble() || idNumber < 0 || idNumber != std::floor(idNumber)) {
+      throw JsonRpcException(
+          JsonRpcError::kInvalidParams,
+          QStringLiteral("Each point needs a non-negative integer 'id'"),
+          QJsonObject{{QStringLiteral("method"), methodName}, {QStringLiteral("point"), value}});
+    }
+    const int fingerId = static_cast<int>(idNumber);
+    if (ids.contains(fingerId)) {
+      throw JsonRpcException(
+          JsonRpcError::kInvalidParams,
+          QStringLiteral("Finger %1 appears twice in one frame").arg(fingerId),
+          QJsonObject{{QStringLiteral("method"), methodName}, {QStringLiteral("id"), fingerId}});
+    }
+    ids.insert(fingerId);
+    const QPointF local(requireCoordinate(point, QStringLiteral("x"), methodName),
+                        requireCoordinate(point, QStringLiteral("y"), methodName));
+    fingers.append(TouchFinger{.id = fingerId, .windowPosition = surface.toWindow(local)});
+  }
+  return fingers;
+}
+
+/// qt.ui.touch: one frame of touchscreen input -- the fingers down after it.
+QJsonObject handleUiTouch(const QJsonObject& params) {
+  const QString methodName = QStringLiteral("qt.ui.touch");
+  QObject* obj = resolveObjectParam(params, methodName);
+  const QString objectId = params[QStringLiteral("objectId")].toString();
+  const TouchSurface surface = resolveTouchSurface(obj, objectId, methodName);
+  const QList<TouchFinger> fingers = parseTouchFingers(params, surface, methodName);
+
+  if (!TouchSimulator::isHeld() && fingers.isEmpty()) {
+    throw JsonRpcException(JsonRpcError::kInvalidParams,
+                           QStringLiteral("No finger is down: an empty frame has nothing to lift"),
+                           QJsonObject{{QStringLiteral("method"), methodName}});
+  }
+  if (TouchSimulator::isHeld() && TouchSimulator::heldWindow() != surface.window) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Fingers are down on another window: lift them first with points []"),
+        QJsonObject{{QStringLiteral("method"), methodName},
+                    {QStringLiteral("heldWindowObjectId"),
+                     ObjectRegistry::instance()->objectId(TouchSimulator::heldWindow())}});
+  }
+
+  QJsonArray touches;
+  for (const TouchReport& report : TouchSimulator::frame(surface.window, fingers)) {
+    touches.append(QJsonObject{{QStringLiteral("id"), report.id},
+                               {QStringLiteral("state"), report.state},
+                               {QStringLiteral("x"), report.windowPosition.x()},
+                               {QStringLiteral("y"), report.windowPosition.y()}});
+  }
+  return QJsonObject{
+      {QStringLiteral("ok"), true},
+      {QStringLiteral("deferred"), true},
+      {QStringLiteral("windowObjectId"), ObjectRegistry::instance()->objectId(surface.window)},
+      {QStringLiteral("touches"), touches}};
+}
+#endif  // QTPILOT_HAS_TOUCH
+
 QJsonObject handleUiWheel(const QJsonObject& params) {
   const QString kMethod = QStringLiteral("qt.ui.wheel");
   QObject* obj = resolveObjectParam(params, kMethod);
@@ -2154,6 +2281,21 @@ void NativeModeApi::registerUiMethods() {
   m_handler->RegisterMethod(QStringLiteral("qt.ui.mouseUp"), [](const QString& params) -> QString {
     return envelopeToString(ResponseEnvelope::wrap(handleUiMouseUp(parseParams(params))));
   });
+
+  // qt.ui.touch - one frame of touchscreen input: the fingers down after it, by id.
+#ifdef QTPILOT_HAS_TOUCH
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.touch"), [](const QString& params) -> QString {
+    auto p = parseParams(params);
+    return envelopeToString(
+        ResponseEnvelope::wrap(handleUiTouch(p), p[QStringLiteral("objectId")].toString()));
+  });
+#else
+  // Nothing to do but say why: a stub that only throws, so no compiler sees code after it.
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.touch"), [](const QString&) -> QString {
+    throw JsonRpcException(JsonRpcError::kInvalidParams, QStringLiteral("qt.ui.touch needs Qt 6"),
+                           QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.ui.touch")}});
+  });
+#endif
 
   // qt.ui.clickItem - select/click/edit an item by itemPath (string[]) or path (int[]).
   m_handler->RegisterMethod(

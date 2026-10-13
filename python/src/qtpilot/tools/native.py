@@ -545,6 +545,36 @@ def register_native_tools(mcp: FastMCP) -> None:
         return await require_probe().call("qt.ui.wheel", params)
 
     @mcp.tool
+    async def qt_ui_touch(
+        objectId: str,
+        points: list[dict | list | tuple] | None = None,
+        ctx: Context = None,
+    ) -> dict:
+        """Put fingers on a touchscreen: one frame of touch input.
+
+        points: the fingers that are down after this frame, each {id, x, y} or
+        [id, x, y], local to the target (a Qt Quick item, a window or a widget).
+        A new id presses, a moved one updates, an unchanged one stays, and an id
+        that was down but is missing lifts. Omit points (or pass []) to lift
+        every finger. Fingers stay down between calls, so your pacing is the
+        gesture's timing; Qt Quick folds touch moves that land within one frame,
+        so space the frames of a pinch or drag a frame or more apart.
+
+        Example (tap): qt_ui_touch(objectId="pad", points=[[0, 30, 20]]) then
+        qt_ui_touch(objectId="pad")
+        Example (pinch step): qt_ui_touch(objectId="canvas", points=[[0, 80, 50], [1, 160, 50]])
+        """
+        from qtpilot.server import require_probe
+
+        def finger(value: dict | list | tuple) -> dict:
+            if isinstance(value, (list, tuple)) and len(value) >= 3:
+                return {"id": value[0], "x": value[1], "y": value[2]}
+            return dict(value)
+
+        params: dict = {"objectId": objectId, "points": [finger(p) for p in points or []]}
+        return await require_probe().call("qt.ui.touch", params)
+
+    @mcp.tool
     async def qt_ui_doubleClick(
         objectId: str,
         button: str | None = None,
