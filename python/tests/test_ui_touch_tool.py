@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastmcp import Client
+
 from qtpilot.replay import MUTATING_METHODS, TOOL_TO_METHOD
 from qtpilot.replay_contract import parse_contract
 from qtpilot.server import create_server

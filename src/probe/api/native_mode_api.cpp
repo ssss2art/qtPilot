@@ -1244,6 +1244,7 @@ QJsonObject handleUiMouseUp(const QJsonObject& params) {
   return heldMouseResult(point);
 }
 
+#ifdef QTPILOT_HAS_TOUCH
 /// @brief Where qt.ui.touch puts its fingers: a window, and a map from the target's
 /// coordinates into it.
 struct TouchSurface {
@@ -1329,6 +1330,8 @@ QList<TouchFinger> parseTouchFingers(const QJsonObject& params, const TouchSurfa
   }
   return fingers;
 }
+
+#endif  // QTPILOT_HAS_TOUCH
 
 /// qt.ui.touch: one frame of touchscreen input -- the fingers down after it.
 QJsonObject handleUiTouch(const QJsonObject& params) {

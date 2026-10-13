@@ -215,9 +215,15 @@ endif()
 if(QTPILOT_HAS_QML AND QT_VERSION_MAJOR EQUAL 6)
     # qt.ui.touch is Qt 6 only: it delivers through QPointingDevice, which Qt 5 lacks.
     # Offscreen, like the Quick screenshot test, so windows are really exposed.
+    set(_touch_env "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+    # As for the Quick screenshot test: a headless Linux or Windows runner may have
+    # no GPU API for the scene graph, so render in software there.
+    if(NOT APPLE)
+        list(APPEND _touch_env "QT_QUICK_BACKEND=software")
+    endif()
     qtPilot_add_test(NAME test_ui_touch SOURCES test_ui_touch.cpp
         LIBS Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick
-        ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+        ENV "${_touch_env}")
 endif()
 
 qtPilot_add_test(NAME test_signal_monitor SOURCES test_signal_monitor.cpp
