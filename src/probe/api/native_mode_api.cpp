@@ -1331,15 +1331,9 @@ QList<TouchFinger> parseTouchFingers(const QJsonObject& params, const TouchSurfa
   return fingers;
 }
 
-#endif  // QTPILOT_HAS_TOUCH
-
 /// qt.ui.touch: one frame of touchscreen input -- the fingers down after it.
-QJsonObject handleUiTouch([[maybe_unused]] const QJsonObject& params) {
+QJsonObject handleUiTouch(const QJsonObject& params) {
   const QString methodName = QStringLiteral("qt.ui.touch");
-#ifndef QTPILOT_HAS_TOUCH
-  throw JsonRpcException(JsonRpcError::kInvalidParams, QStringLiteral("qt.ui.touch needs Qt 6"),
-                         QJsonObject{{QStringLiteral("method"), methodName}});
-#else
   QObject* obj = resolveObjectParam(params, methodName);
   const QString objectId = params[QStringLiteral("objectId")].toString();
   const TouchSurface surface = resolveTouchSurface(obj, objectId, methodName);
@@ -1371,8 +1365,8 @@ QJsonObject handleUiTouch([[maybe_unused]] const QJsonObject& params) {
       {QStringLiteral("deferred"), true},
       {QStringLiteral("windowObjectId"), ObjectRegistry::instance()->objectId(surface.window)},
       {QStringLiteral("touches"), touches}};
-#endif
 }
+#endif  // QTPILOT_HAS_TOUCH
 
 QJsonObject handleUiWheel(const QJsonObject& params) {
   const QString kMethod = QStringLiteral("qt.ui.wheel");
@@ -2289,11 +2283,19 @@ void NativeModeApi::registerUiMethods() {
   });
 
   // qt.ui.touch - one frame of touchscreen input: the fingers down after it, by id.
+#ifdef QTPILOT_HAS_TOUCH
   m_handler->RegisterMethod(QStringLiteral("qt.ui.touch"), [](const QString& params) -> QString {
     auto p = parseParams(params);
     return envelopeToString(
         ResponseEnvelope::wrap(handleUiTouch(p), p[QStringLiteral("objectId")].toString()));
   });
+#else
+  // Nothing to do but say why: a stub that only throws, so no compiler sees code after it.
+  m_handler->RegisterMethod(QStringLiteral("qt.ui.touch"), [](const QString&) -> QString {
+    throw JsonRpcException(JsonRpcError::kInvalidParams, QStringLiteral("qt.ui.touch needs Qt 6"),
+                           QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.ui.touch")}});
+  });
+#endif
 
   // qt.ui.clickItem - select/click/edit an item by itemPath (string[]) or path (int[]).
   m_handler->RegisterMethod(
