@@ -10,7 +10,6 @@
 #include <QQueue>
 #include <QString>
 
-class QTimer;
 class QWebSocket;
 
 namespace qtPilot {
@@ -50,16 +49,19 @@ class QTPILOT_EXPORT NotificationQueue : public QObject {
 
  private slots:
   void drain();
+  void resumeAfterBackpressure();
 
  private:
   QWebSocket* m_socket;
   QQueue<QString> m_queue;
   mutable QMutex m_mutex;
-  QTimer* m_drainTimer;
+  /// Called with m_mutex held: posts one drain unless one is already posted.
+  void scheduleDrainLocked();
   int m_capacity;
   int m_batchSize;
   int m_dropCount = 0;
   bool m_paused = false;
+  bool m_drainScheduled = false;
 
   static constexpr qint64 kHighWaterMark = 1024 * 1024;  // 1 MB
   static constexpr qint64 kLowWaterMark = 512 * 1024;    // 512 KB

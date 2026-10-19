@@ -3,7 +3,7 @@
 
 #include "transport/notification_queue.h"
 
-#include <QTimer>
+#include <QMetaObject>
 #include <QWebSocket>
 
 namespace qtPilot {
@@ -21,10 +21,11 @@ NotificationQueue::NotificationQueue(QWebSocket* socket, int capacity, int batch
     }
   }
 
-  m_drainTimer = new QTimer(this);
-  m_drainTimer->setInterval(0);
-  connect(m_drainTimer, &QTimer::timeout, this, &NotificationQueue::drain);
-  m_drainTimer->start();
+  // Drained when there is something to send, never polled: a repeating zero-interval timer kept
+  // the application's GUI thread busy for as long as a client stayed connected.
+  if (m_socket) {
+    connect(m_socket, &QWebSocket::bytesWritten, this, &NotificationQueue::resumeAfterBackpressure);
+  }
 }
 
 NotificationQueue::~NotificationQueue() = default;
@@ -36,6 +37,26 @@ void NotificationQueue::enqueue(const QString& message) {
     ++m_dropCount;
   }
   m_queue.enqueue(message);
+  scheduleDrainLocked();
+}
+
+void NotificationQueue::scheduleDrainLocked() {
+  if (m_drainScheduled) {
+    return;
+  }
+  m_drainScheduled = true;
+  // Queued, so an enqueue from any thread drains on this object's thread, one batch per turn.
+  QMetaObject::invokeMethod(this, &NotificationQueue::drain, Qt::QueuedConnection);
+}
+
+void NotificationQueue::resumeAfterBackpressure() {
+  if (!m_paused || !m_socket || m_socket->bytesToWrite() > kLowWaterMark) {
+    return;
+  }
+  QMutexLocker lock(&m_mutex);
+  if (!m_queue.isEmpty()) {
+    scheduleDrainLocked();
+  }
 }
 
 int NotificationQueue::dropCount() const {
@@ -55,6 +76,10 @@ int NotificationQueue::capacity() const {
 }
 
 void NotificationQueue::drain() {
+  {
+    QMutexLocker lock(&m_mutex);
+    m_drainScheduled = false;
+  }
   if (!m_socket) {
     return;
   }
@@ -65,7 +90,7 @@ void NotificationQueue::drain() {
     if (pending <= kLowWaterMark) {
       m_paused = false;
     } else {
-      return;  // still above low-water mark, skip this cycle
+      return;  // still above the low-water mark; bytesWritten resumes the drain
     }
   } else if (pending > kHighWaterMark) {
     m_paused = true;
@@ -85,6 +110,10 @@ void NotificationQueue::drain() {
     lock.unlock();
     m_socket->sendTextMessage(msg);
     lock.relock();
+  }
+  // More than one batch waiting: the rest goes on the next turn of the event loop.
+  if (!m_queue.isEmpty()) {
+    scheduleDrainLocked();
   }
 }
 

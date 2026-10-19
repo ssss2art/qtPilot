@@ -1,15 +1,16 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "transport/notification_queue.h"
 
+#include <QAbstractEventDispatcher>
 #include <QCoreApplication>
 #include <QSignalSpy>
 #include <QTest>
+#include <QThread>
 #include <QTimer>
 #include <QWebSocket>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot::test;
 
@@ -88,6 +89,45 @@ class TestNotificationQueue : public QObject {
       QCoreApplication::processEvents();
     }
 
+    QEXPECT_THAT(queue.queueSize(), Eq(0));
+  }
+
+  /// A connected client with nothing to send costs nothing: no timer runs while the queue is idle.
+  void testIdleQueueRunsNoTimer() {
+    QWebSocket socket;
+    qtPilot::NotificationQueue queue(&socket, 100, 50);
+    QEXPECT_THAT(activeTimers(queue), Eq(0));
+
+    queue.enqueue("msg");
+    QCoreApplication::processEvents();
+    QEXPECT_THAT(queue.queueSize(), Eq(0));
+    QEXPECT_THAT(activeTimers(queue), Eq(0));
+  }
+
+  /// Timers running for @p queue, on it or on any object it owns.
+  static qsizetype activeTimers(QObject& queue) {
+    auto* dispatcher = QAbstractEventDispatcher::instance();
+    qsizetype count = dispatcher->registeredTimers(&queue).size();
+    for (QObject* child : queue.findChildren<QObject*>()) {
+      count += dispatcher->registeredTimers(child).size();
+    }
+    return count;
+  }
+
+  /// Producers on other threads (signal monitors) still get their messages drained.
+  void testEnqueueFromAnotherThreadDrains() {
+    QWebSocket socket;
+    qtPilot::NotificationQueue queue(&socket, 100, 50);
+    QThread* producer = QThread::create([&queue] {
+      for (int i = 0; i < 5; ++i) {
+        queue.enqueue(QString("msg_%1").arg(i));
+      }
+    });
+    producer->start();
+    QVERIFY(producer->wait(5000));
+    delete producer;
+    QEXPECT_THAT(queue.queueSize(), Eq(5));
+    QCoreApplication::processEvents();
     QEXPECT_THAT(queue.queueSize(), Eq(0));
   }
 
