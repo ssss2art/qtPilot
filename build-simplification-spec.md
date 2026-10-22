@@ -32,7 +32,7 @@ New structure:
 - **debug**: inherits base, CMAKE_BUILD_TYPE=Debug, tests ON
 - **release**: inherits base, CMAKE_BUILD_TYPE=Release, tests ON
 - Matching build and test presets for each
-- Windows presets inherit and add VS generator + x64 architecture
+- Windows presets inherit and add the x64 architecture; CMake picks the newest installed Visual Studio
 
 ### 2. `tests/CMakeLists.txt` — Reduce from 654 lines to ~50 lines
 

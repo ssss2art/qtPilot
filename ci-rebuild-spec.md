@@ -42,8 +42,8 @@ Replace 6 vcpkg-dependent presets with 4 simple presets:
 - `base` (hidden): sets `binaryDir`, `installDir`, `CMAKE_EXPORT_COMPILE_COMMANDS`
 - `debug`: inherits base, Debug, tests ON (Linux condition)
 - `release`: inherits base, Release, tests ON (Linux condition)
-- `windows-debug`: inherits base, Debug, VS 2022 x64 generator (Windows condition)
-- `windows-release`: inherits base, Release, VS 2022 x64 generator (Windows condition)
+- `windows-debug`: inherits base, Debug, x64 with the newest installed Visual Studio (Windows condition)
+- `windows-release`: inherits base, Release, x64 with the newest installed Visual Studio (Windows condition)
 
 Plus matching build presets and test presets (4 each). No vcpkg toolchain reference anywhere.
 

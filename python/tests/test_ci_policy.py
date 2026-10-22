@@ -174,3 +174,37 @@ def test_pr_event_wiring_is_always_triggered_and_has_a_final_gate() -> None:
     assert 'python scripts/ci_policy.py plan' in workflow
     push_block = workflow.split("  push:", 1)[1].split("  pull_request:", 1)[0]
     assert "paths:" not in push_block, "All changed paths must reach the classifier"
+
+
+def test_windows_presets_build_with_any_installed_visual_studio() -> None:
+    presets = json.loads((Path(__file__).resolve().parents[2] / "CMakePresets.json").read_text())
+    windows = [p for p in presets["configurePresets"] if p["name"].startswith(("windows-", "qt5-windows-"))]
+    assert windows, "Expected Windows configure presets"
+    for preset in windows:
+        assert "Visual Studio" not in preset.get("generator", ""), (
+            f"{preset['name']} pins {preset['generator']!r}; leave the generator unset so CMake uses the "
+            "newest installed Visual Studio, and choose another with -G or CMAKE_GENERATOR"
+        )
+        assert "Visual Studio" not in preset.get("description", ""), f"{preset['name']} names a Visual Studio version"
+    by_name = {p["name"]: p for p in presets["configurePresets"]}
+
+    def architecture(preset: dict[str, object]) -> object:
+        parent = preset.get("inherits")
+        return preset.get("architecture") or (architecture(by_name[parent]) if isinstance(parent, str) else None)
+
+    for preset in windows:
+        resolved = architecture(preset)
+        assert isinstance(resolved, dict) and resolved.get("strategy") == "set", f"{preset['name']} must pin its architecture"
+
+
+def test_released_windows_probes_pin_the_toolset_not_the_visual_studio() -> None:
+    root = Path(__file__).resolve().parents[2]
+    windows = [e for e in json.loads((root / "scripts/ci-matrix.json").read_text())["build"] if e["platform"] == "windows"]
+    assert windows, "Expected Windows build legs"
+    for entry in windows:
+        assert entry.get("toolset") in {"v142", "v143"}, (
+            f"{entry['preset']} (Qt {entry['qt']}) must name a toolset no newer than v143, so a runner image that adds "
+            "a newer Visual Studio cannot raise the runtime that released probes need from their target"
+        )
+    workflow = (root / ".github/workflows/ci.yml").read_text()
+    assert "format('-T {0}', matrix.toolset)" in workflow, "The desktop configure must pass the matrix toolset to CMake"

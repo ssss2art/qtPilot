@@ -134,11 +134,11 @@ class TestPhase2_1_CMakePresets:
         assert names == expected, \
             f"Expected test presets {expected}, got {names}"
 
-    def test_windows_presets_have_vs_generator(self, presets):
+    def test_windows_presets_do_not_pin_a_vs_version(self, presets):
         for p in presets["configurePresets"]:
             if "windows" in p["name"] and not p.get("hidden"):
-                assert "Visual Studio 17 2022" in p.get("generator", ""), \
-                    f"Preset {p['name']} should use VS 2022 generator"
+                assert "Visual Studio" not in p.get("generator", ""), \
+                    f"Preset {p['name']} should leave the generator to CMake"
 
     def test_base_preset_has_binary_and_install_dir(self, presets):
         base = [p for p in presets["configurePresets"] if p["name"] == "base"][0]

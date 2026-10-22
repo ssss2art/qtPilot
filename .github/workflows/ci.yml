@@ -449,7 +449,7 @@ jobs:
             exit 1
           fi
           echo "Using Qt prefix: $QT_PATH"
-          cmake --preset ${{ matrix.preset }} -DCMAKE_PREFIX_PATH="$QT_PATH" ${{ matrix.extra_cmake }}
+          cmake --preset ${{ matrix.preset }} -DCMAKE_PREFIX_PATH="$QT_PATH" ${{ matrix.extra_cmake }} ${{ matrix.toolset && format('-T {0}', matrix.toolset) || '' }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
