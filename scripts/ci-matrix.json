@@ -14,6 +14,7 @@
       "preset": "windows-release",
       "platform": "windows",
       "compiler": "msvc17",
+      "toolset": "v143",
       "modules": ""
     },
     {
@@ -22,6 +23,7 @@
       "preset": "windows-x86-release",
       "platform": "windows",
       "compiler": "msvc17",
+      "toolset": "v143",
       "modules": "",
       "arch": "win32_msvc2019"
     },
@@ -39,6 +41,7 @@
       "preset": "windows-release",
       "platform": "windows",
       "compiler": "msvc17",
+      "toolset": "v143",
       "modules": "qtwebsockets"
     },
     {
@@ -64,6 +67,7 @@
       "preset": "windows-release",
       "platform": "windows",
       "compiler": "msvc17",
+      "toolset": "v143",
       "modules": "qtwebsockets"
     },
     {

@@ -50,14 +50,13 @@
     {
       "name": "windows-debug",
       "displayName": "Windows Debug",
-      "description": "Windows debug build with VS 2022",
+      "description": "Windows x64 debug build with MSVC",
       "inherits": "base",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "generator": "Visual Studio 17 2022",
       "architecture": {
         "value": "x64",
         "strategy": "set"
@@ -71,14 +70,13 @@
     {
       "name": "windows-release",
       "displayName": "Windows Release",
-      "description": "Windows release build with VS 2022",
+      "description": "Windows x64 release build with MSVC",
       "inherits": "base",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "generator": "Visual Studio 17 2022",
       "architecture": {
         "value": "x64",
         "strategy": "set"
@@ -92,14 +90,13 @@
     {
       "name": "windows-x86-debug",
       "displayName": "Windows x86 Debug",
-      "description": "Windows 32-bit debug build with VS 2022",
+      "description": "Windows 32-bit debug build with MSVC",
       "inherits": "base",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "generator": "Visual Studio 17 2022",
       "architecture": {
         "value": "Win32",
         "strategy": "set"
@@ -113,14 +110,13 @@
     {
       "name": "windows-x86-release",
       "displayName": "Windows x86 Release",
-      "description": "Windows 32-bit release build with VS 2022",
+      "description": "Windows 32-bit release build with MSVC",
       "inherits": "base",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "generator": "Visual Studio 17 2022",
       "architecture": {
         "value": "Win32",
         "strategy": "set"

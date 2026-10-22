@@ -56,14 +56,43 @@ ctest --test-dir build --output-on-failure
 git clone https://github.com/ssss2art/qtPilot.git
 cd qtPilot
 
-# Configure for Visual Studio 2022
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64"
+# Configure with the newest installed Visual Studio
+cmake -B build -A x64 -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64"
 
 # Build
 cmake --build build --config Release
 
 # Run tests
 ctest --test-dir build --output-on-failure -C Release
+```
+
+With no `-G`, CMake picks the newest Visual Studio it recognises, so the CMake
+release must be new enough to know your Visual Studio. If it is not, CMake falls
+back to NMake and stops with "does not support platform specification"; update
+CMake. To use another Visual Studio, pass `-G "Visual Studio 17 2022"` or set the
+`CMAKE_GENERATOR` environment variable. The Windows presets pin an architecture,
+which only Visual Studio generators accept, so `CMAKE_GENERATOR` must name one:
+a value such as `Ninja` makes them fail with the same error.
+The `msvc2022_64` in a Qt path names Qt's MSVC ABI, not a required Visual Studio.
+
+### Matching the target's MSVC runtime
+
+The injected probe runs on the MSVC runtime that the target application has
+already loaded. Microsoft only guarantees compatibility when that runtime is at
+least as new as the newest toolset in the process, so **build the probe with a
+toolset no newer than the target's runtime**. A probe from a newer toolset can
+crash when it loads into an application that ships an older `msvcp140.dll`.
+Released Windows probes are built with the v143 toolset (MSVC 14.3x, at most
+14.44) for this reason, so a target needs a runtime at least as new as the
+toolset of the release it loads.
+
+To build with an older toolset from a newer Visual Studio, select it with `-T`,
+which keeps the build independent of the Visual Studio version. The toolset must
+be installed: in Visual Studio 2026 add the "MSVC v143 - VS 2022 C++ build tools"
+component for your architecture.
+
+```powershell
+cmake --preset windows-release -T v143
 ```
 
 ## Using CMake Presets
