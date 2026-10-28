@@ -6,6 +6,8 @@
 // -qmljsdebugger from argv wherever it appears, so a target launched for qmlpreview or the QML
 // debugger used to start without the argument that connects it back.
 
+#include <chrono>
+
 #include <QFile>
 #include <QProcess>
 #include <QTemporaryDir>
@@ -14,7 +16,7 @@
 namespace {
 
 /// How long one launch may take, target included, before the test gives up on it.
-constexpr int kLauncherTimeoutMs = 60000;
+constexpr std::chrono::milliseconds kLauncherTimeout{60000};
 
 /// Stands for the target executable in a row's command line.
 const QString kTarget = QStringLiteral("<target>");
@@ -52,9 +54,9 @@ QStringList TestLauncherArgs::runThroughLauncher(const QStringList& command) {
   launcher.setWorkingDirectory(m_dir.path());  // the target inherits it and writes args.txt there
   launcher.setProcessChannelMode(QProcess::ForwardedChannels);  // the launcher's own diagnostics
   launcher.start(QStringLiteral(QTPILOT_TEST_LAUNCHER), arguments);
-  if (!launcher.waitForStarted(kLauncherTimeoutMs))
+  if (!launcher.waitForStarted(static_cast<int>(kLauncherTimeout.count())))
     return {QStringLiteral("<launcher did not start: %1>").arg(launcher.errorString())};
-  if (!launcher.waitForFinished(kLauncherTimeoutMs)) {
+  if (!launcher.waitForFinished(static_cast<int>(kLauncherTimeout.count()))) {
     launcher.kill();
     launcher.waitForFinished();
     return {QStringLiteral("<launcher did not finish>")};
