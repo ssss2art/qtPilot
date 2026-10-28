@@ -319,6 +319,9 @@ set_tests_properties(test_admin_injection PROPERTIES LABELS "admin")
 # arguments it receives, so nothing between the command line and the target can hide one.
 if(TARGET qtPilot_launcher)
     add_executable(launcher_args_echo launcher_args_echo.cpp)
+    if(MINGW)
+        target_link_options(launcher_args_echo PRIVATE -municode)  # its Windows entry is wmain
+    endif()
 
     qtPilot_add_test(NAME test_launcher_args SOURCES test_launcher_args.cpp
         ENV "QTPILOT_ENABLED=0")

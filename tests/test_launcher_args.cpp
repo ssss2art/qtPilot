@@ -54,7 +54,7 @@ QStringList TestLauncherArgs::runThroughLauncher(const QStringList& targetArgs) 
   QFile out(outPath);
   if (!out.open(QIODevice::ReadOnly))
     return {QStringLiteral("<target wrote nothing>")};
-  return QString::fromLocal8Bit(out.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+  return QString::fromUtf8(out.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
 }
 
 void TestLauncherArgs::forwardsArgumentsAfterSeparator_data() {
@@ -69,6 +69,8 @@ void TestLauncherArgs::forwardsArgumentsAfterSeparator_data() {
       << QStringList{QStringLiteral("--qmljsdebugger=port:3768,block")};
   QTest::newRow("launcher option names reach the target")
       << QStringList{QStringLiteral("--port"), QStringLiteral("9")};
+  // Outside any ANSI code page: on Windows the narrow argv cannot carry it.
+  QTest::newRow("non-ASCII") << QStringList{QStringLiteral(u"项目.dv")};
 }
 
 void TestLauncherArgs::forwardsArgumentsAfterSeparator() {

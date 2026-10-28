@@ -20,6 +20,15 @@
 
 #ifdef Q_OS_WIN
 #include "elevation_windows.h"
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#include <shellapi.h>
 #endif
 
 #ifdef Q_OS_MACOS
@@ -141,20 +150,36 @@ QString findProbePath(const QString& qtVersion) {
   return QString();
 }
 
+/// @brief The launcher's arguments as given, before QCoreApplication strips Qt's own switches.
+/// On Windows argv is in the ANSI code page, so read the wide command line, as Qt itself does.
+QStringList rawCommandLineArguments(int argc, char* argv[]) {
+  QStringList arguments;
+#ifdef Q_OS_WIN
+  Q_UNUSED(argc);
+  Q_UNUSED(argv);
+  int count = 0;
+  if (LPWSTR* wide = CommandLineToArgvW(GetCommandLineW(), &count)) {
+    for (int i = 1; i < count; ++i)
+      arguments.append(QString::fromWCharArray(wide[i]));
+    LocalFree(wide);
+  }
+#else
+  for (int i = 1; i < argc; ++i)
+    arguments.append(QString::fromLocal8Bit(argv[i]));
+#endif
+  return arguments;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
   // QCoreApplication removes the arguments Qt reserves for itself (-qmljsdebugger) from argv, even
   // after "--", so a target started for qmlpreview or the QML debugger would never receive them.
-  // Keep everything after "--" as given, before Qt sees it, and hand that to the target unchanged.
-  QStringList rawTarget;
-  bool hasSeparator = false;
-  for (int i = 1; i < argc; ++i) {
-    if (hasSeparator)
-      rawTarget.append(QString::fromLocal8Bit(argv[i]));
-    else if (qstrcmp(argv[i], "--") == 0)
-      hasSeparator = true;
-  }
+  // Keep the command line as given, before Qt sees it: everything after "--" goes to the target
+  // unchanged, and an elevated relaunch repeats all of it.
+  const QStringList rawArguments = rawCommandLineArguments(argc, argv);
+  const qsizetype separator = rawArguments.indexOf(QStringLiteral("--"));
+  const QStringList rawTarget = separator < 0 ? QStringList() : rawArguments.mid(separator + 1);
 
   QCoreApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("qtpilot-launch"));
@@ -254,9 +279,9 @@ int main(int argc, char* argv[]) {
 #ifdef Q_OS_WIN
   if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
     if (!qtPilot::isProcessElevated()) {
-      // Re-launch self as admin, forwarding all arguments
-      return qtPilot::relaunchElevated(QCoreApplication::applicationFilePath(),
-                                       QCoreApplication::arguments().mid(1));
+      // Re-launch self as admin, forwarding all arguments as given (not arguments(), which Qt
+      // has already stripped)
+      return qtPilot::relaunchElevated(QCoreApplication::applicationFilePath(), rawArguments);
     }
     // Already elevated — fall through to normal launch
   }
