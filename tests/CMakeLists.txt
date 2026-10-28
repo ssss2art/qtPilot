@@ -325,11 +325,15 @@ qtPilot_add_test(NAME test_authenticated_transport SOURCES test_authenticated_tr
 # E2E launcher test: the launcher exits cleanly after its target. Windows only: the launcher's
 # pre-flight load of the probe into itself, which this guards, only happens there.
 if(WIN32 AND TARGET qtPilot_launcher)
+    # Its own trivial target: never inject into an operating-system binary (see AGENTS.md).
+    add_executable(launcher_exit_target launcher_exit_target.cpp)
+
     qtPilot_add_test(NAME test_launcher_exit SOURCES test_launcher_exit.cpp
         ENV "QTPILOT_ENABLED=0")
-    add_dependencies(test_launcher_exit qtPilot_launcher)
+    add_dependencies(test_launcher_exit qtPilot_launcher launcher_exit_target)
     target_compile_definitions(test_launcher_exit PRIVATE
         QTPILOT_TEST_LAUNCHER="$<TARGET_FILE:qtPilot_launcher>"
+        QTPILOT_TEST_EXIT_TARGET="$<TARGET_FILE:launcher_exit_target>"
         QTPILOT_TEST_PROBE="$<TARGET_FILE:qtPilot_probe>"
         QTPILOT_TEST_QT_DIR="$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/..")
 endif()

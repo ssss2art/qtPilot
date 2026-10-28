@@ -16,15 +16,13 @@ class TestLauncherExit : public QObject {
 };
 
 void TestLauncherExit::exitsCleanlyAfterTheTarget() {
-  const QString shell = qEnvironmentVariable("ComSpec", QStringLiteral("cmd.exe"));
-
   QProcess launcher;
   launcher.setProcessChannelMode(QProcess::ForwardedChannels);
   launcher.start(QStringLiteral(QTPILOT_TEST_LAUNCHER),
                  {QStringLiteral("--quiet"), QStringLiteral("--port"), QStringLiteral("0"),
                   QStringLiteral("--probe"), QStringLiteral(QTPILOT_TEST_PROBE),
                   QStringLiteral("--qt-dir"), QStringLiteral(QTPILOT_TEST_QT_DIR),
-                  QStringLiteral("--"), shell, QStringLiteral("/c"), QStringLiteral("exit 0")});
+                  QStringLiteral("--"), QStringLiteral(QTPILOT_TEST_EXIT_TARGET)});
   QVERIFY2(launcher.waitForFinished(60000), "the launcher did not finish");
 
   QCOMPARE(launcher.exitStatus(), QProcess::NormalExit);
