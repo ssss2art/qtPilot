@@ -291,9 +291,11 @@ int main(int argc, char* argv[]) {
     if (!qtPilot::isProcessElevated()) {
       // Re-launch self as admin, forwarding all arguments as given (not arguments(), which Qt
       // has already stripped), unless the raw command line could not be read
-      return qtPilot::relaunchElevated(
-          QCoreApplication::applicationFilePath(),
-          rawArguments.isEmpty() ? QCoreApplication::arguments().mid(1) : rawArguments);
+      // (QStringList explicitly: with Qt 5, mid() returns a QList<QString>.)
+      return qtPilot::relaunchElevated(QCoreApplication::applicationFilePath(),
+                                       rawArguments.isEmpty()
+                                           ? QStringList(QCoreApplication::arguments().mid(1))
+                                           : rawArguments);
     }
     // Already elevated — fall through to normal launch
   }
