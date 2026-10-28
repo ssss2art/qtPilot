@@ -331,6 +331,7 @@ if(WIN32 AND TARGET qtPilot_launcher)
     qtPilot_add_test(NAME test_launcher_exit SOURCES test_launcher_exit.cpp
         ENV "QTPILOT_ENABLED=0")
     add_dependencies(test_launcher_exit qtPilot_launcher launcher_exit_target)
+    set_tests_properties(test_launcher_exit PROPERTIES LABELS "launcher")
     target_compile_definitions(test_launcher_exit PRIVATE
         QTPILOT_TEST_LAUNCHER="$<TARGET_FILE:qtPilot_launcher>"
         QTPILOT_TEST_EXIT_TARGET="$<TARGET_FILE:launcher_exit_target>"
