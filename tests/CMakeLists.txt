@@ -321,3 +321,15 @@ qtPilot_add_test(NAME test_network_policy SOURCES test_network_policy.cpp
 qtPilot_add_test(NAME test_authenticated_transport SOURCES test_authenticated_transport.cpp
     LIBS Qt${QT_VERSION_MAJOR}::WebSockets
     ENV "QTPILOT_ENABLED=0")
+
+# E2E launcher test: the launcher exits cleanly after its target. Windows only: the launcher's
+# pre-flight load of the probe into itself, which this guards, only happens there.
+if(WIN32 AND TARGET qtPilot_launcher)
+    qtPilot_add_test(NAME test_launcher_exit SOURCES test_launcher_exit.cpp
+        ENV "QTPILOT_ENABLED=0")
+    add_dependencies(test_launcher_exit qtPilot_launcher)
+    target_compile_definitions(test_launcher_exit PRIVATE
+        QTPILOT_TEST_LAUNCHER="$<TARGET_FILE:qtPilot_launcher>"
+        QTPILOT_TEST_PROBE="$<TARGET_FILE:qtPilot_probe>"
+        QTPILOT_TEST_QT_DIR="$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/..")
+endif()
