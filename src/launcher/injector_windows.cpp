@@ -136,12 +136,12 @@ qint64 launchWithProbe(const LaunchOptions& options) {
     // Suppress probe initialization in the launcher process
     SetEnvironmentVariableW(L"QTPILOT_ENABLED", L"0");
 
+    // Kept loaded, never freed. Loading the probe runs the static initialisers of the Qt modules
+    // it pulls in, and those register with this process's QtCore: Qt Quick's, for one, installs
+    // an accessibility factory whose cleanup Qt Gui adds as a post routine. Unloading them would
+    // leave that routine pointing at freed code, and ~QCoreApplication would call it on exit.
     HMODULE localCheck = LoadLibraryExW(dllPath.c_str(), nullptr, 0);
     DWORD loadError = localCheck ? 0 : GetLastError();
-
-    if (localCheck) {
-      FreeLibrary(localCheck);
-    }
 
     // Clear QTPILOT_ENABLED so the target process doesn't inherit "0"
     SetEnvironmentVariableW(L"QTPILOT_ENABLED", nullptr);
