@@ -10,6 +10,7 @@
 
 #include <QFile>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -50,7 +51,18 @@ QStringList TestLauncherArgs::runThroughLauncher(const QStringList& command) {
   for (const QString& word : command)
     arguments << (word == kTarget ? QStringLiteral(QTPILOT_TEST_ARGS_ECHO) : word);
 
+  // In an AddressSanitizer build the target links the ASan runtime too, and preloading the probe
+  // ahead of it makes ASan refuse to start ("ASan runtime does not come first in initial library
+  // list"). Relax that one check, keeping the rest of whatever ASAN_OPTIONS the run already sets;
+  // other builds ignore it.
+  QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+  const QString asanOptions = environment.value(QStringLiteral("ASAN_OPTIONS"));
+  environment.insert(QStringLiteral("ASAN_OPTIONS"),
+                     (asanOptions.isEmpty() ? QString() : asanOptions + QLatin1Char(':')) +
+                         QStringLiteral("verify_asan_link_order=0"));
+
   QProcess launcher;
+  launcher.setProcessEnvironment(environment);
   launcher.setWorkingDirectory(m_dir.path());  // the target inherits it and writes args.txt there
   launcher.setProcessChannelMode(QProcess::ForwardedChannels);  // the launcher's own diagnostics
   launcher.start(QStringLiteral(QTPILOT_TEST_LAUNCHER), arguments);
