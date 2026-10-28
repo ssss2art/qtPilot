@@ -6,14 +6,10 @@
 // -qmljsdebugger from argv wherever it appears, so a target launched for qmlpreview or the QML
 // debugger used to start without the argument that connects it back.
 
-#include "common/qt_matchers.h"
-
 #include <QFile>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
-
-using namespace qtPilot::test;
 
 class TestLauncherArgs : public QObject {
   Q_OBJECT
@@ -77,7 +73,9 @@ void TestLauncherArgs::forwardsArgumentsAfterSeparator() {
   QFETCH(QStringList, targetArgs);
   QVERIFY(m_dir.isValid());
 
-  QEXPECT_THAT(runThroughLauncher(targetArgs), Eq(targetArgs));
+  // QCOMPARE rather than a gmock matcher: printing a QStringList through gmock instantiates
+  // stdext::checked_array_iterator with Qt 5 on MSVC, which is deprecated (STL4043).
+  QCOMPARE(runThroughLauncher(targetArgs), targetArgs);
 }
 
 QTEST_GUILESS_MAIN(TestLauncherArgs)
