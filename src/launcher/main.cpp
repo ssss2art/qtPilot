@@ -144,6 +144,18 @@ QString findProbePath(const QString& qtVersion) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+  // QCoreApplication removes the arguments Qt reserves for itself (-qmljsdebugger) from argv, even
+  // after "--", so a target started for qmlpreview or the QML debugger would never receive them.
+  // Keep everything after "--" as given, before Qt sees it, and hand that to the target unchanged.
+  QStringList rawTarget;
+  bool hasSeparator = false;
+  for (int i = 1; i < argc; ++i) {
+    if (hasSeparator)
+      rawTarget.append(QString::fromLocal8Bit(argv[i]));
+    else if (qstrcmp(argv[i], "--") == 0)
+      hasSeparator = true;
+  }
+
   QCoreApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("qtpilot-launch"));
   app.setApplicationVersion(QString::fromUtf8(qtPilot::kVersion));
@@ -265,6 +277,8 @@ int main(int argc, char* argv[]) {
 
   // Build LaunchOptions
   qtPilot::LaunchOptions options;
+  if (!rawTarget.isEmpty())
+    positionalArgs = rawTarget;  // what Qt stripped, back again
   options.targetExecutable = positionalArgs.takeFirst();
   options.targetArgs = positionalArgs;  // Remaining args go to target
   options.detach = parser.isSet(detachOption);
