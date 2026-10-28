@@ -20,6 +20,15 @@
 
 #ifdef Q_OS_WIN
 #include "elevation_windows.h"
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#include <shellapi.h>
 #endif
 
 #ifdef Q_OS_MACOS
@@ -141,9 +150,47 @@ QString findProbePath(const QString& qtVersion) {
   return QString();
 }
 
+/// @brief The launcher's arguments as given, before QCoreApplication strips Qt's own switches.
+/// On Windows argv is in the ANSI code page, so read the wide command line, as Qt itself does.
+QStringList rawCommandLineArguments(int argc, char* argv[]) {
+  QStringList arguments;
+#ifdef Q_OS_WIN
+  Q_UNUSED(argc);
+  Q_UNUSED(argv);
+  int count = 0;
+  if (LPWSTR* wide = CommandLineToArgvW(GetCommandLineW(), &count)) {
+    for (int i = 1; i < count; ++i)
+      arguments.append(QString::fromWCharArray(wide[i]));
+    LocalFree(wide);
+  }
+#else
+  for (int i = 1; i < argc; ++i)
+    arguments.append(QString::fromLocal8Bit(argv[i]));
+#endif
+  return arguments;
+}
+
+/// @brief The target and its arguments exactly as given: the raw arguments from the "--" that the
+/// parser's own target follows. Tied to the parser's choice so that a "--" given as an option's
+/// value, or after the target, is never taken for the separator. Empty when the target was not
+/// given straight after a "--"; the parser's own list is then all there is.
+QStringList rawTargetCommand(const QStringList& rawArguments, const QString& target) {
+  for (decltype(rawArguments.size()) i = 0; i + 1 < rawArguments.size(); ++i) {
+    if (rawArguments.at(i) == QLatin1String("--") && rawArguments.at(i + 1) == target)
+      return rawArguments.mid(i + 1);
+  }
+  return {};
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
+  // QCoreApplication removes the arguments Qt reserves for itself (-qmljsdebugger) from argv, even
+  // after "--", so a target started for qmlpreview or the QML debugger would never receive them.
+  // Keep the command line as given, before Qt sees it: the target and everything after it go to
+  // the target unchanged, and an elevated relaunch repeats all of it.
+  const QStringList rawArguments = rawCommandLineArguments(argc, argv);
+
   QCoreApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("qtpilot-launch"));
   app.setApplicationVersion(QString::fromUtf8(qtPilot::kVersion));
@@ -242,9 +289,13 @@ int main(int argc, char* argv[]) {
 #ifdef Q_OS_WIN
   if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
     if (!qtPilot::isProcessElevated()) {
-      // Re-launch self as admin, forwarding all arguments
+      // Re-launch self as admin, forwarding all arguments as given (not arguments(), which Qt
+      // has already stripped), unless the raw command line could not be read
+      // (QStringList explicitly: with Qt 5, mid() returns a QList<QString>.)
       return qtPilot::relaunchElevated(QCoreApplication::applicationFilePath(),
-                                       QCoreApplication::arguments().mid(1));
+                                       rawArguments.isEmpty()
+                                           ? QStringList(QCoreApplication::arguments().mid(1))
+                                           : rawArguments);
     }
     // Already elevated — fall through to normal launch
   }
@@ -265,6 +316,9 @@ int main(int argc, char* argv[]) {
 
   // Build LaunchOptions
   qtPilot::LaunchOptions options;
+  const QStringList rawTarget = rawTargetCommand(rawArguments, positionalArgs.first());
+  if (!rawTarget.isEmpty())
+    positionalArgs = rawTarget;  // what Qt stripped, back again
   options.targetExecutable = positionalArgs.takeFirst();
   options.targetArgs = positionalArgs;  // Remaining args go to target
   options.detach = parser.isSet(detachOption);

@@ -315,6 +315,29 @@ qtPilot_add_test(NAME test_admin_injection
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 set_tests_properties(test_admin_injection PROPERTIES LABELS "admin")
 
+# E2E launcher test: runs the real launcher against a plain (non-Qt) target that records the
+# arguments it receives, so nothing between the command line and the target can hide one.
+if(TARGET qtPilot_launcher)
+    add_executable(launcher_args_echo launcher_args_echo.cpp)
+    if(MINGW)
+        target_link_options(launcher_args_echo PRIVATE -municode)  # its Windows entry is wmain
+    endif()
+
+    qtPilot_add_test(NAME test_launcher_args SOURCES test_launcher_args.cpp
+        ENV "QTPILOT_ENABLED=0")
+    add_dependencies(test_launcher_args qtPilot_launcher launcher_args_echo)
+    set_tests_properties(test_launcher_args PROPERTIES LABELS "launcher")
+    target_compile_definitions(test_launcher_args PRIVATE
+        QTPILOT_TEST_LAUNCHER="$<TARGET_FILE:qtPilot_launcher>"
+        QTPILOT_TEST_PROBE="$<TARGET_FILE:qtPilot_probe>"
+        QTPILOT_TEST_ARGS_ECHO="$<TARGET_FILE:launcher_args_echo>")
+    # Windows finds the probe's Qt DLLs through the launcher's --qt-dir (Qt's bin/..).
+    if(WIN32)
+        target_compile_definitions(test_launcher_args PRIVATE
+            QTPILOT_TEST_QT_DIR="$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/..")
+    endif()
+endif()
+
 qtPilot_add_test(NAME test_network_policy SOURCES test_network_policy.cpp
     ENV "QTPILOT_ENABLED=0")
 
