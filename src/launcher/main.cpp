@@ -170,16 +170,26 @@ QStringList rawCommandLineArguments(int argc, char* argv[]) {
   return arguments;
 }
 
+/// @brief The target and its arguments exactly as given: the raw arguments from the "--" that the
+/// parser's own target follows. Tied to the parser's choice so that a "--" given as an option's
+/// value, or after the target, is never taken for the separator. Empty when the target was not
+/// given straight after a "--"; the parser's own list is then all there is.
+QStringList rawTargetCommand(const QStringList& rawArguments, const QString& target) {
+  for (decltype(rawArguments.size()) i = 0; i + 1 < rawArguments.size(); ++i) {
+    if (rawArguments.at(i) == QLatin1String("--") && rawArguments.at(i + 1) == target)
+      return rawArguments.mid(i + 1);
+  }
+  return {};
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
   // QCoreApplication removes the arguments Qt reserves for itself (-qmljsdebugger) from argv, even
   // after "--", so a target started for qmlpreview or the QML debugger would never receive them.
-  // Keep the command line as given, before Qt sees it: everything after "--" goes to the target
-  // unchanged, and an elevated relaunch repeats all of it.
+  // Keep the command line as given, before Qt sees it: the target and everything after it go to
+  // the target unchanged, and an elevated relaunch repeats all of it.
   const QStringList rawArguments = rawCommandLineArguments(argc, argv);
-  const qsizetype separator = rawArguments.indexOf(QStringLiteral("--"));
-  const QStringList rawTarget = separator < 0 ? QStringList() : rawArguments.mid(separator + 1);
 
   QCoreApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("qtpilot-launch"));
@@ -280,8 +290,10 @@ int main(int argc, char* argv[]) {
   if (parser.isSet(runAsAdminOption) && !parser.isSet(elevatedOption)) {
     if (!qtPilot::isProcessElevated()) {
       // Re-launch self as admin, forwarding all arguments as given (not arguments(), which Qt
-      // has already stripped)
-      return qtPilot::relaunchElevated(QCoreApplication::applicationFilePath(), rawArguments);
+      // has already stripped), unless the raw command line could not be read
+      return qtPilot::relaunchElevated(
+          QCoreApplication::applicationFilePath(),
+          rawArguments.isEmpty() ? QCoreApplication::arguments().mid(1) : rawArguments);
     }
     // Already elevated — fall through to normal launch
   }
@@ -302,6 +314,7 @@ int main(int argc, char* argv[]) {
 
   // Build LaunchOptions
   qtPilot::LaunchOptions options;
+  const QStringList rawTarget = rawTargetCommand(rawArguments, positionalArgs.first());
   if (!rawTarget.isEmpty())
     positionalArgs = rawTarget;  // what Qt stripped, back again
   options.targetExecutable = positionalArgs.takeFirst();

@@ -326,6 +326,7 @@ if(TARGET qtPilot_launcher)
     qtPilot_add_test(NAME test_launcher_args SOURCES test_launcher_args.cpp
         ENV "QTPILOT_ENABLED=0")
     add_dependencies(test_launcher_args qtPilot_launcher launcher_args_echo)
+    set_tests_properties(test_launcher_args PROPERTIES LABELS "launcher")
     target_compile_definitions(test_launcher_args PRIVATE
         QTPILOT_TEST_LAUNCHER="$<TARGET_FILE:qtPilot_launcher>"
         QTPILOT_TEST_PROBE="$<TARGET_FILE:qtPilot_probe>"
