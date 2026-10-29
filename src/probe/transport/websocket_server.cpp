@@ -34,6 +34,9 @@ namespace {
 /// probe just released usable: its TIME_WAIT connections accept nothing.
 /// Windows is left out: Qt binds there with exclusive address use, so listen()
 /// already reports the conflict, and a refused loopback connect takes seconds.
+/// @note On macOS with Qt 6.12, waitForConnected() can report success for a
+/// refused connect, leaving a socket with no peer. Only a socket connected to
+/// the asked port counts as served.
 bool portServedByAnotherProcess(quint16 port) {
 #ifdef Q_OS_WIN
   Q_UNUSED(port);
@@ -46,8 +49,11 @@ bool portServedByAnotherProcess(quint16 port) {
        {QHostAddress(QHostAddress::LocalHost), QHostAddress(QHostAddress::LocalHostIPv6)}) {
     QTcpSocket socket;
     socket.connectToHost(host, port);
-    if (socket.waitForConnected(250)) {
-      socket.abort();
+    const bool served = socket.waitForConnected(250) &&
+                        socket.state() == QAbstractSocket::ConnectedState &&
+                        socket.peerPort() == port;
+    socket.abort();
+    if (served) {
       return true;
     }
   }
