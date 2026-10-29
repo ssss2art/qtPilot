@@ -99,3 +99,6 @@ version-file = "src/qtpilot/_version.py"
 filterwarnings = [
     "error",
 ]
+# pytest-asyncio 1.4.1 warns while this is unset, and filterwarnings turns that into a
+# session error on the unlocked floor leg. Function scope is what the async fixtures use.
+asyncio_default_fixture_loop_scope = "function"

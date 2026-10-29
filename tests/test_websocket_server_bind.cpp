@@ -104,6 +104,25 @@ class TestWebSocketServerBind : public QObject {
     server.stop();
   }
 
+  /// The conflict check must not mistake a refused connection for a server. On
+  /// macOS with Qt 6.12, waitForConnected() can return true for a loopback
+  /// connect that was refused, leaving a socket with no peer; read as "served",
+  /// that kept the probe from starting on any free port.
+  void startsOnAPortNothingServes() {
+    quint16 port = 0;
+    {
+      QTcpServer probeForFreePort;
+      QCHECK_THAT(probeForFreePort.listen(QHostAddress(QHostAddress::LocalHost), 0), IsTrue());
+      port = probeForFreePort.serverPort();
+    }
+    WebSocketServer server(port);
+    QSignalSpy errors(&server, &WebSocketServer::errorOccurred);
+    QEXPECT_THAT(server.start(), IsTrue());
+    QEXPECT_THAT(server.port(), Eq(port));
+    QEXPECT_THAT(errors.count(), Eq(0));
+    server.stop();
+  }
+
   /// A port freed by a previous probe must be reusable straight away. A check
   /// that test-bound without SO_REUSEADDR would trip over TIME_WAIT here.
   void reusesAPortAPreviousServerReleased() {
