@@ -176,3 +176,13 @@ def test_github_workflows_pin_immutable_shas_and_consistent_uv() -> None:
     assert uv_ver >= (0, 13, 6), f"Workflow uv version {uv_ver} is older than (0, 13, 6)"
 
 
+def test_ci_runners_do_not_use_deprecated_macos14() -> None:
+    repo_root = PROJECT_DIR.parent
+    ci_workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    ci_matrix = (repo_root / "scripts" / "ci-matrix.json").read_text()
+
+    assert "macos-14" not in ci_workflow, "ci.yml contains deprecated macos-14 runner"
+    assert "macos-14" not in ci_matrix, "ci-matrix.json contains deprecated macos-14 runner"
+
+
+

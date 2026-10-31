@@ -80,7 +80,7 @@ jobs:
       matrix:
         include:
           - { qt: "6.10.0", os: ubuntu-24.04, modules: "qtwebsockets" }
-          - { qt: "6.10.0", os: macos-14,     modules: "qtwebsockets" }
+          - { qt: "6.10.0", os: macos-15,     modules: "qtwebsockets" }
           # Qt 5 too: the static path touches the export macro and the
           # whole-archive link option, neither of which is Qt6-specific.
           # (No Windows leg -- QTPILOT_PROBE_STATIC is refused there, see
@@ -180,7 +180,7 @@ jobs:
       matrix:
         include:
           - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a, qt: "6.10.0" }
-          - { name: ios,     os: macos-14,     target: ios,     arch: "",                qt: "6.10.0" }
+          - { name: ios,     os: macos-15,     target: ios,     arch: "",                qt: "6.10.0" }
     name: mobile (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
