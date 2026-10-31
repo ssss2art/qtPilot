@@ -46,7 +46,7 @@
     },
     {
       "qt": "6.8.0",
-      "os": "macos-14",
+      "os": "macos-15",
       "preset": "macos-release",
       "platform": "macos",
       "compiler": "clang",
@@ -72,7 +72,7 @@
     },
     {
       "qt": "6.10.0",
-      "os": "macos-14",
+      "os": "macos-15",
       "preset": "macos-release",
       "platform": "macos",
       "compiler": "clang",

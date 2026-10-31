@@ -12,10 +12,19 @@ class ProbeBuild:
     directory: Path
     launcher: Path
     application: Path
+    qml_application: Path | None = None
 
     @property
     def available(self) -> bool:
         return self.launcher.is_file() and self.application.is_file()
+
+    @property
+    def qml_available(self) -> bool:
+        return (
+            self.launcher.is_file()
+            and self.qml_application is not None
+            and self.qml_application.is_file()
+        )
 
     @property
     def qt_prefix(self) -> Path | None:
@@ -37,4 +46,12 @@ def probe_build(directory: Path) -> ProbeBuild:
     binary_dir = directory / "bin"
     if not (binary_dir / f"qtPilot-launcher{suffix}").is_file() and (binary_dir / "Release").is_dir():
         binary_dir /= "Release"
-    return ProbeBuild(directory, binary_dir / f"qtPilot-launcher{suffix}", binary_dir / f"qtPilot-test-app{suffix}")
+    qml_flat = binary_dir / f"qtPilot-test-app-qml{suffix}"
+    qml_bundle = binary_dir / "qtPilot-test-app-qml.app" / "Contents" / "MacOS" / "qtPilot-test-app-qml"
+    qml_app = qml_bundle if qml_bundle.is_file() else qml_flat
+    return ProbeBuild(
+        directory,
+        binary_dir / f"qtPilot-launcher{suffix}",
+        binary_dir / f"qtPilot-test-app{suffix}",
+        qml_app,
+    )
