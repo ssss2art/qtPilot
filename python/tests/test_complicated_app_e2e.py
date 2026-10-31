@@ -216,3 +216,64 @@ def test_app_embedded_qml_scene(live_complicated_app):
             expect_probe(clicks).to_have_value(1)
 
     asyncio.run(go())
+
+
+@pytest.fixture(scope="module")
+def live_standalone_qml_app():
+    if not BUILD.qml_available:
+        pytest.skip("Standalone QML test application (qtPilot-test-app-qml) not built")
+    port = _free_port()
+    proc = subprocess.Popen(
+        [str(LAUNCHER), "--port", str(port), str(BUILD.qml_application)],
+        env=_app_env(_qt_dir()),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        _wait_for_port(port, proc)
+        yield f"ws://127.0.0.1:{port}"
+    finally:
+        _stop_group(proc)
+        if proc.stdout:
+            proc.stdout.close()
+
+
+def test_standalone_qml_app_models_and_views(live_standalone_qml_app: str) -> None:
+    """Verify standalone Qt Quick test app (qtPilot-test-app-qml) views and C++ models."""
+
+    async def go() -> None:
+        async with _connected(live_standalone_qml_app) as conn:
+            # 1. Verify QML root window and views are discoverable
+            view_ids: dict[str, str] = {}
+            for obj_name in ("modelTestWindow", "heading", "taskView", "fileTreeView", "lazyView"):
+                found = await conn.call("qt.objects.search", {"objectName": obj_name})
+                view_ids[obj_name] = expect_probe(found).to_find(obj_name)
+
+            # 2. TaskListModel via taskView: custom roleNames ("owner", "title")
+            owners = await conn.call(
+                "qt.models.data", {"objectId": view_ids["taskView"], "roles": ["owner"]}
+            )
+            owner_cells = [row["cells"][0]["owner"] for row in owners["result"]["rows"]]
+            assert owner_cells == ["ada", "grace", "ada", "linus", "grace"]
+
+            # 3. FileTreeModel via fileTreeView: hierarchy navigation & recursive search
+            probe_matches = await conn.call(
+                "qt.models.search",
+                {"objectId": view_ids["fileTreeView"], "value": "probe.cpp", "role": "name"},
+            )
+            matches = probe_matches["result"]["matches"]
+            assert len(matches) == 1
+            assert matches[0]["path"] == [0, 1]
+
+            # 4. LazyLogModel via lazyView: lazy fetchMore search beyond initial window (row 400)
+            sentinel_matches = await conn.call(
+                "qt.models.search",
+                {"objectId": view_ids["lazyView"], "value": "sentinel-needle", "role": "message"},
+            )
+            lazy_hits = sentinel_matches["result"]["matches"]
+            assert len(lazy_hits) == 1
+            assert lazy_hits[0]["path"] == [400]
+
+    asyncio.run(go())
+

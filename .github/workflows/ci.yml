@@ -35,16 +35,16 @@ jobs:
       e2e: ${{ steps.select.outputs.e2e }}
       release: ${{ steps.select.outputs.release }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Select complete changed scope
         id: select
         run: python scripts/ci_policy.py plan
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version: "0.12.1"
+          version: "0.13.6"
           enable-cache: true
           cache-dependency-glob: "python/uv.lock"
       - name: Install policy-test dependencies from the lock
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jidicula/clang-format-action@654a770daa28443dd111d133e4083e21c1075674 # v4.18.0
         with:
           clang-format-version: "18"
@@ -89,7 +89,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # One retry, because the Qt mirrors intermittently stall mid-download. The
       # step timeout is what turns a stall into a failure the retry can act on -- a
@@ -99,7 +99,7 @@ jobs:
         id: qt
         continue-on-error: true
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           modules: ${{ matrix.modules }}
@@ -108,7 +108,7 @@ jobs:
       - name: Install Qt (retry)
         if: steps.qt.outcome == 'failure'
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           modules: ${{ matrix.modules }}
@@ -185,7 +185,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Mobile targets Qt latest (6.10.0) across Android and iOS. Each HOST install
       # shares a cache entry with the desktop build matrix (Ubuntu 6.10.0 and macOS 6.10.0)
@@ -194,7 +194,7 @@ jobs:
         id: hostqt
         continue-on-error: true
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           modules: qtwebsockets
@@ -205,7 +205,7 @@ jobs:
       - name: Install host Qt (retry)
         if: steps.hostqt.outcome == 'failure'
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           modules: qtwebsockets
@@ -217,7 +217,7 @@ jobs:
         id: targetqt
         continue-on-error: true
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           target: ${{ matrix.target }}
@@ -228,7 +228,7 @@ jobs:
       - name: Install target Qt (retry)
         if: steps.targetqt.outcome == 'failure'
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           target: ${{ matrix.target }}
@@ -238,7 +238,7 @@ jobs:
 
       - name: Set up JDK (Android)
         if: matrix.name == 'android'
-        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
@@ -290,13 +290,13 @@ jobs:
     timeout-minutes: 30
     continue-on-error: true
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Qt
         id: qt
         continue-on-error: true
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: "6.10.0"
           modules: qtwebsockets
@@ -305,7 +305,7 @@ jobs:
       - name: Install Qt (retry)
         if: steps.qt.outcome == 'failure'
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: "6.10.0"
           modules: qtwebsockets
@@ -356,13 +356,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Qt
         id: qt
         continue-on-error: true
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: "6.10.0"
           modules: qtwebsockets
@@ -371,7 +371,7 @@ jobs:
       - name: Install Qt (retry)
         if: steps.qt.outcome == 'failure'
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: "6.10.0"
           modules: qtwebsockets
@@ -404,13 +404,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Qt
         id: qt
         continue-on-error: true
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           modules: ${{ matrix.modules }}
@@ -420,7 +420,7 @@ jobs:
       - name: Install Qt (retry)
         if: steps.qt.outcome == 'failure'
         timeout-minutes: 15
-        uses: jurplel/install-qt-action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
           modules: ${{ matrix.modules }}
@@ -459,9 +459,9 @@ jobs:
 
       - name: Set up uv for real-probe E2E
         if: runner.os == 'Linux' && matrix.qt == '6.10.0' && !matrix.extra_cmake && needs.plan.outputs.e2e == 'true'
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version: "0.12.1"
+          version: "0.13.6"
           enable-cache: true
           cache-dependency-glob: "python/uv.lock"
 
@@ -589,7 +589,7 @@ jobs:
 
       - name: Upload artifact
         if: needs.plan.outputs.release == 'true'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qtpilot-${{ matrix.preset }}-qt${{ matrix.qt }}-${{ matrix.compiler }}${{ matrix.arch_label && format('-{0}', matrix.arch_label) || '' }}
           path: install/${{ matrix.preset }}
@@ -604,7 +604,7 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.python_matrix) }}
     name: python (${{ matrix.name }})
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # uv, not pip. `pip install -e .` re-resolves the dependency ranges on
       # every run, so a leg could pass against versions nobody had ever run.
@@ -613,9 +613,9 @@ jobs:
       # This matrix previously used pip, which would have silently reverted the
       # supply-chain enforcement already on main when this branch merged.
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version: "0.12.1"
+          version: "0.13.6"
           enable-cache: true
           cache-dependency-glob: "python/uv.lock"
 
@@ -670,7 +670,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every selected check must have succeeded
         env:
           VALIDATION_PLAN: ${{ needs.plan.outputs.plan }}

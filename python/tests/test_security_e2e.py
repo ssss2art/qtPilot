@@ -59,7 +59,7 @@ def secure_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.
     process_log = tmp_path / "process.log"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as discovery, process_log.open("w") as output:
         discovery.bind(("0.0.0.0", 0))
-        discovery.settimeout(0.3)
+        discovery.settimeout(1.5 if fixture_mode == "trusted-network" else 0.3)
         environment["QTPILOT_DISCOVERY_PORT"] = str(discovery.getsockname()[1])
         process = subprocess.Popen(
             [str(BUILD.launcher), *arguments, "--port", str(port), str(BUILD.application)],
