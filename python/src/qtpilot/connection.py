@@ -16,6 +16,7 @@ from qtpilot.security import (
     transport_logger, validate_probe_url,
 )
 from qtpilot.evidence import BufferEvidence
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,43 @@ class ProbeError(Exception):
             code=error.get("code", -1),
             data=error.get("data"),
         )
+
+
+class ProbeRefusedError(ConnectionError):
+    """The probe accepted the WebSocket and then refused this client (close code 1008).
+
+    It does that for a second client, a rejected token and an untrusted origin. Waiting does not
+    change any of them, so connect_when_ready() raises this at once rather than retrying.
+    """
+
+    def __init__(self, reason: str | None, *, during_admission: bool = False):
+        # Said as an admission failure when it is one: a rejected token has always read that way.
+        what = "Authenticated admission was refused" if during_admission else "The probe refused this client"
+        super().__init__(f"{what}: {reason or 'no reason given'}")
+        self.reason = reason
+
+
+_POLICY_VIOLATION = 1008
+
+
+def _closed_error(code: int | None, reason: str | None) -> ConnectionError:
+    """What a closed connection means for the caller: refused (1008), or just closed."""
+    if code == _POLICY_VIOLATION:
+        return ProbeRefusedError(reason)
+    return ConnectionError(f"WebSocket closed (code={code} reason={reason or ''})")
+
+
+def _close_of(exc: BaseException) -> tuple[int | None, str | None]:
+    """The close code and reason a websockets ConnectionClosed received, if it is one."""
+    rcvd = getattr(exc, "rcvd", None)
+    return getattr(rcvd, "code", None), getattr(rcvd, "reason", None)
+
+
+def _drop(ws: object | None) -> None:
+    """Abort @p ws's transport, so a close that follows doesn't wait on a peer that stopped reading."""
+    transport = getattr(ws, "transport", None)
+    if transport is not None:
+        transport.abort()
 
 
 class ProbeTimeoutError(ProbeError):
@@ -240,10 +278,15 @@ class ProbeConnection:
                 if not isinstance(response, dict) or response.get("method") != "qtpilot.authenticated" or response.get("params") != {"protocolVersion": 1}:
                     raise ConnectionError("Authenticated admission was not acknowledged")
             except BaseException as exc:
+                # Dropped first: a probe that stopped reading never answers the close frame, and
+                # the graceful close waited its 5 s timeout past a deadline or a cancel.
+                _drop(self._ws)
                 await self._ws.close()
                 self._ws = None
                 if isinstance(exc, asyncio.CancelledError):
                     raise
+                if isinstance(exc, ConnectionClosed) and _close_of(exc)[0] == _POLICY_VIOLATION:
+                    raise ProbeRefusedError(_close_of(exc)[1], during_admission=True) from None
                 raise ConnectionError("Authenticated admission failed") from None
         self._connected = True
         self._session_id = uuid4().hex
@@ -274,7 +317,10 @@ class ProbeConnection:
         except (ProbeError, ConnectionError) as exc:
             logger.warning("Version handshake failed: %s", exc)
             return {}
+        return self._record_version(info)
 
+    def _record_version(self, info: dict) -> dict:
+        """Keep getVersion's answer and warn about a protocol mismatch; returns ``info``."""
         self._probe_version = info.get("version")
         raw_protocol = info.get("protocolVersion")
         self._probe_protocol_version = raw_protocol if isinstance(raw_protocol, int) else None
@@ -303,6 +349,78 @@ class ProbeConnection:
             )
 
         return info
+
+    async def connect_when_ready(self, ready_timeout: float = 60.0, interval: float = 1.0) -> dict:
+        """Connect and handshake, retrying until the probe answers or ``ready_timeout`` passes.
+
+        A probe linked into an app that is still starting -- an iPad build loading its library,
+        a port forward up before the app is -- refuses or stalls the WebSocket opening handshake.
+        Callers used to wrap connect() in their own sleep-and-retry loop; this is that loop.
+
+        Only a probe that is not answering yet is retried. A security setting that refuses the URL
+        fails at once, and a probe that answers getVersion with an error is connected to anyway,
+        degraded, as handshake() does. ``ready_timeout`` bounds the whole wait, each attempt
+        included.
+
+        Args:
+            ready_timeout: Seconds to keep trying, in all.
+            interval: Seconds to wait between attempts.
+
+        Returns:
+            The getVersion result, or ``{}`` when the probe answered it with an error.
+
+        Raises:
+            ValueError: the client's security settings refuse this URL; retrying cannot help.
+            ProbeRefusedError: the probe refused this client (another client, a rejected token,
+                an untrusted origin); retrying cannot help either.
+            TimeoutError: the probe never answered; the message names the last failure.
+            asyncio.CancelledError: cancelled; the half-made connection is closed first.
+        """
+        resolved = resolve_client_security(self._ws_url, os.environ)
+        if resolved.is_err():
+            raise ValueError(resolved.unwrap_err())
+        started = time.monotonic()
+        deadline = started + ready_timeout
+        last = "no attempt made"
+        while True:
+            remaining = deadline - time.monotonic()
+            try:
+                return await asyncio.wait_for(self._attempt_handshake(), timeout=max(remaining, 0.001))
+            except ProbeRefusedError:
+                raise
+            except (OSError, asyncio.TimeoutError, ProbeTimeoutError, InvalidHandshake) as exc:
+                # Refused, reset, a stalled opening handshake or getVersion, or this attempt
+                # running past the deadline. ConnectionError is an OSError.
+                last = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+            if time.monotonic() + interval >= deadline:
+                raise TimeoutError(
+                    f"Probe at {self._ws_url} not ready after {time.monotonic() - started:.1f}s ({last})"
+                )
+            await asyncio.sleep(interval)
+
+    async def _attempt_handshake(self) -> dict:
+        """One connect and getVersion; any failure, cancellation included, closes the connection."""
+        try:
+            await self.connect()
+            try:
+                info = await self.call("getVersion")
+            except ConnectionClosed as exc:
+                # Closed as the request went out; the same close arriving a moment later reaches
+                # call() from the reader as a ConnectionError of the same kind.
+                raise _closed_error(*_close_of(exc)) from None
+            except ProbeTimeoutError:
+                raise
+            except ProbeError as exc:
+                # It answered: the probe is up, it just won't say its version. Degraded, as handshake().
+                logger.warning("Version handshake failed: %s", exc)
+                return {}
+            return self._record_version(info)
+        except BaseException:
+            # Dropped, not closed: a probe that stopped reading never answers a close frame, and
+            # a graceful close waited its 5 s timeout past the deadline, or past a cancel.
+            _drop(self._ws)
+            await asyncio.shield(self.disconnect())
+            raise
 
     async def disconnect(self) -> None:
         """Close the connection and cancel all pending requests."""
@@ -399,6 +517,9 @@ class ProbeConnection:
             self._pending.pop(request_id, None)
             raise
         except Exception as exc:
+            # A send that failed leaves no one to await the future, which the reader would then
+            # fail anyway ("Future exception was never retrieved").
+            self._pending.pop(request_id, None)
             duration_ms = (time.monotonic() - t0) * 1000
             self._notify_call_observers(request, exc, duration_ms)
             raise
@@ -409,6 +530,8 @@ class ProbeConnection:
 
     async def _recv_loop(self) -> None:
         """Background task that reads WebSocket messages and resolves futures."""
+        close_code: int | None = None
+        close_reason: str | None = None
         try:
             async for raw in self._ws:
                 try:
@@ -445,18 +568,21 @@ class ProbeConnection:
             raise
         except Exception as exc:
             # Log close code/reason if available (websockets.ConnectionClosed)
-            close_code = getattr(getattr(exc, "rcvd", None), "code", None)
-            close_reason = getattr(getattr(exc, "rcvd", None), "reason", None)
+            close_code, close_reason = _close_of(exc)
             logger.warning(
                 "WebSocket connection closed: %s (code=%s reason=%s)",
                 exc, close_code, close_reason,
             )
         finally:
             self._connected = False
+            if close_code is None and self._ws is not None:
+                # A clean close ends the read loop without an exception; the code is on the socket.
+                close_code = getattr(self._ws, "close_code", None)
+                close_reason = getattr(self._ws, "close_reason", None)
             # Cancel all remaining pending futures
             for future in self._pending.values():
                 if not future.done():
-                    future.set_exception(ConnectionError("WebSocket closed"))
+                    future.set_exception(_closed_error(close_code, close_reason))
             self._pending.clear()
 
     async def _notification_dispatcher(self) -> None:
