@@ -12,8 +12,9 @@
 #include <QHash>
 #include <QObject>
 #include <QPointer>
-#include <QRegularExpression>
 #include <QSet>
+
+#include "core/glob_pattern.h"
 
 // Forward declarations for hook callbacks (global functions)
 void qtpilotAddObjectHook(QObject*);
@@ -25,9 +26,9 @@ namespace qtPilot {
 struct ObjectFilter {
   QString className;   ///< Subclass-aware; empty matches any class.
   QString objectName;  ///< Exact; empty matches any name.
-  /// Whole-name match (from a glob, for instance), checked in addition to objectName; an empty
-  /// pattern matches any name.
-  QRegularExpression objectNamePattern;
+  /// A glob over the whole objectName, checked in addition to objectName; an inactive pattern
+  /// (the default) matches any name.
+  GlobPattern objectNamePattern;
 };
 
 /// @brief What ObjectRegistry::collectOwned() found.

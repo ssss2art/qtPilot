@@ -41,6 +41,7 @@ set(PROBE_HEADERS
     core/probe.h
     core/probe_deferred_init.h
     core/injector.h
+    core/glob_pattern.h
     core/object_registry.h
     core/object_resolver.h
     introspection/object_id.h

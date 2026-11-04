@@ -15,6 +15,7 @@
 
 #include <QApplication>
 #include <QDialog>
+#include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPointer>
@@ -179,6 +180,7 @@ class TestNativeModeApi : public QObject {
   void testObjectsSearchByObjectNamePattern();
   void testObjectsSearchRefusesNameAndPatternTogether();
   void testObjectNamePatternIsAGlobOverNamesNotPaths();
+  void testObjectNamePatternTakesAnyLiteralAndSet();
   void testObjectsSearchRefusesAnInvalidPattern();
   void testObjectsSearchByProperties();
   void testObjectsSearchEmptyFilters();
@@ -701,6 +703,35 @@ void TestNativeModeApi::testObjectNamePatternIsAGlobOverNamesNotPaths() {
   QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel*")},
                   {QStringLiteral("className"), QStringLiteral("QPushButton")}}),
            QStringList{});
+}
+
+void TestNativeModeApi::testObjectNamePatternTakesAnyLiteralAndSet() {
+  // A regex translation split an emoji's surrogate pair (the pattern was refused as invalid),
+  // read `[:a:]` as a POSIX class, and took ~100 ms an object on a hostile pattern.
+  for (const QString& name : {QStringLiteral("smile\U0001F600x"), QStringLiteral("x:y"),
+                              QStringLiteral(".dot"), QString(60, QLatin1Char('a'))}) {
+    auto* w = new QLabel(QStringLiteral("p"), m_testWindow);
+    w->setObjectName(name);
+  }
+  ObjectRegistry::instance()->scanExistingObjects(m_testWindow);
+  const auto count = [this](const QString& pattern) {
+    return callResult("qt.objects.search",
+                      QJsonObject{{QStringLiteral("objectNamePattern"), pattern}})
+        .toObject()[QStringLiteral("objects")]
+        .toArray()
+        .size();
+  };
+
+  QCOMPARE(count(QStringLiteral("smile\U0001F600*")), 1);
+  QCOMPARE(count(QStringLiteral("smile?x")), 1);  // the emoji is one character
+  QCOMPARE(count(QStringLiteral("x[:]y")), 1);
+  QCOMPARE(count(QStringLiteral("[:a:]")), 0);  // a set of `:` and `a`, not a POSIX class
+  QCOMPARE(count(QStringLiteral("[.]dot")), 1);
+
+  QElapsedTimer timer;
+  timer.start();
+  QCOMPARE(count(QStringLiteral("*?*?*?*?*?*?*?*?*?*?[bc]")), 0);
+  QVERIFY2(timer.elapsed() < 200, qPrintable(QStringLiteral("%1 ms").arg(timer.elapsed())));
 }
 
 void TestNativeModeApi::testObjectsSearchRefusesAnInvalidPattern() {
