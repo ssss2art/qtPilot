@@ -16,12 +16,13 @@ import hashlib
 import json
 import socket
 import ssl
+import subprocess
 import time
 
 import pytest
 from websockets.asyncio.server import ServerConnection, serve
 
-from qtpilot.connection import ProbeConnection, ProbeRefusedError
+from qtpilot.connection import ProbeCertificateError, ProbeConnection, ProbeRefusedError
 
 
 async def _answers(ws: ServerConnection) -> None:
@@ -238,29 +239,83 @@ async def test_a_rejected_token_is_refused_at_once_as_an_admission_failure(monke
             await conn.connect()
 
 
+@pytest.fixture
+def tls_probe(tmp_path):
+    """A TLS WebSocket server on loopback with a throwaway certificate for IP:127.0.0.1."""
+    certificate, private_key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+        "-subj", "/CN=synthetic-fixture", "-addext", "subjectAltName=IP:127.0.0.1",
+        "-keyout", str(private_key), "-out", str(certificate),
+    ], check=True, capture_output=True)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certificate, private_key)
+
+    async def answers(ws: ServerConnection) -> None:
+        if ws.request.headers.get("Authorization"):
+            await ws.send(json.dumps({"jsonrpc": "2.0", "method": "qtpilot.authenticated", "params": {"protocolVersion": 1}}))
+        await _answers(ws)
+
+    return certificate, context, answers
+
+
+# (profile or none, certificate trusted, host): every way the client rejects a certificate, with
+# and without a token. With one, connect() wraps transport failures to keep the token out of them.
 @pytest.mark.asyncio
-async def test_a_certificate_the_client_rejects_fails_at_once(monkeypatch: pytest.MonkeyPatch):
-    # An untrusted or mismatched certificate will not change while the app starts; retrying it
-    # only hid the reason behind a timeout. It is an OSError, which the loop otherwise retries.
-    conn = ProbeConnection("ws://127.0.0.1:1")
-    attempts = 0
+@pytest.mark.parametrize(
+    ("profile", "trusted", "host"),
+    [(None, False, "127.0.0.1"), (None, True, "localhost"), ("remote", False, "127.0.0.1"), ("trusted-network", True, "localhost")],
+    ids=["untrusted", "wrong-host", "token-untrusted", "token-wrong-host"],
+)
+async def test_a_certificate_the_client_rejects_fails_at_once(tls_probe, monkeypatch, tmp_path, profile, trusted, host):
+    # An untrusted or mismatched certificate will not change while the app starts; retried, the
+    # reason was hidden behind "not ready" when the deadline came.
+    certificate, context, answers = tls_probe
+    for name in ("QTPILOT_PROFILE", "QTPILOT_AUTH_TOKEN_FILE", "QTPILOT_TLS_CA_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    if profile:
+        token_file = tmp_path / "token"
+        token_file.write_text("a" * 40)
+        token_file.chmod(0o600)
+        monkeypatch.setenv("QTPILOT_PROFILE", profile)
+        monkeypatch.setenv("QTPILOT_AUTH_TOKEN_FILE", str(token_file))
+    if trusted:
+        monkeypatch.setenv("QTPILOT_TLS_CA_FILE", str(certificate))
+    async with serve(answers, "127.0.0.1", 0, ssl=context) as server:
+        conn = ProbeConnection(f"wss://{host}:{server.sockets[0].getsockname()[1]}")
+        started = time.monotonic()
+        # Without a token the ssl error itself; with one, a ProbeCertificateError saying which.
+        with pytest.raises((ssl.SSLCertVerificationError, ProbeCertificateError), match="certificate verify failed|SSLCertVerificationError"):
+            await conn.connect_when_ready(ready_timeout=5, interval=0.1)
+        assert time.monotonic() - started < 1
+        assert not conn.is_connected
 
-    async def rejected() -> dict:
-        nonlocal attempts
-        attempts += 1
-        raise ssl.SSLCertVerificationError(1, "certificate verify failed: self-signed certificate")
 
-    monkeypatch.setattr(conn, "_attempt_handshake", rejected)
-    started = time.monotonic()
-    with pytest.raises(ssl.SSLCertVerificationError, match="self-signed"):
-        await conn.connect_when_ready(ready_timeout=5, interval=0.05)
-    assert attempts == 1
-    assert time.monotonic() - started < 1
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile", [None, "remote"])
+async def test_a_certificate_the_client_trusts_connects(tls_probe, monkeypatch, tmp_path, profile):
+    # The fixture's own control: the same server, trusted, answers.
+    certificate, context, answers = tls_probe
+    for name in ("QTPILOT_PROFILE", "QTPILOT_AUTH_TOKEN_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    if profile:
+        token_file = tmp_path / "token"
+        token_file.write_text("a" * 40)
+        token_file.chmod(0o600)
+        monkeypatch.setenv("QTPILOT_PROFILE", profile)
+        monkeypatch.setenv("QTPILOT_AUTH_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("QTPILOT_TLS_CA_FILE", str(certificate))
+    async with serve(answers, "127.0.0.1", 0, ssl=context) as server:
+        conn = ProbeConnection(f"wss://127.0.0.1:{server.sockets[0].getsockname()[1]}")
+        try:
+            assert (await conn.connect_when_ready(ready_timeout=5, interval=0.1))["version"] == "1"
+        finally:
+            await conn.disconnect()
 
 
 @pytest.mark.asyncio
 async def test_other_tls_failures_are_tried_again(monkeypatch: pytest.MonkeyPatch):
-    # A TLS handshake cut short (the app's server not up yet) is a probe not ready, not a refusal.
+    # Any other TLS failure is not known to be permanent, so it is tried again until the deadline.
     conn = ProbeConnection("ws://127.0.0.1:1")
     attempts = 0
 

@@ -96,6 +96,15 @@ class ProbeRefusedError(ConnectionError):
         self.reason = reason
 
 
+class ProbeCertificateError(ConnectionError):
+    """This client rejected the probe's TLS certificate: not trusted, or not for this host.
+
+    Raised by connect() when a token is configured, in place of the ssl error it keeps the token
+    out of; without one the ssl.SSLCertVerificationError itself is raised. Neither changes while
+    the app starts, so connect_when_ready() raises either at once.
+    """
+
+
 _POLICY_VIOLATION = 1008
 
 
@@ -271,6 +280,9 @@ class ProbeConnection:
             )
         except Exception as exc:
             if security.token:
+                if isinstance(exc, ssl.SSLCertVerificationError):
+                    # The verify reason names the certificate, never the request or its token.
+                    raise ProbeCertificateError(f"Authenticated probe transport failed ({type(exc).__name__}: {exc.verify_message})") from None
                 raise ConnectionError(f"Authenticated probe transport failed ({type(exc).__name__})") from None
             raise
         if security.token:
@@ -374,8 +386,8 @@ class ProbeConnection:
             ValueError: the client's security settings refuse this URL; retrying cannot help.
             ProbeRefusedError: the probe refused this client (another client, a rejected token,
                 an untrusted origin); retrying cannot help either.
-            ssl.SSLCertVerificationError: the probe's certificate is not trusted or does not match
-                the host; neither changes while it starts.
+            ProbeCertificateError: with a token, the probe's certificate is not trusted or not for
+                this host; without one, ssl.SSLCertVerificationError. Neither changes as it starts.
             TimeoutError: the probe never answered; the message names the last failure.
             asyncio.CancelledError: cancelled; the half-made connection is closed first.
         """
@@ -389,7 +401,7 @@ class ProbeConnection:
             remaining = deadline - time.monotonic()
             try:
                 return await asyncio.wait_for(self._attempt_handshake(), timeout=max(remaining, 0.001))
-            except (ProbeRefusedError, ssl.SSLCertVerificationError):
+            except (ProbeRefusedError, ProbeCertificateError, ssl.SSLCertVerificationError):
                 # A refusal, or a certificate this client rejects: neither changes as the app
                 # starts. The certificate error is an OSError, which is otherwise retried.
                 raise
