@@ -15,6 +15,7 @@ import base64
 import hashlib
 import json
 import socket
+import ssl
 import time
 
 import pytest
@@ -235,3 +236,41 @@ async def test_a_rejected_token_is_refused_at_once_as_an_admission_failure(monke
         assert time.monotonic() - started < 1
         with pytest.raises(ConnectionError, match="admission"):
             await conn.connect()
+
+
+@pytest.mark.asyncio
+async def test_a_certificate_the_client_rejects_fails_at_once(monkeypatch: pytest.MonkeyPatch):
+    # An untrusted or mismatched certificate will not change while the app starts; retrying it
+    # only hid the reason behind a timeout. It is an OSError, which the loop otherwise retries.
+    conn = ProbeConnection("ws://127.0.0.1:1")
+    attempts = 0
+
+    async def rejected() -> dict:
+        nonlocal attempts
+        attempts += 1
+        raise ssl.SSLCertVerificationError(1, "certificate verify failed: self-signed certificate")
+
+    monkeypatch.setattr(conn, "_attempt_handshake", rejected)
+    started = time.monotonic()
+    with pytest.raises(ssl.SSLCertVerificationError, match="self-signed"):
+        await conn.connect_when_ready(ready_timeout=5, interval=0.05)
+    assert attempts == 1
+    assert time.monotonic() - started < 1
+
+
+@pytest.mark.asyncio
+async def test_other_tls_failures_are_tried_again(monkeypatch: pytest.MonkeyPatch):
+    # A TLS handshake cut short (the app's server not up yet) is a probe not ready, not a refusal.
+    conn = ProbeConnection("ws://127.0.0.1:1")
+    attempts = 0
+
+    async def cut_short() -> dict:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise ssl.SSLEOFError(8, "EOF occurred in violation of protocol")
+        return {"version": "1"}
+
+    monkeypatch.setattr(conn, "_attempt_handshake", cut_short)
+    assert (await conn.connect_when_ready(ready_timeout=5, interval=0.01))["version"] == "1"
+    assert attempts == 3

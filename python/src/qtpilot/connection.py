@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import ssl
 import time
 import warnings
 from uuid import uuid4
@@ -373,6 +374,8 @@ class ProbeConnection:
             ValueError: the client's security settings refuse this URL; retrying cannot help.
             ProbeRefusedError: the probe refused this client (another client, a rejected token,
                 an untrusted origin); retrying cannot help either.
+            ssl.SSLCertVerificationError: the probe's certificate is not trusted or does not match
+                the host; neither changes while it starts.
             TimeoutError: the probe never answered; the message names the last failure.
             asyncio.CancelledError: cancelled; the half-made connection is closed first.
         """
@@ -386,7 +389,9 @@ class ProbeConnection:
             remaining = deadline - time.monotonic()
             try:
                 return await asyncio.wait_for(self._attempt_handshake(), timeout=max(remaining, 0.001))
-            except ProbeRefusedError:
+            except (ProbeRefusedError, ssl.SSLCertVerificationError):
+                # A refusal, or a certificate this client rejects: neither changes as the app
+                # starts. The certificate error is an OSError, which is otherwise retried.
                 raise
             except (OSError, asyncio.TimeoutError, ProbeTimeoutError, InvalidHandshake) as exc:
                 # Refused, reset, a stalled opening handshake or getVersion, or this attempt
