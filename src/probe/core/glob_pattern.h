@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include <QString>
-#include <QVector>
-
 #include <optional>
 #include <utility>
 #include <vector>
+
+#include <QString>
+#include <QVector>
 
 namespace qtPilot {
 

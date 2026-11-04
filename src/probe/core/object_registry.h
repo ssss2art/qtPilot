@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/glob_pattern.h"
 #include "probe.h"  // For QTPILOT_EXPORT
 
 #include <atomic>
@@ -13,8 +14,6 @@
 #include <QObject>
 #include <QPointer>
 #include <QSet>
-
-#include "core/glob_pattern.h"
 
 // Forward declarations for hook callbacks (global functions)
 void qtpilotAddObjectHook(QObject*);
