@@ -708,8 +708,12 @@ void TestNativeModeApi::testObjectNamePatternIsAGlobOverNamesNotPaths() {
 void TestNativeModeApi::testObjectNamePatternTakesAnyLiteralAndSet() {
   // A regex translation split an emoji's surrogate pair (the pattern was refused as invalid),
   // read `[:a:]` as a POSIX class, and took ~100 ms an object on a hostile pattern.
-  for (const QString& name : {QStringLiteral("smile\U0001F600x"), QStringLiteral("x:y"),
-                              QStringLiteral(".dot"), QString(60, QLatin1Char('a'))}) {
+  // From its UTF-8 bytes: MSVC with Qt 5 takes a QStringLiteral through the code page (1252),
+  // which has no emoji (C4566).
+  const QString emoji = QString::fromUtf8("\xF0\x9F\x98\x80");
+  for (const QString& name :
+       {QStringLiteral("smile") + emoji + QLatin1Char('x'), QStringLiteral("x:y"),
+        QStringLiteral(".dot"), QString(60, QLatin1Char('a'))}) {
     auto* w = new QLabel(QStringLiteral("p"), m_testWindow);
     w->setObjectName(name);
   }
@@ -722,7 +726,7 @@ void TestNativeModeApi::testObjectNamePatternTakesAnyLiteralAndSet() {
         .size();
   };
 
-  QCOMPARE(count(QStringLiteral("smile\U0001F600*")), 1);
+  QCOMPARE(count(QStringLiteral("smile") + emoji + QLatin1Char('*')), 1);
   QCOMPARE(count(QStringLiteral("smile?x")), 1);  // the emoji is one character
   QCOMPARE(count(QStringLiteral("x[:]y")), 1);
   QCOMPARE(count(QStringLiteral("[:a:]")), 0);  // a set of `:` and `a`, not a POSIX class
