@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QString>
+#include <QVector>
 
 #include <optional>
 #include <utility>
