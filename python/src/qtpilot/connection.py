@@ -16,6 +16,7 @@ from qtpilot.security import (
     transport_logger, validate_probe_url,
 )
 from qtpilot.evidence import BufferEvidence
+from websockets.exceptions import InvalidHandshake
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +275,10 @@ class ProbeConnection:
         except (ProbeError, ConnectionError) as exc:
             logger.warning("Version handshake failed: %s", exc)
             return {}
+        return self._record_version(info)
 
+    def _record_version(self, info: dict) -> dict:
+        """Keep getVersion's answer and warn about a protocol mismatch; returns ``info``."""
         self._probe_version = info.get("version")
         raw_protocol = info.get("protocolVersion")
         self._probe_protocol_version = raw_protocol if isinstance(raw_protocol, int) else None
@@ -311,31 +315,59 @@ class ProbeConnection:
         a port forward up before the app is -- refuses or stalls the WebSocket opening handshake.
         Callers used to wrap connect() in their own sleep-and-retry loop; this is that loop.
 
+        Only a probe that is not answering yet is retried. A security setting that refuses the URL
+        fails at once, and a probe that answers getVersion with an error is connected to anyway,
+        degraded, as handshake() does. ``ready_timeout`` bounds the whole wait, each attempt
+        included.
+
+        Args:
+            ready_timeout: Seconds to keep trying, in all.
+            interval: Seconds to wait between attempts.
+
         Returns:
-            The getVersion result of the first successful handshake.
+            The getVersion result, or ``{}`` when the probe answered it with an error.
 
         Raises:
+            ValueError: the client's security settings refuse this URL; retrying cannot help.
             TimeoutError: the probe never answered; the message names the last failure.
+            asyncio.CancelledError: cancelled; the half-made connection is closed first.
         """
-        deadline = time.monotonic() + ready_timeout
-        last: str = "no attempt made"
+        resolved = resolve_client_security(self._ws_url, os.environ)
+        if resolved.is_err():
+            raise ValueError(resolved.unwrap_err())
+        started = time.monotonic()
+        deadline = started + ready_timeout
+        last = "no attempt made"
         while True:
+            remaining = deadline - time.monotonic()
             try:
-                await self.connect()
-                info = await self.handshake()
-                if info:
-                    return info
-                last = "the probe did not answer getVersion"
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # refused, reset, opening-handshake timeout, ...
-                last = f"{type(exc).__name__}: {exc}"
-            await self.disconnect()
-            if time.monotonic() + interval > deadline:
+                return await asyncio.wait_for(self._attempt_handshake(), timeout=max(remaining, 0.001))
+            except (OSError, asyncio.TimeoutError, ProbeTimeoutError, InvalidHandshake) as exc:
+                # Refused, reset, a stalled opening handshake or getVersion, or this attempt
+                # running past the deadline. ConnectionError is an OSError.
+                last = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+            if time.monotonic() + interval >= deadline:
                 raise TimeoutError(
-                    f"Probe at {self._ws_url} not ready after {ready_timeout:g}s ({last})"
+                    f"Probe at {self._ws_url} not ready after {time.monotonic() - started:.1f}s ({last})"
                 )
             await asyncio.sleep(interval)
+
+    async def _attempt_handshake(self) -> dict:
+        """One connect and getVersion; any failure, cancellation included, closes the connection."""
+        try:
+            await self.connect()
+            try:
+                info = await self.call("getVersion")
+            except ProbeTimeoutError:
+                raise
+            except ProbeError as exc:
+                # It answered: the probe is up, it just won't say its version. Degraded, as handshake().
+                logger.warning("Version handshake failed: %s", exc)
+                return {}
+            return self._record_version(info)
+        except BaseException:
+            await asyncio.shield(self.disconnect())
+            raise
 
     async def disconnect(self) -> None:
         """Close the connection and cancel all pending requests."""
