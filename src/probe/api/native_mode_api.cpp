@@ -47,6 +47,7 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QScopeGuard>
 #include <QSet>
 #include <QThread>
@@ -1811,6 +1812,31 @@ void NativeModeApi::registerObjectMethods() {
         if (className.isEmpty()) {
           className = p[QStringLiteral("class_name")].toString();
         }
+        // A glob over the whole objectName ("dvTabletRail_*", "*Toggle"): agents rarely know a
+        // delegate's exact name, and listing a whole class to filter it client-side is slow.
+        QString namePattern = p[QStringLiteral("objectNamePattern")].toString();
+        if (namePattern.isEmpty()) {
+          namePattern = p[QStringLiteral("name_pattern")].toString();
+        }
+        if (!namePattern.isEmpty() && !objectName.isEmpty()) {
+          throw JsonRpcException(
+              JsonRpcError::kInvalidParams,
+              QStringLiteral("Pass objectName or objectNamePattern, not both"),
+              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")}});
+        }
+        QRegularExpression namePatternRe;
+        if (!namePattern.isEmpty()) {
+          // Anchored, so the glob covers the whole name, on Qt 5 and 6 alike.
+          namePatternRe =
+              QRegularExpression(QRegularExpression::wildcardToRegularExpression(namePattern));
+          if (!namePatternRe.isValid()) {
+            throw JsonRpcException(
+                JsonRpcError::kInvalidParams,
+                QStringLiteral("Invalid objectNamePattern: %1").arg(namePattern),
+                QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")},
+                            {QStringLiteral("objectNamePattern"), namePattern}});
+          }
+        }
         QJsonObject propFilters = p[QStringLiteral("properties")].toObject();
         QString rootId = p[QStringLiteral("root")].toString();
         if (rootId.isEmpty()) {
@@ -1855,7 +1881,7 @@ void NativeModeApi::registerObjectMethods() {
         // creates objects cannot deadlock against the creation hook.
         auto* registry = ObjectRegistry::instance();
         const OwnedObjects candidates =
-            registry->collectOwned(ObjectFilter{className, objectName}, rootObj);
+            registry->collectOwned(ObjectFilter{className, objectName, namePatternRe}, rootObj);
 
         enum class Skip { Destroyed, Mismatch };
         using Candidate = QPointer<QObject>;

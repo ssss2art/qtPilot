@@ -373,7 +373,8 @@ void JsonRpcHandler::RegisterBuiltinMethods() {
     }
     // Only objects this thread owns (see collectOwned()). objectId() reads the
     // `text` property of an unnamed object, and that getter may destroy it.
-    const OwnedObjects found = registry->collectOwned(ObjectFilter{className, QString()}, rootObj);
+    const OwnedObjects found =
+        registry->collectOwned(ObjectFilter{className, QString(), {}}, rootObj);
 
     QJsonArray ids;
     for (const QPointer<QObject>& weak : found.objects) {

@@ -211,11 +211,13 @@ def register_native_tools(mcp: FastMCP) -> None:
         properties: dict | None = None,
         root: str | None = None,
         limit: int | None = None,
+        objectNamePattern: str | None = None,
         ctx: Context = None,
     ) -> dict:
         """Discover objects by name, class, and/or property filters.
 
-        At least one of `objectName`, `className`, or `properties` must be provided.
+        At least one of `objectName`, `objectNamePattern`, `className`, or `properties` should
+        be provided.
         Returns a uniform envelope with `objects`, `count`, `truncated`.
 
         To discover which property names are available for filtering, call
@@ -223,6 +225,7 @@ def register_native_tools(mcp: FastMCP) -> None:
 
         Args:
             objectName: Exact match on QObject::objectName()
+            objectNamePattern: Glob over the whole objectName ("dvTabletRail_*"); not with objectName
             className: Exact match (subclass-aware) on metaObject()->className()
             properties: Property-value filters; every listed property must equal the given value
             root: Restrict search to this subtree
@@ -235,6 +238,8 @@ def register_native_tools(mcp: FastMCP) -> None:
         params: dict = {}
         if objectName is not None:
             params["objectName"] = objectName
+        if objectNamePattern is not None:
+            params["objectNamePattern"] = objectNamePattern
         if className is not None:
             params["className"] = className
         if properties is not None:

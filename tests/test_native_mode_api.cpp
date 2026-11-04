@@ -176,6 +176,8 @@ class TestNativeModeApi : public QObject {
   void testInspectGeometryPartOnWidget();
   void testObjectsSearchByClassName();
   void testObjectsSearchByObjectName();
+  void testObjectsSearchByObjectNamePattern();
+  void testObjectsSearchRefusesNameAndPatternTogether();
   void testObjectsSearchByProperties();
   void testObjectsSearchEmptyFilters();
   void testObjectsSearchByRootOnly();
@@ -639,6 +641,41 @@ void TestNativeModeApi::testObjectsSearchByObjectName() {
   QJsonArray objects = result.toObject()[QStringLiteral("objects")].toArray();
   QEXPECT_THAT(objects.size(), Eq(1));
   QEXPECT_THAT(objects[0].toObject(), HasJsonField("objectName", QStrEq("uniqueLabel42")));
+}
+
+void TestNativeModeApi::testObjectsSearchByObjectNamePattern() {
+  // A glob over the whole name: the rail's buttons share a prefix, never an exact name.
+  for (const char* name :
+       {"dvTabletRail_browser", "dvTabletRail_products", "dvTabletRailSurface"}) {
+    auto* w = new QLabel(QStringLiteral("rail"), m_testWindow);
+    w->setObjectName(QString::fromLatin1(name));
+  }
+  ObjectRegistry::instance()->scanExistingObjects(m_testWindow);
+
+  QJsonObject params;
+  params[QStringLiteral("objectNamePattern")] = QStringLiteral("dvTabletRail_*");
+  QJsonArray objects =
+      callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray();
+  QEXPECT_THAT(objects.size(), Eq(2));
+  QEXPECT_THAT(objects,
+               JsonArrayContains(HasJsonField("objectName", QStrEq("dvTabletRail_browser"))));
+  QEXPECT_THAT(objects,
+               JsonArrayContains(HasJsonField("objectName", QStrEq("dvTabletRail_products"))));
+
+  params[QStringLiteral("objectNamePattern")] = QStringLiteral("*Rail_br?wser");
+  objects =
+      callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray();
+  QEXPECT_THAT(objects.size(), Eq(1));
+}
+
+void TestNativeModeApi::testObjectsSearchRefusesNameAndPatternTogether() {
+  QJsonObject error =
+      callExpectError("qt.objects.search",
+                      QJsonObject{{QStringLiteral("objectName"), QStringLiteral("a")},
+                                  {QStringLiteral("objectNamePattern"), QStringLiteral("a*")}});
+  QEXPECT_THAT(error,
+               AllOf(HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
+                     HasJsonField("message", QStrContains("not both"))));
 }
 
 void TestNativeModeApi::testObjectsSearchByProperties() {
