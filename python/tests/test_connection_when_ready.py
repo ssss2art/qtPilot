@@ -14,6 +14,8 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
+import shutil
 import socket
 import ssl
 import subprocess
@@ -242,6 +244,8 @@ async def test_a_rejected_token_is_refused_at_once_as_an_admission_failure(monke
 @pytest.fixture
 def tls_probe(tmp_path):
     """A TLS WebSocket server on loopback with a throwaway certificate for IP:127.0.0.1."""
+    if not shutil.which("openssl"):
+        pytest.skip("openssl makes the throwaway certificate")
     certificate, private_key = tmp_path / "cert.pem", tmp_path / "key.pem"
     subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
@@ -284,9 +288,15 @@ async def test_a_certificate_the_client_rejects_fails_at_once(tls_probe, monkeyp
     async with serve(answers, "127.0.0.1", 0, ssl=context) as server:
         conn = ProbeConnection(f"wss://{host}:{server.sockets[0].getsockname()[1]}")
         started = time.monotonic()
-        # Without a token the ssl error itself; with one, a ProbeCertificateError saying which.
-        with pytest.raises((ssl.SSLCertVerificationError, ProbeCertificateError), match="certificate verify failed|SSLCertVerificationError"):
+        # Without a token the ssl error itself; with one, a ProbeCertificateError saying why,
+        # and never what the token is.
+        expected = ProbeCertificateError if profile else ssl.SSLCertVerificationError
+        with pytest.raises(expected) as raised:
             await conn.connect_when_ready(ready_timeout=5, interval=0.1)
+        assert type(raised.value) is expected
+        assert re.search(r"self-signed|Hostname mismatch", str(raised.value))
+        if profile:
+            assert "a" * 40 not in str(raised.value) + repr(raised.value.__context__)
         assert time.monotonic() - started < 1
         assert not conn.is_connected
 

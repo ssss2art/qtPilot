@@ -387,7 +387,7 @@ class ProbeConnection:
             ProbeRefusedError: the probe refused this client (another client, a rejected token,
                 an untrusted origin); retrying cannot help either.
             ProbeCertificateError: with a token, the probe's certificate is not trusted or not for
-                this host; without one, ssl.SSLCertVerificationError. Neither changes as it starts.
+                this host; without one, ssl.SSLCertVerificationError. Neither changes while the app starts.
             TimeoutError: the probe never answered; the message names the last failure.
             asyncio.CancelledError: cancelled; the half-made connection is closed first.
         """
