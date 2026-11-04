@@ -188,7 +188,14 @@ async def _upgrades_then_stops_reading(reader: asyncio.StreamReader, writer: asy
 
 
 @pytest.mark.asyncio
-async def test_giving_up_on_a_probe_that_stopped_reading_keeps_to_the_deadline():
+@pytest.mark.parametrize("token", [False, True], ids=["plain", "token"])
+async def test_giving_up_on_a_probe_that_stopped_reading_keeps_to_the_deadline(token, monkeypatch, tmp_path):
+    if token:
+        # With a token the client waits for the probe's admission message, a path of its own.
+        token_file = tmp_path / "token"
+        token_file.write_text("a" * 40)
+        token_file.chmod(0o600)
+        monkeypatch.setenv("QTPILOT_AUTH_TOKEN_FILE", str(token_file))
     server = await asyncio.start_server(_upgrades_then_stops_reading, "127.0.0.1", 0)
     try:
         conn = ProbeConnection(f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}")

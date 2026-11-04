@@ -109,6 +109,13 @@ def _close_of(exc: BaseException) -> tuple[int | None, str | None]:
     return getattr(rcvd, "code", None), getattr(rcvd, "reason", None)
 
 
+def _drop(ws: object | None) -> None:
+    """Abort @p ws's transport, so a close that follows doesn't wait on a peer that stopped reading."""
+    transport = getattr(ws, "transport", None)
+    if transport is not None:
+        transport.abort()
+
+
 class ProbeTimeoutError(ProbeError):
     """A request was sent but the probe did not respond within the deadline.
 
@@ -269,6 +276,9 @@ class ProbeConnection:
                 if not isinstance(response, dict) or response.get("method") != "qtpilot.authenticated" or response.get("params") != {"protocolVersion": 1}:
                     raise ConnectionError("Authenticated admission was not acknowledged")
             except BaseException as exc:
+                # Dropped first: a probe that stopped reading never answers the close frame, and
+                # the graceful close waited its 5 s timeout past a deadline or a cancel.
+                _drop(self._ws)
                 await self._ws.close()
                 self._ws = None
                 if isinstance(exc, asyncio.CancelledError):
@@ -406,8 +416,7 @@ class ProbeConnection:
         except BaseException:
             # Dropped, not closed: a probe that stopped reading never answers a close frame, and
             # a graceful close waited its 5 s timeout past the deadline, or past a cancel.
-            if self._ws is not None and getattr(self._ws, "transport", None) is not None:
-                self._ws.transport.abort()
+            _drop(self._ws)
             await asyncio.shield(self.disconnect())
             raise
 
