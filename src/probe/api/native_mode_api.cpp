@@ -69,6 +69,51 @@ namespace qtPilot {
 
 namespace {
 
+/// @brief A glob over a whole objectName as a regular expression; invalid when the glob is.
+///
+/// Not QRegularExpression::wildcardToRegularExpression: that follows file-path rules, so `*`
+/// never crossed a `/` (and on Windows a `\`), and Qt 5 has no option to turn that off. Here `*`
+/// is any run of characters, `?` any one, `[...]` a set (`[!...]` its complement), and
+/// everything else is literal, on every platform and Qt version. `[*]` matches a literal `*`.
+QRegularExpression objectNameGlob(const QString& glob) {
+  QString re;
+  for (int i = 0; i < glob.size(); ++i) {
+    const QChar c = glob.at(i);
+    if (c == QLatin1Char('*')) {
+      re += QStringLiteral(".*");
+    } else if (c == QLatin1Char('?')) {
+      re += QLatin1Char('.');
+    } else if (c == QLatin1Char('[')) {
+      int j = i + 1;
+      QString set = QStringLiteral("[");
+      if (j < glob.size() && glob.at(j) == QLatin1Char('!')) {
+        set += QLatin1Char('^');
+        ++j;
+      }
+      // A `]` first in the set is a member, as in fnmatch.
+      if (j < glob.size() && glob.at(j) == QLatin1Char(']')) {
+        set += QStringLiteral("\\]");
+        ++j;
+      }
+      for (; j < glob.size() && glob.at(j) != QLatin1Char(']'); ++j) {
+        const QChar m = glob.at(j);
+        set += (m == QLatin1Char('\\') || m == QLatin1Char('^') || m == QLatin1Char('['))
+                   ? QStringLiteral("\\") + m
+                   : QString(m);
+      }
+      if (j >= glob.size()) {
+        return QRegularExpression(QStringLiteral("("));  // an unclosed set: invalid
+      }
+      re += set + QLatin1Char(']');
+      i = j;
+    } else {
+      re += QRegularExpression::escape(QString(c));
+    }
+  }
+  return QRegularExpression(QRegularExpression::anchoredPattern(re),
+                            QRegularExpression::DotMatchesEverythingOption);
+}
+
 /// @brief Parse JSON params string into QJsonObject.
 QJsonObject parseParams(const QString& params) {
   if (params.isEmpty()) {
@@ -1826,9 +1871,7 @@ void NativeModeApi::registerObjectMethods() {
         }
         QRegularExpression namePatternRe;
         if (!namePattern.isEmpty()) {
-          // Anchored, so the glob covers the whole name, on Qt 5 and 6 alike.
-          namePatternRe =
-              QRegularExpression(QRegularExpression::wildcardToRegularExpression(namePattern));
+          namePatternRe = objectNameGlob(namePattern);
           if (!namePatternRe.isValid()) {
             throw JsonRpcException(
                 JsonRpcError::kInvalidParams,

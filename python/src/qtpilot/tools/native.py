@@ -225,7 +225,9 @@ def register_native_tools(mcp: FastMCP) -> None:
 
         Args:
             objectName: Exact match on QObject::objectName()
-            objectNamePattern: Glob over the whole objectName ("dvTabletRail_*"); not with objectName
+            objectNamePattern: Glob over the whole objectName ("dvTabletRail_*"): `*` any run of
+                characters, `/` included, `?` one, `[...]` a set, `[*]` a literal `*`; not with
+                objectName
             className: Exact match (subclass-aware) on metaObject()->className()
             properties: Property-value filters; every listed property must equal the given value
             root: Restrict search to this subtree

@@ -178,6 +178,8 @@ class TestNativeModeApi : public QObject {
   void testObjectsSearchByObjectName();
   void testObjectsSearchByObjectNamePattern();
   void testObjectsSearchRefusesNameAndPatternTogether();
+  void testObjectNamePatternIsAGlobOverNamesNotPaths();
+  void testObjectsSearchRefusesAnInvalidPattern();
   void testObjectsSearchByProperties();
   void testObjectsSearchEmptyFilters();
   void testObjectsSearchByRootOnly();
@@ -666,6 +668,47 @@ void TestNativeModeApi::testObjectsSearchByObjectNamePattern() {
   objects =
       callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray();
   QEXPECT_THAT(objects.size(), Eq(1));
+}
+
+void TestNativeModeApi::testObjectNamePatternIsAGlobOverNamesNotPaths() {
+  // wildcardToRegularExpression's file-path rules kept `*` from crossing a `/` (and, on Windows,
+  // a `\`): the same request found different objects by platform.
+  for (const char* name : {"panel_a/b", "panel_c\\d", "panel*star", "panel_x"}) {
+    auto* w = new QLabel(QStringLiteral("p"), m_testWindow);
+    w->setObjectName(QString::fromLatin1(name));
+  }
+  ObjectRegistry::instance()->scanExistingObjects(m_testWindow);
+  const auto names = [this](const QJsonObject& params) {
+    QStringList found;
+    for (const QJsonValue& o :
+         callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray()) {
+      found << o.toObject()[QStringLiteral("objectName")].toString();
+    }
+    found.sort();
+    return found;
+  };
+
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel*")}}),
+           (QStringList{QStringLiteral("panel*star"), QStringLiteral("panel_a/b"),
+                        QStringLiteral("panel_c\\d"), QStringLiteral("panel_x")}));
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel[*]*")}}),
+           QStringList{QStringLiteral("panel*star")});
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel_[!a]*")}}),
+           (QStringList{QStringLiteral("panel_c\\d"), QStringLiteral("panel_x")}));
+  // The alias, and a pattern narrowed by class.
+  QCOMPARE(names({{QStringLiteral("name_pattern"), QStringLiteral("panel_?")}}),
+           QStringList{QStringLiteral("panel_x")});
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel*")},
+                  {QStringLiteral("className"), QStringLiteral("QPushButton")}}),
+           QStringList{});
+}
+
+void TestNativeModeApi::testObjectsSearchRefusesAnInvalidPattern() {
+  QJsonObject error = callExpectError(
+      "qt.objects.search", QJsonObject{{QStringLiteral("objectNamePattern"), QStringLiteral("[ab")}});
+  QEXPECT_THAT(error,
+               AllOf(HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
+                     HasJsonField("message", QStrContains("Invalid objectNamePattern"))));
 }
 
 void TestNativeModeApi::testObjectsSearchRefusesNameAndPatternTogether() {

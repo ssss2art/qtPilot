@@ -18,6 +18,7 @@ def register_prompts(mcp: FastMCP) -> None:
             "   - This gives an indented outline showing visible widgets, their classes, geometry, and object IDs (#N).\n\n"
             "2. Locating Widgets:\n"
             "   - Find specific controls by name or class: `qt_objects_search(className='QPushButton')`.\n"
+            "   - Find a family of names with a glob: `qt_objects_search(objectNamePattern='dvTabletRail_*')`.\n"
             "   - Filter by property: `qt_objects_search(properties={'text': 'Save'})`.\n\n"
             "3. Inspecting Widgets:\n"
             "   - Inspect widgets without token bloat: `qt_objects_inspect(objectId=..., declared_only=True)`.\n"

@@ -37,6 +37,8 @@ class TestSchemaSlimming:
                 assert "class_name" not in search_props
                 assert "root_id" not in search_props
                 assert "rootId" not in search_props
+                assert "objectNamePattern" in search_props
+                assert "name_pattern" not in search_props
 
                 # Verify invoking with alias still works via AliasMiddleware
                 await client.call_tool(
@@ -46,6 +48,10 @@ class TestSchemaSlimming:
                 mock_probe.call.assert_awaited_with(
                     "qt.objects.search",
                     {"objectName": "myBtn", "className": "QPushButton", "root": "win"},
+                )
+                await client.call_tool("qt_objects_search", {"name_pattern": "dvTabletRail_*"})
+                mock_probe.call.assert_awaited_with(
+                    "qt.objects.search", {"objectNamePattern": "dvTabletRail_*"},
                 )
 
                 # 2. qt_ui_sendKeys
