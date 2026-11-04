@@ -214,3 +214,24 @@ async def test_giving_up_on_a_probe_that_stopped_reading_keeps_to_the_deadline(t
         assert not conn.is_connected
     finally:
         server.close()
+
+
+async def _rejects_the_token(ws: ServerConnection) -> None:
+    await ws.close(1008, "Authentication rejected")
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_token_is_refused_at_once_as_an_admission_failure(monkeypatch, tmp_path):
+    # The probe closes a wrong token with 1008 after the upgrade, before its admission message.
+    token_file = tmp_path / "token"
+    token_file.write_text("a" * 40)
+    token_file.chmod(0o600)
+    monkeypatch.setenv("QTPILOT_AUTH_TOKEN_FILE", str(token_file))
+    async with serve(_rejects_the_token, "127.0.0.1", 0) as server:
+        conn = ProbeConnection(f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}")
+        started = time.monotonic()
+        with pytest.raises(ProbeRefusedError, match="admission.*Authentication rejected"):
+            await conn.connect_when_ready(ready_timeout=5, interval=0.1)
+        assert time.monotonic() - started < 1
+        with pytest.raises(ConnectionError, match="admission"):
+            await conn.connect()

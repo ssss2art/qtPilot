@@ -88,8 +88,10 @@ class ProbeRefusedError(ConnectionError):
     change any of them, so connect_when_ready() raises this at once rather than retrying.
     """
 
-    def __init__(self, reason: str | None):
-        super().__init__(f"The probe refused this client: {reason or 'no reason given'}")
+    def __init__(self, reason: str | None, *, during_admission: bool = False):
+        # Said as an admission failure when it is one: a rejected token has always read that way.
+        what = "Authenticated admission was refused" if during_admission else "The probe refused this client"
+        super().__init__(f"{what}: {reason or 'no reason given'}")
         self.reason = reason
 
 
@@ -284,7 +286,7 @@ class ProbeConnection:
                 if isinstance(exc, asyncio.CancelledError):
                     raise
                 if isinstance(exc, ConnectionClosed) and _close_of(exc)[0] == _POLICY_VIOLATION:
-                    raise ProbeRefusedError(_close_of(exc)[1]) from None
+                    raise ProbeRefusedError(_close_of(exc)[1], during_admission=True) from None
                 raise ConnectionError("Authenticated admission failed") from None
         self._connected = True
         self._session_id = uuid4().hex
