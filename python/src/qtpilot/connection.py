@@ -304,6 +304,39 @@ class ProbeConnection:
 
         return info
 
+    async def connect_when_ready(self, ready_timeout: float = 60.0, interval: float = 1.0) -> dict:
+        """Connect and handshake, retrying until the probe answers or ``ready_timeout`` passes.
+
+        A probe linked into an app that is still starting -- an iPad build loading its library,
+        a port forward up before the app is -- refuses or stalls the WebSocket opening handshake.
+        Callers used to wrap connect() in their own sleep-and-retry loop; this is that loop.
+
+        Returns:
+            The getVersion result of the first successful handshake.
+
+        Raises:
+            TimeoutError: the probe never answered; the message names the last failure.
+        """
+        deadline = time.monotonic() + ready_timeout
+        last: str = "no attempt made"
+        while True:
+            try:
+                await self.connect()
+                info = await self.handshake()
+                if info:
+                    return info
+                last = "the probe did not answer getVersion"
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # refused, reset, opening-handshake timeout, ...
+                last = f"{type(exc).__name__}: {exc}"
+            await self.disconnect()
+            if time.monotonic() + interval > deadline:
+                raise TimeoutError(
+                    f"Probe at {self._ws_url} not ready after {ready_timeout:g}s ({last})"
+                )
+            await asyncio.sleep(interval)
+
     async def disconnect(self) -> None:
         """Close the connection and cancel all pending requests."""
         logger.debug("Disconnecting from probe")
