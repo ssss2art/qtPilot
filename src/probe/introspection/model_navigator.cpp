@@ -41,7 +41,7 @@ QJsonArray ModelNavigator::listModels() {
   // rowCount()/columnCount()/roleNames() -- application code that may destroy it
   // or a model after it -- so each is re-checked before it is touched again.
   const OwnedObjects models =
-      registry->collectOwned(ObjectFilter{QStringLiteral("QAbstractItemModel"), QString()});
+      registry->collectOwned(ObjectFilter{QStringLiteral("QAbstractItemModel"), QString(), {}});
 
   for (const QPointer<QObject>& weak : models.objects) {
     auto* model = qobject_cast<QAbstractItemModel*>(weak.data());

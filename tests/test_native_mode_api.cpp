@@ -15,6 +15,7 @@
 
 #include <QApplication>
 #include <QDialog>
+#include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPointer>
@@ -176,6 +177,11 @@ class TestNativeModeApi : public QObject {
   void testInspectGeometryPartOnWidget();
   void testObjectsSearchByClassName();
   void testObjectsSearchByObjectName();
+  void testObjectsSearchByObjectNamePattern();
+  void testObjectsSearchRefusesNameAndPatternTogether();
+  void testObjectNamePatternIsAGlobOverNamesNotPaths();
+  void testObjectNamePatternTakesAnyLiteralAndSet();
+  void testObjectsSearchRefusesAnInvalidPattern();
   void testObjectsSearchByProperties();
   void testObjectsSearchEmptyFilters();
   void testObjectsSearchByRootOnly();
@@ -639,6 +645,115 @@ void TestNativeModeApi::testObjectsSearchByObjectName() {
   QJsonArray objects = result.toObject()[QStringLiteral("objects")].toArray();
   QEXPECT_THAT(objects.size(), Eq(1));
   QEXPECT_THAT(objects[0].toObject(), HasJsonField("objectName", QStrEq("uniqueLabel42")));
+}
+
+void TestNativeModeApi::testObjectsSearchByObjectNamePattern() {
+  // A glob over the whole name: the rail's buttons share a prefix, never an exact name.
+  for (const char* name :
+       {"dvTabletRail_browser", "dvTabletRail_products", "dvTabletRailSurface"}) {
+    auto* w = new QLabel(QStringLiteral("rail"), m_testWindow);
+    w->setObjectName(QString::fromLatin1(name));
+  }
+  ObjectRegistry::instance()->scanExistingObjects(m_testWindow);
+
+  QJsonObject params;
+  params[QStringLiteral("objectNamePattern")] = QStringLiteral("dvTabletRail_*");
+  QJsonArray objects =
+      callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray();
+  QEXPECT_THAT(objects.size(), Eq(2));
+  QEXPECT_THAT(objects,
+               JsonArrayContains(HasJsonField("objectName", QStrEq("dvTabletRail_browser"))));
+  QEXPECT_THAT(objects,
+               JsonArrayContains(HasJsonField("objectName", QStrEq("dvTabletRail_products"))));
+
+  params[QStringLiteral("objectNamePattern")] = QStringLiteral("*Rail_br?wser");
+  objects =
+      callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray();
+  QEXPECT_THAT(objects.size(), Eq(1));
+}
+
+void TestNativeModeApi::testObjectNamePatternIsAGlobOverNamesNotPaths() {
+  // wildcardToRegularExpression's file-path rules kept `*` from crossing a `/` (and, on Windows,
+  // a `\`): the same request found different objects by platform.
+  for (const char* name : {"panel_a/b", "panel_c\\d", "panel*star", "panel_x"}) {
+    auto* w = new QLabel(QStringLiteral("p"), m_testWindow);
+    w->setObjectName(QString::fromLatin1(name));
+  }
+  ObjectRegistry::instance()->scanExistingObjects(m_testWindow);
+  const auto names = [this](const QJsonObject& params) {
+    QStringList found;
+    for (const QJsonValue& o :
+         callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray()) {
+      found << o.toObject()[QStringLiteral("objectName")].toString();
+    }
+    found.sort();
+    return found;
+  };
+
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel*")}}),
+           (QStringList{QStringLiteral("panel*star"), QStringLiteral("panel_a/b"),
+                        QStringLiteral("panel_c\\d"), QStringLiteral("panel_x")}));
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel[*]*")}}),
+           QStringList{QStringLiteral("panel*star")});
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel_[!a]*")}}),
+           (QStringList{QStringLiteral("panel_c\\d"), QStringLiteral("panel_x")}));
+  // The alias, and a pattern narrowed by class.
+  QCOMPARE(names({{QStringLiteral("name_pattern"), QStringLiteral("panel_?")}}),
+           QStringList{QStringLiteral("panel_x")});
+  QCOMPARE(names({{QStringLiteral("objectNamePattern"), QStringLiteral("panel*")},
+                  {QStringLiteral("className"), QStringLiteral("QPushButton")}}),
+           QStringList{});
+}
+
+void TestNativeModeApi::testObjectNamePatternTakesAnyLiteralAndSet() {
+  // A regex translation split an emoji's surrogate pair (the pattern was refused as invalid),
+  // read `[:a:]` as a POSIX class, and took ~100 ms an object on a hostile pattern.
+  // From its UTF-8 bytes: MSVC with Qt 5 takes a QStringLiteral through the code page (1252),
+  // which has no emoji (C4566).
+  const QString emoji = QString::fromUtf8("\xF0\x9F\x98\x80");
+  for (const QString& name :
+       {QStringLiteral("smile") + emoji + QLatin1Char('x'), QStringLiteral("x:y"),
+        QStringLiteral(".dot"), QString(60, QLatin1Char('a'))}) {
+    auto* w = new QLabel(QStringLiteral("p"), m_testWindow);
+    w->setObjectName(name);
+  }
+  ObjectRegistry::instance()->scanExistingObjects(m_testWindow);
+  const auto count = [this](const QString& pattern) {
+    return callResult("qt.objects.search",
+                      QJsonObject{{QStringLiteral("objectNamePattern"), pattern}})
+        .toObject()[QStringLiteral("objects")]
+        .toArray()
+        .size();
+  };
+
+  QCOMPARE(count(QStringLiteral("smile") + emoji + QLatin1Char('*')), 1);
+  QCOMPARE(count(QStringLiteral("smile?x")), 1);  // the emoji is one character
+  QCOMPARE(count(QStringLiteral("x[:]y")), 1);
+  QCOMPARE(count(QStringLiteral("[:a:]")), 0);  // a set of `:` and `a`, not a POSIX class
+  QCOMPARE(count(QStringLiteral("[.]dot")), 1);
+
+  QElapsedTimer timer;
+  timer.start();
+  QCOMPARE(count(QStringLiteral("*?*?*?*?*?*?*?*?*?*?[bc]")), 0);
+  QVERIFY2(timer.elapsed() < 200, qPrintable(QStringLiteral("%1 ms").arg(timer.elapsed())));
+}
+
+void TestNativeModeApi::testObjectsSearchRefusesAnInvalidPattern() {
+  QJsonObject error = callExpectError(
+      "qt.objects.search", QJsonObject{{QStringLiteral("objectNamePattern"), QStringLiteral("[ab")}});
+  QEXPECT_THAT(error,
+               AllOf(HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
+                     HasJsonField("message", QStrContains("Invalid objectNamePattern"))));
+}
+
+void TestNativeModeApi::testObjectsSearchRefusesNameAndPatternTogether() {
+  QJsonObject error =
+      callExpectError("qt.objects.search",
+                      QJsonObject{{QStringLiteral("objectName"), QStringLiteral("a")},
+                                  {QStringLiteral("objectNamePattern"), QStringLiteral("a*")}});
+  QEXPECT_THAT(error,
+               AllOf(HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
+                     HasJsonField("message", QStrContains("not both"))));
 }
 
 void TestNativeModeApi::testObjectsSearchByProperties() {

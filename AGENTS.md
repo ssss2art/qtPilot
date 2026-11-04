@@ -176,7 +176,7 @@ qt_ping()                                 # Check liveness
 
 ### 3. Core Automation Tools
 
-- **Object Discovery:** `qt_objects_search(objectName="...", className="...", properties={...})`
+- **Object Discovery:** `qt_objects_search(objectName="...", className="...", properties={...})`, or `objectNamePattern="dvTabletRail_*"` for a glob over the whole name (`*` any run, `?` one character, `[...]` a set; `[*]` a literal `*`)
 - **Inspection:** `qt_objects_inspect(objectId="...", parts=["info", "properties", "methods", "signals", "geometry", "model"])`
 - **Property Access:** `qt_properties_get(objectId="...", name="text")` / `qt_properties_set(objectId="...", name="text", value="...")`
 - **UI Interaction:** `qt_ui_click(objectId="...")`, `qt_ui_sendKeys(objectId="...", text="Ada")`, `qt_ui_screenshot(objectId="...", fullWindow=True)`

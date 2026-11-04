@@ -484,6 +484,10 @@ OwnedObjects ObjectRegistry::collectOwned(const ObjectFilter& filter, QObject* r
     if (!filter.objectName.isEmpty() && obj->objectName() != filter.objectName) {
       return;
     }
+    if (filter.objectNamePattern.isActive() &&
+        !filter.objectNamePattern.matches(obj->objectName())) {
+      return;
+    }
     result.objects.append(QPointer<QObject>(obj));
   };
 

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/glob_pattern.h"
 #include "probe.h"  // For QTPILOT_EXPORT
 
 #include <atomic>
@@ -24,6 +25,9 @@ namespace qtPilot {
 struct ObjectFilter {
   QString className;   ///< Subclass-aware; empty matches any class.
   QString objectName;  ///< Exact; empty matches any name.
+  /// A glob over the whole objectName, checked in addition to objectName; an inactive pattern
+  /// (the default) matches any name.
+  GlobPattern objectNamePattern;
 };
 
 /// @brief What ObjectRegistry::collectOwned() found.

@@ -10,6 +10,7 @@ ALIAS_MAP: dict[str, dict[str, str]] = {
     "qt_objects_search": {
         "name": "objectName",
         "class_name": "className",
+        "name_pattern": "objectNamePattern",
         "root_id": "root",
         "rootId": "root",
     },

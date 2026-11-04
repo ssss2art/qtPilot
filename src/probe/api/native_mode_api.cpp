@@ -1811,6 +1811,30 @@ void NativeModeApi::registerObjectMethods() {
         if (className.isEmpty()) {
           className = p[QStringLiteral("class_name")].toString();
         }
+        // A glob over the whole objectName ("dvTabletRail_*", "*Toggle"): agents rarely know a
+        // delegate's exact name, and listing a whole class to filter it client-side is slow.
+        QString namePattern = p[QStringLiteral("objectNamePattern")].toString();
+        if (namePattern.isEmpty()) {
+          namePattern = p[QStringLiteral("name_pattern")].toString();
+        }
+        if (!namePattern.isEmpty() && !objectName.isEmpty()) {
+          throw JsonRpcException(
+              JsonRpcError::kInvalidParams,
+              QStringLiteral("Pass objectName or objectNamePattern, not both"),
+              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")}});
+        }
+        GlobPattern nameGlob;
+        if (!namePattern.isEmpty()) {
+          const std::optional<GlobPattern> parsed = GlobPattern::parse(namePattern);
+          if (!parsed) {
+            throw JsonRpcException(
+                JsonRpcError::kInvalidParams,
+                QStringLiteral("Invalid objectNamePattern: %1").arg(namePattern),
+                QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.search")},
+                            {QStringLiteral("objectNamePattern"), namePattern}});
+          }
+          nameGlob = *parsed;
+        }
         QJsonObject propFilters = p[QStringLiteral("properties")].toObject();
         QString rootId = p[QStringLiteral("root")].toString();
         if (rootId.isEmpty()) {
@@ -1855,7 +1879,7 @@ void NativeModeApi::registerObjectMethods() {
         // creates objects cannot deadlock against the creation hook.
         auto* registry = ObjectRegistry::instance();
         const OwnedObjects candidates =
-            registry->collectOwned(ObjectFilter{className, objectName}, rootObj);
+            registry->collectOwned(ObjectFilter{className, objectName, nameGlob}, rootObj);
 
         enum class Skip { Destroyed, Mismatch };
         using Candidate = QPointer<QObject>;
