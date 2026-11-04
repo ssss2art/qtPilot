@@ -16,7 +16,7 @@ from qtpilot.security import (
     transport_logger, validate_probe_url,
 )
 from qtpilot.evidence import BufferEvidence
-from websockets.exceptions import InvalidHandshake
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,34 @@ class ProbeError(Exception):
             code=error.get("code", -1),
             data=error.get("data"),
         )
+
+
+class ProbeRefusedError(ConnectionError):
+    """The probe accepted the WebSocket and then refused this client (close code 1008).
+
+    It does that for a second client, a rejected token and an untrusted origin. Waiting does not
+    change any of them, so connect_when_ready() raises this at once rather than retrying.
+    """
+
+    def __init__(self, reason: str | None):
+        super().__init__(f"The probe refused this client: {reason or 'no reason given'}")
+        self.reason = reason
+
+
+_POLICY_VIOLATION = 1008
+
+
+def _closed_error(code: int | None, reason: str | None) -> ConnectionError:
+    """What a closed connection means for the caller: refused (1008), or just closed."""
+    if code == _POLICY_VIOLATION:
+        return ProbeRefusedError(reason)
+    return ConnectionError(f"WebSocket closed (code={code} reason={reason or ''})")
+
+
+def _close_of(exc: BaseException) -> tuple[int | None, str | None]:
+    """The close code and reason a websockets ConnectionClosed received, if it is one."""
+    rcvd = getattr(exc, "rcvd", None)
+    return getattr(rcvd, "code", None), getattr(rcvd, "reason", None)
 
 
 class ProbeTimeoutError(ProbeError):
@@ -245,6 +273,8 @@ class ProbeConnection:
                 self._ws = None
                 if isinstance(exc, asyncio.CancelledError):
                     raise
+                if isinstance(exc, ConnectionClosed) and _close_of(exc)[0] == _POLICY_VIOLATION:
+                    raise ProbeRefusedError(_close_of(exc)[1]) from None
                 raise ConnectionError("Authenticated admission failed") from None
         self._connected = True
         self._session_id = uuid4().hex
@@ -329,6 +359,8 @@ class ProbeConnection:
 
         Raises:
             ValueError: the client's security settings refuse this URL; retrying cannot help.
+            ProbeRefusedError: the probe refused this client (another client, a rejected token,
+                an untrusted origin); retrying cannot help either.
             TimeoutError: the probe never answered; the message names the last failure.
             asyncio.CancelledError: cancelled; the half-made connection is closed first.
         """
@@ -342,6 +374,8 @@ class ProbeConnection:
             remaining = deadline - time.monotonic()
             try:
                 return await asyncio.wait_for(self._attempt_handshake(), timeout=max(remaining, 0.001))
+            except ProbeRefusedError:
+                raise
             except (OSError, asyncio.TimeoutError, ProbeTimeoutError, InvalidHandshake) as exc:
                 # Refused, reset, a stalled opening handshake or getVersion, or this attempt
                 # running past the deadline. ConnectionError is an OSError.
@@ -358,6 +392,10 @@ class ProbeConnection:
             await self.connect()
             try:
                 info = await self.call("getVersion")
+            except ConnectionClosed as exc:
+                # Closed as the request went out; the same close arriving a moment later reaches
+                # call() from the reader as a ConnectionError of the same kind.
+                raise _closed_error(*_close_of(exc)) from None
             except ProbeTimeoutError:
                 raise
             except ProbeError as exc:
@@ -366,6 +404,10 @@ class ProbeConnection:
                 return {}
             return self._record_version(info)
         except BaseException:
+            # Dropped, not closed: a probe that stopped reading never answers a close frame, and
+            # a graceful close waited its 5 s timeout past the deadline, or past a cancel.
+            if self._ws is not None and getattr(self._ws, "transport", None) is not None:
+                self._ws.transport.abort()
             await asyncio.shield(self.disconnect())
             raise
 
@@ -464,6 +506,9 @@ class ProbeConnection:
             self._pending.pop(request_id, None)
             raise
         except Exception as exc:
+            # A send that failed leaves no one to await the future, which the reader would then
+            # fail anyway ("Future exception was never retrieved").
+            self._pending.pop(request_id, None)
             duration_ms = (time.monotonic() - t0) * 1000
             self._notify_call_observers(request, exc, duration_ms)
             raise
@@ -474,6 +519,8 @@ class ProbeConnection:
 
     async def _recv_loop(self) -> None:
         """Background task that reads WebSocket messages and resolves futures."""
+        close_code: int | None = None
+        close_reason: str | None = None
         try:
             async for raw in self._ws:
                 try:
@@ -510,18 +557,21 @@ class ProbeConnection:
             raise
         except Exception as exc:
             # Log close code/reason if available (websockets.ConnectionClosed)
-            close_code = getattr(getattr(exc, "rcvd", None), "code", None)
-            close_reason = getattr(getattr(exc, "rcvd", None), "reason", None)
+            close_code, close_reason = _close_of(exc)
             logger.warning(
                 "WebSocket connection closed: %s (code=%s reason=%s)",
                 exc, close_code, close_reason,
             )
         finally:
             self._connected = False
+            if close_code is None and self._ws is not None:
+                # A clean close ends the read loop without an exception; the code is on the socket.
+                close_code = getattr(self._ws, "close_code", None)
+                close_reason = getattr(self._ws, "close_reason", None)
             # Cancel all remaining pending futures
             for future in self._pending.values():
                 if not future.done():
-                    future.set_exception(ConnectionError("WebSocket closed"))
+                    future.set_exception(_closed_error(close_code, close_reason))
             self._pending.clear()
 
     async def _notification_dispatcher(self) -> None:

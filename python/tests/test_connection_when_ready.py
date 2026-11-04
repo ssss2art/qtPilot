@@ -11,6 +11,8 @@ calls and security checks are the real ones.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import socket
 import time
@@ -18,7 +20,7 @@ import time
 import pytest
 from websockets.asyncio.server import ServerConnection, serve
 
-from qtpilot.connection import ProbeConnection
+from qtpilot.connection import ProbeConnection, ProbeRefusedError
 
 
 async def _answers(ws: ServerConnection) -> None:
@@ -127,3 +129,81 @@ async def test_cancelling_mid_handshake_closes_the_connection():
             await task
         assert not conn.is_connected
         assert conn._recv_task is None or conn._recv_task.done()
+
+
+async def _refuses_at_once(ws: ServerConnection) -> None:
+    await ws.close(1008, "Another client is already connected")
+
+
+async def _refuses_after_the_request(ws: ServerConnection) -> None:
+    await ws.recv()
+    await asyncio.sleep(0.05)
+    await ws.close(1008, "Another client is already connected")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("handler", [_refuses_at_once, _refuses_after_the_request], ids=["at-once", "after-request"])
+async def test_a_refusing_probe_fails_at_once_whenever_the_close_arrives(handler):
+    # The probe refuses a second client, a bad token or an untrusted origin by accepting the
+    # upgrade and closing with 1008. Raised at once or retried until the timeout depended on
+    # whether the close came with the upgrade or a moment after it.
+    async with serve(handler, "127.0.0.1", 0) as server:
+        conn = ProbeConnection(f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}")
+        started = time.monotonic()
+        with pytest.raises(ProbeRefusedError, match="Another client is already connected"):
+            await conn.connect_when_ready(ready_timeout=5, interval=0.1)
+        assert time.monotonic() - started < 1
+        assert not conn.is_connected
+
+
+@pytest.mark.asyncio
+async def test_a_connection_closed_otherwise_is_tried_again():
+    closed_once = False
+
+    async def closes_first_then_answers(ws: ServerConnection) -> None:
+        nonlocal closed_once
+        if not closed_once:
+            closed_once = True
+            await ws.close(1011, "starting")
+            return
+        await _answers(ws)
+
+    async with serve(closes_first_then_answers, "127.0.0.1", 0) as server:
+        conn = ProbeConnection(f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}")
+        try:
+            assert (await conn.connect_when_ready(ready_timeout=5, interval=0.1))["version"] == "1"
+        finally:
+            await conn.disconnect()
+
+
+async def _upgrades_then_stops_reading(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    # An app whose GUI thread is busy: the upgrade completes, then nothing is read or answered,
+    # not even a close frame.
+    headers = (await reader.readuntil(b"\r\n\r\n")).decode()
+    key = next(line.split(":", 1)[1].strip() for line in headers.split("\r\n") if line.lower().startswith("sec-websocket-key:"))
+    accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+    writer.write(f"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n".encode())
+    await writer.drain()
+    await asyncio.sleep(30)
+
+
+@pytest.mark.asyncio
+async def test_giving_up_on_a_probe_that_stopped_reading_keeps_to_the_deadline():
+    server = await asyncio.start_server(_upgrades_then_stops_reading, "127.0.0.1", 0)
+    try:
+        conn = ProbeConnection(f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}")
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await conn.connect_when_ready(ready_timeout=1, interval=0.1)
+        assert time.monotonic() - started < 2, "a graceful close waited its 5 s close timeout"
+
+        task = asyncio.create_task(conn.connect_when_ready(ready_timeout=10))
+        await asyncio.sleep(0.5)
+        task.cancel()
+        started = time.monotonic()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert time.monotonic() - started < 1
+        assert not conn.is_connected
+    finally:
+        server.close()
