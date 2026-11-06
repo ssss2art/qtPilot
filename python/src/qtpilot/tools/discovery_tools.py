@@ -33,18 +33,16 @@ def register_discovery_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def qtpilot_disconnect_probe(ctx: Context) -> dict:
-        """Disconnect from the currently connected qtPilot probe.
+        """Cancel a pending connection or disconnect from the current qtPilot probe.
 
         Example: qtpilot_disconnect_probe()
         """
-        from qtpilot.server import disconnect_probe, get_probe
+        from qtpilot.server import disconnect_probe
 
-        probe = get_probe()
-        if probe is None or not probe.is_connected:
+        ws_url = await disconnect_probe()
+        if ws_url is None:
             return {"ok": False, "reason": "No probe connected"}
 
-        ws_url = probe.ws_url
-        await disconnect_probe()
         return {"ok": True, "ws_url": ws_url}
 
     @mcp.tool

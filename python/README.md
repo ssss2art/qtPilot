@@ -56,6 +56,8 @@ slower startup. The timeout must be finite, greater than zero, and at most
 60 seconds. Policy refusals and rejected TLS certificates fail immediately.
 A cancelled or failed attempt closes its connection without publishing a
 half-ready probe in session state.
+Disconnecting or requesting a different probe also cancels any pending readiness
+wait before closing or replacing the connection.
 
 ## Features
 
