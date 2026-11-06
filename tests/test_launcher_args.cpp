@@ -115,6 +115,10 @@ void TestLauncherArgs::forwardsArgumentsAfterSeparator_data() {
   QTest::newRow("target before the separator")
       << QStringList{kTarget, separator, QStringLiteral("project.dv")}
       << QStringList{QStringLiteral("project.dv")};
+  QTest::newRow("repeated target after a later separator")
+      << QStringList{kTarget, QStringLiteral("before"), separator, kTarget, QStringLiteral("after")}
+      << QStringList{QStringLiteral("before"), QStringLiteral(QTPILOT_TEST_ARGS_ECHO),
+                     QStringLiteral("after")};
   // An option's value that happens to be "--" is not the separator either.
   QTest::newRow("\"--\" as an option's value")
       << QStringList{QStringLiteral("--auth-token-file"), separator, separator, kTarget, qmlPreview}
