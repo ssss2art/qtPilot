@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import weakref
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from collections.abc import AsyncIterator, MutableMapping
 
 from fastmcp import FastMCP
@@ -33,6 +35,12 @@ _MODE_PREFIXES: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 # ServerState — replaces module-level globals for testability
 # ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class PendingConnection:
+    probe: ProbeConnection
+    task: asyncio.Task[None]
+
+
 class ServerState:
     """Encapsulates runtime state for the MCP server."""
 
@@ -40,6 +48,8 @@ class ServerState:
         self.mcp = mcp
         self.mode = mode
         self.probe: ProbeConnection | None = None
+        self.pending_connection: PendingConnection | None = None
+        self.connection_lock = asyncio.Lock()
         self.discovery: DiscoveryListener | None = None
         self.recorder: EventRecorder = EventRecorder()
         self.message_logger: MessageLogger = MessageLogger()
@@ -159,44 +169,88 @@ def get_message_logger() -> MessageLogger:
 # Probe connection helpers
 # ---------------------------------------------------------------------------
 
-async def connect_to_probe(ws_url: str) -> ProbeConnection:
-    """Connect to a probe at the given WebSocket URL."""
+async def connect_to_probe(ws_url: str, *, ready_timeout: float = 10.0) -> ProbeConnection:
+    """Wait up to ready_timeout seconds for a probe; publish it only after readiness."""
+    if not math.isfinite(ready_timeout) or not 0 < ready_timeout <= 60:
+        raise ValueError("ready_timeout must be finite and greater than 0, at most 60 seconds")
     state = get_state()
 
-    if state.probe is not None and state.probe.is_connected:
-        logger.info("Disconnecting from current probe at %s", state.probe.ws_url)
-        # Detach logger from old probe
-        if state.message_logger._attached_probe is not None:
-            state.message_logger.detach(state.message_logger._attached_probe)
-        await state.probe.disconnect()
-        state.probe = None
+    async with state.connection_lock:
+        await _disconnect_locked(state)
+        conn = ProbeConnection(ws_url)
 
-    conn = ProbeConnection(ws_url)
-    await conn.connect()
-    state.probe = conn
-    # Never fatal: handshake() logs and degrades rather than raising, so a probe
-    # that predates protocol negotiation is still usable.
-    await conn.handshake()
-    logger.info(
-        "Connected to probe at %s (version=%s protocol=%s)",
-        ws_url, conn.probe_version, conn.probe_protocol_version,
-    )
+        async def admit() -> None:
+            # Give short waits retry opportunities too; the transport default is one second.
+            await conn.connect_when_ready(
+                ready_timeout=ready_timeout, interval=min(1.0, ready_timeout / 10),
+            )
 
-    # Attach logger if active
-    if state.message_logger.is_active:
-        state.message_logger.attach(conn)
+        pending = PendingConnection(conn, asyncio.create_task(admit()))
+        state.pending_connection = pending
 
-    return conn
+    try:
+        await pending.task
+        async with state.connection_lock:
+            if state.pending_connection is not pending:
+                raise asyncio.CancelledError("Probe connection was superseded")
+            state.pending_connection = None
+            state.probe = conn
+            logger.info(
+                "Connected to probe at %s (version=%s protocol=%s)",
+                ws_url, conn.probe_version, conn.probe_protocol_version,
+            )
+            if state.message_logger.is_active:
+                state.message_logger.attach(conn)
+        return conn
+    finally:
+        async with state.connection_lock:
+            if state.pending_connection is pending:
+                await _disconnect_locked(state)
 
 
-async def disconnect_probe() -> None:
-    """Disconnect the current probe connection if any."""
+async def _disconnect_locked(state: ServerState) -> str | None:
+    """Cancel admission and close the ready probe while holding connection_lock."""
+    cleanup = asyncio.create_task(_close_connections(state))
+    cancelled = False
+    # Keep the lifecycle lock until the sockets close, even if the caller is
+    # cancelled repeatedly. Otherwise a completed admission can lose its owner.
+    while not cleanup.done():
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            cancelled = True
+    url = cleanup.result()
+    if cancelled:
+        raise asyncio.CancelledError
+    return url
+
+
+async def _close_connections(state: ServerState) -> str | None:
+    """Close state-owned connections; only called by the locked cleanup task."""
+    url: str | None = None
+    pending = state.pending_connection
+    state.pending_connection = None
+    if pending is not None:
+        url = pending.probe.ws_url
+        pending.task.cancel()
+        # A failed admission may already be done. Disconnect still succeeds in that case.
+        await asyncio.gather(pending.task, return_exceptions=True)
+        await pending.probe.disconnect()
+    probe = state.probe
+    state.probe = None
+    if probe is not None:
+        url = probe.ws_url
+        if state.message_logger._attached_probe is probe:
+            state.message_logger.detach(probe)
+        await probe.disconnect()
+    return url
+
+
+async def disconnect_probe() -> str | None:
+    """Cancel pending admission and close the current probe; return its URL, if any."""
     state = get_state()
-    if state.probe is not None:
-        if state.message_logger._attached_probe is state.probe:
-            state.message_logger.detach(state.probe)
-        await state.probe.disconnect()
-        state.probe = None
+    async with state.connection_lock:
+        return await _disconnect_locked(state)
 
 
 # ---------------------------------------------------------------------------
@@ -396,21 +450,23 @@ def create_server(
                 except Exception:
                     logger.debug("Failed to stop recording during shutdown", exc_info=True)
 
-            # Disconnect probe
-            await disconnect_probe()
+            # Connection cleanup propagates cancellation only after closing its sockets.
+            # FastMCP 2.x exits lifespan inside a cancelled scope; still release discovery.
+            try:
+                await disconnect_probe()
+            finally:
+                # Stop discovery
+                if state.discovery is not None:
+                    await state.discovery.stop()
+                    state.discovery = None
 
-            # Stop discovery
-            if state.discovery is not None:
-                await state.discovery.stop()
-                state.discovery = None
-
-            # Terminate launched process
-            if process is not None:
-                process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    process.kill()
+                # Terminate launched process
+                if process is not None:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        process.kill()
 
     mode_label = mode.title() if mode != "all" else "All"
     mcp = FastMCP(f"qtPilot {mode_label}", lifespan=lifespan)

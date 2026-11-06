@@ -49,6 +49,16 @@ iproxy 9222 9222
 qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
 
+Connections wait up to 10 seconds for the probe to become ready, including its
+version handshake. In MCP, use
+`qtpilot_connect_probe(ws_url="ws://localhost:9222", ready_timeout=30)` for a
+slower startup. The timeout must be finite, greater than zero, and at most
+60 seconds. Policy refusals and rejected TLS certificates fail immediately.
+A cancelled or failed attempt closes its connection without publishing a
+half-ready probe in session state.
+Disconnecting or requesting a different probe also cancels any pending readiness
+wait before closing or replacing the connection.
+
 ## Features
 
 - **Three API modes**: Native (full Qt access), Computer Use (screenshots + clicks), Chrome (accessibility tree)
