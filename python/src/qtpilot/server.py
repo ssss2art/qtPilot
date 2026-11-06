@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import weakref
 from contextlib import asynccontextmanager
@@ -159,24 +160,19 @@ def get_message_logger() -> MessageLogger:
 # Probe connection helpers
 # ---------------------------------------------------------------------------
 
-async def connect_to_probe(ws_url: str) -> ProbeConnection:
-    """Connect to a probe at the given WebSocket URL."""
+async def connect_to_probe(ws_url: str, *, ready_timeout: float = 10.0) -> ProbeConnection:
+    """Wait up to ready_timeout seconds for a probe; publish it only after readiness."""
+    if not math.isfinite(ready_timeout) or not 0 < ready_timeout <= 60:
+        raise ValueError("ready_timeout must be finite and greater than 0, at most 60 seconds")
     state = get_state()
 
-    if state.probe is not None and state.probe.is_connected:
+    if state.probe is not None:
         logger.info("Disconnecting from current probe at %s", state.probe.ws_url)
-        # Detach logger from old probe
-        if state.message_logger._attached_probe is not None:
-            state.message_logger.detach(state.message_logger._attached_probe)
-        await state.probe.disconnect()
-        state.probe = None
+        await disconnect_probe()
 
     conn = ProbeConnection(ws_url)
-    await conn.connect()
+    await conn.connect_when_ready(ready_timeout=ready_timeout)
     state.probe = conn
-    # Never fatal: handshake() logs and degrades rather than raising, so a probe
-    # that predates protocol negotiation is still usable.
-    await conn.handshake()
     logger.info(
         "Connected to probe at %s (version=%s protocol=%s)",
         ws_url, conn.probe_version, conn.probe_protocol_version,

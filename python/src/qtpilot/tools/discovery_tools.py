@@ -11,7 +11,9 @@ def register_discovery_tools(mcp: FastMCP) -> None:
     """Register probe discovery and connection management tools."""
 
     @mcp.tool
-    async def qtpilot_connect_probe(ws_url: str, ctx: Context = None) -> dict:
+    async def qtpilot_connect_probe(
+        ws_url: str, ready_timeout: float = 10.0, ctx: Context = None,
+    ) -> dict:
         """Connect to a qtPilot probe by its WebSocket URL.
 
         Disconnects any existing probe connection first.
@@ -19,12 +21,14 @@ def register_discovery_tools(mcp: FastMCP) -> None:
 
         Args:
             ws_url: WebSocket URL (e.g. "ws://192.168.1.100:9222")
+            ready_timeout: Total readiness wait in seconds (greater than 0, at most 60).
+                Retries while the app starts; security refusals fail immediately.
 
         Example: qtpilot_connect_probe(ws_url="ws://localhost:9222")
         """
         from qtpilot.server import connect_to_probe
 
-        conn = await connect_to_probe(ws_url)
+        conn = await connect_to_probe(ws_url, ready_timeout=ready_timeout)
         return {"ok": True, "ws_url": conn.ws_url}
 
     @mcp.tool
