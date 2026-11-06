@@ -286,3 +286,26 @@ async def test_cancelled_disconnect_finishes_socket_cleanup(
             release.set()
             await asyncio.gather(task, return_exceptions=True)
             await real_disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connected", [False, True], ids=["discovery-only", "with-probe"])
+async def test_mcp_lifespan_closes_discovery_even_when_shutdown_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch, connected: bool,
+) -> None:
+    monkeypatch.delenv("QTPILOT_PROFILE", raising=False)
+    monkeypatch.delenv("QTPILOT_AUTH_TOKEN_FILE", raising=False)
+    async with serve(answer, "127.0.0.1", 0) as probe:
+        url = f"ws://127.0.0.1:{probe.sockets[0].getsockname()[1]}"
+        mcp = sessions.create_server(ws_url=url if connected else None, discovery_port=0)
+        listener = None
+        try:
+            async with Client(mcp) as client:
+                await client.list_tools()
+                listener = sessions.get_state().discovery
+                assert listener is not None and listener.is_running
+            assert not listener.is_running, "MCP cancellation must not skip UDP teardown"
+            assert sessions.get_state().discovery is None
+        finally:
+            if listener is not None:
+                await listener.stop()

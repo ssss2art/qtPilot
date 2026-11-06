@@ -450,21 +450,23 @@ def create_server(
                 except Exception:
                     logger.debug("Failed to stop recording during shutdown", exc_info=True)
 
-            # Disconnect probe
-            await disconnect_probe()
+            # Connection cleanup propagates cancellation only after closing its sockets.
+            # FastMCP 2.x exits lifespan inside a cancelled scope; still release discovery.
+            try:
+                await disconnect_probe()
+            finally:
+                # Stop discovery
+                if state.discovery is not None:
+                    await state.discovery.stop()
+                    state.discovery = None
 
-            # Stop discovery
-            if state.discovery is not None:
-                await state.discovery.stop()
-                state.discovery = None
-
-            # Terminate launched process
-            if process is not None:
-                process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    process.kill()
+                # Terminate launched process
+                if process is not None:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        process.kill()
 
     mode_label = mode.title() if mode != "all" else "All"
     mcp = FastMCP(f"qtPilot {mode_label}", lifespan=lifespan)
