@@ -361,3 +361,7 @@ if(WIN32 AND TARGET qtPilot_launcher)
         QTPILOT_TEST_PROBE="$<TARGET_FILE:qtPilot_probe>"
         QTPILOT_TEST_QT_DIR="$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/..")
 endif()
+
+# Pure Windows argv encoding contract, exercised on every host without launching a process.
+qtPilot_add_test(NAME test_windows_command_line SOURCES test_windows_command_line.cpp
+    ENV "QTPILOT_ENABLED=0")
