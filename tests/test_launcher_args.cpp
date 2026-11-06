@@ -8,6 +8,7 @@
 
 #include <chrono>
 
+#include <QByteArray>
 #include <QFile>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -82,7 +83,15 @@ QStringList TestLauncherArgs::runThroughLauncher(const QStringList& command) {
                 .arg(launcher.exitCode())
                 .arg(static_cast<int>(launcher.exitStatus()))};
   }
-  return QString::fromUtf8(out.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+  QByteArray data = out.readAll();
+  if (data.isEmpty())
+    return {};
+  if (!data.endsWith('\0'))
+    return {QStringLiteral("<target wrote a truncated argument record>")};
+  data.chop(1);  // Remove the final delimiter, preserving any empty argument before it.
+  // The QByteArray overload stops at the first NUL on Qt 5; supply the length explicitly.
+  return QString::fromUtf8(data.constData(), data.size())
+      .split(QLatin1Char('\0'), Qt::KeepEmptyParts);
 }
 
 void TestLauncherArgs::forwardsArgumentsAfterSeparator_data() {
@@ -96,6 +105,17 @@ void TestLauncherArgs::forwardsArgumentsAfterSeparator_data() {
   QTest::newRow("plain") << QStringList{separator, kTarget, QStringLiteral("--verbose"),
                                         QStringLiteral("project.dv")}
                          << QStringList{QStringLiteral("--verbose"), QStringLiteral("project.dv")};
+  QTest::newRow("empty arguments")
+      << QStringList{separator, kTarget, QString(), QStringLiteral("middle"), QString()}
+      << QStringList{QString(), QStringLiteral("middle"), QString()};
+  QTest::newRow("embedded newline")
+      << QStringList{separator, kTarget, QStringLiteral("first\nsecond")}
+      << QStringList{QStringLiteral("first\nsecond")};
+  QTest::newRow("spaces quotes and trailing backslashes")
+      << QStringList{separator, kTarget, QStringLiteral("two words"), QStringLiteral("a\"b"),
+                     QStringLiteral("a path\\"), QStringLiteral("quoted\\\"tail\\")}
+      << QStringList{QStringLiteral("two words"), QStringLiteral("a\"b"),
+                     QStringLiteral("a path\\"), QStringLiteral("quoted\\\"tail\\")};
   // What qmlpreview passes: Qt's own switch, with the comma-separated services list.
   QTest::newRow("qmljsdebugger") << QStringList{separator, kTarget, qmlPreview,
                                                 QStringLiteral("project.dv")}
@@ -115,6 +135,10 @@ void TestLauncherArgs::forwardsArgumentsAfterSeparator_data() {
   QTest::newRow("target before the separator")
       << QStringList{kTarget, separator, QStringLiteral("project.dv")}
       << QStringList{QStringLiteral("project.dv")};
+  QTest::newRow("repeated target after a later separator")
+      << QStringList{kTarget, QStringLiteral("before"), separator, kTarget, QStringLiteral("after")}
+      << QStringList{QStringLiteral("before"), QStringLiteral(QTPILOT_TEST_ARGS_ECHO),
+                     QStringLiteral("after")};
   // An option's value that happens to be "--" is not the separator either.
   QTest::newRow("\"--\" as an option's value")
       << QStringList{QStringLiteral("--auth-token-file"), separator, separator, kTarget, qmlPreview}

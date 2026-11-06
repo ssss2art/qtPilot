@@ -19,6 +19,7 @@
 #ifdef Q_OS_WIN
 
 #include "process_inject_windows.h"
+#include "windows_command_line.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -36,26 +37,14 @@ namespace {
 /// @param args The command line arguments.
 /// @return A properly quoted command line string.
 std::wstring buildCommandLine(const QString& executable, const QStringList& args) {
-  QString cmdLine;
+  // argv[0] has special CRT rules: quote the valid executable path without
+  // applying the escaping used for subsequent arguments.
+  QString cmdLine = QStringLiteral("\"%1\"").arg(executable);
 
-  // Quote the executable path if it contains spaces
-  if (executable.contains(QLatin1Char(' '))) {
-    cmdLine = QStringLiteral("\"%1\"").arg(executable);
-  } else {
-    cmdLine = executable;
-  }
-
-  // Append arguments, quoting as needed
+  // Append arguments, encoding each argument for the C runtime
   for (const QString& arg : args) {
     cmdLine += QLatin1Char(' ');
-    if (arg.contains(QLatin1Char(' ')) || arg.contains(QLatin1Char('"'))) {
-      // Quote and escape embedded quotes
-      QString escaped = arg;
-      escaped.replace(QLatin1Char('"'), QStringLiteral("\\\""));
-      cmdLine += QStringLiteral("\"%1\"").arg(escaped);
-    } else {
-      cmdLine += arg;
-    }
+    cmdLine += qtPilot::quoteWindowsArgument(arg);
   }
 
   return cmdLine.toStdWString();

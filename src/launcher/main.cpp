@@ -170,18 +170,6 @@ QStringList rawCommandLineArguments(int argc, char* argv[]) {
   return arguments;
 }
 
-/// @brief The target and its arguments exactly as given: the raw arguments from the "--" that the
-/// parser's own target follows. Tied to the parser's choice so that a "--" given as an option's
-/// value, or after the target, is never taken for the separator. Empty when the target was not
-/// given straight after a "--"; the parser's own list is then all there is.
-QStringList rawTargetCommand(const QStringList& rawArguments, const QString& target) {
-  for (decltype(rawArguments.size()) i = 0; i + 1 < rawArguments.size(); ++i) {
-    if (rawArguments.at(i) == QLatin1String("--") && rawArguments.at(i + 1) == target)
-      return rawArguments.mid(i + 1);
-  }
-  return {};
-}
-
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -270,8 +258,11 @@ int main(int argc, char* argv[]) {
                                QStringLiteral("Arguments to pass to target"),
                                QStringLiteral("[args...]"));
 
-  // Parse arguments
-  parser.process(app);
+  // Parse the original command line once. Searching for a matching target after
+  // parsing can mistake a later target argument for the executable boundary.
+  QStringList parserArguments = {QCoreApplication::applicationFilePath()};
+  parserArguments.append(rawArguments);
+  parser.process(parserArguments);
 
   for (const auto& option : securityOptions) {
     if (parser.isSet(option.first)) {
@@ -316,9 +307,6 @@ int main(int argc, char* argv[]) {
 
   // Build LaunchOptions
   qtPilot::LaunchOptions options;
-  const QStringList rawTarget = rawTargetCommand(rawArguments, positionalArgs.first());
-  if (!rawTarget.isEmpty())
-    positionalArgs = rawTarget;  // what Qt stripped, back again
   options.targetExecutable = positionalArgs.takeFirst();
   options.targetArgs = positionalArgs;  // Remaining args go to target
   options.detach = parser.isSet(detachOption);

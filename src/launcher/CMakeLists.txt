@@ -12,6 +12,7 @@ set(LAUNCHER_HEADERS
     elevation_windows.h
     child_wait_posix.h
     qt_env_setup.h
+    windows_command_line.h
 )
 
 # Platform-specific injection implementation
