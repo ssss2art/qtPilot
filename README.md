@@ -217,6 +217,7 @@ the existing unauthenticated LAN default.
 | [Replay Contracts](docs/REPLAY.md) | Strict acceptance with exact state, Qt checkpoints and loss evidence; explicit exploratory replay |
 | [Building from Source](docs/BUILDING.md) | Compile qtPilot yourself |
 | [Mobile (Android/iOS)](docs/MOBILE.md) | Linking the probe into a device build |
+| [WebAssembly](docs/WASM.md) | Linking the probe into a browser build, reached through the page |
 | [MCP Tooling](docs/MCP-TOOLS.md) | Current modes, tool surface, resources, and inspection workflow |
 | [API Modes](qtPilot-compatibility-modes.md) | Mode selection and current tool families |
 | [Probe Protocol Design](qtPilot-specification.md) | Historical design reference for the probe protocol |
