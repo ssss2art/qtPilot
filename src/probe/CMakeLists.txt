@@ -97,6 +97,18 @@ elseif(UNIX)
     list(APPEND PROBE_SOURCES core/probe_init_linux.cpp)
 endif()
 
+# WebAssembly: a page cannot listen on a port, so the socket transport (WebSocket server, admission
+# server, UDP discovery and their policies) gives way to a bridge the page calls.
+if(EMSCRIPTEN)
+    foreach(_socket_part websocket_server discovery_broadcaster transport_credentials admission_server
+                         network_policy bind_policy)
+        list(REMOVE_ITEM PROBE_SOURCES transport/${_socket_part}.cpp)
+        list(REMOVE_ITEM PROBE_HEADERS transport/${_socket_part}.h)
+    endforeach()
+    list(APPEND PROBE_SOURCES transport/js_bridge.cpp)
+    list(APPEND PROBE_HEADERS transport/js_bridge.h)
+endif()
+
 # Injection requires a SHARED object to insert. Linking into an app (the only
 # route on mobile) is better served by a STATIC library: no extra dynamic library
 # to embed and code-sign inside an app bundle, and no runtime search path.

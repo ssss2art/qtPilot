@@ -27,7 +27,9 @@ endif()
 # Android and iOS are both UNIX (and iOS is also APPLE) as far as CMake is
 # concerned, so every desktop-only branch below must exclude them explicitly or
 # it silently applies to mobile too.
-if(ANDROID OR IOS)
+# WebAssembly joins them: a page cannot be injected into either, and it cannot listen on a port, so
+# the probe is linked into the app and reached through a JavaScript bridge (transport/js_bridge.h).
+if(ANDROID OR IOS OR EMSCRIPTEN)
     set(QTPILOT_MOBILE ON)
 else()
     set(QTPILOT_MOBILE OFF)

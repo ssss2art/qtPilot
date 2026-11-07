@@ -6,6 +6,7 @@
 #include "core/qtpilot_export.h"
 
 #include <QGlobalStatic>
+#include <QJsonObject>
 #include <QObject>
 
 namespace qtPilot {
@@ -13,6 +14,7 @@ namespace qtPilot {
 // Forward declarations
 class WebSocketServer;
 class DiscoveryBroadcaster;
+class JsBridge;
 
 /// @brief Main probe class that manages the qtPilot introspection system.
 ///
@@ -105,6 +107,10 @@ class QTPILOT_EXPORT Probe : public QObject {
 
   // UDP discovery broadcaster - announces this probe to MCP servers
   DiscoveryBroadcaster* m_broadcaster = nullptr;
+  JsBridge* m_jsBridge = nullptr;  ///< The transport in a WebAssembly build.
+
+  /// Sends a JSON-RPC notification to the connected client, whichever transport it uses.
+  void sendNotification(const QString& method, const QJsonObject& params);
 
   // Configuration
   quint16 m_port = 9222;
