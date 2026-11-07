@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import time
 from typing import Any, Protocol
 from uuid import uuid4
@@ -39,8 +40,9 @@ _SUBSCRIBE = f"""() => {{
 }}"""
 _UNSUBSCRIBE = "() => { if (globalThis.qtpilot) globalThis.qtpilot.onnotification = null; }"
 
-# How long closing waits for the page to drop its notification callback: a page that stopped
-# running script never answers.
+# How long a page call that is not a probe request (finding the bridge, subscribing to and
+# unsubscribing from notifications) may take: a page that stopped running script never answers.
+# Probe requests are bounded by ProbeConnection's own reply timeout instead.
 PAGE_CALL_TIMEOUT = 2.0
 
 # Stands in for a URL in messages and logs: the base class wants one, and a page has no socket.
@@ -66,22 +68,44 @@ class PageSocket:
         self._inbox: asyncio.Queue[str | None] = asyncio.Queue()
         self._closed = False
         self._exposed = False
+        self._calls: set[asyncio.Task[None]] = set()  # page calls still running, cancelled on close
 
     async def start(self) -> None:
         """Delivers the probe's notifications, queued ones first, into this socket."""
         if not self._exposed:
-            await self._page.expose_function(_DELIVER, self._deliver)
+            await asyncio.wait_for(self._page.expose_function(_DELIVER, self._deliver), PAGE_CALL_TIMEOUT)
             self._exposed = True
-        await self._page.evaluate(_SUBSCRIBE)
+        await asyncio.wait_for(self._page.evaluate(_SUBSCRIBE), PAGE_CALL_TIMEOUT)
 
     def _deliver(self, text: str) -> None:
         if not self._closed:
             self._inbox.put_nowait(text)
 
     async def send(self, message: str) -> None:
-        # The bridge answers synchronously, so the reply joins the inbox like a socket frame.
-        reply = await self._page.evaluate("request => qtpilot.call(request)", message)
-        self._inbox.put_nowait(reply)
+        # Like a socket's send, this returns once the request is on its way: the page call runs as
+        # a task, and its reply joins the inbox like a frame. ProbeConnection's own reply timeout
+        # then governs a page that stopped running script, which would otherwise hold send forever.
+        if self._closed:
+            raise ConnectionError("The page's probe connection is closed")
+        task = asyncio.create_task(self._call(message))
+        self._calls.add(task)
+        task.add_done_callback(self._calls.discard)
+
+    async def _call(self, message: str) -> None:
+        try:
+            reply = await self._page.evaluate("request => qtpilot.call(request)", message)
+        except asyncio.CancelledError:
+            raise
+        # The page closed or threw (Playwright's errors; this module does not import Playwright):
+        # fail this request, not the connection.
+        except Exception as error:  # noqa: BLE001
+            reply = json.dumps({
+                "jsonrpc": "2.0",
+                "id": _request_id(message),
+                "error": {"code": -32000, "message": f"The page did not answer: {error}"},
+            })
+        if not self._closed:
+            self._inbox.put_nowait(reply)
 
     async def recv(self) -> str:
         item = await self._inbox.get()
@@ -105,10 +129,28 @@ class PageSocket:
             return
         self._closed = True
         self._inbox.put_nowait(None)
+        for task in list(self._calls):
+            task.cancel()
         # The page may be gone (closed, navigated away) or no longer running script (a wedged
         # renderer); closing must neither fail nor wait on it.
         with contextlib.suppress(Exception):
             await asyncio.wait_for(self._page.evaluate(_UNSUBSCRIBE), timeout=PAGE_CALL_TIMEOUT)
+
+
+def _request_id(message: str) -> Any:
+    try:
+        request = json.loads(message)
+    except ValueError:
+        return None
+    return request.get("id") if isinstance(request, dict) else None
+
+
+async def _bridge_ready(page: Page, timeout: float) -> bool:
+    """Whether @p page has the probe's bridge; False also when the page does not answer in time."""
+    try:
+        return bool(await asyncio.wait_for(page.evaluate(_BRIDGE_READY), timeout))
+    except TimeoutError:
+        return False
 
 
 class PageProbeConnection(ProbeConnection):
@@ -125,12 +167,17 @@ class PageProbeConnection(ProbeConnection):
     async def connect(self) -> None:
         if self._ws is not None or self._recv_task is not None or self._notification_task is not None:
             await self.disconnect()
-        if not await self._page.evaluate(_BRIDGE_READY):
+        if not await _bridge_ready(self._page, PAGE_CALL_TIMEOUT):
             raise ConnectionError(
-                f"{self._page.url} has no qtPilot probe (globalThis.qtpilot); is it a build with the probe linked?"
+                f"{self._page.url} has no qtPilot probe (globalThis.qtpilot), or did not answer; "
+                "is it a build with the probe linked?"
             )
         socket = PageSocket(self._page)
-        await socket.start()
+        try:
+            await socket.start()
+        except TimeoutError:
+            await socket.close()
+            raise ConnectionError(f"{self._page.url} did not answer while connecting to its probe") from None
         self._ws = socket
         self._connected = True
         self._session_id = uuid4().hex
@@ -141,10 +188,10 @@ class PageProbeConnection(ProbeConnection):
 
     async def connect_when_ready(self, ready_timeout: float = 60.0, interval: float = 0.5) -> dict:
         """Waits for the page's probe to install its bridge, connects, and returns getVersion."""
-        started = time.monotonic()
-        while not await self._page.evaluate(_BRIDGE_READY):
-            if time.monotonic() - started > ready_timeout:
-                raise ConnectionError(f"No qtPilot probe in {self._page.url} after {ready_timeout:.0f}s")
+        deadline = time.monotonic() + ready_timeout
+        while not await _bridge_ready(self._page, max(0.0, min(PAGE_CALL_TIMEOUT, deadline - time.monotonic()))):
+            if time.monotonic() >= deadline:
+                raise ConnectionError(f"No qtPilot probe in {self._page.url} after {ready_timeout:.1f}s")
             await asyncio.sleep(interval)
         await self.connect()
         return await self.handshake()

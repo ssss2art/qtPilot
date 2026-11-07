@@ -109,3 +109,56 @@ async def test_disconnect_finishes_when_the_page_stopped_answering(monkeypatch: 
     await connection.connect()
     await asyncio.wait_for(connection.disconnect(), timeout=5)
     assert not connection.is_connected
+
+
+class StalledPage(FakePage):
+    """A page that stopped running script: every evaluate that reaches it never returns."""
+
+    def __init__(self, stall: str) -> None:
+        super().__init__()
+        self.stall = stall
+
+    async def evaluate(self, expression: str, arg: Any = None) -> Any:
+        if self.stall in expression:
+            await asyncio.Event().wait()
+        return await super().evaluate(expression, arg)
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_the_probe_gives_up_on_a_page_that_stopped_running_script() -> None:
+    connection = PageProbeConnection(StalledPage("typeof globalThis.qtpilot?.call"))
+    with pytest.raises(ConnectionError, match="No qtPilot probe"):
+        await asyncio.wait_for(connection.connect_when_ready(ready_timeout=0.2, interval=0.05), timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_a_call_into_a_page_that_stopped_running_script_times_out() -> None:
+    from qtpilot.connection import ProbeTimeoutError
+
+    connection = PageProbeConnection(StalledPage("request => qtpilot.call"))
+    await connection.connect()
+    try:
+        with pytest.raises(ProbeTimeoutError):
+            await asyncio.wait_for(connection.call("ping", timeout=0.2), timeout=5)
+    finally:
+        await asyncio.wait_for(connection.disconnect(), timeout=10)
+
+
+@pytest.mark.asyncio
+async def test_a_page_that_fails_a_call_fails_that_request_only() -> None:
+    from qtpilot.connection import ProbeError
+
+    class ClosingPage(FakePage):
+        async def evaluate(self, expression: str, arg: Any = None) -> Any:
+            if expression.startswith("request => qtpilot.call") and json.loads(arg)["method"] == "qt.ping":
+                raise RuntimeError("Target page, context or browser has been closed")
+            return await super().evaluate(expression, arg)
+
+    connection = PageProbeConnection(ClosingPage())
+    await connection.connect()
+    try:
+        with pytest.raises(ProbeError, match="did not answer"):
+            await asyncio.wait_for(connection.call("qt.ping", timeout=5), timeout=2)
+        assert await connection.call("ping") == "pong"
+    finally:
+        await connection.disconnect()
