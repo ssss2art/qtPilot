@@ -89,7 +89,7 @@ the probe registers:
 `qtpilot.installWebMcp({allowInvoke: true})` adds `qt_invoke` (`qt.methods.invoke`), the one tool
 that can change anything the app can; `qtpilot.uninstallWebMcp()` removes them all. Without the
 opt-in, or without `modelContext`, nothing is registered. The adapter is
-`src/probe/transport/webmcp.js`, tested in Node with a stand-in page (`node --test tests/web/`).
+`src/probe/transport/webmcp.js`, tested in Node with a stand-in page (`node --test tests/web/*.test.mjs`).
 WebMCP is experimental and its entry point is still changing (`navigator.modelContext` or
 `document.modelContext`; both are looked for).
 

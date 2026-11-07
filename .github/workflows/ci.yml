@@ -244,7 +244,8 @@ jobs:
       # The WebMCP adapter is plain JavaScript the wasm probe embeds; its tests need only Node.
       - name: WebMCP adapter tests (wasm)
         if: matrix.name == 'wasm'
-        run: node --test tests/web/
+        # Files, not the folder: Node 22 runs a folder argument as one module and fails.
+        run: node --test tests/web/*.test.mjs
 
       # Qt's WebAssembly kit is built with one Emscripten release and needs that one.
       - name: Set up Emscripten (wasm)

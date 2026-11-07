@@ -1,6 +1,6 @@
 // The WebMCP adapter (src/probe/transport/webmcp.js) against a stand-in page: a fake qtpilot
 // bridge and a fake modelContext, so it runs in Node without a browser or a wasm build.
-//   node --test tests/web/
+//   node --test tests/web/*.test.mjs
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
