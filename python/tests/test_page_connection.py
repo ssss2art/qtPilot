@@ -91,3 +91,21 @@ async def test_notifications_queued_before_connecting_and_after_are_delivered() 
 async def test_a_page_without_the_probe_is_refused_clearly() -> None:
     with pytest.raises(ConnectionError, match="no qtPilot probe"):
         await PageProbeConnection(FakePage(bridge=False)).connect()
+
+
+@pytest.mark.asyncio
+async def test_disconnect_finishes_when_the_page_stopped_answering(monkeypatch: pytest.MonkeyPatch) -> None:
+    from qtpilot import page_connection
+
+    monkeypatch.setattr(page_connection, "PAGE_CALL_TIMEOUT", 0.2, raising=False)
+
+    class WedgedPage(FakePage):
+        async def evaluate(self, expression: str, arg: Any = None) -> Any:
+            if "onnotification = null" in expression:
+                await asyncio.Event().wait()  # a renderer that stopped running script
+            return await super().evaluate(expression, arg)
+
+    connection = PageProbeConnection(WedgedPage())
+    await connection.connect()
+    await asyncio.wait_for(connection.disconnect(), timeout=5)
+    assert not connection.is_connected

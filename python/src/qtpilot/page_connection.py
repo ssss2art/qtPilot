@@ -39,6 +39,10 @@ _SUBSCRIBE = f"""() => {{
 }}"""
 _UNSUBSCRIBE = "() => { if (globalThis.qtpilot) globalThis.qtpilot.onnotification = null; }"
 
+# How long closing waits for the page to drop its notification callback: a page that stopped
+# running script never answers.
+PAGE_CALL_TIMEOUT = 2.0
+
 # Stands in for a URL in messages and logs: the base class wants one, and a page has no socket.
 _PAGE_URL = "ws://browser-page.invalid"
 
@@ -101,9 +105,10 @@ class PageSocket:
             return
         self._closed = True
         self._inbox.put_nowait(None)
-        # The page may already be gone (closed, navigated away); closing must not fail on it.
+        # The page may be gone (closed, navigated away) or no longer running script (a wedged
+        # renderer); closing must neither fail nor wait on it.
         with contextlib.suppress(Exception):
-            await self._page.evaluate(_UNSUBSCRIBE)
+            await asyncio.wait_for(self._page.evaluate(_UNSUBSCRIBE), timeout=PAGE_CALL_TIMEOUT)
 
 
 class PageProbeConnection(ProbeConnection):
