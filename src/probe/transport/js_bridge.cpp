@@ -4,6 +4,7 @@
 #include "transport/js_bridge.h"
 
 #include "transport/jsonrpc_handler.h"
+#include "transport/webmcp_source.h"
 
 #include <emscripten.h>
 #include <emscripten/bind.h>
@@ -72,6 +73,10 @@ bool JsBridge::install() {
   }
   s_current = this;
   qtpilot_publish();
+  // The WebMCP adapter: qtpilot.installWebMcp(), which registers tools for a browser agent only
+  // when the page opted in (see transport/webmcp.js); installed at once for a page that did.
+  emscripten_run_script(kWebMcpSource);
+  emscripten_run_script("globalThis.qtpilot.installWebMcp && globalThis.qtpilot.installWebMcp();");
   return true;
 }
 

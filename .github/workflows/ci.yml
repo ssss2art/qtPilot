@@ -241,6 +241,11 @@ jobs:
           modules: qtwebsockets
           cache: true
 
+      # The WebMCP adapter is plain JavaScript the wasm probe embeds; its tests need only Node.
+      - name: WebMCP adapter tests (wasm)
+        if: matrix.name == 'wasm'
+        run: node --test tests/web/
+
       # Qt's WebAssembly kit is built with one Emscripten release and needs that one.
       - name: Set up Emscripten (wasm)
         if: matrix.name == 'wasm'

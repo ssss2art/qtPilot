@@ -70,6 +70,29 @@ async with async_playwright() as p:
 A multithreaded Qt for WebAssembly build needs the page to be cross-origin isolated: serve it
 with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.
 
+## Tools for a browser agent (WebMCP)
+
+The bridge also carries an adapter for [WebMCP](https://developer.chrome.com/docs/ai/webmcp),
+Chrome's experiment that lets a page offer tools to an AI agent in the browser
+(`modelContext.registerTool`). When the page opts in — `?qtpilot-webmcp` in its address, or
+`globalThis.qtpilotWebMcp = true` before the app starts — and the browser offers `modelContext`,
+the probe registers:
+
+| Tool | Method |
+|---|---|
+| `qt_ping` | `qt.ping` |
+| `qt_find` | `qt.objects.search` (objectName, className, limit) |
+| `qt_get_property` | `qt.properties.get` |
+| `qt_click` | `qt.ui.click` |
+| `qt_screenshot` | `cu.screenshot` |
+
+`qtpilot.installWebMcp({allowInvoke: true})` adds `qt_invoke` (`qt.methods.invoke`), the one tool
+that can change anything the app can; `qtpilot.uninstallWebMcp()` removes them all. Without the
+opt-in, or without `modelContext`, nothing is registered. The adapter is
+`src/probe/transport/webmcp.js`, tested in Node with a stand-in page (`node --test tests/web/`).
+WebMCP is experimental and its entry point is still changing (`navigator.modelContext` or
+`document.modelContext`; both are looked for).
+
 ## Limits
 
 - **No browser user activation.** Input the probe synthesises reaches Qt, not the browser, so it
