@@ -79,6 +79,21 @@ def test_main_push_avoids_repeating_every_ready_native_platform() -> None:
     expect_pipeline("src/probe/core/object_id.cpp", integration=True).to_build_on("linux")
 
 
+@pytest.mark.parametrize("path", [
+    "src/probe/transport/js_bridge.cpp",
+    "src/probe/transport/js_bridge.h",
+    "src/probe/transport/webmcp.js",
+    "tests/web/test_page_connection_example.py",
+    "python/src/qtpilot/page_connection.py",
+    "python/tests/test_page_connection.py",
+])
+@pytest.mark.parametrize("context", [{"ready": False}, {"integration": True}, {}])
+def test_wasm_bridge_changes_always_select_browser_validation(path: str, context: dict[str, bool]) -> None:
+    plan = policy.select_validation((path,), **context)
+    assert "mobile" in plan.selected_jobs()
+    assert "build" in plan.selected_jobs()
+
+
 @pytest.mark.parametrize("path", ["unexpected/location.dat", ".github/workflows/ci.yml", "scripts/ci_policy.py"])
 def test_unknown_and_policy_changes_select_full_validation_even_in_draft(path: str) -> None:
     expect_pipeline(path, ready=False).to_build_on("full").to_run_only("lint", "python", "build", "static-probe", "mobile", "sanitizers", "benchmarks")

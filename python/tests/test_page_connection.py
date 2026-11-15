@@ -24,7 +24,7 @@ class FakePage:
         self.subscribed = False
 
     async def expose_function(self, name: str, callback: Callable[[str], None]) -> None:
-        assert name == "__qtpilotDeliver"
+        assert name.startswith("__qtpilotDeliver_")
         self.deliver = callback
 
     async def evaluate(self, expression: str, arg: Any = None) -> Any:
