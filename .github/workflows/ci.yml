@@ -181,6 +181,9 @@ jobs:
         include:
           - { name: android, os: ubuntu-24.04, target: android, arch: android_arm64_v8a, qt: "6.10.0" }
           - { name: ios,     os: macos-15,     target: ios,     arch: "",                qt: "6.10.0" }
+          # The browser: like the phones the probe is linked, not injected, and since a page
+          # cannot listen on a port it is reached through globalThis.qtpilot (js_bridge).
+          - { name: wasm,    os: ubuntu-24.04, target: wasm,    arch: wasm_multithread, qt: "6.10.0", host: all_os, emsdk: "4.0.7" }
     name: mobile (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -220,6 +223,7 @@ jobs:
         uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
+          host: ${{ matrix.host || '' }}
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
           modules: qtwebsockets
@@ -231,10 +235,21 @@ jobs:
         uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
         with:
           version: ${{ matrix.qt }}
+          host: ${{ matrix.host || '' }}
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
           modules: qtwebsockets
           cache: true
+
+      # Qt's WebAssembly kit is built with one Emscripten release and needs that one.
+      - name: Set up Emscripten (wasm)
+        if: matrix.name == 'wasm'
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "${{ runner.temp }}/emsdk"
+          "${{ runner.temp }}/emsdk/emsdk" install "${{ matrix.emsdk }}"
+          "${{ runner.temp }}/emsdk/emsdk" activate "${{ matrix.emsdk }}"
+          echo "EMSDK_ENV=${{ runner.temp }}/emsdk/emsdk_env.sh" >> "$GITHUB_ENV"
 
       - name: Set up JDK (Android)
         if: matrix.name == 'android'
@@ -248,6 +263,7 @@ jobs:
         run: |
           HOST_QT="$(find "${{ runner.temp }}/qt-host" -maxdepth 3 -type d -name 'gcc_64' -o -maxdepth 3 -type d -name 'macos' | head -1)"
           echo "Host Qt: $HOST_QT"
+          if [ -n "${EMSDK_ENV:-}" ]; then source "$EMSDK_ENV"; fi
           # qt-cmake from the TARGET kit selects the cross toolchain; ANDROID/IOS
           # being set is what switches qtPilot into mobile mode (static probe, no
           # launcher, no host tests).
@@ -270,6 +286,7 @@ jobs:
         shell: bash
         run: |
           HOST_QT="$(find "${{ runner.temp }}/qt-host" -maxdepth 3 -type d -name 'gcc_64' -o -maxdepth 3 -type d -name 'macos' | head -1)"
+          if [ -n "${EMSDK_ENV:-}" ]; then source "$EMSDK_ENV"; fi
           cmake --install build/mobile --prefix "$PWD/install/mobile" --config Release
           "$QT_ROOT_DIR/bin/qt-cmake" -B build/mobile-consumer -S tests/static_consumer \
             -DCMAKE_BUILD_TYPE=Release \

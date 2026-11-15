@@ -29,8 +29,13 @@
 #include "core/object_resolver.h"
 #include "introspection/event_capture.h"
 #include "introspection/signal_monitor.h"
+#include "transport/jsonrpc_handler.h"
+#ifdef Q_OS_WASM
+#include "transport/js_bridge.h"
+#else
 #include "transport/discovery_broadcaster.h"
 #include "transport/websocket_server.h"
+#endif
 
 #ifdef Q_OS_WIN
 #include "core/child_injector_windows.h"
@@ -131,6 +136,20 @@ bool Probe::initialize() {
   fprintf(stderr, "[qtPilot] Object hooks installed, tracking %d existing objects\n",
           registry->objectCount());
 
+#ifdef Q_OS_WASM
+  // A page cannot listen on a port: the page itself is the client, through globalThis.qtpilot.
+  m_jsBridge = new JsBridge(this);
+  if (!m_jsBridge->install()) {
+    fprintf(stderr, "[qtPilot] ERROR: another qtPilot bridge is already installed in this page\n");
+    delete m_jsBridge;
+    m_jsBridge = nullptr;
+    m_initialized = false;
+    return false;
+  }
+  ObjectRegistry::instance()->setClientConnected(true);
+  JsonRpcHandler* handler = m_jsBridge->rpcHandler();
+  m_running = true;
+#else
   // Create and start WebSocket server
   m_server = new WebSocketServer(m_port, this);
 
@@ -176,9 +195,13 @@ bool Probe::initialize() {
 
   m_running = true;
 
+  JsonRpcHandler* handler = m_server->rpcHandler();
+
   // Start UDP discovery broadcaster
   m_broadcaster = new DiscoveryBroadcaster(m_port, m_mode, m_server->networkPolicy(), this);
   m_broadcaster->start();
+
+#endif
 
   // Install console message capture (before API registration so early messages are caught)
   try {
@@ -190,7 +213,7 @@ bool Probe::initialize() {
 
   // Register Native Mode API (qt.* namespaced methods)
   try {
-    auto* nativeApi = new NativeModeApi(m_server->rpcHandler(), this);
+    auto* nativeApi = new NativeModeApi(handler, this);
     Q_UNUSED(nativeApi);
     fprintf(stderr, "[qtPilot] Native Mode API (qt.*) registered\n");
   } catch (const std::exception& e) {
@@ -201,7 +224,7 @@ bool Probe::initialize() {
 
   // Register Computer Use Mode API (cu.* namespaced methods)
   try {
-    auto* cuApi = new ComputerUseModeApi(m_server->rpcHandler(), this);
+    auto* cuApi = new ComputerUseModeApi(handler, this);
     Q_UNUSED(cuApi);
     fprintf(stderr, "[qtPilot] Computer Use Mode API (cu.*) registered\n");
   } catch (const std::exception& e) {
@@ -213,7 +236,7 @@ bool Probe::initialize() {
 
   // Register Chrome Mode API (chr.* namespaced methods)
   try {
-    auto* chrApi = new ChromeModeApi(m_server->rpcHandler(), this);
+    auto* chrApi = new ChromeModeApi(handler, this);
     Q_UNUSED(chrApi);
     fprintf(stderr, "[qtPilot] Chrome Mode API (chr.*) registered\n");
   } catch (const std::exception& e) {
@@ -235,6 +258,7 @@ bool Probe::initialize() {
 
   // Clear numeric IDs, Chrome Mode refs, active signal subscriptions, and any mouse button left
   // held mid-drag on client disconnect
+#ifndef Q_OS_WASM
   connect(m_server, &WebSocketServer::clientDisconnected, this, []() {
     ObjectResolver::clearNumericIds();
     ChromeModeApi::clearRefs();
@@ -242,55 +266,28 @@ bool Probe::initialize() {
     NativeModeApi::releaseHeldMouse();
     ComputerUseModeApi::releaseHeldButtons();
   });
+#endif
 
   // Wire signal notifications to WebSocket client
   connect(SignalMonitor::instance(), &SignalMonitor::signalEmitted, this,
           [this](const QJsonObject& notification) {
-            if (m_server) {
-              QJsonObject rpcNotification;
-              rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtpilot.signalEmitted";
-              rpcNotification["params"] = notification;
-              m_server->sendNotification(
-                  QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
-            }
+            sendNotification(QStringLiteral("qtpilot.signalEmitted"), notification);
           });
 
   connect(SignalMonitor::instance(), &SignalMonitor::objectCreated, this,
           [this](const QJsonObject& notification) {
-            if (m_server) {
-              QJsonObject rpcNotification;
-              rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtpilot.objectCreated";
-              rpcNotification["params"] = notification;
-              m_server->sendNotification(
-                  QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
-            }
+            sendNotification(QStringLiteral("qtpilot.objectCreated"), notification);
           });
 
   connect(SignalMonitor::instance(), &SignalMonitor::objectDestroyed, this,
           [this](const QJsonObject& notification) {
-            if (m_server) {
-              QJsonObject rpcNotification;
-              rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtpilot.objectDestroyed";
-              rpcNotification["params"] = notification;
-              m_server->sendNotification(
-                  QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
-            }
+            sendNotification(QStringLiteral("qtpilot.objectDestroyed"), notification);
           });
 
   // Wire event capture notifications to WebSocket client
   connect(EventCapture::instance(), &EventCapture::eventCaptured, this,
           [this](const QJsonObject& notification) {
-            if (m_server) {
-              QJsonObject rpcNotification;
-              rpcNotification["jsonrpc"] = "2.0";
-              rpcNotification["method"] = "qtpilot.eventCaptured";
-              rpcNotification["params"] = notification;
-              m_server->sendNotification(
-                  QString::fromUtf8(QJsonDocument(rpcNotification).toJson(QJsonDocument::Compact)));
-            }
+            sendNotification(QStringLiteral("qtpilot.eventCaptured"), notification);
           });
 
   LOG_INFO("[qtPilot] Probe initialized successfully");
@@ -319,6 +316,10 @@ void Probe::shutdown() {
   // Uninstall object hooks first (before any Qt objects are destroyed)
   uninstallObjectHooks();
 
+#ifdef Q_OS_WASM
+  delete m_jsBridge;
+  m_jsBridge = nullptr;
+#else
   // Stop discovery broadcaster (sends goodbye)
   if (m_broadcaster) {
     m_broadcaster->stop();
@@ -332,6 +333,7 @@ void Probe::shutdown() {
     delete m_server;
     m_server = nullptr;
   }
+#endif
 
   m_running = false;
   m_initialized = false;
@@ -359,6 +361,24 @@ bool Probe::isRunning() const {
 
 WebSocketServer* Probe::server() const {
   return m_server;
+}
+
+void Probe::sendNotification(const QString& method, const QJsonObject& params) {
+  QJsonObject notification;
+  notification["jsonrpc"] = "2.0";
+  notification["method"] = method;
+  notification["params"] = params;
+  const QString text =
+      QString::fromUtf8(QJsonDocument(notification).toJson(QJsonDocument::Compact));
+#ifdef Q_OS_WASM
+  if (m_jsBridge) {
+    m_jsBridge->sendNotification(text);
+  }
+#else
+  if (m_server) {
+    m_server->sendNotification(text);
+  }
+#endif
 }
 
 }  // namespace qtPilot
