@@ -107,6 +107,22 @@ if(EMSCRIPTEN)
     endforeach()
     list(APPEND PROBE_SOURCES transport/js_bridge.cpp)
     list(APPEND PROBE_HEADERS transport/js_bridge.h)
+
+    # The WebMCP adapter is plain JavaScript (tested with Node in tests/web); the bridge embeds it
+    # as a raw string and runs it when it installs globalThis.qtpilot.
+    set(_webmcp_js "${CMAKE_CURRENT_SOURCE_DIR}/transport/webmcp.js")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_webmcp_js}")
+    file(READ "${_webmcp_js}" _webmcp_source)
+    string(FIND "${_webmcp_source}" ")qtpilot_webmcp\"" _webmcp_delimiter)
+    if(NOT _webmcp_delimiter EQUAL -1)
+        message(FATAL_ERROR "transport/webmcp.js contains the raw-string delimiter )qtpilot_webmcp\"")
+    endif()
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/transport/webmcp_source.h"
+        "// Generated from transport/webmcp.js by src/probe/CMakeLists.txt; do not edit.\n"
+        "#pragma once\n"
+        "namespace qtPilot {\n"
+        "inline constexpr char kWebMcpSource[] = R\"qtpilot_webmcp(${_webmcp_source})qtpilot_webmcp\";\n"
+        "}  // namespace qtPilot\n")
 endif()
 
 # Injection requires a SHARED object to insert. Linking into an app (the only
