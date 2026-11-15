@@ -58,7 +58,19 @@ test('a tool forwards one JSON-RPC request through qtpilot.call and returns its 
   const reply = await tools.get('qt_find').execute({objectName: 'okButton', limit: 5});
   assert.equal(calls.at(-1).method, 'qt.objects.search');
   assert.deepEqual(plain(calls.at(-1).params), {objectName: 'okButton', limit: 5});
-  assert.deepEqual(JSON.parse(reply.content[0].text), {method: 'qt.objects.search', params: {objectName: 'okButton', limit: 5}});
+  assert.deepEqual(JSON.parse(reply), {method: 'qt.objects.search', params: {objectName: 'okButton', limit: 5}});
+});
+
+test('a probe error reaches the browser as an explicit error with its details', async () => {
+  const {globals, tools} = page();
+  globals.qtpilot.call = () => JSON.stringify({
+    jsonrpc: '2.0', id: 1, error: {code: -32001, message: 'Object not found', data: {objectId: 'missing'}},
+  });
+  globals.qtpilot.installWebMcp();
+  const reply = await tools.get('qt_get_property').execute({objectId: 'missing', name: 'text'});
+  assert.deepEqual(JSON.parse(reply), {
+    error: {code: -32001, message: 'Object not found', data: {objectId: 'missing'}},
+  });
 });
 
 test('invoking methods is offered only when asked for', () => {

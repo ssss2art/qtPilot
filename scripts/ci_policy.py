@@ -89,6 +89,17 @@ def select_validation(
     )
     if unknown:
         return _full("unknown path or validation infrastructure changed")
+    wasm_browser = any(
+        path.startswith("tests/web/")
+        or path in {
+            "src/probe/transport/js_bridge.cpp",
+            "src/probe/transport/js_bridge.h",
+            "src/probe/transport/webmcp.js",
+            "python/src/qtpilot/page_connection.py",
+            "python/tests/test_page_connection.py",
+        }
+        for path in changed
+    )
     sdk = any(
         path in {"python/uv.lock", "python/pyproject.toml", "python/.python-version"}
         or path.endswith("/_mcp_compat.py")
@@ -102,7 +113,7 @@ def select_validation(
         performance = any(path.startswith("benchmarks/") for path in changed)
         return ValidationPlan(
             desktop="full" if broad else "linux", python="all" if sdk else "core", lint=True,
-            static=broad, mobile=broad, sanitizers=broad, benchmarks=performance,
+            static=broad, mobile=broad or wasm_browser, sanitizers=broad, benchmarks=performance,
             e2e=True, reason="ready native revision" if broad else "native Linux iteration",
         )
     pure_files = {
@@ -113,7 +124,8 @@ def select_validation(
     wire = sdk or any(path not in pure_files for path in changed)
     return ValidationPlan(
         desktop="linux" if wire else "none", python="all" if sdk else "core",
-        e2e=wire, reason="Python wire behavior" if wire else "Python domain-only behavior",
+        mobile=wasm_browser, e2e=wire,
+        reason="Python wire behavior" if wire else "Python domain-only behavior",
     )
 
 

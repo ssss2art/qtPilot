@@ -137,6 +137,9 @@ if(NOT TARGET qtPilot::Probe)
                         "LINKER:--whole-archive;${_probe_archive};LINKER:--no-whole-archive"
                 )
             endif()
+            if(EMSCRIPTEN)
+                set_property(TARGET qtPilot::Probe APPEND PROPERTY INTERFACE_LINK_OPTIONS "-fexceptions")
+            endif()
         else()
             # Fatal, not a warning: find_package(qtPilot REQUIRED) reporting success
             # while qtPilot::Probe has no IMPORTED_LOCATION only defers the failure

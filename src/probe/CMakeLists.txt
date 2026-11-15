@@ -140,6 +140,13 @@ else()
     )
 endif()
 
+if(EMSCRIPTEN)
+    # RPC handlers report invalid requests with C++ exceptions; without these
+    # flags Emscripten aborts the whole page instead of returning an error.
+    target_compile_options(qtPilot_probe PRIVATE -fexceptions)
+    target_link_options(qtPilot_probe INTERFACE -fexceptions)
+endif()
+
 # Set library properties
 set_target_properties(qtPilot_probe PROPERTIES
     VERSION ${PROJECT_VERSION}

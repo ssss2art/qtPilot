@@ -20,12 +20,8 @@
 
   function call(method, params) {
     const reply = JSON.parse(bridge.call(JSON.stringify({jsonrpc: '2.0', id: nextId++, method, params})));
-    if (reply.error) throw new Error(`${method}: ${reply.error.message || JSON.stringify(reply.error)}`);
+    if (reply.error) return {error: reply.error};
     return reply.result;
-  }
-
-  function asContent(result) {
-    return {content: [{type: 'text', text: JSON.stringify(result)}]};
   }
 
   const objectId = {type: 'string', description: 'An object id from qt_find (a path of object names, or #numeric).'};
@@ -111,7 +107,7 @@
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
-        execute: async (input) => asContent(call(tool.method, tool.params(input || {}))),
+        execute: async (input) => JSON.stringify(call(tool.method, tool.params(input || {}))),
       }, {signal: registration.signal});
     }
     return tools.map((tool) => tool.name);

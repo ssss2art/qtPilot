@@ -16,7 +16,7 @@ class JsonRpcHandler;
 ///
 /// Installs `globalThis.qtpilot` in the page:
 ///   - `qtpilot.call(json)` hands one JSON-RPC request to the handler and returns the reply string;
-///   - `qtpilot.notifications` holds the newest notifications (oldest dropped past a bound), and
+///   - `qtpilot.notifications` holds undelivered notifications (oldest dropped past a bound), and
 ///     `qtpilot.onnotification`, if set to a function, is called with each one.
 ///
 /// A client reaches it through whatever runs script in the page: Playwright's page.evaluate, the

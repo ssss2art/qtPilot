@@ -93,6 +93,70 @@ opt-in, or without `modelContext`, nothing is registered. The adapter is
 WebMCP is experimental and its entry point is still changing (`navigator.modelContext` or
 `document.modelContext`; both are looked for).
 
+Tool results are JSON text containing the probe's response envelope. A probe error is JSON text
+with an `error` field containing its code, message and optional data; it is not a successful
+`result`. Chrome otherwise replaces exceptions thrown by a tool with a generic error.
+
+## Local Qt Quick example
+
+`examples/webmcp` is a small Qt Quick counter. Playwright can load the page while
+`PageProbeConnection` finds and clicks its Qt button and reads the counter. The same app also
+supports the optional WebMCP tools. The probe is **off by default**; enable it only for a local
+development build, never for a distributed app.
+
+For example, with Qt 6.12 and Chrome 157 on macOS, Playwright's DOM role locator for the
+counter's `Increment` button finds no element, while `qt.objects.search` finds the named Qt
+button. This is specific to that build and browser; Qt accessibility support can change.
+
+With matching host and WASM Qt kits and the kit's Emscripten release active:
+
+```bash
+# Set these to the same Qt version's WASM and host installations.
+export QT_WASM=/path/to/Qt/6.12.0/wasm_multithread
+export QT_HOST=/path/to/Qt/6.12.0/host
+
+"$QT_WASM/bin/qt-cmake" -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH="$QT_HOST"
+cmake --build build/wasm --parallel
+cmake --install build/wasm --prefix "$PWD/build/wasm-install"
+"$QT_WASM/bin/qt-cmake" -S examples/webmcp -B build/webmcp-example \
+  -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH="$QT_HOST" \
+  -DqtPilot_DIR="$PWD/build/wasm-install/share/cmake/qtPilot" \
+  -DQTPILOT_EXAMPLE_ENABLE_PROBE=ON
+cmake --build build/webmcp-example --parallel
+```
+
+For manual use, serve the build directory on localhost with cross-origin isolation, for example
+`uvx --from qtwasmserver qtwasmserver -i build/webmcp-example`. Open the generated HTML page.
+Append `?qtpilot-webmcp` to opt in to WebMCP, and enable Chrome's WebMCP testing flag. The
+page bridge works without that flag or the query parameter.
+
+The browser regressions use an isolated loopback server and a fresh headless Chrome process:
+
+```bash
+# Set QTPILOT_CHROME to the Chrome executable if it is not detected automatically.
+uv run --project python --locked --with playwright python tests/web/test_page_connection_example.py -v
+uv run --project python --locked --with playwright python tests/web/test_webmcp_example.py -v
+```
+
+The multithreaded Qt kit links with `-pthread` and `ALLOW_MEMORY_GROWTH`, so Emscripten
+warns that JavaScript memory accesses may be slower. This also happens without qtPilot.
+Keep growth enabled for compatibility with varying workloads; do not treat the warning as
+evidence of an observed slowdown. Measure representative applications before changing
+their initial memory or trying experimental growable-buffer support.
+
+To verify that the default build has no probe, configure and build a second copy without the
+opt-in, then run its check:
+
+```bash
+"$QT_WASM/bin/qt-cmake" -S examples/webmcp -B build/webmcp-example-no-probe \
+  -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH="$QT_HOST"
+cmake --build build/webmcp-example-no-probe --parallel
+uv run --project python --locked --with playwright python tests/web/test_no_probe_example.py -v
+```
+
+These tests exercise the real page bridge and Chrome's experimental tool registry; they do not
+establish that a particular AI agent can discover or use the tools.
+
 ## Limits
 
 - **No browser user activation.** Input the probe synthesises reaches Qt, not the browser, so it

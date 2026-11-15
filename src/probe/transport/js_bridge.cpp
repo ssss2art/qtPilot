@@ -40,11 +40,16 @@ EM_JS(void, qtpilot_notify, (const char* message, int bound), {
   const bridge = globalThis.qtpilot;
   if (!bridge) return;
   const text = UTF8ToString(message);
+  if (typeof bridge.onnotification === 'function') {
+    try {
+      bridge.onnotification(text);
+      return;
+    } catch (error) {
+      console.warn('qtpilot.onnotification:', error);
+    }
+  }
   bridge.notifications.push(text);
   if (bridge.notifications.length > bound) bridge.notifications.splice(0, bridge.notifications.length - bound);
-  if (typeof bridge.onnotification === 'function') {
-    try { bridge.onnotification(text); } catch (error) { console.warn('qtpilot.onnotification:', error); }
-  }
 });
 
 EM_JS(void, qtpilot_unpublish, (), {

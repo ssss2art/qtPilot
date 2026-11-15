@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import json
 import time
+import weakref
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -32,13 +33,22 @@ from .connection import ProbeConnection
 
 # The probe's bridge, and the page function it delivers notifications to.
 _BRIDGE_READY = "() => typeof globalThis.qtpilot?.call === 'function'"
-_DELIVER = "__qtpilotDeliver"
-_SUBSCRIBE = f"""() => {{
+_SUBSCRIBE = """name => {
     const bridge = globalThis.qtpilot;
-    for (const queued of bridge.notifications.splice(0)) {_DELIVER}(queued);
-    bridge.onnotification = text => {{ {_DELIVER}(text); }};
-}}"""
-_UNSUBSCRIBE = "() => { if (globalThis.qtpilot) globalThis.qtpilot.onnotification = null; }"
+    if (bridge.__qtpilotDeliveryBinding && bridge.__qtpilotDeliveryBinding !== name) {
+        throw new Error("The page already has a qtPilot notification connection");
+    }
+    bridge.__qtpilotDeliveryBinding = name;
+    for (const queued of bridge.notifications.splice(0)) globalThis[name](queued);
+    bridge.onnotification = text => { globalThis[name](text); };
+}"""
+_UNSUBSCRIBE = """name => {
+    const bridge = globalThis.qtpilot;
+    if (bridge && bridge.__qtpilotDeliveryBinding === name) {
+        bridge.onnotification = null;
+        delete bridge.__qtpilotDeliveryBinding;
+    }
+}"""
 
 # How long a page call that is not a probe request (finding the bridge, subscribing to and
 # unsubscribing from notifications) may take: a page that stopped running script never answers.
@@ -63,19 +73,16 @@ class Page(Protocol):
 class PageSocket:
     """The probe's socket, stood in for by the page: what :class:`ProbeConnection` reads and writes."""
 
-    def __init__(self, page: Page) -> None:
+    def __init__(self, page: Page, delivery_name: str) -> None:
         self._page = page
+        self._delivery_name = delivery_name
         self._inbox: asyncio.Queue[str | None] = asyncio.Queue()
         self._closed = False
-        self._exposed = False
         self._calls: set[asyncio.Task[None]] = set()  # page calls still running, cancelled on close
 
     async def start(self) -> None:
         """Delivers the probe's notifications, queued ones first, into this socket."""
-        if not self._exposed:
-            await asyncio.wait_for(self._page.expose_function(_DELIVER, self._deliver), PAGE_CALL_TIMEOUT)
-            self._exposed = True
-        await asyncio.wait_for(self._page.evaluate(_SUBSCRIBE), PAGE_CALL_TIMEOUT)
+        await asyncio.wait_for(self._page.evaluate(_SUBSCRIBE, self._delivery_name), PAGE_CALL_TIMEOUT)
 
     def _deliver(self, text: str) -> None:
         if not self._closed:
@@ -134,7 +141,7 @@ class PageSocket:
         # The page may be gone (closed, navigated away) or no longer running script (a wedged
         # renderer); closing must neither fail nor wait on it.
         with contextlib.suppress(Exception):
-            await asyncio.wait_for(self._page.evaluate(_UNSUBSCRIBE), timeout=PAGE_CALL_TIMEOUT)
+            await asyncio.wait_for(self._page.evaluate(_UNSUBSCRIBE, self._delivery_name), timeout=PAGE_CALL_TIMEOUT)
 
 
 def _request_id(message: str) -> Any:
@@ -159,6 +166,9 @@ class PageProbeConnection(ProbeConnection):
     def __init__(self, page: Page) -> None:
         super().__init__(_PAGE_URL)
         self._page = page
+        self._delivery_name = f"__qtpilotDeliver_{uuid4().hex}"
+        self._delivery_registered = False
+        self._delivery_socket: PageSocket | None = None
 
     @property
     def ws_url(self) -> str:
@@ -172,12 +182,28 @@ class PageProbeConnection(ProbeConnection):
                 f"{self._page.url} has no qtPilot probe (globalThis.qtpilot), or did not answer; "
                 "is it a build with the probe linked?"
             )
-        socket = PageSocket(self._page)
+        socket = PageSocket(self._page, self._delivery_name)
         try:
+            if not self._delivery_registered:
+                owner = weakref.ref(self)
+
+                def deliver(text: str) -> None:
+                    connection = owner()
+                    if connection is not None and connection._delivery_socket is not None:
+                        connection._delivery_socket._deliver(text)
+
+                await asyncio.wait_for(
+                    self._page.expose_function(self._delivery_name, deliver), PAGE_CALL_TIMEOUT
+                )
+                self._delivery_registered = True
+            self._delivery_socket = socket
             await socket.start()
         except TimeoutError:
             await socket.close()
             raise ConnectionError(f"{self._page.url} did not answer while connecting to its probe") from None
+        except BaseException:
+            await socket.close()
+            raise
         self._ws = socket
         self._connected = True
         self._session_id = uuid4().hex

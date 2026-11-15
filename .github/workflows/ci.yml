@@ -299,6 +299,32 @@ jobs:
             -DQT_HOST_PATH="$HOST_QT" \
             -DqtPilot_DIR="$PWD/install/mobile/share/cmake/qtPilot"
 
+      - name: Set up uv (wasm)
+        if: matrix.name == 'wasm'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+
+      - name: Exercise the WASM page and WebMCP bridges
+        if: matrix.name == 'wasm'
+        shell: bash
+        env:
+          QTPILOT_CHROME: /usr/bin/google-chrome
+        run: |
+          HOST_QT="$(find "${{ runner.temp }}/qt-host" -maxdepth 3 -type d -name 'gcc_64' -o -maxdepth 3 -type d -name 'macos' | head -1)"
+          source "$EMSDK_ENV"
+          "$QT_ROOT_DIR/bin/qt-cmake" -S examples/webmcp -B build/webmcp-example \
+            -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH="$HOST_QT" \
+            -DqtPilot_DIR="$PWD/install/mobile/share/cmake/qtPilot" \
+            -DQTPILOT_EXAMPLE_ENABLE_PROBE=ON
+          cmake --build build/webmcp-example --parallel
+          "$QT_ROOT_DIR/bin/qt-cmake" -S examples/webmcp -B build/webmcp-example-no-probe \
+            -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH="$HOST_QT"
+          cmake --build build/webmcp-example-no-probe --parallel
+          uv run --project python --locked --with playwright python tests/web/test_page_connection_example.py -v
+          uv run --project python --locked --with playwright python tests/web/test_webmcp_example.py -v
+          uv run --project python --locked --with playwright python tests/web/test_no_probe_example.py -v
+
   # Records the fitted complexity of the probe's hot paths in the run log, so a
   # change of exponent is visible in review instead of being discovered later.
   #
