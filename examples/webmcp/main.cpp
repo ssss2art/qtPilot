@@ -3,15 +3,16 @@
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-#include <QQmlContext>
 #include <QStringListModel>
+#include <QVariant>
 
 int main(int argc, char* argv[]) {
   QGuiApplication app(argc, argv);
   QStringListModel model({QStringLiteral("First item"), QStringLiteral("Second item")}, &app);
   model.setObjectName(QStringLiteral("demoModel"));
   QQmlApplicationEngine engine;
-  engine.rootContext()->setContextProperty(QStringLiteral("demoModel"), &model);
+  engine.setInitialProperties(
+      {{QStringLiteral("demoModel"), QVariant::fromValue(static_cast<QObject*>(&model))}});
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
       []() { QCoreApplication::exit(1); }, Qt::QueuedConnection);

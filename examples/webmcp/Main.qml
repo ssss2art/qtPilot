@@ -6,17 +6,15 @@ import QtQuick.Controls
 
 Window {
     id: root
+
+    required property QtObject demoModel
+    property int count: 0
+
     objectName: "demoWindow"
     width: 480
     height: 320
     visible: true
     title: "qtPilot WebMCP example"
-
-    property int count: 0
-
-    function resetCount() {
-        count = 0
-    }
 
     Column {
         anchors.centerIn: parent
@@ -38,11 +36,17 @@ Window {
             objectName: "itemsView"
             width: 220
             height: 80
-            model: demoModel
-            delegate: Text {
-                required property string display
-                text: display
+            model: root.demoModel
+            delegate: Component {
+                Text {
+                    required property string display
+                    text: display
+                }
             }
         }
+    }
+
+    function resetCount() {
+        count = 0
     }
 }

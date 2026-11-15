@@ -80,6 +80,11 @@ class PageConnectionExampleTest(unittest.IsolatedAsyncioTestCase):
                     data = await connection.call("qt.models.data", {"objectId": model_id})
                     self.assertEqual(data["result"]["totalRows"], 2)
                     self.assertEqual(data["result"]["rows"][0]["cells"][0]["display"], "First item")
+                    view = await connection.call("qt.objects.search", {"objectName": "itemsView"})
+                    count = await connection.call(
+                        "qt.properties.get", {"objectId": view["result"]["objects"][0]["objectId"], "name": "count"}
+                    )
+                    self.assertEqual(count["result"]["value"], 2)
 
                     window = await connection.call("qt.objects.search", {"objectName": "demoWindow"})
                     window_id = window["result"]["objects"][0]["objectId"]
@@ -177,6 +182,59 @@ class PageConnectionExampleTest(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue((await second.call("qt.ping"))["result"]["pong"])
                 finally:
                     await second.disconnect()
+            finally:
+                await browser.close()
+
+    async def test_reconnect_receives_only_notifications_queued_while_disconnected(self) -> None:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(executable_path=CHROME, headless=True)
+            try:
+                page = await browser.new_page()
+                await page.goto(f"http://127.0.0.1:{self.server.server_port}/qtpilot_webmcp_example.html")
+                connection = PageProbeConnection(page)
+                await connection.connect_when_ready()
+                try:
+                    window = await connection.call("qt.objects.search", {"objectName": "demoWindow"})
+                    button = await connection.call("qt.objects.search", {"objectName": "incrementButton"})
+                    button_id = button["result"]["objects"][0]["objectId"]
+                    subscription = await connection.call(
+                        "qt.signals.subscribe",
+                        {"objectId": window["result"]["objects"][0]["objectId"], "signal": "countChanged"},
+                    )
+                    subscription_id = subscription["result"]["subscriptionId"]
+                    received: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+
+                    def observe(method: str, params: dict[str, object]) -> None:
+                        if method == "qtpilot.signalEmitted" and params.get("subscriptionId") == subscription_id:
+                            received.put_nowait(params)
+
+                    connection.add_notification_handler(observe)
+                    await connection.call("qt.ui.click", {"objectId": button_id})
+                    await asyncio.wait_for(received.get(), timeout=5)
+                    self.assertEqual(await page.evaluate("qtpilot.notifications.length"), 0)
+
+                    await connection.disconnect()
+                    reply = await page.evaluate(
+                        """id => JSON.parse(qtpilot.call(JSON.stringify({
+                            jsonrpc: '2.0', id: 1, method: 'qt.ui.click', params: {objectId: id}
+                        })))""",
+                        button_id,
+                    )
+                    self.assertNotIn("error", reply)
+                    await page.wait_for_function(
+                        """id => qtpilot.notifications.some(text => {
+                            const message = JSON.parse(text);
+                            return message.method === 'qtpilot.signalEmitted'
+                                && message.params.subscriptionId === id;
+                        })""",
+                        arg=subscription_id,
+                    )
+                    await connection.connect_when_ready()
+                    await asyncio.wait_for(received.get(), timeout=5)
+                    self.assertTrue(received.empty())
+                    self.assertEqual(await page.evaluate("qtpilot.notifications.length"), 0)
+                finally:
+                    await connection.disconnect()
             finally:
                 await browser.close()
 
