@@ -2,17 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 #include "core/object_registry.h"
+#include "interaction/touch_simulator.h"
 #include "introspection/event_capture.h"
 
 #include <QApplication>
 #include <QAtomicInteger>
 #include <QCloseEvent>
+#include <QJsonArray>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSignalSpy>
 #include <QThread>
 #include <QtTest>
+
+#ifdef QTPILOT_HAS_TOUCH
+#include <QEventPoint>
+#include <QPointingDevice>
+#include <QTouchEvent>
+#endif
 
 #include "common/qt_matchers.h"
 
@@ -40,6 +48,29 @@ class CaptureWorker final : public QThread {
   EventCapture* m_capture;
 };
 
+#ifdef QTPILOT_HAS_TOUCH
+class TouchAcceptWidget final : public QWidget {
+ public:
+  explicit TouchAcceptWidget(QWidget* parent = nullptr) : QWidget(parent) {
+    setAttribute(Qt::WA_AcceptTouchEvents);
+  }
+
+ protected:
+  bool event(QEvent* event) override {
+    switch (event->type()) {
+      case QEvent::TouchBegin:
+      case QEvent::TouchUpdate:
+      case QEvent::TouchEnd:
+      case QEvent::TouchCancel:
+        event->accept();
+        return true;
+      default:
+        return QWidget::event(event);
+    }
+  }
+};
+#endif
+
 }  // namespace
 
 /// @brief Unit tests for EventCapture window lifecycle events
@@ -62,6 +93,10 @@ class TestEventCapture : public QObject {
   void testCloseEvent();
   void testNonWidgetIgnored();
   void testNotCapturingIgnoresEvents();
+#ifdef QTPILOT_HAS_TOUCH
+  void testTouchEvents();
+  void testTouchCancelEvent();
+#endif
 
  private:
   QMainWindow* m_window = nullptr;
@@ -273,6 +308,130 @@ void TestEventCapture::testNotCapturingIgnoresEvents() {
 
   QEXPECT_THAT(spy.count(), Eq(0));
 }
+
+#ifdef QTPILOT_HAS_TOUCH
+void TestEventCapture::testTouchEvents() {
+  auto* touchWidget = new TouchAcceptWidget(m_window);
+  touchWidget->setObjectName(QStringLiteral("touchWidget"));
+  touchWidget->setGeometry(0, 0, 200, 200);
+  m_window->show();
+  QApplication::processEvents();
+
+  auto* device = QTest::createTouchDevice(QInputDevice::DeviceType::TouchScreen,
+                                          QInputDevice::Capability::Position);
+  auto* ec = EventCapture::instance();
+  ec->startCapture();
+
+  QSignalSpy spy(ec, &EventCapture::eventCaptured);
+  QEXPECT_THAT(spy.isValid(), IsTrue());
+
+  QTest::touchEvent(touchWidget, device).press(0, QPoint(20, 30), touchWidget);
+  QApplication::processEvents();
+  QTest::touchEvent(touchWidget, device).move(0, QPoint(45, 55), touchWidget);
+  QApplication::processEvents();
+  QTest::touchEvent(touchWidget, device).release(0, QPoint(45, 55), touchWidget);
+  QApplication::processEvents();
+
+  const QString expectedObjectId = ObjectRegistry::instance()->objectId(touchWidget);
+  auto findTouch = [&](const QString& typeName) -> QJsonObject {
+    for (int i = 0; i < spy.count(); ++i) {
+      const QJsonObject n = spy.at(i).at(0).toJsonObject();
+      if (n[QStringLiteral("type")].toString() == typeName &&
+          n[QStringLiteral("objectName")].toString() == QStringLiteral("touchWidget")) {
+        return n;
+      }
+    }
+    return {};
+  };
+
+  const QJsonObject begin = findTouch(QStringLiteral("TouchBegin"));
+  QEXPECT_THAT(begin.isEmpty(), IsFalse());
+  if (!begin.isEmpty()) {
+    QEXPECT_THAT(begin, HasJsonField("objectId", expectedObjectId));
+    QEXPECT_THAT(begin, HasJsonField("points"));
+    const QJsonArray pts = begin[QStringLiteral("points")].toArray();
+    QEXPECT_THAT(pts.size(), Eq(1));
+    if (!pts.isEmpty()) {
+      const QJsonObject pt = pts.at(0).toObject();
+      QEXPECT_THAT(pt, HasJsonField("id", 0));
+      QEXPECT_THAT(pt, HasJsonField("x", 20));
+      QEXPECT_THAT(pt, HasJsonField("y", 30));
+      QEXPECT_THAT(pt, HasJsonField("state", QStringLiteral("pressed")));
+    }
+  }
+
+  const QJsonObject update = findTouch(QStringLiteral("TouchUpdate"));
+  QEXPECT_THAT(update.isEmpty(), IsFalse());
+  if (!update.isEmpty()) {
+    QEXPECT_THAT(update, HasJsonField("objectId", expectedObjectId));
+    const QJsonArray pts = update[QStringLiteral("points")].toArray();
+    QEXPECT_THAT(pts.size(), Eq(1));
+    if (!pts.isEmpty()) {
+      const QJsonObject pt = pts.at(0).toObject();
+      QEXPECT_THAT(pt, HasJsonField("id", 0));
+      QEXPECT_THAT(pt, HasJsonField("x", 45));
+      QEXPECT_THAT(pt, HasJsonField("y", 55));
+      QEXPECT_THAT(pt, HasJsonField("state", QStringLiteral("moved")));
+    }
+  }
+
+  const QJsonObject end = findTouch(QStringLiteral("TouchEnd"));
+  QEXPECT_THAT(end.isEmpty(), IsFalse());
+  if (!end.isEmpty()) {
+    QEXPECT_THAT(end, HasJsonField("objectId", expectedObjectId));
+    const QJsonArray pts = end[QStringLiteral("points")].toArray();
+    QEXPECT_THAT(pts.size(), Eq(1));
+    if (!pts.isEmpty()) {
+      const QJsonObject pt = pts.at(0).toObject();
+      QEXPECT_THAT(pt, HasJsonField("id", 0));
+      QEXPECT_THAT(pt, HasJsonField("x", 45));
+      QEXPECT_THAT(pt, HasJsonField("y", 55));
+      QEXPECT_THAT(pt, HasJsonField("state", QStringLiteral("released")));
+    }
+  }
+}
+
+void TestEventCapture::testTouchCancelEvent() {
+  m_window->setAttribute(Qt::WA_AcceptTouchEvents);
+  m_window->show();
+  QApplication::processEvents();
+
+  auto* device = QTest::createTouchDevice(QInputDevice::DeviceType::TouchScreen,
+                                          QInputDevice::Capability::Position);
+  auto* ec = EventCapture::instance();
+  ec->startCapture();
+
+  QSignalSpy spy(ec, &EventCapture::eventCaptured);
+  QEXPECT_THAT(spy.isValid(), IsTrue());
+
+  const QPointF localPos(12.0, 34.0);
+  QEventPoint point(1, QEventPoint::State::Released, localPos, m_window->mapToGlobal(localPos));
+  QTouchEvent cancelEvent(QEvent::TouchCancel, device, Qt::NoModifier, {point});
+  QApplication::sendEvent(m_window, &cancelEvent);
+  QApplication::processEvents();
+
+  const QString expectedObjectId = ObjectRegistry::instance()->objectId(m_window);
+  bool found = false;
+  for (int i = 0; i < spy.count(); ++i) {
+    const QJsonObject n = spy.at(i).at(0).toJsonObject();
+    if (n[QStringLiteral("type")].toString() == QStringLiteral("TouchCancel") &&
+        n[QStringLiteral("objectName")].toString() == QStringLiteral("testWindow")) {
+      found = true;
+      QEXPECT_THAT(n, HasJsonField("objectId", expectedObjectId));
+      QEXPECT_THAT(n, HasJsonField("points"));
+      const QJsonArray pts = n[QStringLiteral("points")].toArray();
+      QEXPECT_THAT(pts.size(), Eq(1));
+      if (!pts.isEmpty()) {
+        const QJsonObject pt = pts.at(0).toObject();
+        QEXPECT_THAT(pt, HasJsonField("id", 1));
+        QEXPECT_THAT(pt, HasJsonField("state", QStringLiteral("released")));
+      }
+      break;
+    }
+  }
+  QEXPECT_THAT(found, IsTrue());
+}
+#endif
 
 QTEST_MAIN(TestEventCapture)
 #include "test_event_capture.moc"

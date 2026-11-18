@@ -5,6 +5,7 @@
 
 #include "compat/compat_gui.h"
 #include "core/object_registry.h"
+#include "interaction/touch_simulator.h"
 
 #include <utility>
 
@@ -20,6 +21,12 @@
 #include <QThread>
 #include <QTimer>
 #include <QWidget>
+
+#ifdef QTPILOT_HAS_TOUCH
+#include <QEventPoint>
+#include <QJsonArray>
+#include <QTouchEvent>
+#endif
 
 #ifdef QTPILOT_HAS_QML
 #include <QQuickItem>
@@ -56,6 +63,12 @@ EventCapture::EventCapture() : QObject(nullptr) {
   m_capturedTypes.insert(QEvent::Hide);
   m_capturedTypes.insert(QEvent::Close);
   m_capturedTypes.insert(QEvent::Resize);
+#ifdef QTPILOT_HAS_TOUCH
+  m_capturedTypes.insert(QEvent::TouchBegin);
+  m_capturedTypes.insert(QEvent::TouchUpdate);
+  m_capturedTypes.insert(QEvent::TouchEnd);
+  m_capturedTypes.insert(QEvent::TouchCancel);
+#endif
 
   qDebug() << "[qtPilot] EventCapture created";
 }
@@ -169,6 +182,12 @@ bool EventCapture::eventFilter(QObject* watched, QEvent* event) {
         case QEvent::MouseButtonDblClick:
         case QEvent::KeyPress:
         case QEvent::KeyRelease:
+#ifdef QTPILOT_HAS_TOUCH
+        case QEvent::TouchBegin:
+        case QEvent::TouchUpdate:
+        case QEvent::TouchEnd:
+        case QEvent::TouchCancel:
+#endif
           accept = true;
           deferQuickWindowInput = true;
           break;
@@ -227,6 +246,20 @@ bool EventCapture::eventFilter(QObject* watched, QEvent* event) {
     case QEvent::Resize:
       notification = buildWindowNotification(watched, event, QStringLiteral("Resize"));
       break;
+#ifdef QTPILOT_HAS_TOUCH
+    case QEvent::TouchBegin:
+      notification = buildTouchNotification(watched, event, QStringLiteral("TouchBegin"));
+      break;
+    case QEvent::TouchUpdate:
+      notification = buildTouchNotification(watched, event, QStringLiteral("TouchUpdate"));
+      break;
+    case QEvent::TouchEnd:
+      notification = buildTouchNotification(watched, event, QStringLiteral("TouchEnd"));
+      break;
+    case QEvent::TouchCancel:
+      notification = buildTouchNotification(watched, event, QStringLiteral("TouchCancel"));
+      break;
+#endif
     default:
       return false;
   }
@@ -240,6 +273,12 @@ bool EventCapture::eventFilter(QObject* watched, QEvent* event) {
       case QEvent::MouseButtonDblClick:
       case QEvent::KeyPress:
       case QEvent::KeyRelease:
+#ifdef QTPILOT_HAS_TOUCH
+      case QEvent::TouchBegin:
+      case QEvent::TouchUpdate:
+      case QEvent::TouchEnd:
+      case QEvent::TouchCancel:
+#endif
         timestamp = static_cast<QInputEvent*>(event)->timestamp();
         break;
       default:
@@ -417,5 +456,48 @@ QJsonObject EventCapture::buildWindowNotification(QObject* widget, QEvent* event
 
   return notification;
 }
+
+#ifdef QTPILOT_HAS_TOUCH
+static QString touchPointStateName(QEventPoint::State state) {
+  switch (state) {
+    case QEventPoint::State::Pressed:
+      return QStringLiteral("pressed");
+    case QEventPoint::State::Updated:
+      return QStringLiteral("moved");
+    case QEventPoint::State::Stationary:
+      return QStringLiteral("stationary");
+    case QEventPoint::State::Released:
+      return QStringLiteral("released");
+    case QEventPoint::State::Unknown:
+    default:
+      return QStringLiteral("unknown");
+  }
+}
+
+QJsonObject EventCapture::buildTouchNotification(QObject* widget, QEvent* event,
+                                                 const QString& typeName) {
+  auto* te = static_cast<QTouchEvent*>(event);
+
+  QJsonObject notification;
+  notification[QStringLiteral("type")] = typeName;
+  notification[QStringLiteral("objectId")] = ObjectRegistry::instance()->objectId(widget);
+  notification[QStringLiteral("objectName")] = widget->objectName();
+  notification[QStringLiteral("className")] =
+      QString::fromLatin1(widget->metaObject()->className());
+
+  QJsonArray points;
+  for (const QEventPoint& point : te->points()) {
+    QJsonObject pt;
+    pt[QStringLiteral("id")] = point.id();
+    pt[QStringLiteral("x")] = point.position().x();
+    pt[QStringLiteral("y")] = point.position().y();
+    pt[QStringLiteral("state")] = touchPointStateName(point.state());
+    points.append(pt);
+  }
+  notification[QStringLiteral("points")] = points;
+
+  return notification;
+}
+#endif
 
 }  // namespace qtPilot

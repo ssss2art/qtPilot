@@ -26,6 +26,7 @@ def register_prompts(mcp: FastMCP) -> None:
             "4. Interacting:\n"
             "   - Click controls: `qt_ui_click(objectId=...)`.\n"
             "   - Type text: `qt_ui_sendKeys(objectId=..., text='...')`.\n"
+            "   - Touch / multi-touch gestures: `qt_ui_touch(objectId=..., points=[[0, x, y], ...])`; call with `points=[]` (or omit `points`) to lift all fingers.\n"
             "   - Batch multi-step macros in a single turn using `qtpilot_replay_run(steps=[...], exploratory=True)`; these macros do not certify acceptance.\n"
             "   - Verify visual state with `qt_ui_screenshot()`."
         )
@@ -42,6 +43,7 @@ def register_prompts(mcp: FastMCP) -> None:
             "   Example: qt.properties.get with path=['result', 'value'] and an exact expected value.\n"
             "4. Each named step declares action={method, params}, postconditions, and optionally a checkpoint.\n"
             "   checkpoint={objectId, signal, arguments} subscribes before the action; correlate arguments when causal attribution matters.\n"
+            "   For multi-frame touch gestures (qt.ui.touch), model each frame as its own step and end with a release step (points=[] or cancel=True).\n"
             "5. Execute qtpilot_replay_run(contract={...}) or save JSON and pass path.\n"
             "6. Require strict_passed=true. Inspect failure_kind, comparisons and loss counters on failure.\n"
             "Missing, truncated, normalized or lost evidence cannot certify strict acceptance.\n"

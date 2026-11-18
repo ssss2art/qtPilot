@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastmcp import Context, FastMCP
 import mcp.types as types
+
+from qtpilot.replay import normalize_touch_points
 
 logger = logging.getLogger(__name__)
 
@@ -554,9 +557,12 @@ def register_native_tools(mcp: FastMCP) -> None:
     @mcp.tool
     async def qt_ui_touch(
         objectId: str,
-        points: list[dict | list | tuple] | None = None,
+        points: list[dict[str, int | float] | list[int | float] | tuple[int | float, ...]] | None = None,
+        viewObjectId: str | None = None,
+        dryRun: bool | None = None,
+        cancel: bool | None = None,
         ctx: Context = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Put fingers on a touchscreen: one frame of touch input.
 
         points: the fingers that are down after this frame, each {id, x, y} or
@@ -566,6 +572,9 @@ def register_native_tools(mcp: FastMCP) -> None:
         every finger. Fingers stay down between calls, so your pacing is the
         gesture's timing; Qt Quick folds touch moves that land within one frame,
         so space the frames of a pinch or drag a frame or more apart.
+        viewObjectId: disambiguating QGraphicsView for scene items.
+        dryRun: validate and resolve target/coordinates without sending touch events.
+        cancel: send TouchCancel instead of TouchEnd when releasing held fingers.
 
         Example (tap): qt_ui_touch(objectId="pad", points=[[0, 30, 20]]) then
         qt_ui_touch(objectId="pad")
@@ -573,12 +582,16 @@ def register_native_tools(mcp: FastMCP) -> None:
         """
         from qtpilot.server import require_probe
 
-        def finger(value: dict | list | tuple) -> dict:
-            if isinstance(value, (list, tuple)) and len(value) >= 3:
-                return {"id": value[0], "x": value[1], "y": value[2]}
-            return dict(value)
-
-        params: dict = {"objectId": objectId, "points": [finger(p) for p in points or []]}
+        params: dict[str, Any] = {
+            "objectId": objectId,
+            "points": normalize_touch_points(points or []),
+        }
+        if viewObjectId is not None:
+            params["viewObjectId"] = viewObjectId
+        if dryRun is not None:
+            params["dryRun"] = dryRun
+        if cancel is not None:
+            params["cancel"] = cancel
         return await require_probe().call("qt.ui.touch", params)
 
     @mcp.tool
