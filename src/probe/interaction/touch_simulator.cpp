@@ -137,7 +137,9 @@ QList<TouchReport> TouchSimulator::cancel() {
     return {};
   }
 
+#ifdef QTPILOT_HAS_TOUCH
   QWindow* window = state.window.data();
+#endif
   const QMap<int, TouchReport> reports = computeReports(state, {});
   state.fingers.clear();
   state.window = nullptr;
