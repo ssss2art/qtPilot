@@ -11,6 +11,7 @@ from typing import Literal, Protocol
 from qtpilot.checkpoints import ArmedCheckpoint, CheckpointFailure, CheckpointProbe, arm_checkpoint
 from qtpilot.connection import ProbeError
 from qtpilot.evidence import BufferEvidence
+from qtpilot.replay import next_held_touch
 from qtpilot.replay_contract import Assertion, Json, MAX_CONTRACT_BYTES, ReplayContract, incomplete_value, parse_contract
 from qtpilot.result import Err, Ok, Result
 
@@ -123,6 +124,7 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
     phase = "evidence"
     step_name = "initial"
     retained_bytes = 0
+    held_touch: tuple[str, str | None] | None = None
 
     def retain(raw: Json) -> Json:
         nonlocal retained_bytes
@@ -197,6 +199,7 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
                     phase = "action"
                     result = replace(result, actions_driven=result.actions_driven + 1)
                     response = retain(await probe.call(step.action.method, step.action.params, timeout=contract.timeout))
+                    held_touch = next_held_touch(held_touch, step.action.method, step.action.params)
                     result = replace(result, raw_actions=(*result.raw_actions, response))
                     if pending is not None:
                         phase = "checkpoint"
@@ -225,3 +228,14 @@ async def run_contract(contract: ReplayContract, probe: ContractProbe) -> Contra
         return replace(result, loss_verified=True)
     except (CheckpointFailure, ProbeError, OSError, ValueError, AssertionError) as exc:
         return fail(str(exc) or f"{phase} exceeded {contract.timeout:g}s deadline")
+    finally:
+        if held_touch is not None:
+            object_id, view_id = held_touch
+            release_params: dict[str, Json] = {"objectId": object_id, "points": []}
+            if view_id is not None:
+                release_params["viewObjectId"] = view_id
+            try:
+                async with asyncio.timeout(contract.timeout):
+                    await probe.call("qt.ui.touch", release_params, timeout=contract.timeout)
+            except (ProbeError, OSError):
+                pass

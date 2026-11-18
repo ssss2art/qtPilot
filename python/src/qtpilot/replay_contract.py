@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TypeAlias, cast
 
-from qtpilot.replay import MUTATING_METHODS, OBSERVING_METHODS, _is_truncated
+from qtpilot.replay import MUTATING_METHODS, OBSERVING_METHODS, _is_truncated, normalize_touch_points
 from qtpilot.result import Result
 
 Json: TypeAlias = None | bool | int | float | str | list["Json"] | dict[str, "Json"]
@@ -134,7 +134,13 @@ def _step(value: Json) -> ContractStep:
     checkpoint = _checkpoint(obj["checkpoint"]) if "checkpoint" in obj else None
     if not post and checkpoint is None:
         raise ValueError("step: completion requires postconditions or a signal checkpoint")
-    return ContractStep(_text(obj["name"], "name"), ContractCall(method, _params(action["params"])), post, checkpoint)
+    params = _params(action["params"])
+    if method == "qt.ui.touch" and "points" in params:
+        raw_points = params["points"]
+        if not isinstance(raw_points, list):
+            raise ValueError("qt.ui.touch points: expected a list")
+        params = {**params, "points": cast(list[Json], normalize_touch_points(raw_points))}
+    return ContractStep(_text(obj["name"], "name"), ContractCall(method, params), post, checkpoint)
 
 
 def _unique_object(pairs: list[tuple[str, Json]]) -> dict[str, Json]:

@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from qtpilot.connection import ProbeError
 from qtpilot.result import Err, Ok, Result
@@ -202,6 +203,75 @@ _QML_GENERATED_SUFFIX = re.compile(r"(?:_QMLTYPE_\d+)?(?:_QML_\d+)?$")
 def _is_truncated(value: Any) -> bool:
     """Whether a logged value is a placeholder rather than the real thing."""
     return isinstance(value, str) and _TRUNCATED.search(value) is not None
+
+
+class TouchPoint(TypedDict):
+    """Structured touch contact point sent to ``qt.ui.touch``."""
+
+    id: int
+    x: float
+    y: float
+
+
+def _validate_touch_number(value: object, *, field_name: str, integer_only: bool) -> int | float:
+    if isinstance(value, bool):
+        raise ValueError(f"touch point '{field_name}' must be a {'integer' if integer_only else 'number'}, not bool")
+    if integer_only:
+        if not isinstance(value, int):
+            raise ValueError(f"touch point '{field_name}' must be an integer")
+        return value
+    if not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"touch point '{field_name}' must be a finite number")
+    return value
+
+
+def normalize_touch_point(value: object) -> TouchPoint:
+    """Validate and normalize a ``{id, x, y}`` object or ``[id, x, y]`` sequence."""
+    if isinstance(value, (list, tuple)):
+        if len(value) != 3:
+            raise ValueError(
+                f"touch point sequence must have exactly 3 elements [id, x, y], got {len(value)}"
+            )
+        raw_id, raw_x, raw_y = value[0], value[1], value[2]
+    elif isinstance(value, dict):
+        if not {"id", "x", "y"}.issubset(value.keys()):
+            raise ValueError("touch point object must contain 'id', 'x', and 'y'")
+        raw_id, raw_x, raw_y = value["id"], value["x"], value["y"]
+    else:
+        raise ValueError("touch point must be a {id, x, y} object or [id, x, y] sequence")
+
+    point_id = int(_validate_touch_number(raw_id, field_name="id", integer_only=True))
+    point_x = _validate_touch_number(raw_x, field_name="x", integer_only=False)
+    point_y = _validate_touch_number(raw_y, field_name="y", integer_only=False)
+    return {"id": point_id, "x": point_x, "y": point_y}
+
+
+def normalize_touch_points(points: Iterable[object]) -> list[TouchPoint]:
+    """Validate and normalize a sequence of touch points, rejecting duplicate IDs."""
+    normalized: list[TouchPoint] = []
+    seen_ids: set[int] = set()
+    for raw in points:
+        point = normalize_touch_point(raw)
+        if point["id"] in seen_ids:
+            raise ValueError(f"duplicate touch point id: {point['id']}")
+        seen_ids.add(point["id"])
+        normalized.append(point)
+    return normalized
+
+
+def next_held_touch(
+    held: tuple[str, str | None] | None, method: str, params: dict[str, Any]
+) -> tuple[str, str | None] | None:
+    """Track whether ``qt.ui.touch`` currently leaves fingers held down on the probe."""
+    if method != "qt.ui.touch" or params.get("dryRun"):
+        return held
+    if params.get("cancel") or not params.get("points"):
+        return None
+    object_id = params.get("objectId")
+    if not isinstance(object_id, str) or not object_id:
+        return held
+    view_id = params.get("viewObjectId")
+    return (object_id, view_id if isinstance(view_id, str) and view_id else None)
 
 
 def normalise(
@@ -873,6 +943,7 @@ async def run_scenario(
     abort_reason: str | None = None
     failure_kind: Literal["precondition", "setup", "action", "synchronization"] | None = None
     precondition_differences: list[Divergence] = []
+    held_touch: tuple[str, str | None] | None = None
 
     try:
         for recorded in scenario.steps:
@@ -887,6 +958,9 @@ async def run_scenario(
                     abort_reason = f"{recorded.action.method}: {exc}"
                     observed.append(step)
                     break
+                held_touch = next_held_touch(
+                    held_touch, recorded.action.method, recorded.action.params
+                )
                 if sync:
                     try:
                         await probe.call("qt.sync", {}, **call_kwargs)
@@ -945,6 +1019,15 @@ async def run_scenario(
                     abort_reason = "initial-state precondition failed"
                     break
     finally:
+        if held_touch is not None:
+            object_id, view_id = held_touch
+            release_params: dict[str, Any] = {"objectId": object_id, "points": []}
+            if view_id is not None:
+                release_params["viewObjectId"] = view_id
+            try:
+                await probe.call("qt.ui.touch", release_params, **call_kwargs)
+            except (ProbeError, OSError):
+                pass
         # Detached on every path: a handler left behind keeps feeding a dead run's collector for
         # the rest of the session.
         probe.remove_notification_handler(collect)
