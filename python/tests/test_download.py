@@ -197,20 +197,20 @@ class TestArchiveFilename:
 
     def test_macos_tar_gz_arm64(self) -> None:
         """macOS arm64 archives include arch suffix."""
-        assert get_archive_filename("6.10", "macos", arch="arm64") == "qtpilot-qt6.10-macos-arm64.tar.gz"
+        assert get_archive_filename("6.12", "macos", arch="arm64") == "qtpilot-qt6.12-macos-arm64.tar.gz"
 
     def test_macos_tar_gz_x86_64(self) -> None:
         """macOS x86_64 archives include arch suffix."""
-        assert get_archive_filename("6.10", "macos", arch="x86_64") == "qtpilot-qt6.10-macos-x86_64.tar.gz"
+        assert get_archive_filename("6.12", "macos", arch="x86_64") == "qtpilot-qt6.12-macos-x86_64.tar.gz"
 
     def test_macos_auto_detect_arch(self) -> None:
         """macOS auto-detection should use runtime arch."""
         with mock.patch("qtpilot.download.sys.platform", "darwin"):
             with mock.patch("qtpilot.download.platform.machine", return_value="arm64"):
-                assert get_archive_filename("6.10") == "qtpilot-qt6.10-macos-arm64.tar.gz"
+                assert get_archive_filename("6.12") == "qtpilot-qt6.12-macos-arm64.tar.gz"
         with mock.patch("qtpilot.download.sys.platform", "darwin"):
             with mock.patch("qtpilot.download.platform.machine", return_value="x86_64"):
-                assert get_archive_filename("6.10") == "qtpilot-qt6.10-macos-x86_64.tar.gz"
+                assert get_archive_filename("6.12") == "qtpilot-qt6.12-macos-x86_64.tar.gz"
 
     def test_arch_none_defaults_to_x64(self) -> None:
         """arch=None should default to x64 behavior."""
@@ -601,7 +601,7 @@ class TestAvailableVersions:
         """All expected Qt versions should be available."""
         assert "5.15" in AVAILABLE_VERSIONS
         assert "6.8" in AVAILABLE_VERSIONS
-        assert "6.10" in AVAILABLE_VERSIONS
+        assert "6.12" in AVAILABLE_VERSIONS
         assert "6.5" not in AVAILABLE_VERSIONS
         assert "6.9" not in AVAILABLE_VERSIONS
         # 5.15-patched was advertised but never built by CI.

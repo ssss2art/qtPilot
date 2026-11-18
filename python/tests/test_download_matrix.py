@@ -1,7 +1,7 @@
 """Tests for download availability: version/platform/arch matrix + input validation.
 
 These encode two review findings:
-  * `latest_version()` used a lexicographic `max`, wrongly ranking "6.9" > "6.10".
+  * `latest_version()` used a lexicographic `max`, wrongly ranking "6.9" > "6.12".
   * `download.py` advertised (version, platform, arch) combinations that the CI
     release matrix never builds, so `download-tools` 404'd instead of failing
     fast with a clear error.
@@ -31,20 +31,20 @@ from qtpilot.download import (
 EXPECTED_BUILDS = {
     ("5.15", "linux", "x64"),
     ("6.8", "linux", "x64"),
-    ("6.10", "linux", "x64"),
+    ("6.12", "linux", "x64"),
     ("5.15", "windows", "x64"),
     ("6.8", "windows", "x64"),
-    ("6.10", "windows", "x64"),
+    ("6.12", "windows", "x64"),
     ("5.15", "windows", "x86"),
     ("6.8", "macos", "arm64"),
-    ("6.10", "macos", "arm64"),
+    ("6.12", "macos", "arm64"),
 }
 
 
 class TestLatestVersion:
     def test_latest_version_is_numeric_max_not_lexicographic(self) -> None:
-        # Lexicographically "6.9" > "6.10"; numerically 6.10 is newest.
-        assert latest_version() == "6.10"
+        # Lexicographically "6.9" > "6.12"; numerically 6.10 is newest.
+        assert latest_version() == "6.12"
 
 
 class TestBuildMatrix:
@@ -70,7 +70,7 @@ class TestUnbuiltCombosFailFast:
 
     def test_macos_x86_64_not_built(self) -> None:
         with pytest.raises((VersionNotFoundError, UnsupportedPlatformError)):
-            build_archive_url("6.10", "v1.0.0", platform_name="macos", arch="x86_64")
+            build_archive_url("6.12", "v1.0.0", platform_name="macos", arch="x86_64")
 
     def test_macos_unsupported_qt_not_built(self) -> None:
         with pytest.raises((VersionNotFoundError, UnsupportedPlatformError)):
@@ -93,7 +93,7 @@ class TestUnbuiltCombosFailFast:
 
     def test_linux_x86_not_built(self) -> None:
         with pytest.raises((VersionNotFoundError, UnsupportedPlatformError)):
-            build_archive_url("6.10", "v1.0.0", platform_name="linux", arch="x86")
+            build_archive_url("6.12", "v1.0.0", platform_name="linux", arch="x86")
 
     def test_patched_not_built(self) -> None:
         with pytest.raises(VersionNotFoundError):
@@ -103,12 +103,12 @@ class TestUnbuiltCombosFailFast:
 class TestInputValidation:
     def test_arch_path_traversal_rejected(self) -> None:
         with pytest.raises((ValueError, UnsupportedPlatformError, VersionNotFoundError)):
-            build_archive_url("6.10", "v1.0.0", platform_name="linux", arch="../../evil")
+            build_archive_url("6.12", "v1.0.0", platform_name="linux", arch="../../evil")
 
     def test_release_tag_path_separator_rejected(self) -> None:
         with pytest.raises(ValueError):
-            build_archive_url("6.10", "../../evil", platform_name="linux", arch="x64")
+            build_archive_url("6.12", "../../evil", platform_name="linux", arch="x64")
 
     def test_release_tag_absolute_rejected(self) -> None:
         with pytest.raises(ValueError):
-            build_archive_url("6.10", "/etc/passwd", platform_name="linux", arch="x64")
+            build_archive_url("6.12", "/etc/passwd", platform_name="linux", arch="x64")

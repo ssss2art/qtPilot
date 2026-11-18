@@ -138,13 +138,13 @@ def test_native_plus_sdk_changes_do_not_drop_python_compatibility() -> None:
 def test_fast_wire_lane_builds_only_one_representative_linux_kit() -> None:
     plan = policy.select_validation(("python/src/qtpilot/replay.py",))
     matrix = policy.desktop_matrix(plan)
-    assert [(entry["qt"], entry["os"]) for entry in matrix] == [("6.10.0", "ubuntu-24.04")]
+    assert [(entry["qt"], entry["os"]) for entry in matrix] == [("6.12.0", "ubuntu-24.04")]
 
 
 def test_draft_native_lane_keeps_qt_floor_and_no_qml_compile_path() -> None:
     plan = policy.select_validation(("src/probe/core/probe.cpp",), ready=False)
     matrix = policy.desktop_matrix(plan)
-    assert {entry["qt"] for entry in matrix} == {"5.15.2", "6.10.0"}
+    assert {entry["qt"] for entry in matrix} == {"5.15.2", "6.12.0"}
     assert any(entry.get("arch_label") == "noqml" for entry in matrix)
 
 

@@ -21,7 +21,7 @@ def desktop_matrix(plan: ValidationPlan) -> list[MatrixEntry]:
     if plan.desktop == "none":
         return []
     return [entry for entry in entries if entry["platform"] == "linux" and (
-        (entry["qt"] == "6.10.0" and (plan.lint or not entry.get("extra_cmake")))
+        (entry["qt"] == "6.12.0" and (plan.lint or not entry.get("extra_cmake")))
         or (plan.lint and entry["qt"] == "5.15.2")
     )]
 

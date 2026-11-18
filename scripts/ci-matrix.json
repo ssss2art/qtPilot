@@ -54,7 +54,7 @@
       "arch_label": "arm64"
     },
     {
-      "qt": "6.10.0",
+      "qt": "6.12.0",
       "os": "ubuntu-24.04",
       "preset": "release",
       "platform": "linux",
@@ -62,7 +62,7 @@
       "modules": "qtwebsockets"
     },
     {
-      "qt": "6.10.0",
+      "qt": "6.12.0",
       "os": "windows-2022",
       "preset": "windows-release",
       "platform": "windows",
@@ -71,7 +71,7 @@
       "modules": "qtwebsockets"
     },
     {
-      "qt": "6.10.0",
+      "qt": "6.12.0",
       "os": "macos-15",
       "preset": "macos-release",
       "platform": "macos",
@@ -80,7 +80,7 @@
       "arch_label": "arm64"
     },
     {
-      "qt": "6.10.0",
+      "qt": "6.12.0",
       "os": "ubuntu-24.04",
       "preset": "release",
       "platform": "linux",

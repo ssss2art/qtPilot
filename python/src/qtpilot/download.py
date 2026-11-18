@@ -47,13 +47,13 @@ BUILD_MATRIX = frozenset([
     # Qt version, platform, arch
     ("5.15", "linux", "x64"),
     ("6.8", "linux", "x64"),
-    ("6.10", "linux", "x64"),
+    ("6.12", "linux", "x64"),
     ("5.15", "windows", "x64"),
     ("6.8", "windows", "x64"),
-    ("6.10", "windows", "x64"),
+    ("6.12", "windows", "x64"),
     ("5.15", "windows", "x86"),
     ("6.8", "macos", "arm64"),
-    ("6.10", "macos", "arm64"),
+    ("6.12", "macos", "arm64"),
 ])
 
 # Available Qt versions, derived from the build matrix.
