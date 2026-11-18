@@ -29,3 +29,10 @@
 # `called_from_lib` was tried first and does NOT match: it suppresses code called
 # FROM the named library, whereas these tests call INTO Qt.
 race:libQt6Core
+
+# Same uninstrumented-Qt class in Qt Gui: QRasterPaintEngine / QImageData
+# parallelizes large backing-store fills/blits across QThreadPool workers,
+# synchronizing inside uninstrumented libQt6Gui/libQt6Core. Observed as a
+# memcpy race with both stacks inside libQt6Gui.so.6 and no qtPilot frames
+# in test_ui_touch on Linux/GCC.
+race:libQt6Gui
