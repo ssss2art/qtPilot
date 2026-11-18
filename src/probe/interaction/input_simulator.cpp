@@ -5,9 +5,11 @@
 
 #include "compat/compat_gui.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMouseEvent>
@@ -329,12 +331,25 @@ namespace {
 // convenience here — that would misread a legitimate (0,0) top-left position
 // (QPoint(0,0).isNull() is true) as "unset".
 
+// Input frames delivered within the same millisecond must still advance. Besides timing,
+// Qt uses setTimestamp() on a press to initialize the persistent pointer's press origin.
+ulong nextWindowMouseTimestamp() {
+  static QElapsedTimer s_clock;
+  static ulong s_previous = 0;
+  if (!s_clock.isValid())
+    s_clock.start();
+  const auto elapsed = static_cast<ulong>(s_clock.elapsed());
+  s_previous = (std::max)(s_previous + 1, elapsed + 1);
+  return s_previous;
+}
+
 /// @brief Deliver a QMouseEvent to a window at a local position.
 void sendMouseToWindow(QWindow* window, QEvent::Type type, const QPoint& localPos,
                        Qt::MouseButton button, Qt::MouseButtons buttons,
                        Qt::KeyboardModifiers modifiers) {
   QPoint globalPos = window->mapToGlobal(localPos);
   QMouseEvent event(type, QPointF(localPos), QPointF(globalPos), button, buttons, modifiers);
+  event.setTimestamp(nextWindowMouseTimestamp());
   QCoreApplication::sendEvent(window, &event);
   QCoreApplication::processEvents();
 }
