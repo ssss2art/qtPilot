@@ -17,6 +17,7 @@
 #include "api/native_mode_api.h"
 #include "common/qt_matchers.h"
 #include "core/object_registry.h"
+#include "interaction/input_simulator.h"
 #include "transport/jsonrpc_handler.h"
 
 #include <cmath>
@@ -36,6 +37,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QScroller>
@@ -123,6 +125,26 @@ Window {
     PinchHandler {
       target: null
       onActiveScaleChanged: pinchPad.largestScale = Math.max(pinchPad.largestScale, activeScale)
+    }
+  }
+
+  Rectangle {
+    id: translationPad
+    objectName: "translationPad"
+    x: 100; y: 180; width: 280; height: 50
+    property point translation: Qt.point(0, 0)
+    property point pressOrigin: Qt.point(-1, -1)
+    property int activations: 0
+    DragHandler {
+      target: null
+      dragThreshold: 0
+      onActiveChanged: {
+        if (active) {
+          translationPad.activations++;
+          translationPad.pressOrigin = centroid.scenePressPosition;
+        }
+      }
+      onActiveTranslationChanged: translationPad.translation = Qt.point(activeTranslation.x, activeTranslation.y)
     }
   }
 
@@ -437,6 +459,8 @@ class TestUiTouch : public QObject {
   void testTapReachesTheItemAsATouchscreenTap();
   void testHeldFingerIsALongPress();
   void testDraggedFingerMovesADragHandlerItem();
+  void testTargetlessMouseDragReportsTranslationFromItsPress();
+  void testTargetlessTouchDragReportsTranslationFromItsPress();
   void testTwoFingersPinch();
   void testPositionsAreInTheTargetsCoordinates();
   void testWidgetReceivesTouchEvents();
@@ -566,6 +590,41 @@ void TestUiTouch::testDraggedFingerMovesADragHandlerItem() {
   QEXPECT_THAT(touch(window, QJsonArray{}), IsJsonRpcSuccess());
 
   QTRY_COMPARE(knob->x(), startX + 120);
+}
+
+void TestUiTouch::testTargetlessMouseDragReportsTranslationFromItsPress() {
+  QuickScene scene;
+  QQuickItem* pad = scene.item("translationPad");
+  const QPoint start(130, 200);
+  const auto release = qScopeGuard([&scene, start] {
+    InputSimulator::mouseRelease(scene.window(), InputSimulator::MouseButton::Left,
+                                 start + QPoint(120, 0));
+  });
+  for (int step = 0; step <= 6; ++step) {
+    const QPoint at = start + QPoint(step * 20, 0);
+    if (step == 0)
+      InputSimulator::mousePress(scene.window(), InputSimulator::MouseButton::Left, at);
+    else
+      InputSimulator::mouseMove(scene.window(), at, Qt::LeftButton);
+    QTest::qWait(kFrameMs);
+  }
+  QTRY_COMPARE(pad->property("activations").toInt(), 1);
+  QEXPECT_THAT(pad->property("pressOrigin").toPointF(), Eq(QPointF(start)));
+  QEXPECT_THAT(pad->property("translation").toPointF(), Eq(QPointF(120, 0)));
+}
+
+void TestUiTouch::testTargetlessTouchDragReportsTranslationFromItsPress() {
+  QuickScene scene;
+  const auto release = qScopeGuard([this, &scene] { touch(scene.window(), QJsonArray{}); });
+  QQuickItem* pad = scene.item("translationPad");
+  for (int step = 0; step <= 6; ++step) {
+    QEXPECT_THAT(touch(scene.window(), fingers({finger(0, 130 + step * 20, 200)})),
+                 IsJsonRpcSuccess());
+    QTest::qWait(kFrameMs);
+  }
+  QTRY_COMPARE(pad->property("activations").toInt(), 1);
+  QEXPECT_THAT(pad->property("pressOrigin").toPointF(), Eq(QPointF(130, 200)));
+  QEXPECT_THAT(pad->property("translation").toPointF(), Eq(QPointF(120, 0)));
 }
 
 void TestUiTouch::testTwoFingersPinch() {
