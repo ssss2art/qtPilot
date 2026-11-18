@@ -629,6 +629,7 @@ void TestUiTouch::testFlickableDragAndMomentum() {
     QEXPECT_THAT(touch(flickable, fingers({finger(0, 150, 170 - step * 30)})), IsJsonRpcSuccess());
     QTest::qWait(kFrameMs);
   }
+  QTRY_VERIFY_WITH_TIMEOUT(flickable->property("contentY").toReal() > 0.0, 2000);
   const qreal contentYBeforeRelease = flickable->property("contentY").toReal();
   QVERIFY2(contentYBeforeRelease > 0.0, qPrintable(QString::number(contentYBeforeRelease)));
 
