@@ -1050,7 +1050,7 @@ QPointF mapToGlobalUnrounded(const QWidget* widget, const QPointF& point) {
 /// (often by its own hit-testing). Delivering to the embedded widget directly
 /// would skip that routing, which is usually what a caller is trying to test.
 RoutedPoint routeThroughProxies(QWidget* widget, QPointF point,
-                                 QGraphicsView* requestedView = nullptr) {
+                                QGraphicsView* requestedView = nullptr) {
   RoutedPoint routed{widget, point, QJsonArray{ObjectRegistry::instance()->objectId(widget)}};
   // Nesting is shallow in practice; the bound only guards against a cycle.
   for (int depth = 0; depth < 16; ++depth) {
@@ -1322,11 +1322,9 @@ TouchSurface resolveTouchSurface(QObject* obj, const QString& objectId, const QJ
                                          {QStringLiteral("objectId"), objectId}});
     }
     QPointer<QQuickItem> safe(item);
-    return TouchSurface{item->window(),
-                        [safe](const QPointF& point) {
-                          return safe ? safe->mapToScene(point) : point;
-                        },
-                        nullptr};
+    return TouchSurface{
+        item->window(),
+        [safe](const QPointF& point) { return safe ? safe->mapToScene(point) : point; }, nullptr};
   }
 #endif
   if (auto* window = qobject_cast<QWindow*>(obj)) {

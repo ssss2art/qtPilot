@@ -626,22 +626,20 @@ void TestUiTouch::testFlickableDragAndMomentum() {
   // Drag upward fast enough to trigger a flick, spacing frames by kFrameMs so
   // Qt Quick's velocity tracker sees real movement over time.
   for (int step = 0; step <= 5; ++step) {
-    QEXPECT_THAT(touch(flickable, fingers({finger(0, 150, 170 - step * 30)})),
-                 IsJsonRpcSuccess());
+    QEXPECT_THAT(touch(flickable, fingers({finger(0, 150, 170 - step * 30)})), IsJsonRpcSuccess());
     QTest::qWait(kFrameMs);
   }
   const qreal contentYBeforeRelease = flickable->property("contentY").toReal();
-  QVERIFY2(contentYBeforeRelease > 0.0,
-           qPrintable(QString::number(contentYBeforeRelease)));
+  QVERIFY2(contentYBeforeRelease > 0.0, qPrintable(QString::number(contentYBeforeRelease)));
 
   QEXPECT_THAT(touch(flickable, QJsonArray{}), IsJsonRpcSuccess());
   QTRY_VERIFY_WITH_TIMEOUT(!flickable->property("moving").toBool(), 3000);
 
   const qreal settledContentY = flickable->property("contentY").toReal();
-  QVERIFY2(settledContentY > contentYBeforeRelease,
-           qPrintable(QStringLiteral("before=%1 settled=%2")
-                          .arg(contentYBeforeRelease)
-                          .arg(settledContentY)));
+  QVERIFY2(
+      settledContentY > contentYBeforeRelease,
+      qPrintable(
+          QStringLiteral("before=%1 settled=%2").arg(contentYBeforeRelease).arg(settledContentY)));
 }
 
 void TestUiTouch::testMultiPointTouchAreaThreeFingers() {
@@ -649,17 +647,15 @@ void TestUiTouch::testMultiPointTouchAreaThreeFingers() {
   QQuickItem* area = scene.item("multiTouch");
 
   // Press 3 fingers simultaneously.
-  QEXPECT_THAT(
-      touch(area, fingers({finger(0, 50, 50), finger(1, 150, 50), finger(2, 250, 50)})),
-      IsJsonRpcSuccess());
+  QEXPECT_THAT(touch(area, fingers({finger(0, 50, 50), finger(1, 150, 50), finger(2, 250, 50)})),
+               IsJsonRpcSuccess());
   QTest::qWait(kFrameMs);
   QTRY_COMPARE(area->property("maxSimultaneous").toInt(), 3);
   QCOMPARE(area->property("currentActiveCount").toInt(), 3);
 
   // Move all 3 fingers.
-  QEXPECT_THAT(
-      touch(area, fingers({finger(0, 50, 110), finger(1, 150, 110), finger(2, 250, 110)})),
-      IsJsonRpcSuccess());
+  QEXPECT_THAT(touch(area, fingers({finger(0, 50, 110), finger(1, 150, 110), finger(2, 250, 110)})),
+               IsJsonRpcSuccess());
   QTest::qWait(kFrameMs);
   QTRY_VERIFY(area->property("updatedEvents").toInt() >= 3);
 
@@ -711,10 +707,9 @@ void TestUiTouch::testPinchRotationChangesAngle() {
     const qreal angle = (kTotalRadians * step) / kSteps;
     const qreal dx = kRadius * std::cos(angle);
     const qreal dy = kRadius * std::sin(angle);
-    QEXPECT_THAT(
-        touch(pad, fingers({finger(0, kCenterX - dx, kCenterY - dy),
-                            finger(1, kCenterX + dx, kCenterY + dy)})),
-        IsJsonRpcSuccess());
+    QEXPECT_THAT(touch(pad, fingers({finger(0, kCenterX - dx, kCenterY - dy),
+                                     finger(1, kCenterX + dx, kCenterY + dy)})),
+                 IsJsonRpcSuccess());
     QTest::qWait(kFrameMs);
   }
   QEXPECT_THAT(touch(pad, QJsonArray{}), IsJsonRpcSuccess());
@@ -749,8 +744,7 @@ void TestUiTouch::testWidgetScrollAreaKineticScroll() {
 
   QWidget* viewport = scrollArea.viewport();
   for (int step = 0; step <= 5; ++step) {
-    QEXPECT_THAT(touch(viewport, fingers({finger(0, 100, 170 - step * 30)})),
-                 IsJsonRpcSuccess());
+    QEXPECT_THAT(touch(viewport, fingers({finger(0, 100, 170 - step * 30)})), IsJsonRpcSuccess());
     QTest::qWait(kFrameMs);
   }
   const int scrollBeforeRelease = scrollArea.verticalScrollBar()->value();
@@ -848,10 +842,10 @@ void TestUiTouch::testDryRunValidatesAndReportsWithoutMutatingOrDelivering() {
   QQuickItem* pad = scene.item("pad");
   m_lastTarget = pad;
 
-  const QJsonObject dryPress = call(QJsonObject{
-      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
-      {QStringLiteral("points"), fingers({finger(0, 30, 20)})},
-      {QStringLiteral("dryRun"), true}});
+  const QJsonObject dryPress =
+      call(QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+                       {QStringLiteral("points"), fingers({finger(0, 30, 20)})},
+                       {QStringLiteral("dryRun"), true}});
   QEXPECT_THAT(dryPress, IsJsonRpcSuccess());
   const QJsonObject dryPressResult =
       dryPress[QStringLiteral("result")].toObject()[QStringLiteral("result")].toObject();
@@ -865,10 +859,10 @@ void TestUiTouch::testDryRunValidatesAndReportsWithoutMutatingOrDelivering() {
 
   // Now actually hold finger 0, then dryRun a move + second finger.
   QEXPECT_THAT(touch(pad, fingers({finger(0, 30, 20)})), IsJsonRpcSuccess());
-  const QJsonObject dryMove = call(QJsonObject{
-      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
-      {QStringLiteral("points"), fingers({finger(0, 50, 20), finger(1, 80, 20)})},
-      {QStringLiteral("dryRun"), true}});
+  const QJsonObject dryMove =
+      call(QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+                       {QStringLiteral("points"), fingers({finger(0, 50, 20), finger(1, 80, 20)})},
+                       {QStringLiteral("dryRun"), true}});
   QEXPECT_THAT(dryMove, IsJsonRpcSuccess());
   QCOMPARE(statesOf(dryMove), (QStringList{"moved", "pressed"}));
 
@@ -964,9 +958,9 @@ void TestUiTouch::testCancelReleasesHeldFingersCleanly() {
 
   QEXPECT_THAT(touch(pad, fingers({finger(0, 30, 20)})), IsJsonRpcSuccess());
 
-  const QJsonObject cancelResponse = call(QJsonObject{
-      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
-      {QStringLiteral("cancel"), true}});
+  const QJsonObject cancelResponse =
+      call(QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+                       {QStringLiteral("cancel"), true}});
   QEXPECT_THAT(cancelResponse, IsJsonRpcSuccess());
   const QJsonObject cancelResult =
       cancelResponse[QStringLiteral("result")].toObject()[QStringLiteral("result")].toObject();
@@ -986,9 +980,9 @@ void TestUiTouch::testCancelWhenNothingHeldIsClean() {
   QuickScene scene;
   QQuickItem* pad = scene.item("pad");
 
-  const QJsonObject cancelResponse = call(QJsonObject{
-      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
-      {QStringLiteral("cancel"), true}});
+  const QJsonObject cancelResponse =
+      call(QJsonObject{{QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+                       {QStringLiteral("cancel"), true}});
   QEXPECT_THAT(cancelResponse, IsJsonRpcSuccess());
   const QJsonObject cancelResult =
       cancelResponse[QStringLiteral("result")].toObject()[QStringLiteral("result")].toObject();
@@ -1013,22 +1007,26 @@ void TestUiTouch::testPointsAreRequired() {
 void TestUiTouch::testInvalidPointPayloadsAreRejected_data() {
   QTest::addColumn<QJsonArray>("points");
 
-  QTest::newRow("negative-id")
-      << QJsonArray{QJsonObject{{QStringLiteral("id"), -1}, {QStringLiteral("x"), 10}, {QStringLiteral("y"), 10}}};
-  QTest::newRow("float-id")
-      << QJsonArray{QJsonObject{{QStringLiteral("id"), 1.5}, {QStringLiteral("x"), 10}, {QStringLiteral("y"), 10}}};
-  QTest::newRow("string-id")
-      << QJsonArray{QJsonObject{{QStringLiteral("id"), QStringLiteral("0")}, {QStringLiteral("x"), 10}, {QStringLiteral("y"), 10}}};
-  QTest::newRow("missing-x")
-      << QJsonArray{QJsonObject{{QStringLiteral("id"), 0}, {QStringLiteral("y"), 10}}};
-  QTest::newRow("non-numeric-x")
-      << QJsonArray{QJsonObject{{QStringLiteral("id"), 0}, {QStringLiteral("x"), QStringLiteral("10")}, {QStringLiteral("y"), 10}}};
-  QTest::newRow("missing-y")
-      << QJsonArray{QJsonObject{{QStringLiteral("id"), 0}, {QStringLiteral("x"), 10}}};
-  QTest::newRow("non-numeric-y")
-      << QJsonArray{QJsonObject{{QStringLiteral("id"), 0}, {QStringLiteral("x"), 10}, {QStringLiteral("y"), QJsonValue::Null}}};
-  QTest::newRow("non-object-entry")
-      << QJsonArray{42};
+  QTest::newRow("negative-id") << QJsonArray{QJsonObject{
+      {QStringLiteral("id"), -1}, {QStringLiteral("x"), 10}, {QStringLiteral("y"), 10}}};
+  QTest::newRow("float-id") << QJsonArray{QJsonObject{
+      {QStringLiteral("id"), 1.5}, {QStringLiteral("x"), 10}, {QStringLiteral("y"), 10}}};
+  QTest::newRow("string-id") << QJsonArray{QJsonObject{{QStringLiteral("id"), QStringLiteral("0")},
+                                                       {QStringLiteral("x"), 10},
+                                                       {QStringLiteral("y"), 10}}};
+  QTest::newRow("missing-x") << QJsonArray{
+      QJsonObject{{QStringLiteral("id"), 0}, {QStringLiteral("y"), 10}}};
+  QTest::newRow("non-numeric-x") << QJsonArray{
+      QJsonObject{{QStringLiteral("id"), 0},
+                  {QStringLiteral("x"), QStringLiteral("10")},
+                  {QStringLiteral("y"), 10}}};
+  QTest::newRow("missing-y") << QJsonArray{
+      QJsonObject{{QStringLiteral("id"), 0}, {QStringLiteral("x"), 10}}};
+  QTest::newRow("non-numeric-y") << QJsonArray{
+      QJsonObject{{QStringLiteral("id"), 0},
+                  {QStringLiteral("x"), 10},
+                  {QStringLiteral("y"), QJsonValue::Null}}};
+  QTest::newRow("non-object-entry") << QJsonArray{42};
 }
 
 void TestUiTouch::testInvalidPointPayloadsAreRejected() {
