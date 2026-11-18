@@ -52,6 +52,11 @@ class QTPILOT_EXPORT TouchSimulator {
   /// @brief The window the fingers that are down belong to, or null.
   static QWindow* heldWindow();
 
+  /// @brief Plan one frame against current held fingers without mutating state or queuing events.
+  /// @param fingers The fingers that would be down after this frame. Ids must be distinct.
+  /// @return Every finger the frame would touch, by ascending id.
+  static QList<TouchReport> plan(const QList<TouchFinger>& fingers);
+
   /// @brief Apply one frame to @p window and queue its touch event.
   /// @param window Where the fingers are; must be heldWindow() while any is down.
   /// @param fingers The fingers down after this frame. Ids must be distinct.
@@ -59,6 +64,10 @@ class QTPILOT_EXPORT TouchSimulator {
   /// @note Delivery is queued, as qt.ui.click is, so the caller's request
   ///       completes before the application reacts to the touch.
   static QList<TouchReport> frame(QWindow* window, const QList<TouchFinger>& fingers);
+
+  /// @brief Cancel any held fingers, queuing QEvent::TouchCancel and clearing held state.
+  /// @return The held fingers that were canceled (state "released"), or empty if none were held.
+  static QList<TouchReport> cancel();
 };
 
 }  // namespace qtPilot

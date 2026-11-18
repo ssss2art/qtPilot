@@ -55,23 +55,15 @@ QEventPoint::State toEventPointState(const QString& state) {
 }
 #endif
 
-}  // namespace
-
-bool TouchSimulator::isHeld() {
-  return !held().fingers.isEmpty();
-}
-
-QWindow* TouchSimulator::heldWindow() {
-  return isHeld() ? held().window.data() : nullptr;
-}
-
-QList<TouchReport> TouchSimulator::frame(QWindow* window, const QList<TouchFinger>& fingers) {
-  HeldTouch& state = held();
+QMap<int, QPointF> indexFingers(const QList<TouchFinger>& fingers) {
   QMap<int, QPointF> next;
   for (const TouchFinger& finger : fingers) {
     next.insert(finger.id, finger.windowPosition);
   }
+  return next;
+}
 
+QMap<int, TouchReport> computeReports(const HeldTouch& state, const QMap<int, QPointF>& next) {
   QMap<int, TouchReport> reports;
   for (auto it = next.cbegin(); it != next.cend(); ++it) {
     const auto previous = state.fingers.constFind(it.key());
@@ -90,6 +82,28 @@ QList<TouchReport> TouchSimulator::frame(QWindow* window, const QList<TouchFinge
                                            .windowPosition = it.value()});
     }
   }
+  return reports;
+}
+
+}  // namespace
+
+bool TouchSimulator::isHeld() {
+  return !held().fingers.isEmpty();
+}
+
+QWindow* TouchSimulator::heldWindow() {
+  return isHeld() ? held().window.data() : nullptr;
+}
+
+QList<TouchReport> TouchSimulator::plan(const QList<TouchFinger>& fingers) {
+  const HeldTouch& state = held();
+  return computeReports(state, indexFingers(fingers)).values();
+}
+
+QList<TouchReport> TouchSimulator::frame(QWindow* window, const QList<TouchFinger>& fingers) {
+  HeldTouch& state = held();
+  const QMap<int, QPointF> next = indexFingers(fingers);
+  const QMap<int, TouchReport> reports = computeReports(state, next);
 
   state.fingers = next;
   state.window = next.isEmpty() ? nullptr : window;
@@ -111,6 +125,42 @@ QList<TouchReport> TouchSimulator::frame(QWindow* window, const QList<TouchFinge
         }
       },
       Qt::QueuedConnection);
+#endif
+
+  return reports.values();
+}
+
+QList<TouchReport> TouchSimulator::cancel() {
+  HeldTouch& state = held();
+  if (state.fingers.isEmpty()) {
+    state.window = nullptr;
+    return {};
+  }
+
+  QWindow* window = state.window.data();
+  const QMap<int, TouchReport> reports = computeReports(state, {});
+  state.fingers.clear();
+  state.window = nullptr;
+
+#ifdef QTPILOT_HAS_TOUCH
+  if (window) {
+    QList<QEventPoint> points;
+    points.reserve(reports.size());
+    for (const TouchReport& report : reports) {
+      points.append(QEventPoint(report.id, QEventPoint::State::Released, report.windowPosition,
+                                window->mapToGlobal(report.windowPosition)));
+    }
+    const QPointingDevice* device = touchscreen();
+    QPointer<QWindow> target(window);
+    QMetaObject::invokeMethod(
+        window,
+        [target, device, points]() {
+          if (target) {
+            qt_handleTouchEvent(target, device, points);
+          }
+        },
+        Qt::QueuedConnection);
+  }
 #endif
 
   return reports.values();

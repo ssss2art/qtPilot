@@ -1049,7 +1049,8 @@ QPointF mapToGlobalUnrounded(const QWidget* widget, const QPointF& point) {
 /// view drawing that scene, and the application routes it inward from there
 /// (often by its own hit-testing). Delivering to the embedded widget directly
 /// would skip that routing, which is usually what a caller is trying to test.
-RoutedPoint routeThroughProxies(QWidget* widget, QPointF point) {
+RoutedPoint routeThroughProxies(QWidget* widget, QPointF point,
+                                 QGraphicsView* requestedView = nullptr) {
   RoutedPoint routed{widget, point, QJsonArray{ObjectRegistry::instance()->objectId(widget)}};
   // Nesting is shallow in practice; the bound only guards against a cycle.
   for (int depth = 0; depth < 16; ++depth) {
@@ -1060,10 +1061,23 @@ RoutedPoint routeThroughProxies(QWidget* widget, QPointF point) {
     }
     QGraphicsView* outer = nullptr;
     const QList<QGraphicsView*> views = proxy->scene()->views();
-    for (QGraphicsView* view : views) {
-      if (view && view->isVisible()) {
-        outer = view;
-        break;
+    if (requestedView && depth == 0) {
+      if (!views.contains(requestedView)) {
+        QJsonArray candidates;
+        for (QGraphicsView* view : views) {
+          candidates.append(ObjectRegistry::instance()->objectId(view));
+        }
+        throw JsonRpcException(JsonRpcError::kInvalidParams,
+                               QStringLiteral("viewObjectId does not render this item's scene"),
+                               QJsonObject{{QStringLiteral("views"), candidates}});
+      }
+      outer = requestedView;
+    } else {
+      for (QGraphicsView* view : views) {
+        if (view && view->isVisible()) {
+          outer = view;
+          break;
+        }
       }
     }
     if (!outer) {
@@ -1245,14 +1259,47 @@ QJsonObject handleUiMouseUp(const QJsonObject& params) {
 }
 
 #ifdef QTPILOT_HAS_TOUCH
-/// @brief Where qt.ui.touch puts its fingers: a window, and a map from the target's
-/// coordinates into it.
+/// @brief Where qt.ui.touch puts its fingers: a window, a map from the target's
+/// coordinates into it, and an optional QGraphicsView when routed through a scene.
 struct TouchSurface {
   QWindow* window = nullptr;
   std::function<QPointF(const QPointF&)> toWindow;
+  QGraphicsView* view = nullptr;
 };
 
-TouchSurface resolveTouchSurface(QObject* obj, const QString& objectId, const QString& methodName) {
+TouchSurface resolveTouchSurface(QObject* obj, const QString& objectId, const QJsonObject& params,
+                                 const QString& methodName) {
+  QGraphicsView* requestedView =
+      resolveViewParam(params, QStringLiteral("viewObjectId"), methodName);
+
+  if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
+    QGraphicsView* view = resolveGraphicsItemView(item, requestedView, methodName);
+    QWidget* viewport = view->viewport();
+    const RoutedPoint probe = routeThroughProxies(viewport, QPointF(0, 0));
+    QWidget* outerTop = probe.widget ? probe.widget->window() : nullptr;
+    if (!view->isVisible() || !outerTop || !outerTop->windowHandle()) {
+      throw JsonRpcException(
+          ErrorCode::kWidgetNotVisible,
+          QStringLiteral("Graphics view is not shown on a window: %1").arg(objectId),
+          QJsonObject{{QStringLiteral("method"), methodName},
+                      {QStringLiteral("objectId"), objectId}});
+    }
+    QPointer<QGraphicsObject> safeItem(item);
+    QPointer<QGraphicsView> safeView(view);
+    return TouchSurface{
+        outerTop->windowHandle(),
+        [safeItem, safeView](const QPointF& point) {
+          if (!safeItem || !safeView || !safeView->viewport()) {
+            return point;
+          }
+          const QPointF viewportPoint =
+              safeView->viewportTransform().map(safeItem->mapToScene(point));
+          const RoutedPoint routed = routeThroughProxies(safeView->viewport(), viewportPoint);
+          QWidget* top = routed.widget ? routed.widget->window() : nullptr;
+          return top ? mapToUnrounded(routed.widget, top, routed.point) : routed.point;
+        },
+        view};
+  }
 #ifdef QTPILOT_HAS_QML
   if (auto* item = qobject_cast<QQuickItem*>(obj)) {
     if (!item->window()) {
@@ -1262,27 +1309,51 @@ TouchSurface resolveTouchSurface(QObject* obj, const QString& objectId, const QS
           QJsonObject{{QStringLiteral("method"), methodName},
                       {QStringLiteral("objectId"), objectId}});
     }
+    if (!item->isVisible()) {
+      throw JsonRpcException(ErrorCode::kWidgetNotVisible,
+                             QStringLiteral("QQuickItem is not visible: %1").arg(objectId),
+                             QJsonObject{{QStringLiteral("method"), methodName},
+                                         {QStringLiteral("objectId"), objectId}});
+    }
+    if (!item->isEnabled()) {
+      throw JsonRpcException(ErrorCode::kWidgetNotEnabled,
+                             QStringLiteral("QQuickItem is not enabled: %1").arg(objectId),
+                             QJsonObject{{QStringLiteral("method"), methodName},
+                                         {QStringLiteral("objectId"), objectId}});
+    }
     QPointer<QQuickItem> safe(item);
-    return TouchSurface{item->window(), [safe](const QPointF& point) {
+    return TouchSurface{item->window(),
+                        [safe](const QPointF& point) {
                           return safe ? safe->mapToScene(point) : point;
-                        }};
+                        },
+                        nullptr};
   }
 #endif
   if (auto* window = qobject_cast<QWindow*>(obj)) {
-    return TouchSurface{window, [](const QPointF& point) { return point; }};
+    return TouchSurface{window, [](const QPointF& point) { return point; }, nullptr};
   }
   if (auto* widget = qobject_cast<QWidget*>(obj)) {
-    QWidget* top = widget->window();
-    if (!widget->isVisible() || !top->windowHandle()) {
+    const RoutedPoint probe = routeThroughProxies(widget, QPointF(0, 0), requestedView);
+    QWidget* outerTop = probe.widget ? probe.widget->window() : nullptr;
+    if (!widget->isVisible() || !outerTop || !outerTop->windowHandle()) {
       throw JsonRpcException(ErrorCode::kWidgetNotVisible,
                              QStringLiteral("Widget is not shown on a window: %1").arg(objectId),
                              QJsonObject{{QStringLiteral("method"), methodName},
                                          {QStringLiteral("objectId"), objectId}});
     }
     QPointer<QWidget> safe(widget);
-    return TouchSurface{top->windowHandle(), [safe, top](const QPointF& point) {
-                          return safe ? mapToUnrounded(safe, top, point) : point;
-                        }};
+    QPointer<QGraphicsView> safeView(requestedView);
+    return TouchSurface{outerTop->windowHandle(),
+                        [safe, safeView](const QPointF& point) {
+                          if (!safe) {
+                            return point;
+                          }
+                          const RoutedPoint routed = routeThroughProxies(safe, point, safeView);
+                          QWidget* top = routed.widget ? routed.widget->window() : nullptr;
+                          return top ? mapToUnrounded(routed.widget, top, routed.point)
+                                     : routed.point;
+                        },
+                        nullptr};
   }
   throw JsonRpcException(
       ErrorCode::kObjectNotWidget,
@@ -1331,12 +1402,46 @@ QList<TouchFinger> parseTouchFingers(const QJsonObject& params, const TouchSurfa
   return fingers;
 }
 
+QJsonArray serializeTouchReports(const QList<TouchReport>& reports) {
+  QJsonArray touches;
+  for (const TouchReport& report : reports) {
+    touches.append(QJsonObject{{QStringLiteral("id"), report.id},
+                               {QStringLiteral("state"), report.state},
+                               {QStringLiteral("x"), report.windowPosition.x()},
+                               {QStringLiteral("y"), report.windowPosition.y()}});
+  }
+  return touches;
+}
+
 /// qt.ui.touch: one frame of touchscreen input -- the fingers down after it.
 QJsonObject handleUiTouch(const QJsonObject& params) {
   const QString methodName = QStringLiteral("qt.ui.touch");
+  const bool dryRun = params.value(QStringLiteral("dryRun")).toBool(false);
+  const bool cancel = params.value(QStringLiteral("cancel")).toBool(false);
+
   QObject* obj = resolveObjectParam(params, methodName);
   const QString objectId = params[QStringLiteral("objectId")].toString();
-  const TouchSurface surface = resolveTouchSurface(obj, objectId, methodName);
+  const TouchSurface surface = resolveTouchSurface(obj, objectId, params, methodName);
+
+  if (cancel) {
+    QWindow* reportWindow =
+        TouchSimulator::isHeld() ? TouchSimulator::heldWindow() : surface.window;
+    const QList<TouchReport> reports =
+        dryRun ? (TouchSimulator::isHeld() ? TouchSimulator::plan({}) : QList<TouchReport>{})
+               : TouchSimulator::cancel();
+    QJsonObject result{
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("deferred"), !dryRun && !reports.isEmpty()},
+        {QStringLiteral("dryRun"), dryRun},
+        {QStringLiteral("canceled"), true},
+        {QStringLiteral("windowObjectId"), ObjectRegistry::instance()->objectId(reportWindow)},
+        {QStringLiteral("touches"), serializeTouchReports(reports)}};
+    if (surface.view) {
+      result[QStringLiteral("viewObjectId")] = ObjectRegistry::instance()->objectId(surface.view);
+    }
+    return result;
+  }
+
   const QList<TouchFinger> fingers = parseTouchFingers(params, surface, methodName);
 
   if (!TouchSimulator::isHeld() && fingers.isEmpty()) {
@@ -1353,18 +1458,18 @@ QJsonObject handleUiTouch(const QJsonObject& params) {
                      ObjectRegistry::instance()->objectId(TouchSimulator::heldWindow())}});
   }
 
-  QJsonArray touches;
-  for (const TouchReport& report : TouchSimulator::frame(surface.window, fingers)) {
-    touches.append(QJsonObject{{QStringLiteral("id"), report.id},
-                               {QStringLiteral("state"), report.state},
-                               {QStringLiteral("x"), report.windowPosition.x()},
-                               {QStringLiteral("y"), report.windowPosition.y()}});
-  }
-  return QJsonObject{
+  const QList<TouchReport> reports =
+      dryRun ? TouchSimulator::plan(fingers) : TouchSimulator::frame(surface.window, fingers);
+  QJsonObject result{
       {QStringLiteral("ok"), true},
-      {QStringLiteral("deferred"), true},
+      {QStringLiteral("deferred"), !dryRun},
+      {QStringLiteral("dryRun"), dryRun},
       {QStringLiteral("windowObjectId"), ObjectRegistry::instance()->objectId(surface.window)},
-      {QStringLiteral("touches"), touches}};
+      {QStringLiteral("touches"), serializeTouchReports(reports)}};
+  if (surface.view) {
+    result[QStringLiteral("viewObjectId")] = ObjectRegistry::instance()->objectId(surface.view);
+  }
+  return result;
 }
 #endif  // QTPILOT_HAS_TOUCH
 

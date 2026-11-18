@@ -24,6 +24,10 @@
 #include <numbers>
 
 #include <QApplication>
+#include <QGraphicsProxyWidget>
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QGraphicsWidget>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMouseEvent>
@@ -66,6 +70,7 @@ Window {
     x: 50; y: 40; width: 300; height: 120
     property int taps: 0
     property int longPresses: 0
+    property int cancels: 0
     property int deviceType: -1
     property point tapPosition: Qt.point(-1, -1)
     TapHandler {
@@ -75,7 +80,22 @@ Window {
         pad.deviceType = eventPoint.device.type;
       }
       onLongPressed: pad.longPresses++
+      onCanceled: pad.cancels++
     }
+  }
+
+  Rectangle {
+    id: hiddenPad
+    objectName: "hiddenPad"
+    x: 0; y: 0; width: 40; height: 40
+    visible: false
+  }
+
+  Rectangle {
+    id: disabledPad
+    objectName: "disabledPad"
+    x: 0; y: 0; width: 40; height: 40
+    enabled: false
   }
 
   Item {
@@ -289,7 +309,8 @@ class TouchRecorder final : public QWidget {
     switch (event->type()) {
       case QEvent::TouchBegin:
       case QEvent::TouchUpdate:
-      case QEvent::TouchEnd: {
+      case QEvent::TouchEnd:
+      case QEvent::TouchCancel: {
         auto* touch = static_cast<QTouchEvent*>(event);
         Seen record{event->type(), {}};
         for (const QEventPoint& point : touch->points()) {
@@ -332,6 +353,42 @@ class MouseRecorder final : public QWidget {
     ++releaseCount;
     lastReleasePos = event->position();
     event->accept();
+  }
+};
+
+/// A QGraphicsWidget that accepts touch events and records them.
+class TouchGraphicsWidget final : public QGraphicsWidget {
+ public:
+  explicit TouchGraphicsWidget(QGraphicsItem* parent = nullptr) : QGraphicsWidget(parent) {
+    setAcceptTouchEvents(true);
+    resize(120, 80);
+  }
+
+  struct Seen {
+    QEvent::Type type;
+    QList<QPointF> positions;
+  };
+  QList<Seen> seen;
+
+ protected:
+  bool sceneEvent(QEvent* event) override {
+    switch (event->type()) {
+      case QEvent::TouchBegin:
+      case QEvent::TouchUpdate:
+      case QEvent::TouchEnd:
+      case QEvent::TouchCancel: {
+        auto* touch = static_cast<QTouchEvent*>(event);
+        Seen record{event->type(), {}};
+        for (const QEventPoint& point : touch->points()) {
+          record.positions.append(point.position());
+        }
+        seen.append(record);
+        event->accept();
+        return true;
+      }
+      default:
+        return QGraphicsWidget::sceneEvent(event);
+    }
   }
 };
 
@@ -395,6 +452,14 @@ class TestUiTouch : public QObject {
   // What the call reports
   void testResultReportsEachFingersState();
   void testResultReportsWindowPositions();
+
+  // Hardening & target parity
+  void testDryRunValidatesAndReportsWithoutMutatingOrDelivering();
+  void testWidgetInsideGraphicsProxyWidgetRoutesTouchToView();
+  void testGraphicsObjectWithViewObjectIdReceivesTouch();
+  void testInvisibleOrDisabledQuickItemIsRejected();
+  void testCancelReleasesHeldFingersCleanly();
+  void testCancelWhenNothingHeldIsClean();
 
   // Errors
   void testPointsAreRequired();
@@ -774,6 +839,166 @@ void TestUiTouch::testResultReportsWindowPositions() {
   QCOMPARE(only[QStringLiteral("id")].toInt(), 3);
   QCOMPARE(only[QStringLiteral("x")].toDouble(), 35.5);
   QCOMPARE(only[QStringLiteral("y")].toDouble(), 217.0);
+}
+
+// --- Hardening & target parity ------------------------------------------------
+
+void TestUiTouch::testDryRunValidatesAndReportsWithoutMutatingOrDelivering() {
+  QuickScene scene;
+  QQuickItem* pad = scene.item("pad");
+  m_lastTarget = pad;
+
+  const QJsonObject dryPress = call(QJsonObject{
+      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+      {QStringLiteral("points"), fingers({finger(0, 30, 20)})},
+      {QStringLiteral("dryRun"), true}});
+  QEXPECT_THAT(dryPress, IsJsonRpcSuccess());
+  const QJsonObject dryPressResult =
+      dryPress[QStringLiteral("result")].toObject()[QStringLiteral("result")].toObject();
+  QCOMPARE(dryPressResult[QStringLiteral("dryRun")].toBool(), true);
+  QCOMPARE(dryPressResult[QStringLiteral("deferred")].toBool(), false);
+  QCOMPARE(statesOf(dryPress), QStringList{"pressed"});
+
+  // Nothing was held: an empty frame is still rejected, and no tap occurred.
+  QEXPECT_THAT(touch(pad, QJsonArray{}), IsJsonRpcError(JsonRpcError::kInvalidParams));
+  QCOMPARE(pad->property("taps").toInt(), 0);
+
+  // Now actually hold finger 0, then dryRun a move + second finger.
+  QEXPECT_THAT(touch(pad, fingers({finger(0, 30, 20)})), IsJsonRpcSuccess());
+  const QJsonObject dryMove = call(QJsonObject{
+      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+      {QStringLiteral("points"), fingers({finger(0, 50, 20), finger(1, 80, 20)})},
+      {QStringLiteral("dryRun"), true}});
+  QEXPECT_THAT(dryMove, IsJsonRpcSuccess());
+  QCOMPARE(statesOf(dryMove), (QStringList{"moved", "pressed"}));
+
+  // Lifting now should only release finger 0 (at its original position), not finger 1.
+  QCOMPARE(statesOf(touch(pad, QJsonArray{})), QStringList{"released"});
+}
+
+void TestUiTouch::testWidgetInsideGraphicsProxyWidgetRoutesTouchToView() {
+  QGraphicsScene scene;
+  auto* recorder = new TouchRecorder;
+  QGraphicsProxyWidget* proxy = scene.addWidget(recorder);
+  proxy->setAcceptTouchEvents(true);
+  proxy->setPos(40, 30);
+
+  QGraphicsView view(&scene);
+  view.viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
+  view.resize(320, 240);
+  view.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&view));
+  m_lastTarget = recorder;
+
+  QEXPECT_THAT(touch(recorder, fingers({finger(0, 20, 30)})), IsJsonRpcSuccess());
+  QEXPECT_THAT(touch(recorder, QJsonArray{}), IsJsonRpcSuccess());
+
+  QTRY_COMPARE(recorder->seen.size(), 2);
+  QCOMPARE(recorder->seen[0].type, QEvent::TouchBegin);
+  QCOMPARE(recorder->seen[0].positions, QList<QPointF>{QPointF(20, 30)});
+  QCOMPARE(recorder->seen[1].type, QEvent::TouchEnd);
+}
+
+void TestUiTouch::testGraphicsObjectWithViewObjectIdReceivesTouch() {
+  QGraphicsScene scene;
+  auto* item = new TouchGraphicsWidget;
+  item->setPos(50, 40);
+  scene.addItem(item);
+
+  QGraphicsView view(&scene);
+  view.viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
+  view.resize(320, 240);
+  view.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+  QGraphicsScene otherScene;
+  QGraphicsView otherView(&otherScene);
+  otherView.resize(200, 200);
+  otherView.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&otherView));
+
+  const QString itemId = ObjectRegistry::instance()->objectId(item);
+  const QString viewId = ObjectRegistry::instance()->objectId(&view);
+  const QString otherViewId = ObjectRegistry::instance()->objectId(&otherView);
+  m_lastTarget = item;
+
+  // Mismatched viewObjectId is rejected.
+  QEXPECT_THAT(call(QJsonObject{{QStringLiteral("objectId"), itemId},
+                                {QStringLiteral("viewObjectId"), otherViewId},
+                                {QStringLiteral("points"), fingers({finger(0, 25, 35)})}}),
+               IsJsonRpcError(JsonRpcError::kInvalidParams));
+
+  // Matching viewObjectId delivers touch to the QGraphicsObject at its local coordinates.
+  QEXPECT_THAT(call(QJsonObject{{QStringLiteral("objectId"), itemId},
+                                {QStringLiteral("viewObjectId"), viewId},
+                                {QStringLiteral("points"), fingers({finger(0, 25, 35)})}}),
+               IsJsonRpcSuccess());
+  QEXPECT_THAT(call(QJsonObject{{QStringLiteral("objectId"), itemId},
+                                {QStringLiteral("viewObjectId"), viewId},
+                                {QStringLiteral("points"), QJsonArray{}}}),
+               IsJsonRpcSuccess());
+
+  QTRY_COMPARE(item->seen.size(), 2);
+  QCOMPARE(item->seen[0].type, QEvent::TouchBegin);
+  QCOMPARE(item->seen[0].positions, QList<QPointF>{QPointF(25, 35)});
+  QCOMPARE(item->seen[1].type, QEvent::TouchEnd);
+}
+
+void TestUiTouch::testInvisibleOrDisabledQuickItemIsRejected() {
+  QuickScene scene;
+  QQuickItem* hiddenPad = scene.item("hiddenPad");
+  QQuickItem* disabledPad = scene.item("disabledPad");
+
+  QEXPECT_THAT(touch(hiddenPad, fingers({finger(0, 10, 10)})),
+               IsJsonRpcError(ErrorCode::kWidgetNotVisible));
+  QEXPECT_THAT(touch(disabledPad, fingers({finger(0, 10, 10)})),
+               IsJsonRpcError(ErrorCode::kWidgetNotEnabled));
+  m_lastTarget = nullptr;
+}
+
+void TestUiTouch::testCancelReleasesHeldFingersCleanly() {
+  QuickScene first;
+  QuickScene second;
+  QQuickItem* pad = first.item("pad");
+  QQuickItem* secondPad = second.item("pad");
+
+  QEXPECT_THAT(touch(pad, fingers({finger(0, 30, 20)})), IsJsonRpcSuccess());
+
+  const QJsonObject cancelResponse = call(QJsonObject{
+      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+      {QStringLiteral("cancel"), true}});
+  QEXPECT_THAT(cancelResponse, IsJsonRpcSuccess());
+  const QJsonObject cancelResult =
+      cancelResponse[QStringLiteral("result")].toObject()[QStringLiteral("result")].toObject();
+  QCOMPARE(cancelResult[QStringLiteral("canceled")].toBool(), true);
+  QCOMPARE(statesOf(cancelResponse), QStringList{"released"});
+
+  // State is cleared: empty frame is rejected and touching another window works.
+  m_lastTarget = nullptr;
+  QEXPECT_THAT(touch(pad, QJsonArray{}), IsJsonRpcError(JsonRpcError::kInvalidParams));
+  m_lastTarget = secondPad;
+  QCOMPARE(statesOf(touch(secondPad, fingers({finger(0, 30, 20)}))), QStringList{"pressed"});
+  QCOMPARE(statesOf(touch(secondPad, QJsonArray{})), QStringList{"released"});
+  QTRY_COMPARE(secondPad->property("taps").toInt(), 1);
+}
+
+void TestUiTouch::testCancelWhenNothingHeldIsClean() {
+  QuickScene scene;
+  QQuickItem* pad = scene.item("pad");
+
+  const QJsonObject cancelResponse = call(QJsonObject{
+      {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(pad)},
+      {QStringLiteral("cancel"), true}});
+  QEXPECT_THAT(cancelResponse, IsJsonRpcSuccess());
+  const QJsonObject cancelResult =
+      cancelResponse[QStringLiteral("result")].toObject()[QStringLiteral("result")].toObject();
+  QCOMPARE(cancelResult[QStringLiteral("canceled")].toBool(), true);
+  QCOMPARE(cancelResult[QStringLiteral("touches")].toArray().size(), 0);
+
+  // Subsequent normal touch works cleanly.
+  QCOMPARE(statesOf(touch(pad, fingers({finger(0, 30, 20)}))), QStringList{"pressed"});
+  QCOMPARE(statesOf(touch(pad, QJsonArray{})), QStringList{"released"});
+  QTRY_COMPARE(pad->property("taps").toInt(), 1);
 }
 
 // --- Errors -------------------------------------------------------------------
