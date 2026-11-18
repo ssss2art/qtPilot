@@ -76,6 +76,11 @@ class QTPILOT_EXPORT EventCapture : public QObject {
   /// Activate).
   QJsonObject buildWindowNotification(QObject* widget, QEvent* event, const QString& typeName);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  /// @brief Build notification JSON for a touch event.
+  QJsonObject buildTouchNotification(QObject* widget, QEvent* event, const QString& typeName);
+#endif
+
 #ifdef QTPILOT_HAS_QML
   struct PendingQuickWindowEvent {
     quint64 token;
