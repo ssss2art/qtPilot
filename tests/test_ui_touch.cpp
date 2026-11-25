@@ -610,7 +610,7 @@ void TestUiTouch::testTargetlessMouseDragReportsTranslationFromItsPress() {
   }
   QTRY_COMPARE(pad->property("activations").toInt(), 1);
   QEXPECT_THAT(pad->property("pressOrigin").toPointF(), Eq(QPointF(start)));
-  QEXPECT_THAT(pad->property("translation").toPointF(), Eq(QPointF(120, 0)));
+  QTRY_COMPARE(pad->property("translation").toPointF(), QPointF(120, 0));
 }
 
 void TestUiTouch::testTargetlessTouchDragReportsTranslationFromItsPress() {
@@ -624,7 +624,7 @@ void TestUiTouch::testTargetlessTouchDragReportsTranslationFromItsPress() {
   }
   QTRY_COMPARE(pad->property("activations").toInt(), 1);
   QEXPECT_THAT(pad->property("pressOrigin").toPointF(), Eq(QPointF(130, 200)));
-  QEXPECT_THAT(pad->property("translation").toPointF(), Eq(QPointF(120, 0)));
+  QTRY_COMPARE(pad->property("translation").toPointF(), QPointF(120, 0));
 }
 
 void TestUiTouch::testTwoFingersPinch() {

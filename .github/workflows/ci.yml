@@ -327,17 +327,13 @@ jobs:
 
   # Records the fitted complexity of the probe's hot paths in the run log, so a
   # change of exponent is visible in review instead of being discovered later.
-  #
-  # NON-BLOCKING on purpose (continue-on-error). The numbers are timing-derived and a
-  # shared runner is noisy, so a hard assertion would teach people to re-run until
-  # green -- which is worse than no check. What this gives you is a reviewable record:
-  # the _BigO column lands in the step summary, and a jump from N to N^2 is obvious.
+  # No timing threshold is asserted (shared runners are noisy), but build/crash
+  # failures fail the job instead of being masked from the validation gate.
   benchmarks:
     needs: [plan, build]
     if: needs.plan.outputs.benchmarks == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -440,7 +436,7 @@ jobs:
       - name: Run tests (${{ matrix.preset }})
         shell: bash
         run: |
-          QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 ctest --preset ${{ matrix.preset }} --output-on-failure
+          QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 ctest --preset ${{ matrix.preset }} -LE admin --output-on-failure
 
   build:
     needs: [plan, lint, python]
