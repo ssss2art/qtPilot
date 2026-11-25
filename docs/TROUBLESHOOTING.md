@@ -38,7 +38,7 @@ qtpilot download-tools --qt-version 5.15-patched
 
 #### Windows: DLL Not Found
 
-The `qtpilot.dll` must be discoverable by Windows DLL search order.
+The probe DLL (`qtPilot-probe-qt<ver>.dll`, e.g. `qtPilot-probe-qt6.8.dll`) must be discoverable by Windows DLL search order.
 
 **Solutions:**
 
@@ -50,7 +50,7 @@ The `qtpilot.dll` must be discoverable by Windows DLL search order.
 
 ```powershell
 # Check if dependencies are satisfied
-where.exe qtPilot_probe.dll
+where.exe qtPilot-probe-qt6.8.dll
 ```
 
 #### Linux: LD_PRELOAD Issues
@@ -58,8 +58,8 @@ where.exe qtPilot_probe.dll
 **Check the preload works:**
 
 ```bash
-LD_PRELOAD=/path/to/libqtpilot.so ldd /path/to/app
-# Should show libqtpilot.so in the list
+LD_PRELOAD=/path/to/libqtPilot-probe-qt<ver>.so ldd /path/to/app
+# Should show libqtPilot-probe-qt<ver>.so in the list
 ```
 
 **Common issues:**
@@ -71,7 +71,7 @@ LD_PRELOAD=/path/to/libqtpilot.so ldd /path/to/app
 **Debug with:**
 
 ```bash
-LD_DEBUG=libs LD_PRELOAD=/path/to/libqtpilot.so ./app 2>&1 | grep qtpilot
+LD_DEBUG=libs LD_PRELOAD=/path/to/libqtPilot-probe-qt<ver>.so ./app 2>&1 | grep qtPilot
 ```
 
 #### Probe Loads but Doesn't Initialize
@@ -167,7 +167,13 @@ qtpilot serve --ws-url ws://192.168.1.100:9222
 
 #### Probe on Different Host
 
-By default, the probe binds to `localhost` only. For remote connections, this is a security feature. Run the MCP server on the same machine as the Qt application.
+By default (with `QTPILOT_PROFILE` and `QTPILOT_BIND_ADDRESS` unset), the probe binds all interfaces (`QTPILOT_BIND_ADDRESS=any`) and announces itself over UDP discovery. If a remote probe is unreachable:
+
+- Check whether it was started with `QTPILOT_BIND_ADDRESS=loopback` or `--profile local` (`QTPILOT_PROFILE=local`), which restrict the probe to localhost only
+- Check firewall rules for TCP port `9222` (or your configured `QTPILOT_PORT`)
+- Across routed subnets where UDP broadcast discovery does not reach, pass `--ws-url ws://<host>:9222` (or `wss://<host>:9222`) explicitly
+
+See [GETTING-STARTED.md](GETTING-STARTED.md#network-exposure) and [AUTHENTICATION.md](AUTHENTICATION.md) for loopback restriction and authenticated LAN/remote profiles.
 
 ## Claude Not Seeing Tools
 
@@ -218,12 +224,12 @@ Before connecting Claude, confirm the probe works:
 
 If using a specific mode, ensure tools match expectations:
 
-- `--mode native` provides 27 Qt-specific tools such as `qt_objects_tree`
+- `--mode native` provides 34 Qt-specific tools such as `qt_objects_tree`
 - `--mode chrome` provides 8 accessibility tools such as `chr_readPage`
 - `--mode cu` provides 13 computer-use tools such as `cu_screenshot`
 - `--mode all` provides every mode-specific tool
 
-All modes also provide 10 `qtpilot_*` session, logging, and recording tools.
+All modes also provide 12 `qtpilot_*` session, logging, recording, and replay tools.
 Call `qtpilot_status` to confirm the active mode, and use
 `qtpilot_set_mode` to change it at runtime.
 
@@ -258,7 +264,7 @@ cat /proc/$(pgrep app-name)/maps | grep -i qt
 
 | Your App Uses | Download | Default Compiler |
 |---------------|----------|-----------------|
-| Qt 6.5, 6.6, 6.7, 6.8 | `--qt-version 6.8` | gcc13 (Linux), msvc17 (Windows) |
+| Qt 6.5, 6.6, 6.7, 6.8, 6.9 | `--qt-version 6.8` | gcc13 (Linux), msvc17 (Windows) |
 | Qt 5.15.x | `--qt-version 5.15-patched` | gcc13 (Linux), msvc17 (Windows) |
 | Qt 5.12 and earlier | Not supported | - |
 
@@ -372,7 +378,7 @@ If the probe can't find Qt libraries:
 
 ```bash
 export LD_LIBRARY_PATH=/path/to/Qt/6.8.0/gcc_64/lib:$LD_LIBRARY_PATH
-LD_PRELOAD=/path/to/libqtpilot.so ./your-app
+LD_PRELOAD=/path/to/libqtPilot-probe-qt<ver>.so ./your-app
 ```
 
 #### Wayland vs X11
@@ -550,9 +556,9 @@ qmake --version
 QTPILOT_PORT=9222 LD_PRELOAD=/path/to/probe ./app 2>&1 | head -50
 
 # ldd output (Linux)
-ldd /path/to/libqtpilot.so
+ldd /path/to/libqtPilot-probe-qt<ver>.so
 ldd /path/to/your-app
 
 # Dependencies (Windows)
-dumpbin /dependents qtPilot_probe.dll
+dumpbin /dependents qtPilot-probe-qt<ver>.dll
 ```

@@ -11,10 +11,10 @@ mode switching, message logging, event recording, and scenario replay.
 
 | Mode | Mode-specific tools | Shared tools | Total | Primary use |
 |------|---------------------|--------------|-------|-------------|
-| `native` | 31 `qt_*` | 12 | 43 | Qt object, property, method, signal, model, and UI access |
+| `native` | 34 `qt_*` | 12 | 46 | Qt object, property, method, signal, model, and UI access |
 | `cu` | 13 `cu_*` | 12 | 25 | Screenshot and coordinate-based interaction |
 | `chrome` | 8 `chr_*` | 12 | 20 | Accessibility-tree and element-reference interaction |
-| `all` | 52 across all families | 12 | 64 | Exploration and mixed workflows |
+| `all` | 55 across all families | 12 | 67 | Exploration and mixed workflows |
 
 The shared tools are:
 
@@ -60,7 +60,15 @@ For computer-use input, `cu_*` coordinates are window-relative by default.
 `qt_ui_geometry(...).local` is relative to the inspected widget, so do not pass
 it directly for a nested widget. Either calculate coordinates relative to the
 top-level window, or pass the `global` rectangle center with
-`screenAbsolute=true`.
+`screen_absolute=True`.
+
+For multi-touch input in native mode, `qt_ui_touch(objectId, points=..., viewObjectId=..., dryRun=..., cancel=...)`
+sends one frame of touch state (`points` as `{id, x, y}` or `[id, x, y]` in
+target-local coordinates; omit `points` or pass `[]` to release all held
+fingers). `viewObjectId` disambiguates `QGraphicsView` scene items, `dryRun=True`
+validates target/coordinate resolution without dispatching events, and
+`cancel=True` emits `TouchCancel` instead of `TouchEnd` when releasing held
+fingers.
 
 ## Inspect with mcp-explorer
 
