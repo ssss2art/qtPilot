@@ -9,7 +9,9 @@ qtPilot lets Claude and other AI assistants interact with any Qt application. It
 **On desktop, no source code modifications are required** - the probe is injected into any
 already-built Qt application. On Android and iOS, where no platform mechanism can insert a
 library into a running app, the probe is instead linked into a development build of your own
-app; see [docs/MOBILE.md](docs/MOBILE.md).
+app; see [docs/MOBILE.md](docs/MOBILE.md). On WebAssembly, the probe is likewise linked into a
+development build and exposed through a page JavaScript bridge (`globalThis.qtpilot`) and
+optional WebMCP browser tools; see [docs/WASM.md](docs/WASM.md).
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -21,6 +23,7 @@ app; see [docs/MOBILE.md](docs/MOBILE.md).
 │  │  │  qtPilot Probe                                              │  │  │
 │  │  │    desktop: INJECTED  (qtPilot-probe.dll / .so / .dylib)    │  │  │
 │  │  │    mobile:  LINKED IN (libqtPilot-probe.a, dev build only)  │  │  │
+│  │  │    wasm:    LINKED IN (JS bridge / WebMCP, dev build only)  │  │  │
 │  │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │  │  │
 │  │  │  │ Object       │  │ Introspector │  │ WebSocket Server │   │  │  │
 │  │  │  │ Tracker      │  │              │  │ :9222            │   │  │  │
@@ -33,7 +36,7 @@ app; see [docs/MOBILE.md](docs/MOBILE.md).
    │  qtPilot MCP Server (Python)                                      │
    │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐    │
    │  │ Probe Client    │  │ MCP Tools       │  │ stdio Transport │    │
-   │  │ (WebSocket)     │  │ (64, 3 modes)   │  │                 │    │
+   │  │ (WebSocket)     │  │ (67, 3 modes)   │  │                 │    │
    │  └─────────────────┘  └─────────────────┘  └─────────────────┘    │
    └───────────────────────────────────┬───────────────────────────────┘
                                        │ MCP
@@ -102,7 +105,7 @@ cmake --build build
 
 See [docs/BUILDING.md](docs/BUILDING.md) for detailed build instructions.
 
-### Option 3: Mobile (Android & iOS)
+### Option 4: Mobile (Android & iOS)
 
 Cross-compile the static probe using Qt's `qt-cmake` wrapper and link it into a development build of your app (see [docs/MOBILE.md](docs/MOBILE.md)). Once running on device or emulator, forward the port over USB and connect:
 
@@ -117,19 +120,23 @@ iproxy 9222 9222
 qtpilot serve --mode native --ws-url ws://localhost:9222
 ```
 
+### Option 5: WebAssembly & WebMCP (Browser)
+
+Build the static probe with your Qt for WebAssembly kit's `qt-cmake` and link it into a development build; drive the page from Python with `PageProbeConnection` (Playwright) or opt in to experimental browser-agent tools via WebMCP (`?qtpilot-webmcp`). See [docs/WASM.md](docs/WASM.md) and [`examples/webmcp/`](examples/webmcp/).
+
 ## Features
 
 - **Three API modes** for different use cases:
   - **Native** - Full Qt object tree introspection
   - **Computer Use** - Screenshot and coordinate-based interaction
   - **Chrome** - Browser-style accessibility tree with element references
-- **64 MCP tools** across all modes: 31 native, 13 computer-use, 8 accessibility, and 12 shared session/replay tools
+- **67 MCP tools** across all modes: 34 native (46 with shared tools), 13 computer-use, 8 accessibility, and 12 shared session/replay tools
 - **Two live resources and two workflow prompts** for connection status, compact UI hierarchy, exploration, and replay authoring
 - **Works with Qt 5.15.1+ and Qt 6.5+** applications (Qt 5.15 on Windows and Linux; macOS needs Qt 6.5+)
-- **Zero modification** to target applications on desktop (the probe is injected); on mobile it is linked into your own development build
+- **Zero modification** to target applications on desktop (the probe is injected); on mobile and WebAssembly it is linked into your own development build
 - **Child process injection** - `--inject-children` automatically injects the probe into child processes (Windows: Detours hook on CreateProcessW; Linux: LD_PRELOAD propagation)
 - **Admin elevation** - `--run-as-admin` launches target apps with administrator privileges on Windows (auto-elevates via UAC)
-- **Cross-platform** - Windows, Linux, and macOS by injection; Android and iOS by linking the probe into a development build
+- **Cross-platform** - Windows, Linux, and macOS by injection; Android, iOS, and WebAssembly (`PageProbeConnection` / WebMCP) by linking the probe into a development build
 
 ## Connecting to Claude
 
@@ -234,6 +241,7 @@ the existing unauthenticated LAN default.
 | **macOS arm64** | - | ✅ | Injected | Supported (tested against Qt 6.10) |
 | **Android** | - | ✅ | Linked into your build | Supported (CI cross-compiles; device runs verified by hand) |
 | **iOS (device)** | - | ✅ | Linked into your build | Supported (CI cross-compiles; device runs verified by hand) |
+| **WebAssembly** | - | ✅ | Linked into your build ([docs/WASM.md](docs/WASM.md)) | Supported (`PageProbeConnection` / WebMCP) |
 
 ✅ = supported and exercised by CI. `-` = not a supported combination.
 

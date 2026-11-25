@@ -165,15 +165,17 @@ Configure these options with `-D<OPTION>=<VALUE>`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `QTPILOT_BUILD_TESTS` | `ON` (forced `OFF` on mobile) | Build unit tests |
-| `QTPILOT_BUILD_TEST_APP` | `ON` (forced `OFF` on mobile) | Build the test Qt application |
-| `QTPILOT_PROBE_STATIC` | `OFF` (`ON` on mobile) | Build the probe as a static library to link into an app, instead of a shared library to inject. Not supported on Windows — the probe's Detours dependency is not installed, so the archive cannot be linked by a consumer |
+| `QTPILOT_BUILD_TESTS` | `ON` (forced `OFF` on mobile/WASM) | Build unit tests |
+| `QTPILOT_BUILD_TEST_APP` | `ON` (forced `OFF` on mobile/WASM) | Build the test Qt application |
+| `QTPILOT_PROBE_STATIC` | `OFF` (`ON` on mobile/WASM) | Build the probe as a static library to link into an app, instead of a shared library to inject. Not supported on Windows — the probe's Detours dependency is not installed, so the archive cannot be linked by a consumer |
+| `QTPILOT_ENABLE_QML` | `ON` | Enable QML/Qt Quick introspection when Qt Quick is available |
+| `QTPILOT_SANITIZE` | `""` (empty) | Comma-separated `-fsanitize=` list (e.g. `address,undefined` or `thread`); Linux/macOS only |
 | `QTPILOT_BUILD_BENCHMARKS` | `OFF` | Build complexity micro-benchmarks. Fetches google/benchmark at configure time; see [benchmarks/README.md](../benchmarks/README.md) |
 | `QTPILOT_QT_DIR` | - | Explicit path to Qt installation (prepended to `CMAKE_PREFIX_PATH`) |
 
-"Mobile" means an Android or iOS toolchain, detected from CMake's `ANDROID` /
-`IOS` variables. Those builds also skip the launcher entirely — it injects into
-an already-running process, which neither mobile platform permits.
+"Mobile" (`QTPILOT_MOBILE`) covers Android, iOS, and WebAssembly toolchains, detected from
+CMake's `ANDROID`, `IOS`, and `EMSCRIPTEN` variables. Those builds also skip the launcher
+entirely — it injects into an already-running process, which none of those platforms permit.
 
 ### Examples
 
@@ -205,6 +207,9 @@ static probe needs -- without it the linker discards the object file that regist
 the probe's startup hook and the probe silently never starts. Consumers that link
 the archive by raw path instead have to force-load it themselves. Full instructions,
 including how to reach the probe from a device, are in [MOBILE.md](MOBILE.md).
+
+For Qt for WebAssembly (`EMSCRIPTEN`), which also builds a static probe with a
+page JavaScript bridge instead of a WebSocket server, see [WASM.md](WASM.md).
 
 ## Sanitizer builds
 
@@ -259,14 +264,14 @@ After building, find the artifacts in these locations:
 | Windows | `build/lib/Release/qtPilot-probe-qt6.8.dll` |
 | Linux | `build/lib/libqtPilot-probe-qt6.8.so` |
 | macOS | `build/lib/libqtPilot-probe-qt6.8.dylib` |
-| Android / iOS | `build/lib/libqtPilot-probe-qt6.11.a` (static; Xcode adds a per-config subdirectory) |
+| Android / iOS / WebAssembly (`EMSCRIPTEN`) | `build/lib/libqtPilot-probe-qt6.11.a` (static; Xcode adds a per-config subdirectory) |
 
 The probe binary name includes the Qt major.minor version it was built against (e.g. `qt6.8`, `qt5.15`).
 Debug builds append `d` (`libqtPilot-probe-qt6.11d.a`).
 
 ### Launcher Executable
 
-Not built for Android or iOS.
+Not built for Android, iOS, or WebAssembly (`EMSCRIPTEN`).
 
 | Platform | Location |
 |----------|----------|

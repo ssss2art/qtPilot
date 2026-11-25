@@ -218,5 +218,6 @@ behaviour is still verified by hand.
 ## See also
 
 - [docs/BUILDING.md](BUILDING.md) — build options and artifact layout
+- [WebAssembly (WASM & WebMCP)](WASM.md) — linked static probe for Qt for WebAssembly in a browser
 - [docs/MACOS.md](MACOS.md) — the injected macOS path, code signing, notarization
 - [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md) — including "linked probe never starts"
