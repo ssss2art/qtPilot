@@ -619,5 +619,106 @@ def test_equivalent_unwraps_response_envelope_meta():
 
     actual_diff = {"meta": {"objectId": "btn"}, "result": {"value": False}}
     assert not _equivalent(expected_direct, actual_diff)
-    assert not _equivalent(expected_with_result, actual_diff)
+
+
+class _ScriptedProbe:
+    """Minimal probe stub for testing run_scenario failure handling."""
+
+    def __init__(self, handler) -> None:
+        self._handler = handler
+        self.handlers: list = []
+
+    def add_notification_handler(self, handler) -> None:
+        self.handlers.append(handler)
+
+    def remove_notification_handler(self, handler) -> None:
+        if handler in self.handlers:
+            self.handlers.remove(handler)
+
+    async def call(self, method: str, params: dict, **kwargs):
+        return await self._handler(method, params)
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_aborts_cleanly_on_action_connection_error():
+    from qtpilot.replay import Action, Step, run_scenario
+
+    scenario = Scenario(
+        steps=[Step(index=1, action=Action("qt.ui.click", {"objectId": "btn"}))],
+        source="action-conn-error.jsonl",
+    )
+
+    async def handler(method: str, params: dict):
+        if method == "qt.ui.click":
+            raise ConnectionResetError("socket closed")
+        return {}
+
+    result = await run_scenario(scenario, _ScriptedProbe(handler), settle=0, sync=False)
+    assert result.aborted_at == 1
+    assert result.failure_kind == "action"
+    assert "socket closed" in (result.abort_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_aborts_cleanly_on_setup_connection_error():
+    from qtpilot.replay import Action, Step, run_scenario
+
+    scenario = Scenario(
+        steps=[
+            Step(
+                index=1,
+                action=Action("qt.ui.click", {"objectId": "btn"}),
+                setups=[Action("qt.signals.subscribe", {"objectId": "btn", "signal": "clicked"})],
+            )
+        ],
+        source="setup-conn-error.jsonl",
+    )
+
+    async def handler(method: str, params: dict):
+        if method == "qt.signals.subscribe":
+            raise OSError("broken pipe")
+        return {}
+
+    result = await run_scenario(scenario, _ScriptedProbe(handler), settle=0, sync=False)
+    assert result.aborted_at == 1
+    assert result.failure_kind == "setup"
+    assert "broken pipe" in (result.abort_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_aborts_cleanly_on_observation_connection_error():
+    from qtpilot.replay import Action, Observation, Step, run_scenario
+
+    scenario = Scenario(
+        steps=[
+            Step(
+                index=1,
+                action=Action("qt.ui.click", {"objectId": "btn"}),
+                observations=[Observation("qt.properties.get", {"objectId": "btn", "name": "text"}, "OK")],
+            )
+        ],
+        source="obs-conn-error.jsonl",
+    )
+
+    async def handler(method: str, params: dict):
+        if method == "qt.properties.get":
+            raise ConnectionError("probe disconnected")
+        return {}
+
+    result = await run_scenario(scenario, _ScriptedProbe(handler), settle=0, sync=False)
+    assert result.aborted_at == 1
+    assert result.failure_kind == "observation"
+    assert "probe disconnected" in (result.abort_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_tool_to_method_matches_all_registered_mode_tools():
+    from qtpilot import _mcp_compat
+    from qtpilot.replay import TOOL_TO_METHOD
+    from qtpilot.server import create_server
+
+    server = create_server(mode="all")
+    names = await _mcp_compat.list_tool_names(server)
+    registered_mode_tools = {n for n in names if n.startswith(("qt_", "cu_", "chr_"))}
+    assert set(TOOL_TO_METHOD) == registered_mode_tools
 

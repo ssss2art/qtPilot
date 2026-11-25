@@ -103,3 +103,79 @@ async def test_exploratory_reports_never_relabel_normalized_evidence_as_exact(
         assert view["comparison_units"] == "collected observations and notifications"
         assert view["evidence_counts"] == {"exact": 0, "normalized": 1, "wildcard": 2, "unavailable": 1, "unsupported": 1}
         assert view["raw_available"] is False and view["loss_verified"] is False
+
+
+@pytest.mark.parametrize("exc", [OSError("transport lost"), None])
+def test_cmd_replay_returns_aborted_when_run_contract_raises(
+    contract_file: Path,
+    probe: ContractProbe,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    exc: Exception | None,
+) -> None:
+    from qtpilot.cli import REPLAY_EXIT_ABORTED
+    from qtpilot.connection import ProbeError
+
+    err = exc if exc is not None else ProbeError(-32000, "probe crashed")
+    monkeypatch.setattr("qtpilot.contract_runner.run_contract", AsyncMock(side_effect=err))
+    args = create_parser().parse_args(["replay", str(contract_file), "--json"])
+    assert cmd_replay(args) == REPLAY_EXIT_ABORTED
+    assert "aborted" in capsys.readouterr().err.lower()
+
+
+def test_cmd_replay_returns_diverged_on_postcondition_failure(
+    contract_file: Path,
+    probe: ContractProbe,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from qtpilot.cli import REPLAY_EXIT_DIVERGED
+    from qtpilot.contract_runner import ContractResult
+
+    failed = ContractResult(
+        fixture="synthetic",
+        actions_driven=1,
+        total_actions=1,
+        failure_kind="postcondition",
+        failed_step="step-1",
+        reason="mismatch",
+    )
+    monkeypatch.setattr("qtpilot.contract_runner.run_contract", AsyncMock(return_value=failed))
+    args = create_parser().parse_args(["replay", str(contract_file)])
+    assert cmd_replay(args) == REPLAY_EXIT_DIVERGED
+    out = capsys.readouterr().out
+    assert "Strict contract failed: step-1: postcondition: mismatch" in out
+
+
+def test_cmd_replay_non_json_output_on_pass(
+    contract_file: Path,
+    probe: ContractProbe,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    args = create_parser().parse_args(["replay", str(contract_file)])
+    assert cmd_replay(args) == 0
+    out = capsys.readouterr().out
+    assert "Strict contract passed:" in out
+    assert "loss verified" in out
+
+
+@pytest.mark.parametrize(
+    "extra_flags",
+    [
+        ["--record", "--output", "out.jsonl"],
+        ["--watch", "watch.json"],
+        ["--settle", "0.2"],
+    ],
+)
+def test_cmd_replay_rejects_exploratory_flags_in_strict_mode(
+    contract_file: Path,
+    probe: ContractProbe,
+    capsys: pytest.CaptureFixture[str],
+    extra_flags: list[str],
+) -> None:
+    from qtpilot.cli import REPLAY_EXIT_USAGE
+
+    args = create_parser().parse_args(["replay", str(contract_file), *extra_flags])
+    assert cmd_replay(args) == REPLAY_EXIT_USAGE
+    probe.connect.assert_not_awaited()
+    assert "--exploratory" in capsys.readouterr().err

@@ -768,7 +768,7 @@ class ReplayResult:
     divergences: list[Divergence]
     aborted_at: int | None = None
     abort_reason: str | None = None
-    failure_kind: Literal["precondition", "setup", "action", "synchronization"] | None = None
+    failure_kind: Literal["precondition", "setup", "action", "synchronization", "observation"] | None = None
 
     @property
     def actions_driven(self) -> int:
@@ -941,7 +941,7 @@ async def run_scenario(
     observed: list[Step] = []
     aborted_at: int | None = None
     abort_reason: str | None = None
-    failure_kind: Literal["precondition", "setup", "action", "synchronization"] | None = None
+    failure_kind: Literal["precondition", "setup", "action", "synchronization", "observation"] | None = None
     precondition_differences: list[Divergence] = []
     held_touch: tuple[str, str | None] | None = None
 
@@ -953,8 +953,9 @@ async def run_scenario(
             if recorded.action is not None:
                 try:
                     await probe.call(recorded.action.method, recorded.action.params, **call_kwargs)
-                except ProbeError as exc:
+                except (ProbeError, OSError) as exc:
                     aborted_at = recorded.index
+                    failure_kind = "action"
                     abort_reason = f"{recorded.action.method}: {exc}"
                     observed.append(step)
                     break
@@ -979,8 +980,9 @@ async def run_scenario(
             for setup in recorded.setups:
                 try:
                     await probe.call(setup.method, setup.params, **call_kwargs)
-                except ProbeError as exc:
+                except (ProbeError, OSError) as exc:
                     aborted_at = recorded.index
+                    failure_kind = "setup"
                     abort_reason = f"setup failed -- {setup.method}: {exc}"
                     observed.append(step)
                     break
@@ -1008,6 +1010,14 @@ async def run_scenario(
                     step.observations.append(
                         Observation(method=method, params=params, result=None, error=str(exc))
                     )
+                except OSError as exc:
+                    aborted_at = recorded.index
+                    failure_kind = "observation"
+                    abort_reason = f"{method}: {exc}"
+                    observed.append(step)
+                    break
+            if aborted_at is not None:
+                break
 
             step.notifications = list(collected)
             observed.append(step)
@@ -1081,7 +1091,6 @@ async def run_scenario_expected(
 TOOL_TO_METHOD: dict[str, str] = {
     "qt_ping": "qt.ping",
     "qt_version": "qt.version",
-    "qt_sync": "qt.sync",
     "qt_objects_tree": "qt.objects.tree",
     "qt_objects_search": "qt.objects.search",
     "qt_objects_inspect": "qt.objects.inspect",
@@ -1090,17 +1099,31 @@ TOOL_TO_METHOD: dict[str, str] = {
     "qt_methods_invoke": "qt.methods.invoke",
     "qt_signals_subscribe": "qt.signals.subscribe",
     "qt_signals_unsubscribe": "qt.signals.unsubscribe",
-    "qt_signals_emissions": "qt.signals.emissions",
+    "qt_signals_setLifecycle": "qt.signals.setLifecycle",
+    "qt_signals_wait": "qt.signals.wait",
+    "qt_events_start": "qt.events.start",
+    "qt_events_stop": "qt.events.stop",
     "qt_ui_click": "qt.ui.click",
     "qt_ui_doubleClick": "qt.ui.doubleClick",
     "qt_ui_contextMenu": "qt.ui.contextMenu",
+    "qt_ui_activeMenu": "qt.ui.activeMenu",
+    "qt_ui_activateMenuItem": "qt.ui.activateMenuItem",
     "qt_ui_sendKeys": "qt.ui.sendKeys",
     "qt_ui_screenshot": "qt.ui.screenshot",
+    "qt_ui_geometry": "qt.ui.geometry",
+    "qt_ui_hitTest": "qt.ui.hitTest",
     "qt_ui_clickItem": "qt.ui.clickItem",
     "qt_ui_wheel": "qt.ui.wheel",
     "qt_ui_touch": "qt.ui.touch",
+    "qt_names_register": "qt.names.register",
+    "qt_names_unregister": "qt.names.unregister",
+    "qt_names_list": "qt.names.list",
+    "qt_names_validate": "qt.names.validate",
+    "qt_names_load": "qt.names.load",
+    "qt_models_list": "qt.models.list",
     "qt_models_data": "qt.models.data",
     "qt_models_search": "qt.models.search",
+    "cu_screenshot": "cu.screenshot",
     "cu_leftClick": "cu.click",
     "cu_rightClick": "cu.rightClick",
     "cu_middleClick": "cu.middleClick",
@@ -1112,6 +1135,15 @@ TOOL_TO_METHOD: dict[str, str] = {
     "cu_type": "cu.type",
     "cu_key": "cu.key",
     "cu_scroll": "cu.scroll",
+    "cu_cursorPosition": "cu.cursorPosition",
+    "chr_readPage": "chr.readPage",
+    "chr_click": "chr.click",
+    "chr_formInput": "chr.formInput",
+    "chr_getPageText": "chr.getPageText",
+    "chr_find": "chr.find",
+    "chr_navigate": "chr.navigate",
+    "chr_tabsContext": "chr.tabsContext",
+    "chr_readConsoleMessages": "chr.readConsoleMessages",
 }
 
 

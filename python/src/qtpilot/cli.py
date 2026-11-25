@@ -254,18 +254,20 @@ def cmd_replay(args: argparse.Namespace) -> int:
         return REPLAY_EXIT_USAGE
 
     async def go() -> int:
-        probe = None
         default_port = int(os.environ.get("QTPILOT_PORT", "9222"))
         try:
             probe = ProbeConnection(args.ws_url or local_probe_url(default_port, os.environ))
             await probe.connect()
-            result = await run_contract(contract, probe)
         except (ProbeError, OSError, ValueError) as exc:
             print(f"error: cannot prepare strict replay: {exc}", file=sys.stderr)
             return REPLAY_EXIT_USAGE
+        try:
+            result = await run_contract(contract, probe)
+        except (ProbeError, OSError) as exc:
+            print(f"error: strict replay aborted: {exc}", file=sys.stderr)
+            return REPLAY_EXIT_ABORTED
         finally:
-            if probe is not None:
-                await probe.disconnect()
+            await probe.disconnect()
         if args.json:
             print(json.dumps(result.to_dict(), indent=2))
         elif result.passed:
