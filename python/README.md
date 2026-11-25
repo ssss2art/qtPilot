@@ -59,13 +59,17 @@ half-ready probe in session state.
 Disconnecting or requesting a different probe also cancels any pending readiness
 wait before closing or replacing the connection.
 
+### WebAssembly (Browser Page)
+
+For Qt for WebAssembly apps running in a browser tab, use `qtpilot.page_connection.PageProbeConnection` with a Playwright async `Page` to talk to the probe's JavaScript bridge (`globalThis.qtpilot`). `PageProbeConnection` is a Python library API for Playwright scripts—it is not exposed via the `qtpilot serve` CLI. See [docs/WASM.md](../docs/WASM.md) for build and usage details.
+
 ## Features
 
 - **Three API modes**: Native (full Qt access), Computer Use (screenshots + clicks), Chrome (accessibility tree)
-- **64 MCP tools** when using `--mode all` (52 mode-specific tools plus 12 shared session/replay tools)
+- **67 MCP tools** when using `--mode all` (55 mode-specific tools — 34 native, 13 computer-use, 8 chrome — plus 12 shared session/replay tools)
 - **Works with Qt 5.15 and Qt 6.x** applications
-- **Zero modification on desktop** (probe is injected); statically linked into development builds on Android/iOS
-- **Cross-platform**: Windows, Linux, macOS, Android, and iOS
+- **Zero modification on desktop** (probe is injected); statically linked into development builds on Android/iOS and WebAssembly
+- **Cross-platform**: Windows, Linux, macOS, Android, iOS, and WebAssembly (`PageProbeConnection`)
 
 ## Server Modes
 

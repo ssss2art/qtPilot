@@ -95,7 +95,11 @@ flowchart LR
 
 The readiness phase and each step have an `asyncio.timeout` deadline. Cleanup has
 a separate bounded unsubscribe deadline and runs on failure, timeout and task
-cancellation. Qt owns signal connections, object lifetimes and delivery; Python
+cancellation. If an action leaves touch points held (`qt.ui.touch` with non-empty
+`points`), both `run_contract` and `run_scenario` automatically release them during
+teardown (including on failure, timeout, and cancellation) by sending `qt.ui.touch`
+with `points: []` (preserving `viewObjectId` when set). Qt owns signal
+connections, object lifetimes and delivery; Python
 uses `asyncio.Queue` and `AsyncExitStack`. The checkpoint queue holds 256 emissions.
 Native exclusive subscriptions have a 64-permit `QSemaphore` limit; each checkpoint
 owns two. Existing ordinary subscriptions remain independent and are not removed

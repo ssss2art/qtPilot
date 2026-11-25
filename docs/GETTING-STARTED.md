@@ -9,7 +9,9 @@ qtPilot consists of two main components:
 1. **The Probe** - A library that runs inside your Qt application and exposes its object
    tree via WebSocket. On desktop it is a shared library (`.dll`, `.so`, `.dylib`) injected
    into an already-built app; on Android and iOS it is a static library (`.a`) linked into a
-   development build of your own app (see [MOBILE.md](MOBILE.md))
+   development build of your own app (see [MOBILE.md](MOBILE.md)); and on WebAssembly it
+   compiles as a static library exposing a JavaScript bridge and optional WebMCP adapter
+   (see [WASM.md](WASM.md))
 2. **The MCP Server** - A Python CLI (`qtpilot`) that connects Claude to the probe
 
 ```mermaid
@@ -158,8 +160,8 @@ You can also set `QT_PLUGIN_PATH` manually if you prefer — the launcher respec
 **Linux:**
 
 ```bash
-# LD_PRELOAD-based injection
-LD_PRELOAD=/path/to/libqtpilot.so ./your-app arg1 arg2
+# LD_PRELOAD-based injection (use your Qt major.minor version, e.g. qt6.8)
+LD_PRELOAD=/path/to/libqtPilot-probe-qt<ver>.so ./your-app arg1 arg2
 ```
 
 To automatically inject the probe into child processes spawned by the target:
@@ -325,16 +327,18 @@ to everything except its own host.
 
 #### What that means
 
-`qt.methods.invoke` calls arbitrary slots on the host application, and **the
+`qt.methods.invoke` calls arbitrary slots on the host application, and **by default the
 probe does not authenticate its clients**. Any host that can reach the port can
 run code inside the instrumented process. The probe says so once at startup
 rather than leaving you to discover it.
 
-Treat an instrumented application the way you would treat any process with a
-debug port open: run it on a network you control, and prefer not to leave one
-running on a shared network when you are not using it. Authentication is tracked
-as R7 in [`OBSERVABILITY-GAPS.md`](OBSERVABILITY-GAPS.md)
-and does not exist yet.
+Treat an unconfigured instrumented application the way you would treat any process
+with a debug port open: run it on a network you control, and prefer not to leave one
+running on a shared network when you are not using it. For authenticated or TLS-encrypted
+access, qtPilot supports opt-in bearer-token authentication (`--auth-token-file` /
+`QTPILOT_AUTH_TOKEN_FILE`), `wss://` TLS (`--tls-cert-file`, `--tls-key-file`,
+`--tls-ca-file`), and operating profiles (`--profile local|trusted-network|remote` /
+`QTPILOT_PROFILE`) — see [AUTHENTICATION.md](AUTHENTICATION.md).
 
 #### Restricting to one machine
 
@@ -376,7 +380,7 @@ Example:
 
 ```bash
 # Linux
-QTPILOT_PORT=9999 QTPILOT_MODE=native LD_PRELOAD=/path/to/libqtpilot.so ./your-app
+QTPILOT_PORT=9999 QTPILOT_MODE=native LD_PRELOAD=/path/to/libqtPilot-probe-qt<ver>.so ./your-app
 
 # Windows (via qtPilot-launcher)
 set QTPILOT_PORT=9999
@@ -441,7 +445,7 @@ qtPilot supports three focused API modes plus an aggregate `all` mode. Twelve
 
 ### Native Mode (`--mode native`)
 
-Exposes 31 `qt_*` tools plus the 12 shared tools (43 total). Use this for:
+Exposes 34 `qt_*` tools plus the 12 shared tools (46 total). Use this for:
 
 - Test automation
 - Deep inspection of widget properties
@@ -478,7 +482,7 @@ qtpilot serve --mode chrome --target /path/to/app
 
 ### All Modes (`--mode all`)
 
-Exposes all 64 tools. Useful for exploration and mixed workflows.
+Exposes all 67 tools. Useful for exploration and mixed workflows.
 
 ```bash
 qtpilot serve --mode all --target /path/to/app
@@ -489,4 +493,5 @@ qtpilot serve --mode all --target /path/to/app
 - [MCP Tooling](MCP-TOOLS.md) - Current tool surface and inspection workflow
 - [API Modes Deep Dive](../qtPilot-compatibility-modes.md) - Detailed mode comparisons
 - [Building from Source](BUILDING.md) - Compile qtPilot yourself
+- [WebAssembly & WebMCP](WASM.md) - Browser builds, JS bridge, and Playwright integration
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions

@@ -46,12 +46,14 @@ cmake --build build-wasm
 
 Link `libqtPilot-probe-qt6.N.a` into the app as on mobile: through the installed package's
 `qtPilot_inject_probe(<target>)`, or by raw path with `$<LINK_LIBRARY:WHOLE_ARCHIVE,...>` so
-the archive's startup hook is kept. Only ever in a development build (see Security).
+the archive's startup hook is kept (and `-fexceptions`, which `qtPilot::Probe` adds via its
+usage requirements). Only ever in a development build (see Security).
 
 ## Driving it from Python
 
 `qtpilot.page_connection.PageProbeConnection` is a `ProbeConnection` whose socket is a Playwright
-page, so everything built on a connection works unchanged. Playwright is not a qtPilot
+page, so everything built on a connection works unchanged. It is a Python library API for
+Playwright scripts (not exposed via the `qtpilot serve` CLI). Playwright is not a qtPilot
 dependency; install it alongside (`pip install playwright`).
 
 ```python
