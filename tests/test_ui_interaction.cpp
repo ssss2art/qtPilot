@@ -10,6 +10,7 @@
 #include <QApplication>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QPointer>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QVBoxLayout>
@@ -30,6 +31,15 @@ class TestUIInteraction : public QObject {
   void testMouseClickPosition();
   void testSendText();
   void testSendKeySequence();
+
+  // The target dies in the first event processing InputSimulator does: the
+  // call must return without touching it again.
+  void testMouseClickTargetDeletedDuringPreparation();
+  void testMouseDoubleClickTargetDeletedDuringPreparation();
+  void testSendKeyTargetDeletedDuringPreparation();
+  void testSendKeySequenceTargetDeletedDuringPreparation();
+  void testSendTextTargetDeletedDuringPreparation();
+  void testMouseDragTargetDeletedAfterPress();
 
   // Screenshot tests
   void testCaptureWidget();
@@ -128,6 +138,63 @@ void TestUIInteraction::testSendKeySequence() {
 
   // Verify all text is selected
   QEXPECT_THAT(m_lineEdit->selectedText(), QStrEq("Select Me"));
+}
+
+namespace {
+
+/// @brief A shown, parentless widget whose deletion is already queued, so it
+/// dies inside the first processEvents() the code under test runs -- the way a
+/// deleteLater()'d popup editor dies under a probe that is driving it.
+template <typename W>
+QPointer<W> widgetDyingOnNextEventLoop() {
+  auto* widget = new W();
+  widget->resize(120, 40);
+  widget->show();
+  QApplication::processEvents();
+  const QPointer<W> guard(widget);
+  QMetaObject::invokeMethod(
+      qApp, [guard]() { delete guard.data(); }, Qt::QueuedConnection);
+  return guard;
+}
+
+}  // namespace
+
+void TestUIInteraction::testMouseClickTargetDeletedDuringPreparation() {
+  const QPointer<QPushButton> button = widgetDyingOnNextEventLoop<QPushButton>();
+  InputSimulator::mouseClick(button);
+  QEXPECT_THAT(button.isNull(), IsTrue());
+}
+
+void TestUIInteraction::testMouseDoubleClickTargetDeletedDuringPreparation() {
+  const QPointer<QPushButton> button = widgetDyingOnNextEventLoop<QPushButton>();
+  InputSimulator::mouseDoubleClick(button);
+  QEXPECT_THAT(button.isNull(), IsTrue());
+}
+
+void TestUIInteraction::testSendKeyTargetDeletedDuringPreparation() {
+  const QPointer<QLineEdit> edit = widgetDyingOnNextEventLoop<QLineEdit>();
+  InputSimulator::sendKey(edit, Qt::Key_A);
+  QEXPECT_THAT(edit.isNull(), IsTrue());
+}
+
+void TestUIInteraction::testSendKeySequenceTargetDeletedDuringPreparation() {
+  const QPointer<QLineEdit> edit = widgetDyingOnNextEventLoop<QLineEdit>();
+  InputSimulator::sendKeySequence(edit, QStringLiteral("Ctrl+A"));
+  QEXPECT_THAT(edit.isNull(), IsTrue());
+}
+
+void TestUIInteraction::testSendTextTargetDeletedDuringPreparation() {
+  const QPointer<QLineEdit> edit = widgetDyingOnNextEventLoop<QLineEdit>();
+  InputSimulator::sendText(edit, QStringLiteral("abc"));
+  QEXPECT_THAT(edit.isNull(), IsTrue());
+}
+
+void TestUIInteraction::testMouseDragTargetDeletedAfterPress() {
+  // mouseDrag pumps events only after the press, then resolves the end point
+  // against the window.
+  const QPointer<QWidget> window = widgetDyingOnNextEventLoop<QWidget>();
+  InputSimulator::mouseDrag(window, QPoint(5, 5), QPoint(50, 20));
+  QEXPECT_THAT(window.isNull(), IsTrue());
 }
 
 // === Screenshot tests ===

@@ -34,16 +34,25 @@ void InputSimulator::mouseClickAt(QWidget* widget, MouseButton button, const QPo
     throw std::invalid_argument("mouseClickAt: widget cannot be null");
   }
 
+  // Every processEvents() below can run application code that deletes the
+  // widget (a deleteLater()'d popup), so the guard is taken before the first.
+  const QPointer<QWidget> guard(widget);
+
   // Ensure widget is visible and ready for input
   widget->activateWindow();
   widget->raise();
   QApplication::processEvents();
+  if (!guard) {
+    return;
+  }
   widget->setFocus();
   QApplication::processEvents();
+  if (!guard) {
+    return;
+  }
 
   // QTest::mouseClick() also treats QPoint(0, 0) as its centre sentinel, so
   // deliver the pair directly to preserve an explicit top-left position.
-  QPointer<QWidget> guard(widget);
   const Qt::MouseButton qtButton = toQtButton(button);
   const QPoint globalPos = widget->mapToGlobal(pos);
   QMouseEvent press(QEvent::MouseButtonPress, QPointF(pos), QPointF(globalPos), qtButton, qtButton,
@@ -69,12 +78,16 @@ void InputSimulator::mouseDoubleClick(QWidget* widget, MouseButton button, const
   // Use widget center if no position specified
   QPoint clickPos = pos.isNull() ? widget->rect().center() : pos;
 
+  const QPointer<QWidget> guard(widget);
+
   // Ensure widget is visible and ready for input
   widget->activateWindow();
   widget->raise();
   QApplication::processEvents();
+  if (!guard) {
+    return;
+  }
 
-  QPointer<QWidget> guard(widget);
   const Qt::MouseButton qtButton = toQtButton(button);
   const QPoint globalPos = widget->mapToGlobal(clickPos);
 
@@ -114,11 +127,12 @@ void InputSimulator::sendText(QWidget* widget, const QString& text,
     throw std::invalid_argument("sendText: widget cannot be null");
   }
 
+  const QPointer<QWidget> guard(widget);
+
   // Ensure widget has focus for keyboard input
   widget->setFocus();
   QApplication::processEvents();
 
-  QPointer<QWidget> guard(widget);
   for (const QChar ch : text) {
     if (!guard) {
       break;
@@ -164,8 +178,12 @@ void InputSimulator::sendKeySequence(QWidget* widget, const QString& sequence) {
                                 "'");
   }
 
+  const QPointer<QWidget> guard(widget);
   widget->setFocus();
   QApplication::processEvents();
+  if (!guard) {
+    return;
+  }
 
   // Only the first key combination is sent: a multi-chord sequence such as
   // "Ctrl+K, Ctrl+S" delivers Ctrl+K and reports success. Tracked as T11 in
@@ -184,10 +202,13 @@ void InputSimulator::sendKey(QWidget* widget, Qt::Key key, Qt::KeyboardModifiers
     throw std::invalid_argument("sendKey: widget cannot be null");
   }
 
+  const QPointer<QWidget> guard(widget);
   widget->setFocus();
   QApplication::processEvents();
+  if (!guard) {
+    return;
+  }
 
-  QPointer<QWidget> guard(widget);
   QKeyEvent press(QEvent::KeyPress, key, modifiers);
   QCoreApplication::sendEvent(widget, &press);
   if (!guard) {
@@ -288,6 +309,7 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
   }
 
   Qt::MouseButton qtButton = toQtButton(button);
+  const QPointer<QWidget> guard(window);
 
   // Resolve start widget and local coordinates
   QWidget* startWidget = window->childAt(startPos);
@@ -301,11 +323,14 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
                          qtButton, qtButton, modifiers);
   QCoreApplication::sendEvent(startWidget, &pressEvent);
   QApplication::processEvents();
+  if (!guard)
+    return;
 
   // Resolve end widget and local coordinates
   QWidget* endWidget = window->childAt(endPos);
   if (!endWidget)
     endWidget = window;
+  const QPointer<QWidget> endGuard(endWidget);
   QPoint localEnd = endWidget->mapFrom(window, endPos);
   QPoint globalEnd = endWidget->mapToGlobal(localEnd);
 
@@ -314,6 +339,8 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
                         qtButton, modifiers);
   QCoreApplication::sendEvent(endWidget, &moveEvent);
   QApplication::processEvents();
+  if (!guard || !endGuard)
+    return;
 
   // Release at end position
   QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(localEnd), QPointF(globalEnd),
