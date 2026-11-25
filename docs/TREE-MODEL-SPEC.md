@@ -359,7 +359,7 @@ qt_ui_click(objectId="..ScheduleTreeView", position={x:100, y:30})
 qt_ui_sendKeys(objectId="..ScheduleTreeView", sequence="Right")
 qt_ui_sendKeys(objectId="..ScheduleTreeView", sequence="Down")
 
-# 4. Screenshot to verify — decode base64, view image
+# 4. Screenshot to verify — open the saved file it returns, view image
 qt_ui_screenshot(objectId="..ScheduleTreeView")
 
 # 5. Type value — hoping we're on the right row

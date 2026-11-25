@@ -1,8 +1,9 @@
-"""Tests for token-efficient screenshot handling (ImageContent & save_to)."""
+"""Tests for screenshots being saved to a file and returned as a path."""
 
 from __future__ import annotations
 
 import base64
+import json
 import re
 import struct
 import tempfile
@@ -11,15 +12,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
-from qtpilot._mcp_compat import get_image_mime_type
 from qtpilot.server import create_server
 from qtpilot.tools.screenshot_helper import (
     extract_png_dimensions,
     process_screenshot_response,
     screenshot_run_dir,
 )
-import mcp.types as types
 
 
 def _make_dummy_png(width: int = 10, height: int = 20) -> tuple[str, bytes]:
@@ -106,80 +106,97 @@ class TestProcessScreenshotResponse:
         assert out.read_bytes() == raw
 
 
+def _probe_replying(resp: dict) -> AsyncMock:
+    mock_probe = AsyncMock()
+    mock_probe.is_connected = True
+    mock_probe.call = AsyncMock(return_value=resp)
+    return mock_probe
+
+
+def _saved_reply(res: object, b64: str, raw: bytes) -> dict:
+    """Assert a tool reply is one text block of file metadata, with no image data."""
+    assert len(res.content) == 1 and res.content[0].type == "text"
+    text = res.content[0].text
+    assert b64 not in text
+    data = json.loads(text)
+    assert set(data) == {"saved_to", "width", "height", "bytes"}
+    assert Path(data["saved_to"]).read_bytes() == raw
+    return data
+
+
+@pytest.fixture
+def _temp_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    return tmp_path
+
+
+@pytest.mark.usefixtures("_temp_root")
 class TestNativeScreenshotTool:
     @pytest.mark.asyncio
-    async def test_qt_ui_screenshot_returns_image_content_by_default(self):
-        b64, _ = _make_dummy_png(100, 200)
-        mock_probe = AsyncMock()
-        mock_probe.is_connected = True
-        mock_probe.call = AsyncMock(return_value={"image": b64})
-
-        with patch("qtpilot.server.require_probe", return_value=mock_probe):
-            mcp = create_server(mode="native")
-            async with Client(mcp) as client:
+    async def test_qt_ui_screenshot_returns_a_saved_file(self) -> None:
+        b64, raw = _make_dummy_png(100, 200)
+        with patch("qtpilot.server.require_probe", return_value=_probe_replying(_envelope(b64))):
+            async with Client(create_server(mode="native")) as client:
                 res = await client.call_tool("qt_ui_screenshot", {"objectId": "MainWindow"})
-                assert len(res.content) == 1
-                content = res.content[0]
-                assert isinstance(content, types.ImageContent)
-                assert content.data == b64
-                assert get_image_mime_type(content) == "image/png"
+        data = _saved_reply(res, b64, raw)
+        assert (data["width"], data["height"], data["bytes"]) == (100, 200, len(raw))
+        assert Path(data["saved_to"]).parent == screenshot_run_dir()
 
     @pytest.mark.asyncio
-    async def test_qt_ui_screenshot_save_to_returns_lean_metadata(self):
+    async def test_qt_ui_screenshot_save_to_is_used(self, tmp_path: Path) -> None:
         b64, raw = _make_dummy_png(100, 200)
-        mock_probe = AsyncMock()
-        mock_probe.is_connected = True
-        mock_probe.call = AsyncMock(return_value={"image": b64})
+        out_file = str(tmp_path / "win.png")
+        with patch("qtpilot.server.require_probe", return_value=_probe_replying(_envelope(b64))):
+            async with Client(create_server(mode="native")) as client:
+                res = await client.call_tool(
+                    "qt_ui_screenshot", {"objectId": "MainWindow", "save_to": out_file}
+                )
+        data = _saved_reply(res, b64, raw)
+        assert data["saved_to"] == str(Path(out_file).resolve())
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            out_file = str(Path(tmpdir) / "win.png")
-            with patch("qtpilot.server.require_probe", return_value=mock_probe):
-                mcp = create_server(mode="native")
-                async with Client(mcp) as client:
-                    res = await client.call_tool(
-                        "qt_ui_screenshot",
-                        {"objectId": "MainWindow", "save_to": out_file},
+    @pytest.mark.asyncio
+    async def test_qt_ui_screenshot_rejects_as_image(self) -> None:
+        b64, _ = _make_dummy_png()
+        probe = _probe_replying(_envelope(b64))
+        with patch("qtpilot.server.require_probe", return_value=probe):
+            async with Client(create_server(mode="native")) as client:
+                with pytest.raises(ToolError):
+                    await client.call_tool(
+                        "qt_ui_screenshot", {"objectId": "MainWindow", "as_image": False}
                     )
-                    assert len(res.content) == 1
-                    text = res.content[0].text
-                    assert "saved_to" in text
-                    assert "image" not in text
-                    assert Path(out_file).exists()
-                    assert Path(out_file).read_bytes() == raw
+        probe.call.assert_not_called()
 
 
+@pytest.mark.usefixtures("_temp_root")
 class TestCuScreenshotTool:
     @pytest.mark.asyncio
-    async def test_cu_screenshot_returns_image_content_by_default(self):
-        b64, _ = _make_dummy_png(80, 40)
-        mock_probe = AsyncMock()
-        mock_probe.is_connected = True
-        mock_probe.call = AsyncMock(return_value={"image": b64, "width": 80, "height": 40})
-
-        with patch("qtpilot.server.require_probe", return_value=mock_probe):
-            mcp = create_server(mode="cu")
-            async with Client(mcp) as client:
+    async def test_cu_screenshot_returns_a_saved_file(self) -> None:
+        b64, raw = _make_dummy_png(80, 40)
+        reply = _envelope(b64, width=80, height=40)
+        with patch("qtpilot.server.require_probe", return_value=_probe_replying(reply)):
+            async with Client(create_server(mode="cu")) as client:
                 res = await client.call_tool("cu_screenshot", {})
-                assert len(res.content) == 1
-                content = res.content[0]
-                assert isinstance(content, types.ImageContent)
-                assert content.data == b64
+        data = _saved_reply(res, b64, raw)
+        assert (data["width"], data["height"], data["bytes"]) == (80, 40, len(raw))
+        assert Path(data["saved_to"]).parent == screenshot_run_dir()
 
     @pytest.mark.asyncio
-    async def test_cu_screenshot_save_to_returns_lean_metadata(self):
+    async def test_cu_screenshot_save_to_is_used(self, tmp_path: Path) -> None:
         b64, raw = _make_dummy_png(80, 40)
-        mock_probe = AsyncMock()
-        mock_probe.is_connected = True
-        mock_probe.call = AsyncMock(return_value={"image": b64, "width": 80, "height": 40})
+        out_file = str(tmp_path / "cu_win.png")
+        reply = _envelope(b64, width=80, height=40)
+        with patch("qtpilot.server.require_probe", return_value=_probe_replying(reply)):
+            async with Client(create_server(mode="cu")) as client:
+                res = await client.call_tool("cu_screenshot", {"save_to": out_file})
+        data = _saved_reply(res, b64, raw)
+        assert data["saved_to"] == str(Path(out_file).resolve())
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            out_file = str(Path(tmpdir) / "cu_win.png")
-            with patch("qtpilot.server.require_probe", return_value=mock_probe):
-                mcp = create_server(mode="cu")
-                async with Client(mcp) as client:
-                    res = await client.call_tool("cu_screenshot", {"save_to": out_file})
-                    assert len(res.content) == 1
-                    text = res.content[0].text
-                    assert "saved_to" in text
-                    assert Path(out_file).exists()
-                    assert Path(out_file).read_bytes() == raw
+    @pytest.mark.asyncio
+    async def test_cu_screenshot_rejects_as_image(self) -> None:
+        b64, _ = _make_dummy_png(80, 40)
+        probe = _probe_replying(_envelope(b64, width=80, height=40))
+        with patch("qtpilot.server.require_probe", return_value=probe):
+            async with Client(create_server(mode="cu")) as client:
+                with pytest.raises(ToolError):
+                    await client.call_tool("cu_screenshot", {"as_image": False})
+        probe.call.assert_not_called()

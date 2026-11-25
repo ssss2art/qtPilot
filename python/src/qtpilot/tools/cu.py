@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fastmcp import Context, FastMCP
-import mcp.types as types
 
 
 def _resolve_coords(
@@ -29,18 +28,17 @@ def register_cu_tools(mcp: FastMCP) -> None:
     @mcp.tool
     async def cu_screenshot(
         save_to: str | None = None,
-        as_image: bool = True,
         ctx: Context = None,
-    ) -> types.ImageContent | dict:
-        """Capture a full screenshot of the application window.
+    ) -> dict:
+        """Capture a full screenshot of the application window and save it as a PNG.
 
-        By default, returns an MCP ImageContent object so vision-capable models
-        consume image tokens rather than raw text tokens. Pass `save_to` to save
-        the PNG to disk and return lean metadata (~30 tokens).
+        The PNG is always written to a file on the MCP server's machine: to
+        `save_to` when given, otherwise to a temp folder for this server run.
+        The reply is `{saved_to, width, height, bytes}` and never contains image
+        data. To see the image, open the file at `saved_to`.
 
         Args:
-            save_to: Optional file path to save PNG artifact directly to disk.
-            as_image: When True (default) and save_to is None, returns native MCP ImageContent.
+            save_to: Optional file path for the PNG. Missing folders are created.
 
         Example: cu_screenshot()
         Example: cu_screenshot(save_to="artifacts/cu_window.png")
@@ -49,7 +47,7 @@ def register_cu_tools(mcp: FastMCP) -> None:
         from qtpilot.tools.screenshot_helper import process_screenshot_response
 
         resp = await require_probe().call("cu.screenshot")
-        return process_screenshot_response(resp, save_to=save_to, as_image=as_image)
+        return process_screenshot_response(resp, tool="cu_screenshot", save_to=save_to)
 
     @mcp.tool
     async def cu_leftClick(

@@ -63,7 +63,7 @@ Run these tests, recording pass/fail for each:
    - `qt_properties_get(objectId=<nameEdit>, name="text")` — expect "Test User"
 
 4. **Screenshot:**
-   - `qt_ui_screenshot(objectId="MainWindow", fullWindow=true)` — expect base64 image data
+   - `qt_ui_screenshot(objectId="MainWindow", fullWindow=true)` — returns a saved file path: expect `saved_to` (an existing PNG) with non-zero `bytes` and `width`/`height`, and no image data in the reply
 
 5. **Object tree:**
    - `qt_objects_tree(maxDepth=3)` — expect nested structure with className and children
@@ -178,7 +178,7 @@ Run these tests:
 Run these tests:
 
 3. **Screenshot:**
-   - `cu_screenshot()` — expect base64 image data with `width`/`height`
+   - `cu_screenshot()` — returns a saved file path: expect `saved_to` (an existing PNG) with non-zero `bytes` and `width`/`height`, and no image data in the reply
 
 4. **Cursor:**
    - `cu_cursorPosition()` — expect `{x, y, screenX, screenY}`
