@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import itertools
 import os
 import struct
@@ -14,6 +15,7 @@ from pathlib import Path
 # One folder per server run, named once at import; files are numbered in capture order.
 _RUN_ID = f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
 _SEQUENCE = itertools.count(1)
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +30,7 @@ class SavedScreenshot:
 
 def extract_png_dimensions(raw_png: bytes) -> tuple[int, int]:
     """Extract width and height from PNG IHDR chunk if present, or (0, 0)."""
-    if len(raw_png) >= 24 and raw_png.startswith(b"\x89PNG\r\n\x1a\n"):
+    if len(raw_png) >= 24 and raw_png.startswith(_PNG_SIGNATURE):
         width, height = struct.unpack(">II", raw_png[16:24])
         return width, height
     return 0, 0
@@ -59,7 +61,8 @@ def process_screenshot_response(
         ``{"saved_to", "width", "height", "bytes"}``; never the image data.
 
     Raises:
-        ValueError: The reply has no image or an empty one. Nothing is written.
+        ValueError: The reply has no image, an empty one, or one that is not
+            base64 of a PNG. Nothing is written.
     """
     inner = resp.get("result")
     payload: dict = inner if isinstance(inner, dict) else resp
@@ -67,7 +70,12 @@ def process_screenshot_response(
     b64: str = payload.get("image") or ""
     if not b64:
         raise ValueError("probe reply contained no image")
-    raw_bytes = base64.b64decode(b64)
+    try:
+        raw_bytes = base64.b64decode(b64, validate=True)
+    except binascii.Error:
+        raw_bytes = b""
+    if not raw_bytes.startswith(_PNG_SIGNATURE):
+        raise ValueError("probe reply image is not a PNG")
 
     width: int = payload.get("width") or 0
     height: int = payload.get("height") or 0

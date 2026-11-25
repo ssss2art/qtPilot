@@ -91,6 +91,18 @@ class TestProcessScreenshotResponse:
             process_screenshot_response(resp, tool="qt_ui_screenshot")
         assert not screenshot_run_dir().exists()
 
+    @pytest.mark.parametrize(
+        "image",
+        ["!!!!", "   ", base64.b64encode(b"not a png").decode("ascii")],
+        ids=["outside-alphabet", "whitespace", "not-a-png"],
+    )
+    def test_an_image_that_is_not_a_png_is_an_error_and_writes_nothing(
+        self, image: str
+    ) -> None:
+        with pytest.raises(ValueError, match="not a PNG"):
+            process_screenshot_response(_envelope(image), tool="qt_ui_screenshot")
+        assert not screenshot_run_dir().exists()
+
     def test_flat_reply_is_still_accepted(self) -> None:
         b64, raw = _make_dummy_png()
         result = process_screenshot_response({"image": b64}, tool="qt_ui_screenshot")
