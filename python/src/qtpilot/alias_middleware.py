@@ -45,17 +45,11 @@ ALIAS_MAP: dict[str, dict[str, str]] = {
         "screenAbsolute": "screen_absolute",
         "delayMs": "delay_ms",
     },
-    "cu_tripleClick": {
-        "screenAbsolute": "screen_absolute",
-        "delayMs": "delay_ms",
-    },
     "cu_mouseMove": {
         "screenAbsolute": "screen_absolute",
-        "delayMs": "delay_ms",
     },
     "cu_mouseDrag": {
         "screenAbsolute": "screen_absolute",
-        "delayMs": "delay_ms",
     },
     "cu_mouseDown": {
         "screenAbsolute": "screen_absolute",
@@ -91,9 +85,12 @@ class AliasMiddleware(Middleware):
                         if canonical not in args:
                             args[canonical] = val
 
-            # Normalize int ref to str for chr_* tools
-            if tool_name.startswith("chr_") and "ref" in args and isinstance(args["ref"], int):
-                args["ref"] = str(args["ref"])
+            # Normalize int ref to str for chr_* tools (reject bool, which subclasses int)
+            if tool_name.startswith("chr_") and "ref" in args:
+                if isinstance(args["ref"], bool):
+                    raise ValueError("ref must be str or int, not bool")
+                if isinstance(args["ref"], int):
+                    args["ref"] = str(args["ref"])
 
             context.message.arguments = args
 
