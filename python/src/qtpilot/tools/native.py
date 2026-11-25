@@ -985,6 +985,11 @@ def register_native_tools(mcp: FastMCP) -> None:
         `action` one of "select", "click", "doubleClick", "edit".
         Works on QTreeView, QTableView, QListView, QComboBox. For combo boxes,
         paths must be length 1 and `edit` returns kNotEditable.
+        If the action makes the app destroy the view, its model or the row (a popup
+        editor that closes on the pick), the call still succeeds: it returns the row
+        as it was before the action, plus `targetDestroyed: true` and
+        `destroyedDuring` (the step it died in: "expand", "scrollTo",
+        "setCurrentIndex", "click", "doubleClick" or "edit").
         Example: qt_ui_clickItem(objectId="treeView", itemPath=["ETC","fos4 Fresnel"])
         """
         from qtpilot.server import require_probe

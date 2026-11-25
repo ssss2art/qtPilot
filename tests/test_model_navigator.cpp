@@ -11,11 +11,16 @@
 #include <QAbstractListModel>
 #include <QApplication>
 #include <QComboBox>
+#include <QListView>
+#include <QPointer>
 #include <QPushButton>
 #include <QStandardItemModel>
 #include <QTableView>
 #include <QTreeView>
 #include <QtTest>
+
+#include <memory>
+#include <utility>
 
 #include "common/parked_on_worker.h"
 #include "common/qt_matchers.h"
@@ -157,6 +162,10 @@ class TestModelNavigator : public QObject {
   void testApiUiClickItemComboBoxEditReturnsNotEditable();
   void testApiUiClickItemComboBoxRejectsNonZeroColumn();
   void testApiUiClickItemExpandsAncestors();
+  void testApiUiClickItemClickDestroysViewAndModel();
+  void testApiUiClickItemDoubleClickDestroysViewAndModel();
+  void testApiUiClickItemSelectRemovesTargetRow();
+  void testApiUiClickItemComboSelectClearsCombo();
 
   // Monadic C++23 ModelNavigator tests
   void testResolveModelExpectedMonadic();
@@ -1196,6 +1205,142 @@ void TestModelNavigator::testApiUiClickItemExpandsAncestors() {
 
   delete view;
   delete tree;
+}
+
+namespace {
+
+/// @brief A parentless list view over its own model, shaped like a transient
+/// in-place editor popup: whoever reacts to the item activation tears both down.
+struct DisposableList {
+  QPointer<QListView> view;
+  QPointer<QStandardItemModel> model;
+};
+
+DisposableList makeDisposableList() {
+  auto* model = new QStandardItemModel();
+  for (const char* text : {"Row0", "Row1", "Row2"})
+    model->appendRow(new QStandardItem(QString::fromLatin1(text)));
+  auto* view = new QListView();
+  view->setModel(model);
+  view->resize(200, 200);
+  view->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(model);
+  ObjectRegistry::instance()->scanExistingObjects(view);
+  return {view, model};
+}
+
+/// @brief Queue the teardown off @p signal, so it runs inside the event
+/// processing the probe does after delivering input -- how a popup editor
+/// commits and disposes of itself in a real app.
+template <typename Signal>
+void deleteOnSignal(const DisposableList& list, Signal signal, QObject* context) {
+  QObject::connect(
+      list.view.data(), signal, context,
+      [list]() {
+        delete list.view.data();
+        delete list.model.data();
+      },
+      Qt::QueuedConnection);
+}
+
+}  // namespace
+
+void TestModelNavigator::testApiUiClickItemClickDestroysViewAndModel() {
+  const DisposableList list = makeDisposableList();
+  deleteOnSignal(list, &QAbstractItemView::clicked, this);
+  const QString viewId = ObjectRegistry::instance()->objectId(list.view);
+
+  const QJsonObject result = callResult("qt.ui.clickItem",
+                                        QJsonObject{{"objectId", viewId},
+                                                    {"path", QJsonArray{1}},
+                                                    {"action", "click"}})
+                                 .toObject();
+
+  QEXPECT_THAT(list.view.isNull(), IsTrue());
+  QEXPECT_THAT(list.model.isNull(), IsTrue());
+  QEXPECT_THAT(result, HasJsonField("found", true));
+  QEXPECT_THAT(result, HasJsonField("action", "click"));
+  QEXPECT_THAT(result, HasJsonField("targetDestroyed", true));
+  QEXPECT_THAT(result, HasJsonField("destroyedDuring", "click"));
+  QEXPECT_THAT(result["path"].toArray(), JsonArraySize(1));
+  QEXPECT_THAT(result["path"].toArray()[0].toInt(), Eq(1));
+  QEXPECT_THAT(result["cells"].toArray()[0].toObject(), HasJsonField("display", "Row1"));
+}
+
+void TestModelNavigator::testApiUiClickItemDoubleClickDestroysViewAndModel() {
+  const DisposableList list = makeDisposableList();
+  deleteOnSignal(list, &QAbstractItemView::doubleClicked, this);
+  const QString viewId = ObjectRegistry::instance()->objectId(list.view);
+
+  const QJsonObject result = callResult("qt.ui.clickItem",
+                                        QJsonObject{{"objectId", viewId},
+                                                    {"path", QJsonArray{2}},
+                                                    {"action", "doubleClick"}})
+                                 .toObject();
+
+  QEXPECT_THAT(list.view.isNull(), IsTrue());
+  QEXPECT_THAT(list.model.isNull(), IsTrue());
+  QEXPECT_THAT(result, HasJsonField("found", true));
+  QEXPECT_THAT(result, HasJsonField("targetDestroyed", true));
+  QEXPECT_THAT(result, HasJsonField("destroyedDuring", "doubleClick"));
+  QEXPECT_THAT(result["cells"].toArray()[0].toObject(), HasJsonField("display", "Row2"));
+}
+
+void TestModelNavigator::testApiUiClickItemSelectRemovesTargetRow() {
+  // The view and model survive; the row the caller asked for does not. One-shot:
+  // removing the current row moves the current index and re-emits currentChanged
+  // from inside removeRows, which would re-enter it.
+  auto fired = std::make_shared<bool>(false);
+  connect(m_tableView->selectionModel(), &QItemSelectionModel::currentChanged, this,
+          [this, fired]() {
+            if (std::exchange(*fired, true))
+              return;
+            m_smallModel->removeRows(0, m_smallModel->rowCount());
+          });
+  const QString viewId = ObjectRegistry::instance()->objectId(m_tableView);
+
+  const QJsonObject result = callResult("qt.ui.clickItem",
+                                        QJsonObject{{"objectId", viewId},
+                                                    {"path", QJsonArray{1}},
+                                                    {"action", "select"}})
+                                 .toObject();
+
+  QEXPECT_THAT(m_smallModel->rowCount(), Eq(0));
+  QEXPECT_THAT(result, HasJsonField("found", true));
+  QEXPECT_THAT(result, HasJsonField("targetDestroyed", true));
+  QEXPECT_THAT(result, HasJsonField("destroyedDuring", "setCurrentIndex"));
+  QEXPECT_THAT(result["cells"].toArray()[0].toObject(), HasJsonField("display", "B1"));
+}
+
+void TestModelNavigator::testApiUiClickItemComboSelectClearsCombo() {
+  auto* combo = new QComboBox();
+  combo->addItems({"Alpha", "Beta", "Gamma"});
+  combo->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(combo);
+  // Queued, so clear() does not re-enter the setter that emitted the signal.
+  connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), combo, &QComboBox::clear,
+          Qt::QueuedConnection);
+  const QString id = ObjectRegistry::instance()->objectId(combo);
+
+  const QJsonObject result = callResult("qt.ui.clickItem",
+                                        QJsonObject{{"objectId", id},
+                                                    {"itemPath", QJsonArray{"Beta"}},
+                                                    {"action", "select"}})
+                                 .toObject();
+  QApplication::processEvents();
+
+  QEXPECT_THAT(result, HasJsonField("found", true));
+  QEXPECT_THAT(result["cells"].toArray()[0].toObject(), HasJsonField("display", "Beta"));
+  QEXPECT_THAT(combo->count(), Eq(0));
+
+  // The cleared model is treated as empty, not as stale rows.
+  const QJsonObject error = callExpectError(
+      "qt.ui.clickItem", QJsonObject{{"objectId", id}, {"itemPath", QJsonArray{"Alpha"}}});
+  QEXPECT_THAT(error, HasJsonField("code", ErrorCode::kItemNotFound));
+
+  delete combo;
 }
 
 void TestModelNavigator::testResolveModelExpectedMonadic() {
