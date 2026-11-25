@@ -62,7 +62,7 @@ endif()
 
 # Helper function to reduce boilerplate for test definitions
 function(qtPilot_add_test)
-    cmake_parse_arguments(ARG "" "NAME" "SOURCES;LIBS;ENV" ${ARGN})
+    cmake_parse_arguments(ARG "ALLOW_SKIP" "NAME" "SOURCES;LIBS;ENV" ${ARGN})
 
     add_executable(${ARG_NAME} ${ARG_SOURCES})
 
@@ -107,6 +107,11 @@ function(qtPilot_add_test)
     endif()
     if(_test_env)
         set_tests_properties(${ARG_NAME} PROPERTIES ENVIRONMENT "${_test_env}")
+    endif()
+    # Non-admin tests must not silently skip: CTest counts QSKIP as a pass unless
+    # FAIL_REGULAR_EXPRESSION catches it.
+    if(NOT ARG_ALLOW_SKIP)
+        set_tests_properties(${ARG_NAME} PROPERTIES FAIL_REGULAR_EXPRESSION "SKIP   :")
     endif()
 
     # Copy Qt Test DLL on Windows
@@ -202,14 +207,8 @@ if(QTPILOT_HAS_QML)
         list(APPEND _screenshot_quick_dpr2_env "QT_STYLE_OVERRIDE=Fusion")
     endif()
     set_tests_properties(test_ui_screenshot_quick_dpr2 PROPERTIES
-        ENVIRONMENT "${_screenshot_quick_dpr2_env}")
-
-    # On Qt 6 with Quick Widgets every case must run: a skip there would mean the
-    # pixel checks passed by not looking, and CTest counts a skip as a pass.
-    if(QT_VERSION_MAJOR EQUAL 6 AND TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
-        set_tests_properties(test_ui_screenshot_quick test_ui_screenshot_quick_dpr2 PROPERTIES
-            FAIL_REGULAR_EXPRESSION "SKIP   :")
-    endif()
+        ENVIRONMENT "${_screenshot_quick_dpr2_env}"
+        FAIL_REGULAR_EXPRESSION "SKIP   :")
 endif()
 
 if(QTPILOT_HAS_QML AND QT_VERSION_MAJOR EQUAL 6)
@@ -240,7 +239,7 @@ qtPilot_add_test(NAME test_native_mode_api SOURCES test_native_mode_api.cpp
 
 qtPilot_add_test(NAME test_graphics_view SOURCES test_graphics_view.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
 
 qtPilot_add_test(NAME test_transport_chaos SOURCES test_transport_chaos.cpp
     LIBS Qt${QT_VERSION_MAJOR}::WebSockets
@@ -309,7 +308,7 @@ qtPilot_add_test(NAME test_notification_queue SOURCES test_notification_queue.cp
 # E2E admin injection test — requires elevated terminal to run.
 # Skips automatically (QSKIP) when not running as admin.
 # Target with: ctest -L admin    Exclude with: ctest -LE admin
-qtPilot_add_test(NAME test_admin_injection
+qtPilot_add_test(NAME test_admin_injection ALLOW_SKIP
     SOURCES test_admin_injection.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")

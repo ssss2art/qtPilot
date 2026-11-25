@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import sys
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 from playwright.async_api import Error as PlaywrightError, async_playwright
 from qtpilot.connection import ProbeError
 from qtpilot.page_connection import PageProbeConnection
+
+_WEB_DIR = str(Path(__file__).resolve().parent)
+if _WEB_DIR not in sys.path:
+    sys.path.insert(0, _WEB_DIR)
 
 from test_webmcp_example import APP_DIR, CHROME, IsolatedHandler
 
