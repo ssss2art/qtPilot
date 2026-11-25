@@ -75,8 +75,15 @@ def test_ready_shared_native_changes_keep_supported_platforms(path: str) -> None
     expect_pipeline(path).to_build_on("full").to_run_only("lint", "python", "build", "static-probe", "mobile", "sanitizers")
 
 
-def test_main_push_avoids_repeating_every_ready_native_platform() -> None:
-    expect_pipeline("src/probe/core/object_id.cpp", integration=True).to_build_on("linux")
+def test_main_push_runs_broad_validation_for_shared_native_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(policy, "changed_paths", lambda *args, **kwargs: ("src/probe/core/object_id.cpp",))
+    plan = policy.github_plan({"before": "base-sha"}, "push", "refs/heads/main")
+    PipelineExpectation(plan).to_build_on("full").to_run_only(
+        "lint", "python", "build", "static-probe", "mobile", "sanitizers"
+    )
+    assert plan.static is True
+    assert plan.mobile is True
+    assert plan.sanitizers is True
 
 
 @pytest.mark.parametrize("path", [

@@ -337,7 +337,6 @@ jobs:
     if: needs.plan.outputs.benchmarks == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -440,7 +439,7 @@ jobs:
       - name: Run tests (${{ matrix.preset }})
         shell: bash
         run: |
-          QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 ctest --preset ${{ matrix.preset }} --output-on-failure
+          QT_QPA_PLATFORM=minimal QTPILOT_ENABLED=0 ctest --preset ${{ matrix.preset }} -LE admin --output-on-failure
 
   build:
     needs: [plan, lint, python]

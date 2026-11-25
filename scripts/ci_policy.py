@@ -145,7 +145,7 @@ def github_plan(event: dict[str, object], event_name: str, ref: str) -> Validati
         paths = changed_paths(str(base.get("sha", "")), str(head.get("sha", "")))
         return select_validation(paths or (), ready=not pr.get("draft", True))
     paths = changed_paths(str(event.get("before", "")), os.environ.get("GITHUB_SHA", "HEAD"), merge_base=False)
-    return select_validation(paths or (), integration=True)
+    return select_validation(paths or (), integration=(event_name != "push"))
 
 
 def main() -> int:
