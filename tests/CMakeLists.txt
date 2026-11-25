@@ -191,9 +191,14 @@ if(QTPILOT_HAS_QML)
         list(APPEND _screenshot_quick_env "QT_QUICK_BACKEND=software")
     endif()
 
+    set(_screenshot_quick_allow_skip ALLOW_SKIP)
+    if(QT_VERSION_MAJOR EQUAL 6 AND TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        set(_screenshot_quick_allow_skip)
+    endif()
     qtPilot_add_test(NAME test_ui_screenshot_quick SOURCES test_ui_screenshot_quick.cpp
         LIBS ${_screenshot_quick_libs}
-        ENV "${_screenshot_quick_env}")
+        ENV "${_screenshot_quick_env}"
+        ${_screenshot_quick_allow_skip})
     if(TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
         target_compile_definitions(test_ui_screenshot_quick PRIVATE QTPILOT_TEST_HAS_QUICKWIDGETS)
     endif()
@@ -207,8 +212,11 @@ if(QTPILOT_HAS_QML)
         list(APPEND _screenshot_quick_dpr2_env "QT_STYLE_OVERRIDE=Fusion")
     endif()
     set_tests_properties(test_ui_screenshot_quick_dpr2 PROPERTIES
-        ENVIRONMENT "${_screenshot_quick_dpr2_env}"
-        FAIL_REGULAR_EXPRESSION "SKIP   :")
+        ENVIRONMENT "${_screenshot_quick_dpr2_env}")
+    if(QT_VERSION_MAJOR EQUAL 6 AND TARGET Qt${QT_VERSION_MAJOR}::QuickWidgets)
+        set_tests_properties(test_ui_screenshot_quick_dpr2 PROPERTIES
+            FAIL_REGULAR_EXPRESSION "SKIP   :")
+    endif()
 endif()
 
 if(QTPILOT_HAS_QML AND QT_VERSION_MAJOR EQUAL 6)
@@ -265,9 +273,14 @@ qtPilot_add_test(NAME test_bind_policy SOURCES test_bind_policy.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Network
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+set(_ws_bind_allow_skip)
+if(WIN32)
+    set(_ws_bind_allow_skip ALLOW_SKIP)
+endif()
 qtPilot_add_test(NAME test_websocket_server_bind SOURCES test_websocket_server_bind.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
-    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal"
+    ${_ws_bind_allow_skip})
 
 qtPilot_add_test(NAME test_websocket_teardown SOURCES test_websocket_teardown.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
