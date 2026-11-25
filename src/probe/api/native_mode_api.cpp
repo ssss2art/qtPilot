@@ -958,23 +958,38 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
   const Qt::KeyboardModifiers modifiers =
       ModifierParser::parse(rawModifiers, QStringLiteral("qt.ui.sendKeys"));
 
+  // Typing runs application code that may destroy the target: Return commits
+  // an in-place editor that then disposes of itself. Each branch holds its
+  // target in a guard and stops at the first step that killed it, reporting
+  // which one, instead of sending the key sequence to freed memory.
+  const auto destroyedDuring = [](QJsonObject reply, const char* step) {
+    reply[QStringLiteral("targetDestroyed")] = true;
+    reply[QStringLiteral("destroyedDuring")] = QString::fromLatin1(step);
+    return reply;
+  };
+
   if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
     QGraphicsView* requestedView =
         resolveViewParam(params, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.sendKeys"));
-    QGraphicsView* view =
-        resolveGraphicsItemView(item, requestedView, QStringLiteral("qt.ui.sendKeys"));
+    const QPointer<QGraphicsView> view(
+        resolveGraphicsItemView(item, requestedView, QStringLiteral("qt.ui.sendKeys")));
+    const QJsonObject reply{{QStringLiteral("ok"), true},
+                            {QStringLiteral("target"), QStringLiteral("graphicsItem")}};
     item->setFocus(Qt::OtherFocusReason);
     view->viewport()->setFocus(Qt::OtherFocusReason);
     if (!text.isEmpty()) {
       InputSimulator::sendText(view->viewport(), text, modifiers);
+      if (!view)
+        return destroyedDuring(reply, "sendText");
     }
     if (!sequence.isEmpty()) {
       InputSimulator::sendKeySequence(view->viewport(), sequence);
+      if (!view)
+        return destroyedDuring(reply, "sendKeySequence");
     }
-    return QJsonObject{
-        {QStringLiteral("ok"), true},
-        {QStringLiteral("target"), QStringLiteral("graphicsItem")},
-        {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)}};
+    QJsonObject alive = reply;
+    alive[QStringLiteral("viewObjectId")] = ObjectRegistry::instance()->objectId(view);
+    return alive;
   }
 
 #ifdef QTPILOT_HAS_QML
@@ -987,14 +1002,20 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
           QJsonObject{{QStringLiteral("objectId"), objectId}});
     }
     item->forceActiveFocus();
+    const QPointer<QQuickWindow> window(w);
+    const QJsonObject reply{{QStringLiteral("ok"), true},
+                            {QStringLiteral("target"), QStringLiteral("quickItem")}};
     if (!text.isEmpty()) {
-      InputSimulator::sendText(w, text, modifiers);
+      InputSimulator::sendText(window, text, modifiers);
+      if (!window)
+        return destroyedDuring(reply, "sendText");
     }
     if (!sequence.isEmpty()) {
-      InputSimulator::sendKeySequence(w, sequence);
+      InputSimulator::sendKeySequence(window, sequence);
+      if (!window)
+        return destroyedDuring(reply, "sendKeySequence");
     }
-    return QJsonObject{{QStringLiteral("ok"), true},
-                       {QStringLiteral("target"), QStringLiteral("quickItem")}};
+    return reply;
   }
 #endif
 
@@ -1007,13 +1028,19 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
             {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
   }
 
+  const QPointer<QWidget> target(widget);
+  const QJsonObject reply{{QStringLiteral("ok"), true}};
   if (!text.isEmpty()) {
-    InputSimulator::sendText(widget, text, modifiers);
+    InputSimulator::sendText(target, text, modifiers);
+    if (!target)
+      return destroyedDuring(reply, "sendText");
   }
   if (!sequence.isEmpty()) {
-    InputSimulator::sendKeySequence(widget, sequence);
+    InputSimulator::sendKeySequence(target, sequence);
+    if (!target)
+      return destroyedDuring(reply, "sendKeySequence");
   }
-  return QJsonObject{{QStringLiteral("ok"), true}};
+  return reply;
 }
 
 /// @brief A widget point, walked out through any QGraphicsProxyWidget that embeds it.
