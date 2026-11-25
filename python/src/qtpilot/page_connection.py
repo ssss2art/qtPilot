@@ -111,6 +111,18 @@ class PageSocket:
                 "id": _request_id(message),
                 "error": {"code": -32000, "message": f"The page did not answer: {error}"},
             })
+        else:
+            if not isinstance(reply, str):
+                # None is the inbox EOF sentinel; a non-string return (e.g. undefined -> None)
+                # must fail this request rather than closing the socket.
+                reply = json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": _request_id(message),
+                    "error": {
+                        "code": -32000,
+                        "message": f"The page returned an invalid reply ({type(reply).__name__})",
+                    },
+                })
         if not self._closed:
             self._inbox.put_nowait(reply)
 
@@ -153,10 +165,10 @@ def _request_id(message: str) -> Any:
 
 
 async def _bridge_ready(page: Page, timeout: float) -> bool:
-    """Whether @p page has the probe's bridge; False also when the page does not answer in time."""
+    """Whether @p page has the probe's bridge; False also on timeout or navigation errors."""
     try:
         return bool(await asyncio.wait_for(page.evaluate(_BRIDGE_READY), timeout))
-    except TimeoutError:
+    except Exception:  # noqa: BLE001 - Playwright raises on navigation / destroyed context
         return False
 
 

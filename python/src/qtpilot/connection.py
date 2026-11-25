@@ -557,6 +557,10 @@ class ProbeConnection:
                     logger.debug("Ignoring non-JSON message")
                     continue
 
+                if not isinstance(msg, dict):
+                    logger.debug("Ignoring non-object JSON message")
+                    continue
+
                 msg_id = msg.get("id")
                 if msg_id is None or msg_id not in self._pending:
                     # JSON-RPC notification (no id, has method)

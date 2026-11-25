@@ -67,7 +67,7 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         if probe and probe.is_connected:
             connection["ws_url"] = probe.ws_url
             connection["probe_version"] = getattr(probe, "probe_version", None)
-            connection["protocol_version"] = getattr(probe, "protocol_version", None)
+            connection["protocol_version"] = getattr(probe, "probe_protocol_version", None)
 
         disc_info: dict = {
             "active": discovery is not None and discovery.is_running,
