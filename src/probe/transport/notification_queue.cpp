@@ -24,7 +24,8 @@ NotificationQueue::NotificationQueue(QWebSocket* socket, int capacity, int batch
   // Drained when there is something to send, never polled: a repeating zero-interval timer kept
   // the application's GUI thread busy for as long as a client stayed connected.
   if (m_socket) {
-    connect(m_socket, &QWebSocket::bytesWritten, this, &NotificationQueue::resumeAfterBackpressure);
+    connect(m_socket.data(), &QWebSocket::bytesWritten, this,
+            &NotificationQueue::resumeAfterBackpressure);
   }
 }
 

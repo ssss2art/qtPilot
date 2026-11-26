@@ -318,6 +318,10 @@ qtPilot_add_test(NAME test_notification_queue SOURCES test_notification_queue.cp
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
+qtPilot_add_test(NAME test_probe_lifecycle SOURCES test_probe_lifecycle.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
+    ENV "QTPILOT_BIND_ADDRESS=loopback;QTPILOT_PORT=0;QT_QPA_PLATFORM=minimal")
+
 # E2E admin injection test — requires elevated terminal to run.
 # Skips automatically (QSKIP) when not running as admin.
 # Target with: ctest -L admin    Exclude with: ctest -LE admin

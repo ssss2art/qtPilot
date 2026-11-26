@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "transport/jsonrpc_handler.h"
 
 #include <QCoreApplication>
@@ -10,8 +11,6 @@
 #include <QSignalSpy>
 #include <QString>
 #include <QTest>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot::test;
 
@@ -46,8 +45,7 @@ class TestJsonRpc : public QObject {
     QString response = handler_->HandleMessage(request);
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 AllOf(HasJsonRpcId(1),
-                       IsJsonRpcSuccess(HasJsonField("hello", "world"))));
+                 AllOf(HasJsonRpcId(1), IsJsonRpcSuccess(HasJsonField("hello", "world"))));
   }
 
   // Test: Parse error returns -32700
@@ -55,8 +53,7 @@ class TestJsonRpc : public QObject {
     QString request = R"({invalid json)";
     QString response = handler_->HandleMessage(request);
 
-    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 IsJsonRpcError(-32700));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(), IsJsonRpcError(-32700));
   }
 
   // Test: Invalid request (missing jsonrpc) returns -32600
@@ -64,8 +61,7 @@ class TestJsonRpc : public QObject {
     QString request = R"({"id":1,"method":"ping"})";
     QString response = handler_->HandleMessage(request);
 
-    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 IsJsonRpcError(-32600));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(), IsJsonRpcError(-32600));
   }
 
   // Test: Unknown method returns -32601
@@ -73,8 +69,7 @@ class TestJsonRpc : public QObject {
     QString request = R"({"jsonrpc":"2.0","id":1,"method":"unknownMethod"})";
     QString response = handler_->HandleMessage(request);
 
-    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 IsJsonRpcError(-32601));
+    QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(), IsJsonRpcError(-32601));
   }
 
   // Test: Notification (no id) returns empty response
@@ -103,8 +98,7 @@ class TestJsonRpc : public QObject {
     QString response = handler_->HandleMessage(request);
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 AllOf(HasJsonRpcId(1),
-                       IsJsonRpcSuccess(QStrEq("pong"))));
+                 AllOf(HasJsonRpcId(1), IsJsonRpcSuccess(QStrEq("pong"))));
   }
 
   // Test: getVersion returns version info
@@ -114,8 +108,7 @@ class TestJsonRpc : public QObject {
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
                  AllOf(HasJsonRpcId(2),
-                       IsJsonRpcSuccess(AllOf(HasJsonField("version"),
-                                              HasJsonField("protocol"),
+                       IsJsonRpcSuccess(AllOf(HasJsonField("version"), HasJsonField("protocol"),
                                               HasJsonField("name", "qtPilot")))));
   }
 
@@ -132,9 +125,7 @@ class TestJsonRpc : public QObject {
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
                  IsJsonRpcSuccess(HasJsonField(
-                     "version",
-                     AllOf(QStrEq(QTPILOT_EXPECTED_VERSION),
-                           Not(QStrEq("0.1.0"))))));
+                     "version", AllOf(QStrEq(QTPILOT_EXPECTED_VERSION), Not(QStrEq("0.1.0"))))));
   }
 
   // Test: getVersion carries a wire-protocol revision a client can negotiate on.
@@ -155,8 +146,7 @@ class TestJsonRpc : public QObject {
     QString response = handler_->HandleMessage(request);
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 AllOf(HasJsonRpcId(3),
-                       IsJsonRpcSuccess(HasJsonField("foo", "bar"))));
+                 AllOf(HasJsonRpcId(3), IsJsonRpcSuccess(HasJsonField("foo", "bar"))));
   }
 
   // Test: String id is preserved
@@ -174,8 +164,7 @@ class TestJsonRpc : public QObject {
     QString response = handler_->HandleMessage(request);
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 AllOf(HasJsonRpcId(5),
-                       IsJsonRpcSuccess(JsonArraySize(3))));
+                 AllOf(HasJsonRpcId(5), IsJsonRpcSuccess(JsonArraySize(3))));
   }
 
   // Test: Custom method can be registered
@@ -188,8 +177,7 @@ class TestJsonRpc : public QObject {
     QString response = handler_->HandleMessage(request);
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 AllOf(HasJsonRpcId(6),
-                       IsJsonRpcSuccess(HasJsonField("custom", "response"))));
+                 AllOf(HasJsonRpcId(6), IsJsonRpcSuccess(HasJsonField("custom", "response"))));
   }
 
   // Test: qtpilot.echo method works (per RESEARCH.md spec)
@@ -199,8 +187,84 @@ class TestJsonRpc : public QObject {
     QString response = handler_->HandleMessage(request);
 
     QEXPECT_THAT(QJsonDocument::fromJson(response.toUtf8()).object(),
-                 AllOf(HasJsonRpcId(7),
-                       IsJsonRpcSuccess(HasJsonField("test", "data"))));
+                 AllOf(HasJsonRpcId(7), IsJsonRpcSuccess(HasJsonField("test", "data"))));
+  }
+
+  // Test: String id with quotes, backslashes, and newlines is valid JSON in all reply paths
+  void test_stringIdWithSpecialCharsIsEscaped() {
+    handler_->RegisterMethod("throwStructured", [](const QString& /*params*/) -> QString {
+      throw qtPilot::JsonRpcException(qtPilot::JsonRpcError::kInvalidParams, "bad params",
+                                      QJsonObject{{"detail", "x"}});
+    });
+
+    const QString specialId = QStringLiteral("a\"b\\c\nd");
+    const auto makeReq = [&](const QString& method) {
+      QJsonObject obj;
+      obj["jsonrpc"] = "2.0";
+      obj["id"] = specialId;
+      obj["method"] = method;
+      return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    };
+
+    for (const QString& method : {QStringLiteral("ping"), QStringLiteral("unknownMethod"),
+                                  QStringLiteral("throwStructured")}) {
+      const QString response = handler_->HandleMessage(makeReq(method));
+      QJsonParseError err;
+      const QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8(), &err);
+      QVERIFY2(err.error == QJsonParseError::NoError, qPrintable(err.errorString()));
+      QVERIFY(doc.isObject());
+      QCOMPARE(doc.object().value("id").toString(), specialId);
+    }
+  }
+
+  // Test: Control characters (\b, \f, \x01) in error messages are escaped as valid JSON
+  void test_controlCharsInErrorMessageAreEscaped() {
+    handler_->RegisterMethod("throwControl", [](const QString& /*params*/) -> QString {
+      throw std::runtime_error("bad\b\f\x01msg");
+    });
+
+    const QString request = R"({"jsonrpc":"2.0","id":10,"method":"throwControl"})";
+    const QString response = handler_->HandleMessage(request);
+
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8(), &err);
+    QVERIFY2(err.error == QJsonParseError::NoError, qPrintable(err.errorString()));
+    QVERIFY(doc.isObject());
+    QEXPECT_THAT(doc.object(), IsJsonRpcError(-32603));
+    const QString msg = doc.object().value("error").toObject().value("message").toString();
+    QVERIFY(msg.contains(QStringLiteral("bad\b\f\x01msg")));
+  }
+
+  // Test: Non-object JSON inputs ([1], 42) return -32600 Invalid Request as valid JSON
+  void test_nonObjectInputsReturnInvalidRequest() {
+    for (const QString& raw : {QStringLiteral("[1]"), QStringLiteral("42")}) {
+      const QString response = handler_->HandleMessage(raw);
+      QJsonParseError err;
+      const QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8(), &err);
+      QVERIFY2(err.error == QJsonParseError::NoError, qPrintable(err.errorString()));
+      QVERIFY(doc.isObject());
+      QEXPECT_THAT(doc.object(), IsJsonRpcError(-32600));
+    }
+  }
+
+  // Test: Float id (1.5) is preserved and produces valid JSON in success and error replies
+  void test_floatIdIsPreserved() {
+    handler_->RegisterMethod("throwStructuredFloat", [](const QString& /*params*/) -> QString {
+      throw qtPilot::JsonRpcException(qtPilot::JsonRpcError::kInvalidParams, "bad params",
+                                      QJsonObject{{"detail", "y"}});
+    });
+
+    for (const QString& method : {QStringLiteral("ping"), QStringLiteral("unknownMethod"),
+                                  QStringLiteral("throwStructuredFloat")}) {
+      const QString request =
+          QStringLiteral(R"({"jsonrpc":"2.0","id":1.5,"method":"%1"})").arg(method);
+      const QString response = handler_->HandleMessage(request);
+      QJsonParseError err;
+      const QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8(), &err);
+      QVERIFY2(err.error == QJsonParseError::NoError, qPrintable(err.errorString()));
+      QVERIFY(doc.isObject());
+      QCOMPARE(doc.object().value("id").toDouble(), 1.5);
+    }
   }
 
  private:

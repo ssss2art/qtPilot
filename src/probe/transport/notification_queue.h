@@ -7,10 +7,10 @@
 
 #include <QMutex>
 #include <QObject>
+#include <QPointer>
 #include <QQueue>
 #include <QString>
-
-class QWebSocket;
+#include <QWebSocket>
 
 namespace qtPilot {
 
@@ -52,7 +52,7 @@ class QTPILOT_EXPORT NotificationQueue : public QObject {
   void resumeAfterBackpressure();
 
  private:
-  QWebSocket* m_socket;
+  QPointer<QWebSocket> m_socket;
   QQueue<QString> m_queue;
   mutable QMutex m_mutex;
   /// Called with m_mutex held: posts one drain unless one is already posted.
