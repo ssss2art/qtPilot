@@ -214,16 +214,16 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
 
   if (!currentPath.contains(nativeBinPath, Qt::CaseInsensitive)) {
     QString newPath = nativeBinPath + QStringLiteral(";") + currentPath;
-    SetEnvironmentVariableW(L"PATH", newPath.toStdWString().c_str());
     qputenv("PATH", newPath.toLocal8Bit());
+    SetEnvironmentVariableW(L"PATH", reinterpret_cast<LPCWSTR>(newPath.utf16()));
   }
 
   // Set QT_PLUGIN_PATH if not already set
-  QByteArray existingPluginPath = qgetenv("QT_PLUGIN_PATH");
-  if (existingPluginPath.isEmpty()) {
+  if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH")) {
     QString nativePluginsPath = QDir::toNativeSeparators(pluginsPath);
-    SetEnvironmentVariableW(L"QT_PLUGIN_PATH", nativePluginsPath.toStdWString().c_str());
     qputenv("QT_PLUGIN_PATH", nativePluginsPath.toLocal8Bit());
+    SetEnvironmentVariableW(L"QT_PLUGIN_PATH",
+                            reinterpret_cast<LPCWSTR>(nativePluginsPath.utf16()));
   }
 #elif defined(Q_OS_MACOS)
   // macOS: DYLD_LIBRARY_PATH and QT_PLUGIN_PATH

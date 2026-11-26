@@ -66,8 +66,10 @@ class TestQtEnvSetup : public QObject {
  private slots:
   void multiEntryQtPluginPathFindsValidEntry();
   void multiEntryQtPluginPathRejectsAllInvalid();
+#ifndef Q_OS_WIN
   void emptyLibraryPathHasNoTrailingColon();
   void nonEmptyLibraryPathPrependsWithColon();
+#endif
   void pathsWithSpacesAndUnicode();
   void explicitQtDirResolvesFromSubdirectory();
 };
@@ -119,10 +121,8 @@ void TestQtEnvSetup::multiEntryQtPluginPathRejectsAllInvalid() {
   QVERIFY(result.source != QStringLiteral("existing environment variables"));
 }
 
+#ifndef Q_OS_WIN
 void TestQtEnvSetup::emptyLibraryPathHasNoTrailingColon() {
-#ifdef Q_OS_WIN
-  QSKIP("Trailing colon check applies to POSIX LD_LIBRARY_PATH / DYLD_LIBRARY_PATH");
-#else
   EnvVarGuard pluginGuard("QT_PLUGIN_PATH");
 #ifdef Q_OS_MACOS
   const char* libVar = "DYLD_LIBRARY_PATH";
@@ -145,13 +145,9 @@ void TestQtEnvSetup::emptyLibraryPathHasNoTrailingColon() {
   const QString updatedLibPath = QString::fromLocal8Bit(qgetenv(libVar));
   QCOMPARE(updatedLibPath, result.binPath);
   QVERIFY(!updatedLibPath.endsWith(QLatin1Char(':')));
-#endif
 }
 
 void TestQtEnvSetup::nonEmptyLibraryPathPrependsWithColon() {
-#ifdef Q_OS_WIN
-  QSKIP("Colon separator check applies to POSIX LD_LIBRARY_PATH / DYLD_LIBRARY_PATH");
-#else
   EnvVarGuard pluginGuard("QT_PLUGIN_PATH");
 #ifdef Q_OS_MACOS
   const char* libVar = "DYLD_LIBRARY_PATH";
@@ -173,8 +169,8 @@ void TestQtEnvSetup::nonEmptyLibraryPathPrependsWithColon() {
   QCOMPARE(result.applied, true);
   const QString updatedLibPath = QString::fromLocal8Bit(qgetenv(libVar));
   QCOMPARE(updatedLibPath, result.binPath + QStringLiteral(":/existing/custom/lib"));
-#endif
 }
+#endif
 
 void TestQtEnvSetup::pathsWithSpacesAndUnicode() {
   EnvVarGuard pluginGuard("QT_PLUGIN_PATH");
