@@ -54,7 +54,7 @@ std::wstring buildCommandLine(const QString& executable, const QStringList& args
 
 namespace qtPilot {
 
-qint64 launchWithProbe(const LaunchOptions& options) {
+std::expected<LaunchResult, QString> launchWithProbe(const LaunchOptions& options) {
   // 1. Set up environment for the target process
   // Pass port to probe via QTPILOT_PORT environment variable
 
@@ -105,7 +105,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
     if (!options.quiet) {
       printWindowsError("CreateProcessW failed", GetLastError());
     }
-    return -1;
+    return std::unexpected(QStringLiteral("Failed to launch target with probe"));
   }
 
   // RAII guards for handles
@@ -155,7 +155,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
         }
       }
       TerminateProcess(processHandle.get(), 1);
-      return -1;
+      return std::unexpected(QStringLiteral("Failed to launch target with probe"));
     }
   }
 
@@ -163,7 +163,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   if (!qtPilot::injectProbeDll(processHandle.get(), pi.dwProcessId, dllPath.c_str(),
                                options.quiet)) {
     TerminateProcess(processHandle.get(), 1);
-    return -1;
+    return std::unexpected(QStringLiteral("Failed to launch target with probe"));
   }
 
   // 6. Resume the main thread
@@ -173,7 +173,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
       printWindowsError("ResumeThread failed", GetLastError());
     }
     TerminateProcess(processHandle.get(), 1);
-    return -1;
+    return std::unexpected(QStringLiteral("Failed to launch target with probe"));
   }
 
   if (!options.quiet) {
@@ -181,21 +181,33 @@ qint64 launchWithProbe(const LaunchOptions& options) {
   }
 
   // 7. Wait for process if not detaching
+  int exitCode = 0;
   if (!options.detach) {
     if (!options.quiet) {
       fprintf(stderr, "[injector] Waiting for process to exit...\n");
     }
-    WaitForSingleObject(processHandle.get(), INFINITE);
+    if (WaitForSingleObject(processHandle.get(), INFINITE) == WAIT_FAILED) {
+      if (!options.quiet) {
+        printWindowsError("WaitForSingleObject failed", GetLastError());
+      }
+      return std::unexpected(QStringLiteral("Failed to wait for target process"));
+    }
 
     DWORD processExitCode = 0;
-    GetExitCodeProcess(processHandle.get(), &processExitCode);
+    if (!GetExitCodeProcess(processHandle.get(), &processExitCode)) {
+      if (!options.quiet) {
+        printWindowsError("GetExitCodeProcess failed", GetLastError());
+      }
+      return std::unexpected(QStringLiteral("Failed to read target exit code"));
+    }
 
     if (!options.quiet) {
       fprintf(stderr, "[injector] Process exited with code %lu\n", processExitCode);
     }
+    exitCode = static_cast<int>(processExitCode);
   }
 
-  return processId;
+  return LaunchResult{processId, exitCode};
 }
 
 }  // namespace qtPilot

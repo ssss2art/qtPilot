@@ -365,9 +365,8 @@ qtPilot_add_test(NAME test_authenticated_transport SOURCES test_authenticated_tr
     LIBS Qt${QT_VERSION_MAJOR}::WebSockets
     ENV "QTPILOT_ENABLED=0")
 
-# E2E launcher test: the launcher exits cleanly after its target. Windows only: the launcher's
-# pre-flight load of the probe into itself, which this guards, only happens there.
-if(WIN32 AND TARGET qtPilot_launcher)
+# E2E launcher test: the launcher exits cleanly after its target and propagates its exit code.
+if(TARGET qtPilot_launcher)
     # Its own trivial target: never inject into an operating-system binary (see AGENTS.md).
     add_executable(launcher_exit_target launcher_exit_target.cpp)
 
@@ -378,10 +377,18 @@ if(WIN32 AND TARGET qtPilot_launcher)
     target_compile_definitions(test_launcher_exit PRIVATE
         QTPILOT_TEST_LAUNCHER="$<TARGET_FILE:qtPilot_launcher>"
         QTPILOT_TEST_EXIT_TARGET="$<TARGET_FILE:launcher_exit_target>"
-        QTPILOT_TEST_PROBE="$<TARGET_FILE:qtPilot_probe>"
-        QTPILOT_TEST_QT_DIR="$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/..")
+        QTPILOT_TEST_PROBE="$<TARGET_FILE:qtPilot_probe>")
+    # Windows finds the probe's Qt DLLs through the launcher's --qt-dir (Qt's bin/..).
+    if(WIN32)
+        target_compile_definitions(test_launcher_exit PRIVATE
+            QTPILOT_TEST_QT_DIR="$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/..")
+    endif()
 endif()
 
 # Pure Windows argv encoding contract, exercised on every host without launching a process.
 qtPilot_add_test(NAME test_windows_command_line SOURCES test_windows_command_line.cpp
+    ENV "QTPILOT_ENABLED=0")
+
+qtPilot_add_test(NAME test_qt_env_setup
+    SOURCES test_qt_env_setup.cpp ../src/launcher/qt_env_setup.cpp
     ENV "QTPILOT_ENABLED=0")

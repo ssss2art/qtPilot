@@ -4,6 +4,7 @@
 #include "qt_env_setup.h"
 
 #include <cstdio>
+#include <string>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -128,15 +129,39 @@ QString resolveQtPrefix(const QString& dir) {
   return QString();
 }
 
+/// @brief Read an environment variable preserving full UTF-16 on Windows across Qt 5/6.
+QString readEnvVar(const char* name) {
+#ifdef Q_OS_WIN
+  const QString wideName = QString::fromLatin1(name);
+  const DWORD len =
+      GetEnvironmentVariableW(reinterpret_cast<LPCWSTR>(wideName.utf16()), nullptr, 0);
+  if (len == 0)
+    return QString();
+  std::wstring buf(len, L'\0');
+  const DWORD written =
+      GetEnvironmentVariableW(reinterpret_cast<LPCWSTR>(wideName.utf16()), buf.data(), len);
+  if (written == 0)
+    return QString();
+  return QString::fromWCharArray(buf.data(), static_cast<int>(written));
+#else
+  return qEnvironmentVariable(name);
+#endif
+}
+
 /// @brief Check if QT_PLUGIN_PATH already points to a valid plugins dir.
 bool existingEnvIsAdequate() {
-  QByteArray pluginPath = qgetenv("QT_PLUGIN_PATH");
+  const QString pluginPath = readEnvVar("QT_PLUGIN_PATH");
   if (pluginPath.isEmpty())
     return false;
 
-  // Verify the plugin path contains a platforms/ subdir
-  QDir pluginsDir(QString::fromLocal8Bit(pluginPath));
-  return pluginsDir.exists(QStringLiteral("platforms"));
+  // Verify at least one entry in QT_PLUGIN_PATH contains a platforms/ subdir
+  const QStringList entries = pluginPath.split(QDir::listSeparator(), Qt::SkipEmptyParts);
+  for (const QString& entry : entries) {
+    QDir pluginsDir(entry);
+    if (pluginsDir.exists(QStringLiteral("platforms")))
+      return true;
+  }
+  return false;
 }
 
 /// @brief Try to infer a Qt prefix from QLibraryInfo.
@@ -209,22 +234,23 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
 
   if (!currentPath.contains(nativeBinPath, Qt::CaseInsensitive)) {
     QString newPath = nativeBinPath + QStringLiteral(";") + currentPath;
-    SetEnvironmentVariableW(L"PATH", newPath.toStdWString().c_str());
     qputenv("PATH", newPath.toLocal8Bit());
+    SetEnvironmentVariableW(L"PATH", reinterpret_cast<LPCWSTR>(newPath.utf16()));
   }
 
   // Set QT_PLUGIN_PATH if not already set
-  QByteArray existingPluginPath = qgetenv("QT_PLUGIN_PATH");
-  if (existingPluginPath.isEmpty()) {
+  if (readEnvVar("QT_PLUGIN_PATH").isEmpty()) {
     QString nativePluginsPath = QDir::toNativeSeparators(pluginsPath);
-    SetEnvironmentVariableW(L"QT_PLUGIN_PATH", nativePluginsPath.toStdWString().c_str());
     qputenv("QT_PLUGIN_PATH", nativePluginsPath.toLocal8Bit());
+    SetEnvironmentVariableW(L"QT_PLUGIN_PATH",
+                            reinterpret_cast<LPCWSTR>(nativePluginsPath.utf16()));
   }
 #elif defined(Q_OS_MACOS)
   // macOS: DYLD_LIBRARY_PATH and QT_PLUGIN_PATH
   QString currentDyldPath = QString::fromLocal8Bit(qgetenv("DYLD_LIBRARY_PATH"));
   if (!currentDyldPath.split(QLatin1Char(':'), Qt::SkipEmptyParts).contains(binPath)) {
-    QString newDyldPath = binPath + QStringLiteral(":") + currentDyldPath;
+    QString newDyldPath =
+        currentDyldPath.isEmpty() ? binPath : (binPath + QStringLiteral(":") + currentDyldPath);
     qputenv("DYLD_LIBRARY_PATH", newDyldPath.toLocal8Bit());
   }
 
@@ -236,7 +262,8 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
   // Linux: LD_LIBRARY_PATH and QT_PLUGIN_PATH
   QString currentLdPath = QString::fromLocal8Bit(qgetenv("LD_LIBRARY_PATH"));
   if (!currentLdPath.split(QLatin1Char(':'), Qt::SkipEmptyParts).contains(binPath)) {
-    QString newLdPath = binPath + QStringLiteral(":") + currentLdPath;
+    QString newLdPath =
+        currentLdPath.isEmpty() ? binPath : (binPath + QStringLiteral(":") + currentLdPath);
     qputenv("LD_LIBRARY_PATH", newLdPath.toLocal8Bit());
   }
 

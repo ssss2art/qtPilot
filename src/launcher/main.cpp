@@ -399,17 +399,18 @@ int main(int argc, char* argv[]) {
   }
 
   // Launch with probe injection
-  qint64 pid = qtPilot::launchWithProbe(options);
-  if (pid < 0) {
-    fprintf(stderr, "Error: Failed to launch target with probe\n");
+  const std::expected<qtPilot::LaunchResult, QString> launchResult =
+      qtPilot::launchWithProbe(options);
+  if (!launchResult) {
+    fprintf(stderr, "Error: %s\n", qPrintable(launchResult.error()));
     return 1;
   }
 
   // Success
   if (!options.quiet) {
     fprintf(stderr, "[qtpilot-launch] Started process with PID %lld\n",
-            static_cast<long long>(pid));
+            static_cast<long long>(launchResult->pid));
   }
 
-  return 0;
+  return launchResult->exitCode;
 }

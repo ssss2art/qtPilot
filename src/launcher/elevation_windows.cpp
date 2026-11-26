@@ -6,6 +6,8 @@
 
 #include "elevation_windows.h"
 
+#include "windows_command_line.h"
+
 #ifdef _WIN32
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -35,62 +37,18 @@ bool isProcessElevated() {
 }
 
 int relaunchElevated(const QString& executable, const QStringList& args) {
-  // Build argument string: replace --run-as-admin with --elevated
-  QStringList newArgs = args;
-  newArgs.removeAll(QStringLiteral("--run-as-admin"));
-  newArgs.prepend(QStringLiteral("--elevated"));
-
-  // Quote arguments that contain spaces
-  QStringList quotedArgs;
-  for (const QString& arg : newArgs) {
-    if (arg.contains(QLatin1Char(' ')) || arg.contains(QLatin1Char('"'))) {
-      QString escaped = arg;
-      escaped.replace(QLatin1Char('"'), QStringLiteral("\\\""));
-      quotedArgs.append(QStringLiteral("\"%1\"").arg(escaped));
-    } else {
-      quotedArgs.append(arg);
-    }
-  }
-
   // ShellExecuteEx with "runas" creates a new process with a clean environment.
   // We must propagate critical environment variables (PATH, QT_PLUGIN_PATH, QTPILOT_*)
   // by wrapping the launch in cmd.exe /c "set VAR=val && ... && launcher.exe args".
-  QString cmdLine;
-
-  // Collect environment variables to forward
-  QStringList envSetCmds;
-  const char* envVarsToForward[] = {
-      "PATH",
-      "QT_PLUGIN_PATH",
-      "QT_QPA_PLATFORM_PLUGIN_PATH",
-      "QTPILOT_PORT",
-      "QTPILOT_MODE",
-      "QTPILOT_INJECT_CHILDREN",
-      "QTPILOT_ENABLED",
-      "QTPILOT_DISCOVERY_PORT",
-  };
-  for (const char* varName : envVarsToForward) {
-    QString val = QString::fromLocal8Bit(qgetenv(varName));
+  QList<QPair<QString, QString>> envVars;
+  for (const char* varName : kElevatedEnvVarsToForward) {
+    const QString val = QString::fromLocal8Bit(qgetenv(varName));
     if (!val.isEmpty()) {
-      // Escape any special cmd characters in the value
-      envSetCmds.append(QStringLiteral("set \"%1=%2\"").arg(QString::fromLatin1(varName), val));
+      envVars.append({QString::fromLatin1(varName), val});
     }
   }
 
-  // Build: cmd.exe /c "set VAR=val && set VAR2=val2 && "launcher.exe" --elevated args"
-  QString launcherCmd;
-  if (executable.contains(QLatin1Char(' '))) {
-    launcherCmd = QStringLiteral("\"%1\" %2").arg(executable, quotedArgs.join(QLatin1Char(' ')));
-  } else {
-    launcherCmd = QStringLiteral("%1 %2").arg(executable, quotedArgs.join(QLatin1Char(' ')));
-  }
-
-  if (envSetCmds.isEmpty()) {
-    cmdLine = QStringLiteral("/c %1").arg(launcherCmd);
-  } else {
-    cmdLine =
-        QStringLiteral("/c \"%1 && %2\"").arg(envSetCmds.join(QStringLiteral(" && ")), launcherCmd);
-  }
+  const QString cmdLine = buildElevatedCmdParameters(executable, args, envVars);
 
   // Elevate cmd.exe which will set env vars then run the launcher
   wchar_t cmdExePath[MAX_PATH];
