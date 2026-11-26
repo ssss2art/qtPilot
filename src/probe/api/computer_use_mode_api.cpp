@@ -294,7 +294,7 @@ void dispatchScroll(const CuTarget& t, int x, int y, bool sa, int dx, int dy,
       if (auto* area = qobject_cast<QAbstractScrollArea*>(w->parentWidget())) {
         if (area->viewport() == w) {
           scrollTarget = w;
-          scrollPos = w->mapFrom(r.widget, r.localPos);
+          scrollPos = r.widget->mapTo(w, r.localPos);
           break;
         }
       }
