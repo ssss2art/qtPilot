@@ -7,6 +7,8 @@
 // This test is gated: it calls QSKIP() when not running with admin privileges.
 // Use "ctest -L admin" to target it, or "ctest -LE admin" to exclude it.
 
+#include "common/qt_matchers.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QJsonDocument>
@@ -17,8 +19,6 @@
 #include <QTimer>
 #include <QUdpSocket>
 #include <QWebSocket>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot::test;
 
@@ -103,12 +103,12 @@ void TestAdminInjection::initTestCase() {
     QSKIP("Test requires administrator privileges — run from an elevated terminal");
 
   // Locate the launcher executable
-  m_launcherPath = findExecutable(QStringLiteral("qtpilot-launch"));
+  m_launcherPath = findExecutable(QStringLiteral("qtPilot-launcher"));
   if (m_launcherPath.isEmpty()) {
-    // Try versioned names (e.g., qtpilot-launch-qt5.15)
+    // Try versioned names (e.g., qtPilot-launcher-qt5.15)
     QDir exeDir(QCoreApplication::applicationDirPath());
     QStringList matches =
-        exeDir.entryList({QStringLiteral("qtpilot-launch*")}, QDir::Files, QDir::Name);
+        exeDir.entryList({QStringLiteral("qtPilot-launcher*")}, QDir::Files, QDir::Name);
     if (!matches.isEmpty())
       m_launcherPath = exeDir.absoluteFilePath(matches.first());
   }

@@ -134,9 +134,15 @@ bool existingEnvIsAdequate() {
   if (pluginPath.isEmpty())
     return false;
 
-  // Verify the plugin path contains a platforms/ subdir
-  QDir pluginsDir(QString::fromLocal8Bit(pluginPath));
-  return pluginsDir.exists(QStringLiteral("platforms"));
+  // Verify at least one entry in QT_PLUGIN_PATH contains a platforms/ subdir
+  const QStringList entries =
+      QString::fromLocal8Bit(pluginPath).split(QDir::listSeparator(), Qt::SkipEmptyParts);
+  for (const QString& entry : entries) {
+    QDir pluginsDir(entry);
+    if (pluginsDir.exists(QStringLiteral("platforms")))
+      return true;
+  }
+  return false;
 }
 
 /// @brief Try to infer a Qt prefix from QLibraryInfo.
@@ -224,7 +230,8 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
   // macOS: DYLD_LIBRARY_PATH and QT_PLUGIN_PATH
   QString currentDyldPath = QString::fromLocal8Bit(qgetenv("DYLD_LIBRARY_PATH"));
   if (!currentDyldPath.split(QLatin1Char(':'), Qt::SkipEmptyParts).contains(binPath)) {
-    QString newDyldPath = binPath + QStringLiteral(":") + currentDyldPath;
+    QString newDyldPath =
+        currentDyldPath.isEmpty() ? binPath : (binPath + QStringLiteral(":") + currentDyldPath);
     qputenv("DYLD_LIBRARY_PATH", newDyldPath.toLocal8Bit());
   }
 
@@ -236,7 +243,8 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
   // Linux: LD_LIBRARY_PATH and QT_PLUGIN_PATH
   QString currentLdPath = QString::fromLocal8Bit(qgetenv("LD_LIBRARY_PATH"));
   if (!currentLdPath.split(QLatin1Char(':'), Qt::SkipEmptyParts).contains(binPath)) {
-    QString newLdPath = binPath + QStringLiteral(":") + currentLdPath;
+    QString newLdPath =
+        currentLdPath.isEmpty() ? binPath : (binPath + QStringLiteral(":") + currentLdPath);
     qputenv("LD_LIBRARY_PATH", newLdPath.toLocal8Bit());
   }
 
