@@ -1,10 +1,10 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
-#include "common/qt_matchers.h"
 #include "accessibility/console_message_capture.h"
 #include "api/chrome_mode_api.h"
 #include "api/error_codes.h"
+#include "common/qt_matchers.h"
 #include "transport/jsonrpc_handler.h"
 
 #include <QAccessible>
@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QtTest>
@@ -48,6 +49,8 @@ class TestChromeModeApi : public QObject {
   void testReadPage_RefFormat();
   void testReadPage_IncludesQtExtras();
   void testReadPage_RoleMapping();
+  void testReadPage_RefIdScoping();
+  void testReadPage_MaxCharsTruncation();
 
   // chr.click tests
   void testClick_Button();
@@ -70,6 +73,10 @@ class TestChromeModeApi : public QObject {
   void testFind_CaseInsensitive();
   void testFind_ByRole();
   void testFind_NoResults();
+  void testFind_TooManyResultsLeavesRefMapUnchanged();
+
+  // chr.navigate tests
+  void testNavigate_ActivateTab();
 
   // chr.tabsContext tests
   void testTabsContext_ListsWindows();
@@ -250,9 +257,8 @@ void TestChromeModeApi::testReadPage_ReturnsTree() {
   QJsonObject result = readPage();
 
   // Must contain tree, totalNodes
-  QEXPECT_THAT(result, AllOf(
-      HasJsonField("tree", HasJsonField("role")),
-      HasJsonField("totalNodes", Gt(0))));
+  QEXPECT_THAT(
+      result, AllOf(HasJsonField("tree", HasJsonField("role")), HasJsonField("totalNodes", Gt(0))));
 }
 
 void TestChromeModeApi::testReadPage_AllFilter() {
@@ -333,9 +339,8 @@ void TestChromeModeApi::testReadPage_IncludesQtExtras() {
 
   QJsonObject btnNode = findNode(tree);
   if (!btnNode.isEmpty()) {
-    QEXPECT_THAT(btnNode, AllOf(
-        HasJsonField("objectName", QStrEq("btnTest")),
-        HasJsonField("className", QStrEq("QPushButton"))));
+    QEXPECT_THAT(btnNode, AllOf(HasJsonField("objectName", QStrEq("btnTest")),
+                                HasJsonField("className", QStrEq("QPushButton"))));
   } else {
     qWarning("btnTest node not found in tree - accessibility may be limited on minimal platform");
   }
@@ -394,10 +399,10 @@ void TestChromeModeApi::testClick_Button() {
 
   QEXPECT_THAT(result.isObject(), IsTrue());
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("clicked", Eq(true)),
-      HasJsonField("ref", QStrEq(btnRef)),
-      HasJsonField("method", AnyOf(QStrEq("accessibilityAction"), QStrEq("mouseClick")))));
+  QEXPECT_THAT(
+      obj,
+      AllOf(HasJsonField("clicked", Eq(true)), HasJsonField("ref", QStrEq(btnRef)),
+            HasJsonField("method", AnyOf(QStrEq("accessibilityAction"), QStrEq("mouseClick")))));
 }
 
 void TestChromeModeApi::testClick_CheckablePrefersToggleAction() {
@@ -422,9 +427,8 @@ void TestChromeModeApi::testClick_CheckablePrefersToggleAction() {
 
 void TestChromeModeApi::testClick_InvalidRef() {
   QJsonObject error = callExpectError("chr.click", QJsonObject{{"ref", "ref_999"}});
-  QEXPECT_THAT(error, AllOf(
-      HasJsonField("code", Eq(static_cast<int>(ErrorCode::kRefNotFound))),
-      HasJsonField("message", QIsNotEmpty())));
+  QEXPECT_THAT(error, AllOf(HasJsonField("code", Eq(static_cast<int>(ErrorCode::kRefNotFound))),
+                            HasJsonField("message", QIsNotEmpty())));
 }
 
 // ========================================================================
@@ -522,10 +526,8 @@ void TestChromeModeApi::testGetPageText_ExtractsText() {
   // but the call should succeed and return a string
   if (!text.isEmpty()) {
     // At least some text should be extracted
-    QEXPECT_THAT(text, AnyOf(
-        QStrContains("Click Me"),
-        QStrContains("Hello World"),
-        QStrContains("Accept Terms")));
+    QEXPECT_THAT(text, AnyOf(QStrContains("Click Me"), QStrContains("Hello World"),
+                             QStrContains("Accept Terms")));
   } else {
     qWarning("getPageText returned empty text (may be expected on minimal platform)");
   }
@@ -587,9 +589,7 @@ void TestChromeModeApi::testFind_NoResults() {
   QEXPECT_THAT(result.isObject(), IsTrue());
 
   QJsonObject obj = result.toObject();
-  QEXPECT_THAT(obj, AllOf(
-      HasJsonField("matches", QIsEmpty()),
-      HasJsonField("count", Eq(0))));
+  QEXPECT_THAT(obj, AllOf(HasJsonField("matches", QIsEmpty()), HasJsonField("count", Eq(0))));
 }
 
 // ========================================================================
@@ -604,10 +604,9 @@ void TestChromeModeApi::testTabsContext_ListsWindows() {
   QJsonArray windows = obj["windows"].toArray();
   QEXPECT_THAT(windows.size(), Gt(0));
 
-  QEXPECT_THAT(windows, JsonArrayContains(AllOf(
-      HasJsonField("windowTitle", QStrEq("Test Window")),
-      HasJsonField("className"),
-      HasJsonField("geometry"))));
+  QEXPECT_THAT(windows,
+               JsonArrayContains(AllOf(HasJsonField("windowTitle", QStrEq("Test Window")),
+                                       HasJsonField("className"), HasJsonField("geometry"))));
 }
 
 // ========================================================================
@@ -627,8 +626,8 @@ void TestChromeModeApi::testReadConsoleMessages_CapturesDebug() {
   QJsonArray messages = obj["messages"].toArray();
 
   QEXPECT_THAT(messages, JsonArrayContains(AllOf(
-      HasJsonField("message", QStrContains("chrome_test_message_12345")),
-      HasJsonField("type", QStrEq("warning")))));
+                             HasJsonField("message", QStrContains("chrome_test_message_12345")),
+                             HasJsonField("type", QStrEq("warning")))));
 }
 
 void TestChromeModeApi::testReadConsoleMessages_PatternFilter() {
@@ -668,7 +667,8 @@ void TestChromeModeApi::testReadConsoleMessages_OnlyErrors() {
     QEXPECT_THAT(msg.toObject()["type"].toString(), Ne("info"));
   }
 
-  QEXPECT_THAT(messages, JsonArrayContains(HasJsonField("message", QStrContains("warning_only_msg"))));
+  QEXPECT_THAT(messages,
+               JsonArrayContains(HasJsonField("message", QStrContains("warning_only_msg"))));
 }
 
 void TestChromeModeApi::testReadConsoleMessages_Clear() {
@@ -686,7 +686,8 @@ void TestChromeModeApi::testReadConsoleMessages_Clear() {
 
   QJsonObject obj2 = result2.toObject();
   QJsonArray messages2 = obj2["messages"].toArray();
-  QEXPECT_THAT(messages2, Not(JsonArrayContains(HasJsonField("message", QStrContains("clearable_message")))));
+  QEXPECT_THAT(messages2,
+               Not(JsonArrayContains(HasJsonField("message", QStrContains("clearable_message")))));
 }
 
 // ========================================================================
@@ -710,7 +711,8 @@ void TestChromeModeApi::testStaleRef_ProducesClearError() {
 
   // Should get stale ref error
   int code = error["code"].toInt();
-  QEXPECT_THAT(code, AnyOf(Eq(static_cast<int>(ErrorCode::kRefStale)), Eq(static_cast<int>(ErrorCode::kRefNotFound))));
+  QEXPECT_THAT(code, AnyOf(Eq(static_cast<int>(ErrorCode::kRefStale)),
+                           Eq(static_cast<int>(ErrorCode::kRefNotFound))));
   QEXPECT_THAT(error, HasJsonField("message", QIsNotEmpty()));
 }
 
@@ -777,9 +779,7 @@ void TestChromeModeApi::testFind_ReadPageClearsAllRefs() {
 
   // Now call readPage - this calls clearRefsInternal() and rebuilds tree
   QJsonObject pageResult = readPage();
-  QEXPECT_THAT(pageResult, AllOf(
-      HasJsonField("tree"),
-      HasJsonField("totalNodes", Gt(0))));
+  QEXPECT_THAT(pageResult, AllOf(HasJsonField("tree"), HasJsonField("totalNodes", Gt(0))));
 
   // Additionally verify the ref namespace was reset:
   QJsonObject tree = pageResult["tree"].toObject();
@@ -806,6 +806,87 @@ void TestChromeModeApi::testFind_NameFallbackToObjectName() {
   QJsonObject matchNode = matches[0].toObject();
   // Name should be the objectName (since accessible name is empty)
   QEXPECT_THAT(matchNode, HasJsonField("name", QStrEq("mySpecialInput")));
+}
+
+void TestChromeModeApi::testReadPage_RefIdScoping() {
+  auto* subContainer = new QWidget(m_mainWindow);
+  subContainer->setObjectName("subScopeBox");
+  auto* subLayout = new QVBoxLayout(subContainer);
+  auto* insideBtn = new QPushButton("InsideScope", subContainer);
+  insideBtn->setObjectName("insideScopeBtn");
+  subLayout->addWidget(insideBtn);
+  m_mainWindow->layout()->addWidget(subContainer);
+
+  auto* outsideBtn = new QPushButton("OutsideScope", m_mainWindow);
+  outsideBtn->setObjectName("outsideScopeBtn");
+  m_mainWindow->layout()->addWidget(outsideBtn);
+  QApplication::processEvents();
+
+  QJsonObject fullResult = readPage();
+  QString scopeRef = findRefByObjectName(fullResult["tree"].toObject(), "subScopeBox");
+  QEXPECT_THAT(scopeRef, QIsNotEmpty());
+
+  QJsonObject scopedResult = readPage(QJsonObject{{"ref_id", scopeRef}});
+  QJsonObject scopedTree = scopedResult["tree"].toObject();
+  QEXPECT_THAT(findRefByObjectName(scopedTree, "insideScopeBtn"), QIsNotEmpty());
+  QEXPECT_THAT(findRefByObjectName(scopedTree, "outsideScopeBtn"), QIsEmpty());
+}
+
+void TestChromeModeApi::testReadPage_MaxCharsTruncation() {
+  QJsonObject result = readPage(QJsonObject{{"max_chars", 80}});
+  QEXPECT_THAT(result, HasJsonField("truncated", Eq(true)));
+}
+
+void TestChromeModeApi::testFind_TooManyResultsLeavesRefMapUnchanged() {
+  for (int i = 0; i < 25; ++i) {
+    auto* btn = new QPushButton(QStringLiteral("ManyItem %1").arg(i), m_mainWindow);
+    btn->setObjectName(QStringLiteral("manyItem_%1").arg(i));
+    m_mainWindow->layout()->addWidget(btn);
+  }
+  QApplication::processEvents();
+
+  // Seed ref_1 with a valid find
+  QJsonValue seedResult = callResult("chr.find", QJsonObject{{"query", "Click Me"}});
+  QString seedRef = seedResult.toObject()["matches"].toArray()[0].toObject()["ref"].toString();
+  QEXPECT_THAT(seedRef, QStrEq("ref_1"));
+
+  // Now trigger kFindTooManyResults (> 20 matches)
+  QJsonObject errResp = callRaw("chr.find", QJsonObject{{"query", "ManyItem"}});
+  QEXPECT_THAT(errResp, HasJsonField("error"));
+  QEXPECT_THAT(errResp["error"].toObject(),
+               HasJsonField("code", Eq(static_cast<int>(ErrorCode::kFindTooManyResults))));
+
+  // Prior ref_1 must still work, and ref_2 must NOT have been inserted
+  QJsonObject clickOk = callEnvelope("chr.click", QJsonObject{{"ref", seedRef}});
+  QEXPECT_THAT(clickOk["result"].toObject(), HasJsonField("clicked", Eq(true)));
+
+  QJsonObject clickUninserted = callRaw("chr.click", QJsonObject{{"ref", "ref_2"}});
+  QEXPECT_THAT(clickUninserted, HasJsonField("error"));
+  QEXPECT_THAT(clickUninserted["error"].toObject(),
+               HasJsonField("code", Eq(static_cast<int>(ErrorCode::kRefNotFound))));
+}
+
+void TestChromeModeApi::testNavigate_ActivateTab() {
+  auto* tabs = new QTabWidget(m_mainWindow);
+  tabs->setObjectName("navTabWidget");
+  auto* page1 = new QWidget();
+  auto* page2 = new QWidget();
+  tabs->addTab(page1, "FirstTab");
+  tabs->addTab(page2, "SecondTab");
+  tabs->setCurrentIndex(0);
+  m_mainWindow->layout()->addWidget(tabs);
+  QApplication::processEvents();
+
+  QJsonValue findResult = callResult("chr.find", QJsonObject{{"query", "SecondTab"}});
+  QJsonArray matches = findResult.toObject()["matches"].toArray();
+  QEXPECT_THAT(matches.size(), Gt(0));
+  QString tabRef = matches[0].toObject()["ref"].toString();
+  QEXPECT_THAT(tabRef, QIsNotEmpty());
+
+  QJsonValue navResult =
+      callResult("chr.navigate", QJsonObject{{"action", "activateTab"}, {"ref", tabRef}});
+  QEXPECT_THAT(navResult.toObject(), HasJsonField("navigated", Eq(true)));
+  QEXPECT_THAT(tabs->currentIndex(), Eq(1));
 }
 
 QTEST_MAIN(TestChromeModeApi)

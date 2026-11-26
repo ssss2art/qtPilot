@@ -9,10 +9,13 @@
 #include "transport/jsonrpc_handler.h"
 
 #include <QApplication>
+#include <QEvent>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QShortcut>
 #include <QSignalSpy>
 #include <QVBoxLayout>
@@ -81,6 +84,7 @@ class TestComputerUseApi : public QObject {
   void testClickOutOfBounds();
   void testTypeNoFocusedWidget();
   void testIncludeScreenshot();
+  void testCoordinateParamsRequireNumericValues();
 
  private:
   /// @brief Make a JSON-RPC call and return the full parsed response object.
@@ -145,6 +149,7 @@ void TestComputerUseApi::init() {
   m_scrollArea->setFixedSize(200, 100);
   QWidget* scrollContent = new QWidget();
   scrollContent->setMinimumSize(400, 400);
+  scrollContent->resize(400, 400);
   m_scrollArea->setWidget(scrollContent);
   layout->addWidget(m_scrollArea);
 
@@ -405,11 +410,36 @@ void TestComputerUseApi::testMouseMove() {
 // ========================================================================
 
 void TestComputerUseApi::testDrag() {
-  QJsonValue result = callResult(
-      "cu.drag", QJsonObject{{"startX", 10}, {"startY", 10}, {"endX", 100}, {"endY", 100}});
+  struct DragWatcher : public QObject {
+    bool sawPress = false;
+    bool sawMove = false;
+    bool sawRelease = false;
+    bool eventFilter(QObject* /*obj*/, QEvent* event) override {
+      if (event->type() == QEvent::MouseButtonPress)
+        sawPress = true;
+      else if (event->type() == QEvent::MouseMove)
+        sawMove = true;
+      else if (event->type() == QEvent::MouseButtonRelease)
+        sawRelease = true;
+      return false;
+    }
+  } watcher;
+
+  m_testLineEdit->installEventFilter(&watcher);
+  const QPoint startWin = m_testLineEdit->mapTo(m_testWindow, QPoint(10, 15));
+  const QPoint endWin = m_testLineEdit->mapTo(m_testWindow, QPoint(120, 15));
+
+  QJsonValue result = callResult("cu.drag", QJsonObject{{"startX", startWin.x()},
+                                                        {"startY", startWin.y()},
+                                                        {"endX", endWin.x()},
+                                                        {"endY", endWin.y()}});
+  QApplication::processEvents();
 
   QEXPECT_THAT(result.isObject(), IsTrue());
   QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(watcher.sawPress, IsTrue());
+  QEXPECT_THAT(watcher.sawMove, IsTrue());
+  QEXPECT_THAT(watcher.sawRelease, IsTrue());
 }
 
 // ========================================================================
@@ -532,12 +562,19 @@ void TestComputerUseApi::testKeyActivatesNamedPunctuationShortcuts() {
 // ========================================================================
 
 void TestComputerUseApi::testScroll() {
-  // Scroll at center of window
+  const int beforeValue = m_scrollArea->verticalScrollBar()->value();
+  const QPoint scrollCenter =
+      m_scrollArea->viewport()->mapTo(m_testWindow, m_scrollArea->viewport()->rect().center());
+
   QJsonValue result = callResult(
-      "cu.scroll", QJsonObject{{"x", 200}, {"y", 150}, {"direction", "down"}, {"amount", 3}});
+      "cu.scroll",
+      QJsonObject{
+          {"x", scrollCenter.x()}, {"y", scrollCenter.y()}, {"direction", "down"}, {"amount", 3}});
+  QApplication::processEvents();
 
   QEXPECT_THAT(result.isObject(), IsTrue());
   QEXPECT_THAT(result.toObject(), HasJsonField("success", Eq(true)));
+  QEXPECT_THAT(m_scrollArea->verticalScrollBar()->value(), Gt(beforeValue));
 }
 
 // ========================================================================
@@ -635,6 +672,43 @@ void TestComputerUseApi::keyReachesWidgetAppWithoutExplicitFocus() {
 
   QJsonObject response = callRaw(QStringLiteral("cu.key"), QJsonObject{{"key", "ctrl+a"}});
   QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
+}
+
+void TestComputerUseApi::testCoordinateParamsRequireNumericValues() {
+  const QStringList xyMethods = {QStringLiteral("cu.click"),       QStringLiteral("cu.rightClick"),
+                                 QStringLiteral("cu.middleClick"), QStringLiteral("cu.doubleClick"),
+                                 QStringLiteral("cu.mouseMove"),   QStringLiteral("cu.mouseDown"),
+                                 QStringLiteral("cu.mouseUp")};
+
+  for (const QString& method : xyMethods) {
+    QJsonObject missingError = callExpectError(method, QJsonObject{{"x", 10}});
+    QEXPECT_THAT(missingError,
+                 HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))));
+
+    QJsonObject stringError = callExpectError(method, QJsonObject{{"x", "10"}, {"y", 20}});
+    QEXPECT_THAT(stringError,
+                 HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))));
+
+    QJsonObject boolError = callExpectError(method, QJsonObject{{"x", 10}, {"y", true}});
+    QEXPECT_THAT(boolError,
+                 HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))));
+  }
+
+  QJsonObject scrollMissing =
+      callExpectError(QStringLiteral("cu.scroll"), QJsonObject{{"x", 10}, {"direction", "down"}});
+  QEXPECT_THAT(scrollMissing,
+               HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))));
+
+  QJsonObject dragMissing = callExpectError(
+      QStringLiteral("cu.drag"), QJsonObject{{"startX", 10}, {"startY", 10}, {"endX", 20}});
+  QEXPECT_THAT(dragMissing,
+               HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))));
+
+  QJsonObject dragNonNumeric =
+      callExpectError(QStringLiteral("cu.drag"),
+                      QJsonObject{{"startX", "10"}, {"startY", 10}, {"endX", 20}, {"endY", 20}});
+  QEXPECT_THAT(dragNonNumeric,
+               HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))));
 }
 
 QTEST_MAIN(TestComputerUseApi)

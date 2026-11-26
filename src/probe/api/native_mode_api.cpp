@@ -1757,21 +1757,28 @@ void NativeModeApi::registerSystemMethods() {
 
 void NativeModeApi::registerObjectMethods() {
   // qt.objects.tree - object tree
-  m_handler->RegisterMethod(QStringLiteral("qt.objects.tree"),
-                            [](const QString& params) -> QString {
-                              auto p = parseParams(params);
+  m_handler->RegisterMethod(
+      QStringLiteral("qt.objects.tree"), [](const QString& params) -> QString {
+        auto p = parseParams(params);
 
-                              QObject* rootObj = nullptr;
-                              QString rootId = p[QStringLiteral("root")].toString();
-                              if (!rootId.isEmpty()) {
-                                rootObj = ObjectResolver::resolve(rootId);
-                              }
+        QObject* rootObj = nullptr;
+        QString rootId = p[QStringLiteral("root")].toString();
+        if (!rootId.isEmpty()) {
+          auto rootRes = ObjectResolver::resolveExpected(rootId);
+          if (!rootRes) {
+            throw JsonRpcException(
+                ErrorCode::kObjectNotFound, QStringLiteral("Root object not found: %1").arg(rootId),
+                QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.tree")},
+                            {QStringLiteral("root"), rootId}});
+          }
+          rootObj = *rootRes;
+        }
 
-                              int maxDepth = p[QStringLiteral("maxDepth")].toInt(-1);
+        int maxDepth = p[QStringLiteral("maxDepth")].toInt(-1);
 
-                              QJsonObject tree = serializeObjectTree(rootObj, maxDepth);
-                              return envelopeToString(ResponseEnvelope::wrap(tree));
-                            });
+        QJsonObject tree = serializeObjectTree(rootObj, maxDepth);
+        return envelopeToString(ResponseEnvelope::wrap(tree));
+      });
 
   // qt.objects.inspect - consolidated read-only introspection with parts selector
   m_handler->RegisterMethod(
@@ -1798,8 +1805,19 @@ void NativeModeApi::registerObjectMethods() {
           }
         } else if (partsValue.isArray()) {
           for (const auto& v : partsValue.toArray()) {
+            if (!v.isString()) {
+              throw JsonRpcException(
+                  JsonRpcError::kInvalidParams,
+                  QStringLiteral("Parameter 'parts' array elements must be strings"),
+                  QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.inspect")}});
+            }
             requestedParts << v.toString();
           }
+        } else {
+          throw JsonRpcException(
+              JsonRpcError::kInvalidParams,
+              QStringLiteral("Parameter 'parts' must be a string or an array of strings"),
+              QJsonObject{{QStringLiteral("method"), QStringLiteral("qt.objects.inspect")}});
         }
 
         for (const QString& part : requestedParts) {

@@ -11,6 +11,7 @@
 #include "introspection/signal_monitor.h"
 #include "transport/jsonrpc_handler.h"
 
+#include <array>
 #include <atomic>
 
 #include <QApplication>
@@ -21,7 +22,9 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QThread>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -166,6 +169,7 @@ class TestNativeModeApi : public QObject {
 
   // Object discovery (qt.objects.*)
   void testObjectsTree();
+  void testObjectsTreeNonExistentRootThrows();
   void testObjectsInspect();
   void testInspectDefaultInfoOnly();
   void testInspectPropertiesPart();
@@ -173,6 +177,7 @@ class TestNativeModeApi : public QObject {
   void testInspectPropertiesPropertyName();
   void testInspectAllAlias();
   void testInspectUnknownPartError();
+  void testInspectInvalidPartsTypeThrows();
   void testInspectModelPartNullForNonModel();
   void testInspectGeometryPartOnWidget();
   void testObjectsSearchByClassName();
@@ -212,6 +217,10 @@ class TestNativeModeApi : public QObject {
 
   // Signals (qt.signals.*)
   void testSignalsSubscribeUnsubscribe();
+  void testSignalsSetLifecycle();
+
+  // Events (qt.events.*)
+  void testEventsStartAndStop();
 
   // UI (qt.ui.*)
   void testUiGeometry();
@@ -224,6 +233,7 @@ class TestNativeModeApi : public QObject {
   void testNamesRegisterAndList();
   void testNamesUnregister();
   void testNamesValidate();
+  void testNamesSaveAndLoad();
 
   // ObjectResolver multi-style
   void testNumericIdResolution();
@@ -232,6 +242,7 @@ class TestNativeModeApi : public QObject {
   void testSymbolicNameMapExpectedMonadic();
 
   // Error handling
+  void testErrorCodesAreUnique();
   void testStructuredErrorMissingObjectId();
   void testStructuredErrorObjectNotFound();
 
@@ -400,10 +411,11 @@ void TestNativeModeApi::testPingIdentifiesProcess() {
   // A client that reached the wrong process must be able to tell from the ping.
   QJsonObject obj = callResult("qt.ping", QJsonObject()).toObject();
 
-  QEXPECT_THAT(obj, AllOf(HasJsonField("appName", QStrEq(QCoreApplication::applicationName())),
-                          HasJsonField("appVersion", QStrEq(QCoreApplication::applicationVersion())),
-                          HasJsonField("executable", QStrEq(QCoreApplication::applicationFilePath())),
-                          HasJsonField("qtVersion", QStrEq(QString::fromLatin1(qVersion())))));
+  QEXPECT_THAT(obj,
+               AllOf(HasJsonField("appName", QStrEq(QCoreApplication::applicationName())),
+                     HasJsonField("appVersion", QStrEq(QCoreApplication::applicationVersion())),
+                     HasJsonField("executable", QStrEq(QCoreApplication::applicationFilePath())),
+                     HasJsonField("qtVersion", QStrEq(QString::fromLatin1(qVersion())))));
   QEXPECT_THAT(static_cast<qint64>(obj["pid"].toDouble()), Eq(QCoreApplication::applicationPid()));
 }
 
@@ -523,8 +535,10 @@ void TestNativeModeApi::testInspectPropertiesDeclaredOnly() {
   bool foundPalette = false;
   for (const QJsonValue& val : props) {
     QString name = val.toObject()[QStringLiteral("name")].toString();
-    if (name == QStringLiteral("text")) foundText = true;
-    if (name == QStringLiteral("palette")) foundPalette = true;
+    if (name == QStringLiteral("text"))
+      foundText = true;
+    if (name == QStringLiteral("palette"))
+      foundPalette = true;
   }
   QEXPECT_THAT(foundText, IsTrue());
   QEXPECT_THAT(foundPalette, IsFalse());
@@ -574,6 +588,7 @@ void TestNativeModeApi::testInspectUnknownPartError() {
   params[QStringLiteral("parts")] = parts;
   QJsonObject error = callExpectError("qt.objects.inspect", params);
   QEXPECT_THAT(error, HasJsonField("code", Eq(static_cast<int>(ErrorCode::kInvalidField))));
+  QEXPECT_THAT(ErrorCode::kInvalidField, Ne(ErrorCode::kNotGraphicsView));
 }
 
 void TestNativeModeApi::testInspectModelPartNullForNonModel() {
@@ -667,8 +682,7 @@ void TestNativeModeApi::testObjectsSearchByObjectNamePattern() {
                JsonArrayContains(HasJsonField("objectName", QStrEq("dvTabletRail_products"))));
 
   params[QStringLiteral("objectNamePattern")] = QStringLiteral("*Rail_br?wser");
-  objects =
-      callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray();
+  objects = callResult("qt.objects.search", params).toObject()[QStringLiteral("objects")].toArray();
   QEXPECT_THAT(objects.size(), Eq(1));
 }
 
@@ -739,8 +753,9 @@ void TestNativeModeApi::testObjectNamePatternTakesAnyLiteralAndSet() {
 }
 
 void TestNativeModeApi::testObjectsSearchRefusesAnInvalidPattern() {
-  QJsonObject error = callExpectError(
-      "qt.objects.search", QJsonObject{{QStringLiteral("objectNamePattern"), QStringLiteral("[ab")}});
+  QJsonObject error =
+      callExpectError("qt.objects.search",
+                      QJsonObject{{QStringLiteral("objectNamePattern"), QStringLiteral("[ab")}});
   QEXPECT_THAT(error,
                AllOf(HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))),
                      HasJsonField("message", QStrContains("Invalid objectNamePattern"))));
@@ -990,8 +1005,8 @@ void TestNativeModeApi::testObjectsSearchRunsGettersWithoutHoldingTheRegistry() 
                                        {"properties", QJsonObject{{"workerFinished", true}}}});
 
   QEXPECT_THAT(result.toObject(),
-               HasJsonField("objects", JsonArrayContains(HasJsonField(
-                                           "objectName", QStrEq("waitsOnWorker")))));
+               HasJsonField("objects", JsonArrayContains(
+                                           HasJsonField("objectName", QStrEq("waitsOnWorker")))));
 }
 
 // An object another thread owns is never read from the GUI thread; the search
@@ -1644,6 +1659,139 @@ void TestNativeModeApi::treeIncludesTopLevelWidgets() {
   const QString dumped = QString::fromUtf8(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
 
   QEXPECT_THAT(dumped, AllOf(QStrContains("treeRootWidget"), QStrContains("treeChildWidget")));
+}
+
+namespace {
+
+constexpr std::array<int, 45> kAllErrorCodes = {
+    ErrorCode::kObjectNotFound,
+    ErrorCode::kObjectStale,
+    ErrorCode::kObjectNotWidget,
+    ErrorCode::kNotGraphicsView,
+    ErrorCode::kItemOccluded,
+    ErrorCode::kNoActiveMenu,
+    ErrorCode::kMenuItemNotFound,
+    ErrorCode::kInvalidField,
+    ErrorCode::kPropertyNotFound,
+    ErrorCode::kPropertyReadOnly,
+    ErrorCode::kPropertyTypeMismatch,
+    ErrorCode::kMethodNotFound,
+    ErrorCode::kMethodInvocationFailed,
+    ErrorCode::kMethodArgumentMismatch,
+    ErrorCode::kSignalNotFound,
+    ErrorCode::kSubscriptionNotFound,
+    ErrorCode::kWidgetNotVisible,
+    ErrorCode::kWidgetNotEnabled,
+    ErrorCode::kScreenCaptureError,
+    ErrorCode::kNameNotFound,
+    ErrorCode::kNameAlreadyExists,
+    ErrorCode::kNameMapLoadError,
+    ErrorCode::kNoActiveWindow,
+    ErrorCode::kCoordinateOutOfBounds,
+    ErrorCode::kNoFocusedWidget,
+    ErrorCode::kKeyParseError,
+    ErrorCode::kRefNotFound,
+    ErrorCode::kRefStale,
+    ErrorCode::kFormInputUnsupported,
+    ErrorCode::kTreeTooLarge,
+    ErrorCode::kFindTooManyResults,
+    ErrorCode::kNavigateInvalid,
+    ErrorCode::kConsoleNotAvailable,
+    ErrorCode::kQmlNotAvailable,
+    ErrorCode::kQmlContextNotFound,
+    ErrorCode::kNotQmlItem,
+    ErrorCode::kModelNotFound,
+    ErrorCode::kModelIndexOutOfBounds,
+    ErrorCode::kModelRoleNotFound,
+    ErrorCode::kNotAModel,
+    ErrorCode::kInvalidParentPath,
+    ErrorCode::kItemNotFound,
+    ErrorCode::kInvalidColumn,
+    ErrorCode::kNotEditable,
+    ErrorCode::kInvalidRegex,
+};
+
+constexpr bool allErrorCodesUnique() {
+  for (size_t i = 0; i < kAllErrorCodes.size(); ++i) {
+    for (size_t j = i + 1; j < kAllErrorCodes.size(); ++j) {
+      if (kAllErrorCodes[i] == kAllErrorCodes[j]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static_assert(allErrorCodesUnique(), "All ErrorCode::k* values must be unique");
+
+}  // namespace
+
+void TestNativeModeApi::testErrorCodesAreUnique() {
+  QSet<int> uniqueCodes;
+  for (int code : kAllErrorCodes) {
+    uniqueCodes.insert(code);
+  }
+  QEXPECT_THAT(static_cast<size_t>(uniqueCodes.size()), Eq(kAllErrorCodes.size()));
+}
+
+void TestNativeModeApi::testObjectsTreeNonExistentRootThrows() {
+  QJsonObject error =
+      callExpectError("qt.objects.tree", QJsonObject{{"root", "nonexistent/root/xyz"}});
+  QEXPECT_THAT(error, HasJsonField("code", Eq(static_cast<int>(ErrorCode::kObjectNotFound))));
+}
+
+void TestNativeModeApi::testInspectInvalidPartsTypeThrows() {
+  ObjectRegistry::instance()->scanExistingObjects(m_testWindow);
+  QString id = ObjectRegistry::instance()->objectId(m_testButton);
+
+  for (const QJsonValue& badParts :
+       {QJsonValue(123), QJsonValue(true), QJsonValue(QJsonObject{{"a", 1}})}) {
+    QJsonObject error =
+        callExpectError("qt.objects.inspect", QJsonObject{{"objectId", id}, {"parts", badParts}});
+    QEXPECT_THAT(error, HasJsonField("code", Eq(static_cast<int>(JsonRpcError::kInvalidParams))));
+  }
+}
+
+void TestNativeModeApi::testSignalsSetLifecycle() {
+  QJsonValue enableResult = callResult("qt.signals.setLifecycle", QJsonObject{{"enabled", true}});
+  QEXPECT_THAT(enableResult.toObject(), HasJsonField("enabled", Eq(true)));
+
+  QJsonValue disableResult = callResult("qt.signals.setLifecycle", QJsonObject{{"enabled", false}});
+  QEXPECT_THAT(disableResult.toObject(), HasJsonField("enabled", Eq(false)));
+}
+
+void TestNativeModeApi::testEventsStartAndStop() {
+  QJsonValue startResult = callResult("qt.events.start", QJsonObject());
+  QEXPECT_THAT(startResult.toObject(), HasJsonField("capturing", Eq(true)));
+
+  QJsonValue stopResult = callResult("qt.events.stop", QJsonObject());
+  QEXPECT_THAT(stopResult.toObject(), HasJsonField("capturing", Eq(false)));
+}
+
+void TestNativeModeApi::testNamesSaveAndLoad() {
+  QTemporaryDir tempDir;
+  QEXPECT_THAT(tempDir.isValid(), IsTrue());
+  const QString filePath = tempDir.filePath(QStringLiteral("names.json"));
+
+  callResult("qt.names.register", QJsonObject{{"name", "savedBtn"}, {"path", "testWindow/btn"}});
+
+  QJsonValue saveResult = callResult("qt.names.save", QJsonObject{{"filePath", filePath}});
+  QEXPECT_THAT(saveResult.toObject(), HasJsonField("ok", Eq(true)));
+
+  callResult("qt.names.unregister", QJsonObject{{"name", "savedBtn"}});
+  QEXPECT_THAT(callResult("qt.names.list", QJsonObject()).toObject(),
+               DoesNotHaveJsonField("savedBtn"));
+
+  QJsonValue loadResult = callResult("qt.names.load", QJsonObject{{"filePath", filePath}});
+  QEXPECT_THAT(loadResult.toObject(),
+               AllOf(HasJsonField("ok", Eq(true)), HasJsonField("count", Ge(1))));
+  QEXPECT_THAT(callResult("qt.names.list", QJsonObject()).toObject(),
+               HasJsonField("savedBtn", QStrEq("testWindow/btn")));
+
+  QJsonObject missingError = callExpectError(
+      "qt.names.load", QJsonObject{{"filePath", tempDir.filePath(QStringLiteral("missing.json"))}});
+  QEXPECT_THAT(missingError,
+               HasJsonField("code", Eq(static_cast<int>(ErrorCode::kNameMapLoadError))));
 }
 
 QTEST_MAIN(TestNativeModeApi)

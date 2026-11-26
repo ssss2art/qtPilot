@@ -11,6 +11,7 @@
 #include "interaction/modifier_parser.h"
 #include "interaction/screenshot.h"
 
+#include <QAbstractScrollArea>
 #include <QApplication>
 #include <QCursor>
 #include <QDateTime>
@@ -285,8 +286,34 @@ void dispatchScroll(const CuTarget& t, int x, int y, bool sa, int dx, int dy,
     InputSimulator::scroll(t.window, resolveWindowLocal(t.window, x, y, sa), dx, dy, modifiers);
   } else {
     auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::scroll(r.widget, r.localPos, dx, dy, modifiers);
+    // QWheelEvent sent via QCoreApplication::sendEvent does not propagate from
+    // a QScrollArea's content widget up to the viewport/QAbstractScrollArea.
+    QWidget* scrollTarget = r.widget;
+    QPoint scrollPos = r.localPos;
+    for (QWidget* w = r.widget; w && w != t.widget; w = w->parentWidget()) {
+      if (auto* area = qobject_cast<QAbstractScrollArea*>(w->parentWidget())) {
+        if (area->viewport() == w) {
+          scrollTarget = w;
+          scrollPos = w->mapFrom(r.widget, r.localPos);
+          break;
+        }
+      }
+    }
+    InputSimulator::scroll(scrollTarget, scrollPos, dx, dy, modifiers);
   }
+}
+
+/// @brief Extract a required numeric integer parameter, throwing kInvalidParams if missing or
+/// non-numeric.
+int requireIntParam(const QJsonObject& params, const QString& key, const QString& method) {
+  const QJsonValue val = params.value(key);
+  if (val.isUndefined() || val.isNull() || !val.isDouble()) {
+    throw JsonRpcException(
+        JsonRpcError::kInvalidParams,
+        QStringLiteral("Missing or non-numeric required parameter: %1").arg(key),
+        QJsonObject{{QStringLiteral("method"), method}, {QStringLiteral("parameter"), key}});
+  }
+  return val.toInt();
 }
 
 /// @brief Get image dimensions from base64 PNG data.
@@ -418,8 +445,8 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.click"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.click"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
@@ -450,8 +477,8 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.rightClick"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.rightClick"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
 
@@ -476,8 +503,8 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.middleClick"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.middleClick"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
 
@@ -502,8 +529,8 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.doubleClick"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.doubleClick"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
 
@@ -528,8 +555,8 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.mouseMove"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.mouseMove"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseMove"));
@@ -568,10 +595,10 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int startX = p[QStringLiteral("startX")].toInt();
-    int startY = p[QStringLiteral("startY")].toInt();
-    int endX = p[QStringLiteral("endX")].toInt();
-    int endY = p[QStringLiteral("endY")].toInt();
+    int startX = requireIntParam(p, QStringLiteral("startX"), QStringLiteral("cu.drag"));
+    int startY = requireIntParam(p, QStringLiteral("startY"), QStringLiteral("cu.drag"));
+    int endX = requireIntParam(p, QStringLiteral("endX"), QStringLiteral("cu.drag"));
+    int endY = requireIntParam(p, QStringLiteral("endY"), QStringLiteral("cu.drag"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.drag"));
@@ -614,7 +641,11 @@ void ComputerUseModeApi::registerMouseMethods() {
       checkBounds(startPos, QStringLiteral("start"));
       checkBounds(endPos, QStringLiteral("end"));
 
-      InputSimulator::mouseDrag(window, startPos, endPos, InputSimulator::MouseButton::Left,
+      QWidget* child = window->childAt(startPos);
+      QWidget* target = child ? child : window;
+      QPoint localStart = child ? child->mapFrom(window, startPos) : startPos;
+      QPoint localEnd = child ? child->mapFrom(window, endPos) : endPos;
+      InputSimulator::mouseDrag(target, localStart, localEnd, InputSimulator::MouseButton::Left,
                                 modifiers);
     }
 
@@ -632,8 +663,8 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.mouseDown"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.mouseDown"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
@@ -672,8 +703,8 @@ void ComputerUseModeApi::registerMouseMethods() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.mouseUp"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.mouseUp"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
@@ -841,8 +872,8 @@ void ComputerUseModeApi::registerScrollMethod() {
     auto p = parseParams(params);
     CuTarget t = getActiveTarget();
 
-    int x = p[QStringLiteral("x")].toInt();
-    int y = p[QStringLiteral("y")].toInt();
+    int x = requireIntParam(p, QStringLiteral("x"), QStringLiteral("cu.scroll"));
+    int y = requireIntParam(p, QStringLiteral("y"), QStringLiteral("cu.scroll"));
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
     QString direction = p[QStringLiteral("direction")].toString();
     int amount = p[QStringLiteral("amount")].toInt(3);
