@@ -95,6 +95,7 @@ QString escapeJsonStringContent(const QString& input) {
   return out;
 }
 
+#ifndef QTPILOT_HAS_NLOHMANN_JSON
 QString serializeJsonId(const QJsonValue& idValue) {
   if (idValue.isString()) {
     return QStringLiteral("\"%1\"").arg(escapeJsonStringContent(idValue.toString()));
@@ -108,6 +109,7 @@ QString serializeJsonId(const QJsonValue& idValue) {
   }
   return QStringLiteral("null");
 }
+#endif
 
 QJsonValue parseJsonId(const QString& id) {
   QJsonParseError err;

@@ -109,6 +109,10 @@ void NotificationQueue::drain() {
   for (int i = 0; i < count; ++i) {
     QString msg = m_queue.dequeue();
     lock.unlock();
+    if (!m_socket) {
+      lock.relock();
+      break;
+    }
     m_socket->sendTextMessage(msg);
     lock.relock();
   }
