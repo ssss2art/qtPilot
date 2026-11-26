@@ -104,6 +104,9 @@ QByteArray Screenshot::captureRegion(QWidget* widget, const QRect& region) {
   if (!widget) {
     throw std::invalid_argument("captureRegion: widget cannot be null");
   }
+  if (!region.isValid() || region.isEmpty()) {
+    throw std::invalid_argument("captureRegion: region must be valid and non-empty");
+  }
 
   QPixmap pixmap = widget->grab(region);
   return encodePixmap(pixmap, "captureRegion");
@@ -298,6 +301,7 @@ QByteArray Screenshot::captureWindowLogical(QWindow* window) {
     int logicalHeight = qRound(pixmap.height() / dpr);
     pixmap =
         pixmap.scaled(logicalWidth, logicalHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    pixmap.setDevicePixelRatio(1.0);
   }
 
   return encodePixmap(pixmap, "captureWindowLogical");

@@ -258,15 +258,23 @@ QJsonObject buildFindMatchNode(QAccessibleInterface* iface, const QString& ref) 
   return node;
 }
 
+struct PendingRef {
+  QString ref;
+  QAccessibleInterface* iface = nullptr;
+  QObject* obj = nullptr;
+};
+
 /// @brief Recursively search accessibility tree for elements matching a query.
 /// @param iface Current node interface.
 /// @param query Lowercase search query.
 /// @param refCounter Running counter for ref assignment.
 /// @param matches Output array of matching nodes.
+/// @param pendingRefs Collected ref mappings to commit only if the search succeeds.
 /// @param depth Current depth.
 /// @param maxDepth Maximum recursion depth.
 void findMatchingNodes(QAccessibleInterface* iface, const QString& query, int& refCounter,
-                       QJsonArray& matches, int depth, int maxDepth) {
+                       QJsonArray& matches, QList<PendingRef>& pendingRefs, int depth,
+                       int maxDepth) {
   if (!iface || !iface->isValid() || depth > maxDepth)
     return;
 
@@ -302,9 +310,7 @@ void findMatchingNodes(QAccessibleInterface* iface, const QString& query, int& r
   if (matched) {
     ++refCounter;
     QString ref = QStringLiteral("ref_%1").arg(refCounter);
-    s_refToAccessible.insert(ref, iface);
-    if (obj)
-      s_refToObject.insert(ref, QPointer<QObject>(obj));
+    pendingRefs.append(PendingRef{ref, iface, obj});
     matches.append(buildFindMatchNode(iface, ref));
   }
 
@@ -313,7 +319,7 @@ void findMatchingNodes(QAccessibleInterface* iface, const QString& query, int& r
   for (int i = 0; i < childCount; ++i) {
     QAccessibleInterface* child = iface->child(i);
     if (child)
-      findMatchingNodes(child, query, refCounter, matches, depth + 1, maxDepth);
+      findMatchingNodes(child, query, refCounter, matches, pendingRefs, depth + 1, maxDepth);
   }
 }
 
@@ -681,8 +687,9 @@ void ChromeModeApi::registerFindMethod() {
     // iOS targets.
     int refCounter = static_cast<int>(s_refToAccessible.size());
     QString queryLower = query.toLower();
+    QList<PendingRef> pendingRefs;
 
-    findMatchingNodes(rootIface, queryLower, refCounter, matches, 0, 30);
+    findMatchingNodes(rootIface, queryLower, refCounter, matches, pendingRefs, 0, 30);
 
     if (matches.size() > 20) {
       throw JsonRpcException(
@@ -694,6 +701,13 @@ void ChromeModeApi::registerFindMethod() {
                       {QStringLiteral("count"), matches.size()},
                       {QStringLiteral("hint"),
                        QStringLiteral("Use a more specific query or combine role + name")}});
+    }
+
+    for (const PendingRef& entry : pendingRefs) {
+      s_refToAccessible.insert(entry.ref, entry.iface);
+      if (entry.obj) {
+        s_refToObject.insert(entry.ref, QPointer<QObject>(entry.obj));
+      }
     }
 
     QJsonObject result;

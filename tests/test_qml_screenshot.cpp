@@ -1,6 +1,7 @@
 // Copyright (c) 2024 qtPilot Contributors
 // SPDX-License-Identifier: MIT
 
+#include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "transport/jsonrpc_handler.h"
 
@@ -9,8 +10,6 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QtTest>
-
-#include "common/qt_matchers.h"
 
 using namespace qtPilot;
 using namespace qtPilot::test;
@@ -61,13 +60,6 @@ void TestQmlScreenshot::testQuickWindowUsesQmlCapturePath() {
 
   const QString id = ObjectRegistry::instance()->objectId(&window);
   const QJsonObject response = callScreenshot(id);
-  if (response.contains(QStringLiteral("error"))) {
-    const QString message =
-        response[QStringLiteral("error")].toObject()[QStringLiteral("message")].toString();
-    QEXPECT_THAT(message, Not(QStrContains("not a widget, window, or QML item")));
-    QEXPECT_THAT(message, Not(QStrContains("not rendered")));
-    return;
-  }
 
   const QString image =
       response[QStringLiteral("result")].toObject()[QStringLiteral("image")].toString();

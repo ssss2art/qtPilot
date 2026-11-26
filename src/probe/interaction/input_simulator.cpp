@@ -296,29 +296,54 @@ void InputSimulator::mouseDrag(QWidget* window, const QPoint& startPos, const QP
   QPoint localStart = startWidget->mapFrom(window, startPos);
   QPoint globalStart = startWidget->mapToGlobal(localStart);
 
+  QPointer<QWidget> windowGuard(window);
+  QPointer<QWidget> startGuard(startWidget);
+
   // Press at start position
   QMouseEvent pressEvent(QEvent::MouseButtonPress, QPointF(localStart), QPointF(globalStart),
                          qtButton, qtButton, modifiers);
   QCoreApplication::sendEvent(startWidget, &pressEvent);
   QApplication::processEvents();
+  if (!windowGuard) {
+    return;
+  }
 
-  // Resolve end widget and local coordinates
-  QWidget* endWidget = window->childAt(endPos);
-  if (!endWidget)
-    endWidget = window;
-  QPoint localEnd = endWidget->mapFrom(window, endPos);
-  QPoint globalEnd = endWidget->mapToGlobal(localEnd);
+  // Route Move/Release to the active mouse grabber or startWidget rather than
+  // childAt(endPos), so drags that leave the widget's bounds still complete.
+  QWidget* moveTarget = QWidget::mouseGrabber();
+  if (!moveTarget) {
+    moveTarget = startGuard.data();
+  }
+  if (!moveTarget) {
+    return;
+  }
+  QPointer<QWidget> moveGuard(moveTarget);
+  QPoint localEnd = moveTarget->mapFrom(window, endPos);
+  QPoint globalEnd = moveTarget->mapToGlobal(localEnd);
 
   // Move to end position (button held)
   QMouseEvent moveEvent(QEvent::MouseMove, QPointF(localEnd), QPointF(globalEnd), Qt::NoButton,
                         qtButton, modifiers);
-  QCoreApplication::sendEvent(endWidget, &moveEvent);
+  QCoreApplication::sendEvent(moveTarget, &moveEvent);
   QApplication::processEvents();
+  if (!windowGuard) {
+    return;
+  }
+
+  QWidget* releaseTarget = QWidget::mouseGrabber();
+  if (!releaseTarget) {
+    releaseTarget = moveGuard ? moveGuard.data() : startGuard.data();
+  }
+  if (!releaseTarget) {
+    return;
+  }
+  QPoint localRelease = releaseTarget->mapFrom(window, endPos);
+  QPoint globalRelease = releaseTarget->mapToGlobal(localRelease);
 
   // Release at end position
-  QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(localEnd), QPointF(globalEnd),
-                           qtButton, Qt::NoButton, modifiers);
-  QCoreApplication::sendEvent(endWidget, &releaseEvent);
+  QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(localRelease),
+                           QPointF(globalRelease), qtButton, Qt::NoButton, modifiers);
+  QCoreApplication::sendEvent(releaseTarget, &releaseEvent);
   QApplication::processEvents();
 }
 
@@ -496,21 +521,31 @@ void InputSimulator::sendText(QWindow* window, const QString& text,
     }
     QKeyEvent press(QEvent::KeyPress, key, modifiers, s);
     QCoreApplication::sendEvent(window, &press);
+    if (!guard)
+      break;
     QKeyEvent release(QEvent::KeyRelease, key, modifiers, s);
     QCoreApplication::sendEvent(window, &release);
   }
-  QCoreApplication::processEvents();
+  if (guard) {
+    QCoreApplication::processEvents();
+  }
 }
 
 void InputSimulator::sendKey(QWindow* window, Qt::Key key, Qt::KeyboardModifiers modifiers) {
   if (!window) {
     throw std::invalid_argument("sendKey: window cannot be null");
   }
+  QPointer<QWindow> guard(window);
   QKeyEvent press(QEvent::KeyPress, key, modifiers);
   QCoreApplication::sendEvent(window, &press);
+  if (!guard) {
+    return;
+  }
   QKeyEvent release(QEvent::KeyRelease, key, modifiers);
   QCoreApplication::sendEvent(window, &release);
-  QCoreApplication::processEvents();
+  if (guard) {
+    QCoreApplication::processEvents();
+  }
 }
 
 void InputSimulator::sendKeySequence(QWindow* window, const QString& sequence) {

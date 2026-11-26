@@ -54,6 +54,75 @@ namespace qtPilot {
 using json = nlohmann::json;
 #endif
 
+namespace {
+
+QString escapeJsonStringContent(const QString& input) {
+  QString out;
+  out.reserve(input.size());
+  for (const QChar ch : input) {
+    const ushort code = ch.unicode();
+    switch (code) {
+      case '\\':
+        out += QLatin1String("\\\\");
+        break;
+      case '"':
+        out += QLatin1String("\\\"");
+        break;
+      case '\b':
+        out += QLatin1String("\\b");
+        break;
+      case '\f':
+        out += QLatin1String("\\f");
+        break;
+      case '\n':
+        out += QLatin1String("\\n");
+        break;
+      case '\r':
+        out += QLatin1String("\\r");
+        break;
+      case '\t':
+        out += QLatin1String("\\t");
+        break;
+      default:
+        if (code < 0x20) {
+          out += QStringLiteral("\\u%1").arg(code, 4, 16, QLatin1Char('0'));
+        } else {
+          out += ch;
+        }
+        break;
+    }
+  }
+  return out;
+}
+
+#ifndef QTPILOT_HAS_NLOHMANN_JSON
+QString serializeJsonId(const QJsonValue& idValue) {
+  if (idValue.isString()) {
+    return QStringLiteral("\"%1\"").arg(escapeJsonStringContent(idValue.toString()));
+  }
+  if (idValue.isDouble()) {
+    const QByteArray arrJson = QJsonDocument(QJsonArray{idValue}).toJson(QJsonDocument::Compact);
+    if (arrJson.size() >= 2 && arrJson.startsWith('[') && arrJson.endsWith(']')) {
+      return QString::fromUtf8(arrJson.mid(1, arrJson.size() - 2));
+    }
+    return QString::number(idValue.toDouble(), 'g', 15);
+  }
+  return QStringLiteral("null");
+}
+#endif
+
+QJsonValue parseJsonId(const QString& id) {
+  QJsonParseError err;
+  const QJsonDocument doc =
+      QJsonDocument::fromJson(QByteArray("[") + id.toUtf8() + QByteArray("]"), &err);
+  if (err.error == QJsonParseError::NoError && doc.isArray() && doc.array().size() == 1) {
+    return doc.array().at(0);
+  }
+  return QJsonValue::Null;
+}
+
+}  // namespace
+
 JsonRpcHandler::JsonRpcHandler(QObject* parent) : QObject(parent) {
   RegisterBuiltinMethods();
 }
@@ -69,8 +138,14 @@ QString JsonRpcHandler::HandleMessage(const QString& message) {
     return CreateErrorResponse("null", JsonRpcError::kParseError, "Parse error");
   }
 
+  if (!request.is_object()) {
+    return CreateErrorResponse("null", JsonRpcError::kInvalidRequest,
+                               "Invalid Request: expected JSON object");
+  }
+
   // Validate JSON-RPC 2.0 structure
-  if (!request.contains("jsonrpc") || request["jsonrpc"] != "2.0") {
+  if (!request.contains("jsonrpc") || !request["jsonrpc"].is_string() ||
+      request["jsonrpc"] != "2.0") {
     return CreateErrorResponse("null", JsonRpcError::kInvalidRequest,
                                "Invalid Request: missing or invalid jsonrpc version");
   }
@@ -85,12 +160,9 @@ QString JsonRpcHandler::HandleMessage(const QString& message) {
   bool is_notification = !request.contains("id");
 
   if (!is_notification) {
-    if (request["id"].is_string()) {
-      id_str = QString("\"%1\"").arg(QString::fromStdString(request["id"].get<std::string>()));
-    } else if (request["id"].is_number()) {
-      id_str = QString::number(request["id"].get<int>());
-    } else if (request["id"].is_null()) {
-      id_str = "null";
+    const auto& idVal = request["id"];
+    if (idVal.is_string() || idVal.is_number() || idVal.is_null()) {
+      id_str = QString::fromStdString(idVal.dump());
     }
   }
 
@@ -102,11 +174,25 @@ QString JsonRpcHandler::HandleMessage(const QString& message) {
 #else
   // Use QJsonDocument for parsing
   QJsonParseError parseError;
-  QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8(), &parseError);
+  const QByteArray utf8 = message.toUtf8();
+  QJsonDocument doc = QJsonDocument::fromJson(utf8, &parseError);
 
   if (parseError.error != QJsonParseError::NoError) {
+    QJsonParseError wrappedErr;
+    const QJsonDocument wrappedDoc =
+        QJsonDocument::fromJson(QByteArray("[") + utf8 + QByteArray("]"), &wrappedErr);
+    if (wrappedErr.error == QJsonParseError::NoError && wrappedDoc.isArray() &&
+        wrappedDoc.array().size() == 1) {
+      return CreateErrorResponse("null", JsonRpcError::kInvalidRequest,
+                                 "Invalid Request: expected JSON object");
+    }
     qCritical() << "JSON parse error:" << parseError.errorString();
     return CreateErrorResponse("null", JsonRpcError::kParseError, "Parse error");
+  }
+
+  if (!doc.isObject()) {
+    return CreateErrorResponse("null", JsonRpcError::kInvalidRequest,
+                               "Invalid Request: expected JSON object");
   }
 
   QJsonObject request = doc.object();
@@ -127,14 +213,7 @@ QString JsonRpcHandler::HandleMessage(const QString& message) {
   bool is_notification = !request.contains("id");
 
   if (!is_notification) {
-    QJsonValue idValue = request["id"];
-    if (idValue.isString()) {
-      id_str = QString("\"%1\"").arg(idValue.toString());
-    } else if (idValue.isDouble()) {
-      id_str = QString::number(static_cast<int>(idValue.toDouble()));
-    } else if (idValue.isNull()) {
-      id_str = "null";
-    }
+    id_str = serializeJsonId(request["id"]);
   }
 
   // Get params (default to empty object)
@@ -159,8 +238,13 @@ QString JsonRpcHandler::HandleMessage(const QString& message) {
     QJsonValue paramsValue;
     if (request.contains("params")) {
       // Convert nlohmann::json to QJsonValue
-      QString paramsJson = QString::fromStdString(request["params"].dump());
-      paramsValue = QJsonDocument::fromJson(paramsJson.toUtf8()).object();
+      const QString paramsJson = QString::fromStdString(request["params"].dump());
+      const QJsonDocument paramsDoc = QJsonDocument::fromJson(paramsJson.toUtf8());
+      if (paramsDoc.isObject()) {
+        paramsValue = paramsDoc.object();
+      } else if (paramsDoc.isArray()) {
+        paramsValue = paramsDoc.array();
+      }
     }
 #else
     QJsonValue paramsValue = request.value("params");
@@ -204,18 +288,9 @@ QString JsonRpcHandler::CreateSuccessResponse(const QString& id, const QString& 
 }
 
 QString JsonRpcHandler::CreateErrorResponse(const QString& id, int code, const QString& message) {
-  // Escape message for JSON
-  QString escaped_message = message;
-  escaped_message.replace("\\", "\\\\");
-  escaped_message.replace("\"", "\\\"");
-  escaped_message.replace("\n", "\\n");
-  escaped_message.replace("\r", "\\r");
-  escaped_message.replace("\t", "\\t");
-
+  const QString escaped_message = escapeJsonStringContent(message);
   return QString(R"({"jsonrpc":"2.0","id":%1,"error":{"code":%2,"message":"%3"}})")
-      .arg(id)
-      .arg(code)
-      .arg(escaped_message);
+      .arg(id, QString::number(code), escaped_message);
 }
 
 QString JsonRpcHandler::CreateErrorResponse(const QString& id, int code, const QString& message,
@@ -229,20 +304,7 @@ QString JsonRpcHandler::CreateErrorResponse(const QString& id, int code, const Q
 
   QJsonObject response;
   response["jsonrpc"] = "2.0";
-  // Parse id - could be number, string, or null
-  if (id == "null") {
-    response["id"] = QJsonValue::Null;
-  } else if (id.startsWith('"')) {
-    response["id"] = id.mid(1, id.length() - 2);
-  } else {
-    bool ok = false;
-    int numId = id.toInt(&ok);
-    if (ok) {
-      response["id"] = numId;
-    } else {
-      response["id"] = QJsonValue::Null;
-    }
-  }
+  response["id"] = parseJsonId(id);
   response["error"] = errorObj;
 
   return QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact));

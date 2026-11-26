@@ -18,6 +18,7 @@
 #include "common/qt_matchers.h"
 #include "core/object_registry.h"
 #include "interaction/input_simulator.h"
+#include "interaction/touch_simulator.h"
 #include "transport/jsonrpc_handler.h"
 
 #include <cmath>
@@ -494,6 +495,7 @@ class TestUiTouch : public QObject {
   void testAnotherWindowWhileHeldIsRejected();
   void testWindowDestroyedWhileHeldClearsState();
   void testNonVisualObjectIsRejected();
+  void testNullWindowFrameReturnsEmpty();
 
  private:
   /// @brief qt.ui.touch at @p target with @p points.
@@ -1156,6 +1158,12 @@ void TestUiTouch::testNonVisualObjectIsRejected() {
   QEXPECT_THAT(touch(&plain, fingers({finger(0, 1, 1)})),
                IsJsonRpcError(ErrorCode::kObjectNotWidget));
   m_lastTarget = nullptr;
+}
+
+void TestUiTouch::testNullWindowFrameReturnsEmpty() {
+  const QList<TouchReport> reports =
+      TouchSimulator::frame(nullptr, {TouchFinger{0, QPointF(10, 10)}});
+  QEXPECT_THAT(reports.isEmpty(), IsTrue());
 }
 
 QTEST_MAIN(TestUiTouch)

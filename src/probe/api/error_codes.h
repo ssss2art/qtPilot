@@ -26,7 +26,7 @@ constexpr int kNoActiveMenu = -32006;
 /// The named menu item is not present in the open menu.
 constexpr int kMenuItemNotFound = -32007;
 constexpr int kInvalidField =
-    -32004;  // Unknown value for a `parts` / `fields` / similar enum param
+    -32008;  // Unknown value for a `parts` / `fields` / similar enum param
 
 // Property errors (-32010 to -32019)
 constexpr int kPropertyNotFound = -32010;

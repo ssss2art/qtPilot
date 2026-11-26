@@ -28,6 +28,10 @@ class TestNotificationQueue : public QObject {
 
   void cleanupTestCase() {}
 
+  void init() { qunsetenv("QTPILOT_QUEUE_CAPACITY"); }
+
+  void cleanup() { qunsetenv("QTPILOT_QUEUE_CAPACITY"); }
+
   /// Enqueue N messages and verify FIFO order after draining.
   void testEnqueueDrain() {
     QWebSocket socket;
@@ -136,6 +140,33 @@ class TestNotificationQueue : public QObject {
     QWebSocket socket;
     qtPilot::NotificationQueue queue(&socket, 500, 50);
     QEXPECT_THAT(queue.capacity(), Eq(500));
+  }
+
+  /// Verify QTPILOT_QUEUE_CAPACITY environment variable overrides constructor capacity.
+  void testEnvCapacityOverride() {
+    qputenv("QTPILOT_QUEUE_CAPACITY", QByteArray("3"));
+    QWebSocket socket;
+    qtPilot::NotificationQueue queue(&socket, 100, 50);
+    QEXPECT_THAT(queue.capacity(), Eq(3));
+
+    for (int i = 0; i < 5; ++i) {
+      queue.enqueue(QString("msg_%1").arg(i));
+    }
+    QEXPECT_THAT(queue.queueSize(), Eq(3));
+    QEXPECT_THAT(queue.dropCount(), Eq(2));
+  }
+
+  /// Verify destroying the socket before drain() runs does not crash or dereference dangling
+  /// pointer.
+  void testDestroyedSocketIsSafe() {
+    auto* socket = new QWebSocket();
+    qtPilot::NotificationQueue queue(socket, 10, 5);
+    queue.enqueue(QStringLiteral("msg_0"));
+    queue.enqueue(QStringLiteral("msg_1"));
+    delete socket;
+
+    QCoreApplication::processEvents();
+    QEXPECT_THAT(queue.queueSize(), Eq(2));
   }
 
  private:

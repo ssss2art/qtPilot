@@ -162,9 +162,13 @@ qtPilot_add_test(NAME test_qwindow_input SOURCES test_qwindow_input.cpp
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
 if(QTPILOT_HAS_QML)
+    set(_qml_screenshot_env "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+    if(NOT APPLE)
+        list(APPEND _qml_screenshot_env "QT_QUICK_BACKEND=software")
+    endif()
     qtPilot_add_test(NAME test_qml_screenshot SOURCES test_qml_screenshot.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
-        ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+        ENV "${_qml_screenshot_env}")
 
     qtPilot_add_test(NAME test_qml_interaction SOURCES test_qml_interaction.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
@@ -300,7 +304,7 @@ target_compile_definitions(test_probe_version PRIVATE
 
 qtPilot_add_test(NAME test_computer_use_api SOURCES test_computer_use_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
 
 qtPilot_add_test(NAME test_chrome_mode_api SOURCES test_chrome_mode_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
@@ -317,6 +321,10 @@ qtPilot_add_test(NAME test_event_capture SOURCES test_event_capture.cpp
 qtPilot_add_test(NAME test_notification_queue SOURCES test_notification_queue.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+
+qtPilot_add_test(NAME test_probe_lifecycle SOURCES test_probe_lifecycle.cpp
+    LIBS Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::WebSockets
+    ENV "QTPILOT_BIND_ADDRESS=loopback;QTPILOT_PORT=0;QT_QPA_PLATFORM=minimal")
 
 # E2E admin injection test — requires elevated terminal to run.
 # Skips automatically (QSKIP) when not running as admin.
