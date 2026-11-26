@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 
 import pytest
 
@@ -624,23 +625,32 @@ def test_equivalent_unwraps_response_envelope_meta():
 class _ScriptedProbe:
     """Minimal probe stub for testing run_scenario failure handling."""
 
-    def __init__(self, handler) -> None:
+    def __init__(
+        self,
+        handler: Callable[[str, dict[str, object]], Awaitable[dict[str, object]]],
+    ) -> None:
         self._handler = handler
-        self.handlers: list = []
+        self.handlers: list[Callable[[str, dict[str, object]], None]] = []
 
-    def add_notification_handler(self, handler) -> None:
+    def add_notification_handler(
+        self, handler: Callable[[str, dict[str, object]], None]
+    ) -> None:
         self.handlers.append(handler)
 
-    def remove_notification_handler(self, handler) -> None:
+    def remove_notification_handler(
+        self, handler: Callable[[str, dict[str, object]], None]
+    ) -> None:
         if handler in self.handlers:
             self.handlers.remove(handler)
 
-    async def call(self, method: str, params: dict, **kwargs):
+    async def call(
+        self, method: str, params: dict[str, object], **kwargs: object
+    ) -> dict[str, object]:
         return await self._handler(method, params)
 
 
 @pytest.mark.asyncio
-async def test_run_scenario_aborts_cleanly_on_action_connection_error():
+async def test_run_scenario_aborts_cleanly_on_action_connection_error() -> None:
     from qtpilot.replay import Action, Step, run_scenario
 
     scenario = Scenario(
@@ -648,7 +658,7 @@ async def test_run_scenario_aborts_cleanly_on_action_connection_error():
         source="action-conn-error.jsonl",
     )
 
-    async def handler(method: str, params: dict):
+    async def handler(method: str, params: dict[str, object]) -> dict[str, object]:
         if method == "qt.ui.click":
             raise ConnectionResetError("socket closed")
         return {}
@@ -660,7 +670,7 @@ async def test_run_scenario_aborts_cleanly_on_action_connection_error():
 
 
 @pytest.mark.asyncio
-async def test_run_scenario_aborts_cleanly_on_setup_connection_error():
+async def test_run_scenario_aborts_cleanly_on_setup_connection_error() -> None:
     from qtpilot.replay import Action, Step, run_scenario
 
     scenario = Scenario(
@@ -674,7 +684,7 @@ async def test_run_scenario_aborts_cleanly_on_setup_connection_error():
         source="setup-conn-error.jsonl",
     )
 
-    async def handler(method: str, params: dict):
+    async def handler(method: str, params: dict[str, object]) -> dict[str, object]:
         if method == "qt.signals.subscribe":
             raise OSError("broken pipe")
         return {}
@@ -686,7 +696,7 @@ async def test_run_scenario_aborts_cleanly_on_setup_connection_error():
 
 
 @pytest.mark.asyncio
-async def test_run_scenario_aborts_cleanly_on_observation_connection_error():
+async def test_run_scenario_aborts_cleanly_on_observation_connection_error() -> None:
     from qtpilot.replay import Action, Observation, Step, run_scenario
 
     scenario = Scenario(
@@ -700,7 +710,7 @@ async def test_run_scenario_aborts_cleanly_on_observation_connection_error():
         source="obs-conn-error.jsonl",
     )
 
-    async def handler(method: str, params: dict):
+    async def handler(method: str, params: dict[str, object]) -> dict[str, object]:
         if method == "qt.properties.get":
             raise ConnectionError("probe disconnected")
         return {}
@@ -712,7 +722,7 @@ async def test_run_scenario_aborts_cleanly_on_observation_connection_error():
 
 
 @pytest.mark.asyncio
-async def test_tool_to_method_matches_all_registered_mode_tools():
+async def test_tool_to_method_matches_all_registered_mode_tools() -> None:
     from qtpilot import _mcp_compat
     from qtpilot.replay import TOOL_TO_METHOD
     from qtpilot.server import create_server
