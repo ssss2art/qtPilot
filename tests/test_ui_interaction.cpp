@@ -10,9 +10,12 @@
 #include <QApplication>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QPointer>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QSlider>
 #include <QVBoxLayout>
+#include <QWindow>
 #include <QtTest>
 
 using namespace qtPilot;
@@ -30,10 +33,15 @@ class TestUIInteraction : public QObject {
   void testMouseClickPosition();
   void testSendText();
   void testSendKeySequence();
+  void testMouseDragSliderOutsideBounds();
+  void testMouseDragDeleteOnPress();
+  void testSendTextWindowDeleteOnKey();
+  void testSendKeyWindowDeleteOnKey();
 
   // Screenshot tests
   void testCaptureWidget();
   void testCaptureRegion();
+  void testCaptureRegionEmptyAndOutOfBounds();
 
   // HitTest tests
   void testWidgetGeometry();
@@ -130,6 +138,92 @@ void TestUIInteraction::testSendKeySequence() {
   QEXPECT_THAT(m_lineEdit->selectedText(), QStrEq("Select Me"));
 }
 
+void TestUIInteraction::testMouseDragSliderOutsideBounds() {
+  QWidget container;
+  container.setGeometry(100, 100, 300, 120);
+  auto* slider = new QSlider(Qt::Horizontal, &container);
+  slider->setRange(0, 100);
+  slider->setValue(0);
+  slider->setGeometry(20, 40, 100, 30);
+  container.show();
+  QApplication::processEvents();
+
+  // Drag from the left side of the slider to a point outside the slider's rect
+  // (over the container). Move and Release must still route to the slider via
+  // mouseGrabber()/startWidget rather than childAt(endPos).
+  const QPoint startPos = slider->geometry().center() - QPoint(40, 0);
+  const QPoint endPos(260, slider->geometry().center().y());
+  InputSimulator::mouseDrag(&container, startPos, endPos);
+
+  QEXPECT_THAT(slider->value(), Gt(0));
+}
+
+namespace {
+
+class DeleteOnPressWidget : public QWidget {
+ public:
+  using QWidget::QWidget;
+
+ protected:
+  void mousePressEvent(QMouseEvent* event) override {
+    event->accept();
+    deleteLater();
+  }
+};
+
+class DeleteOnKeyWindow : public QWindow {
+ protected:
+  void keyPressEvent(QKeyEvent* event) override {
+    event->accept();
+    delete this;
+  }
+};
+
+}  // namespace
+
+void TestUIInteraction::testMouseDragDeleteOnPress() {
+  auto* host = new QWidget();
+  host->setGeometry(100, 100, 200, 200);
+  auto* child = new DeleteOnPressWidget(host);
+  child->setGeometry(20, 20, 80, 80);
+  host->show();
+  QApplication::processEvents();
+
+  QPointer<QWidget> hostGuard(host);
+  QPointer<QWidget> childGuard(child);
+
+  // Child deletes itself via deleteLater() on press; processEvents() runs inside
+  // mouseDrag before Move/Release. Must not UAF.
+  InputSimulator::mouseDrag(host, QPoint(50, 50), QPoint(150, 150));
+  QApplication::processEvents();
+
+  QEXPECT_THAT(childGuard.isNull(), IsTrue());
+  QEXPECT_THAT(hostGuard.isNull(), IsFalse());
+  delete host;
+}
+
+void TestUIInteraction::testSendTextWindowDeleteOnKey() {
+  auto* win = new DeleteOnKeyWindow();
+  win->setGeometry(100, 100, 100, 100);
+  win->show();
+  QApplication::processEvents();
+
+  QPointer<QWindow> guard(win);
+  InputSimulator::sendText(win, QStringLiteral("abc"));
+  QEXPECT_THAT(guard.isNull(), IsTrue());
+}
+
+void TestUIInteraction::testSendKeyWindowDeleteOnKey() {
+  auto* win = new DeleteOnKeyWindow();
+  win->setGeometry(100, 100, 100, 100);
+  win->show();
+  QApplication::processEvents();
+
+  QPointer<QWindow> guard(win);
+  InputSimulator::sendKey(win, Qt::Key_A);
+  QEXPECT_THAT(guard.isNull(), IsTrue());
+}
+
 // === Screenshot tests ===
 
 void TestUIInteraction::testCaptureWidget() {
@@ -158,6 +252,16 @@ void TestUIInteraction::testCaptureRegion() {
   QEXPECT_THAT(decoded.startsWith("\x89PNG"), IsTrue());
 }
 
+void TestUIInteraction::testCaptureRegionEmptyAndOutOfBounds() {
+  QVERIFY_THROWS_EXCEPTION(std::invalid_argument, Screenshot::captureRegion(m_window, QRect()));
+  QVERIFY_THROWS_EXCEPTION(std::invalid_argument,
+                           Screenshot::captureRegion(m_window, QRect(0, 0, 0, 10)));
+  QVERIFY_THROWS_EXCEPTION(std::invalid_argument,
+                           Screenshot::captureRegion(m_window, QRect(0, 0, -5, 10)));
+  QVERIFY_THROWS_EXCEPTION(std::exception,
+                           Screenshot::captureRegion(m_window, QRect(10000, 10000, 50, 50)));
+}
+
 // === HitTest tests ===
 
 void TestUIInteraction::testWidgetGeometry() {
@@ -165,26 +269,18 @@ void TestUIInteraction::testWidgetGeometry() {
   QJsonObject geo = HitTest::widgetGeometry(m_button);
 
   // Verify all required fields are present
-  QEXPECT_THAT(geo, AllOf(
-      HasJsonField("local"),
-      HasJsonField("global"),
-      HasJsonField("devicePixelRatio")));
+  QEXPECT_THAT(
+      geo, AllOf(HasJsonField("local"), HasJsonField("global"), HasJsonField("devicePixelRatio")));
 
   // Verify local geometry
   QJsonObject local = geo["local"].toObject();
-  QEXPECT_THAT(local, AllOf(
-      HasJsonField("x"),
-      HasJsonField("y"),
-      HasJsonField("width", Gt(0)),
-      HasJsonField("height", Gt(0))));
+  QEXPECT_THAT(local, AllOf(HasJsonField("x"), HasJsonField("y"), HasJsonField("width", Gt(0)),
+                            HasJsonField("height", Gt(0))));
 
   // Verify global geometry
   QJsonObject global = geo["global"].toObject();
-  QEXPECT_THAT(global, AllOf(
-      HasJsonField("x"),
-      HasJsonField("y"),
-      HasJsonField("width"),
-      HasJsonField("height")));
+  QEXPECT_THAT(global, AllOf(HasJsonField("x"), HasJsonField("y"), HasJsonField("width"),
+                             HasJsonField("height")));
 
   // Verify devicePixelRatio is reasonable (usually 1.0, 1.5, 2.0)
   double dpr = geo["devicePixelRatio"].toDouble();

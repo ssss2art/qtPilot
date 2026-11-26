@@ -101,6 +101,9 @@ QList<TouchReport> TouchSimulator::plan(const QList<TouchFinger>& fingers) {
 }
 
 QList<TouchReport> TouchSimulator::frame(QWindow* window, const QList<TouchFinger>& fingers) {
+  if (!window) {
+    return {};
+  }
   HeldTouch& state = held();
   const QMap<int, QPointF> next = indexFingers(fingers);
   const QMap<int, TouchReport> reports = computeReports(state, next);
