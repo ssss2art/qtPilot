@@ -2677,8 +2677,8 @@ void NativeModeApi::registerUiMethods() {
             if (isClick || isDoubleClick) {
               const QPoint center = safeView->visualRect(target).center();
               if (isClick) {
-                InputSimulator::mouseClick(safeView->viewport(),
-                                           InputSimulator::MouseButton::Left, center);
+                InputSimulator::mouseClick(safeView->viewport(), InputSimulator::MouseButton::Left,
+                                           center);
               } else {
                 InputSimulator::mouseDoubleClick(safeView->viewport(),
                                                  InputSimulator::MouseButton::Left, center);
@@ -2698,8 +2698,7 @@ void NativeModeApi::registerUiMethods() {
                                      QJsonObject{{QStringLiteral("editColumn"), editColumn},
                                                  {QStringLiteral("columnCount"), colCount}});
             }
-            const QModelIndex editIdx =
-                safeModel->index(target.row(), editColumn, target.parent());
+            const QModelIndex editIdx = safeModel->index(target.row(), editColumn, target.parent());
             if (!(safeModel->flags(editIdx) & Qt::ItemIsEditable)) {
               QJsonArray pathOut;
               for (QModelIndex w = editIdx; w.isValid(); w = w.parent())

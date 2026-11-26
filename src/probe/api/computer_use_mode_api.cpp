@@ -243,8 +243,8 @@ void maybeAddScreenshot(QJsonObject& result, const QJsonObject& params, const Cu
 
 /// @brief Dispatch a click (press+release) to a widget or window target.
 /// @return The widget clicked, or null if it was a window -- or if the click destroyed it.
-QPointer<QWidget> dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x,
-                                int y, bool sa, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+QPointer<QWidget> dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y,
+                                bool sa, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
     InputSimulator::mouseClick(t.window, button, resolveWindowLocal(t.window, x, y, sa), modifiers);
     return nullptr;
@@ -813,7 +813,8 @@ void ComputerUseModeApi::registerKeyboardMethods() {
       const bool isTab = combo.key == Qt::Key_Tab || combo.key == Qt::Key_Backtab;
       const bool moveForward =
           combo.key != Qt::Key_Backtab && !(combo.modifiers & Qt::ShiftModifier);
-      const QPointer<QWidget> tabTarget = isTab ? (moveForward ? focusWidget->nextInFocusChain()
+      const QPointer<QWidget> tabTarget = isTab
+                                              ? (moveForward ? focusWidget->nextInFocusChain()
                                                              : focusWidget->previousInFocusChain())
                                               : nullptr;
       t.widget = focusWidget->window();
