@@ -304,7 +304,7 @@ target_compile_definitions(test_probe_version PRIVATE
 
 qtPilot_add_test(NAME test_computer_use_api SOURCES test_computer_use_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
-    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+    ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
 
 qtPilot_add_test(NAME test_chrome_mode_api SOURCES test_chrome_mode_api.cpp
     LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets
