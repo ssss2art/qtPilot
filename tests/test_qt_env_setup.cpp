@@ -191,7 +191,7 @@ void TestQtEnvSetup::pathsWithSpacesAndUnicode() {
   QVERIFY(tempDir.isValid());
 
   const QString unicodePrefix =
-      QDir(tempDir.path()).filePath(QStringLiteral("Qt 6.12 \u6D4B\u8BD5/prefix"));
+      QDir(tempDir.path()).filePath(QString::fromStdU16String(u"Qt 6.12 \u6D4B\u8BD5/prefix"));
   QVERIFY(createMockQtPrefix(unicodePrefix));
 
   qunsetenv("QT_PLUGIN_PATH");

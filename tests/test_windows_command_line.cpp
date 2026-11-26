@@ -81,24 +81,26 @@ void TestWindowsCommandLine::buildsElevatedCmdParametersWithQuotingAndEnv() {
   QVERIFY(cmdLine.startsWith(QStringLiteral("/c \"")));
   QVERIFY(cmdLine.endsWith(QStringLiteral("\"")));
 
-  // Executable and arguments are encoded with quoteWindowsArgument().
-  QVERIFY(cmdLine.contains(QStringLiteral(R"("C:\Program Files\qtPilot\qtPilot-launcher.exe")")));
-  QVERIFY(cmdLine.contains(QStringLiteral(R"("--elevated")")));
-  QVERIFY(cmdLine.contains(QStringLiteral(R"("C:\Qt 6.8\\")")));
-  QVERIFY(cmdLine.contains(QStringLiteral(R"("foo&bar|baz%1")")));
-
-  // Env vars are forwarded via `set "VAR=val"` without embedded quotes breaking out.
-  QVERIFY(
-      cmdLine.contains(QStringLiteral(R"(set "QT_PLUGIN_PATH=C:\Qt 6.8\plugins;D:\extra&dir")")));
-  QVERIFY(
-      cmdLine.contains(QStringLiteral(R"(set "QTPILOT_AUTH_TOKEN_FILE=C:\tokens\authbad.txt")")));
+  // Executable and arguments are encoded with quoteWindowsArgument(), and env vars are forwarded
+  // via `set "VAR=val"` without embedded quotes breaking out.
+  // Keep raw string literals outside QVERIFY() so Qt 5.15 MSVC macro stringizing never sees them.
+  const QStringList expectedFragments = {
+      QStringLiteral(R"("C:\Program Files\qtPilot\qtPilot-launcher.exe")"),
+      QStringLiteral(R"("--elevated")"),
+      QStringLiteral(R"("C:\Qt 6.8\\")"),
+      QStringLiteral(R"("foo&bar|baz%1")"),
+      QStringLiteral(R"(set "QT_PLUGIN_PATH=C:\Qt 6.8\plugins;D:\extra&dir")"),
+      QStringLiteral(R"(set "QTPILOT_AUTH_TOKEN_FILE=C:\tokens\authbad.txt")"),
+  };
+  for (const QString& fragment : expectedFragments) {
+    QVERIFY2(cmdLine.contains(fragment), qPrintable(fragment));
+  }
 
   // Without env vars, launcher command is still wrapped in outer quotes for cmd.exe /c.
   const QString noEnvCmd = qtPilot::buildElevatedCmdParameters(executable, args, {});
-  QCOMPARE(
-      noEnvCmd,
-      QStringLiteral(
-          R"(/c ""C:\Program Files\qtPilot\qtPilot-launcher.exe" "--elevated" "--qt-dir" "C:\Qt 6.8\\" "foo&bar|baz%1"")"));
+  const QString expectedNoEnv = QStringLiteral(
+      R"(/c ""C:\Program Files\qtPilot\qtPilot-launcher.exe" "--elevated" "--qt-dir" "C:\Qt 6.8\\" "foo&bar|baz%1"")");
+  QCOMPARE(noEnvCmd, expectedNoEnv);
 }
 
 void TestWindowsCommandLine::forwardsSecurityEnvVarsAcrossElevation() {
