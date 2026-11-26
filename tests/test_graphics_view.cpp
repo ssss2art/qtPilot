@@ -19,6 +19,7 @@
 #include "transport/jsonrpc_handler.h"
 
 #include <stdexcept>
+#include <utility>
 
 #include <QApplication>
 #include <QGraphicsProxyWidget>
@@ -27,6 +28,7 @@
 #include <QGraphicsView>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QPointer>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QWheelEvent>
@@ -176,6 +178,7 @@ class TestGraphicsView : public QObject {
   void uiClickRejectsAnOffViewportGraphicsObject();
   void uiDoubleClickAcceptsAGraphicsObject();
   void uiSendKeysAcceptsAGraphicsObject();
+  void uiSendKeysStopsWhenTheTextDestroysTheView();
   void uiWheelOnAGraphicsObjectReachesItsViewportAtTheItem();
   void uiWheelSendsOneEventPerNotchWithSignAndModifiers();
   void uiWheelTrackpadSendsAPhasedGesture();
@@ -1001,6 +1004,34 @@ void TestGraphicsView::uiSendKeysAcceptsAGraphicsObject() {
   QEXPECT_THAT(spy.at(0).at(0).toString(), QStrEq(QStringLiteral("a")));
   QEXPECT_THAT(spy.at(1).at(0).toString(), QStrEq(QStringLiteral("b")));
   QEXPECT_THAT(spy.at(2).at(0).toString(), QStrEq(QStringLiteral("c")));
+}
+
+void TestGraphicsView::uiSendKeysStopsWhenTheTextDestroysTheView() {
+  // Return commits an in-place edit and the app disposes of the view, queued,
+  // so the teardown lands in the event processing after the text is typed and
+  // before the key sequence would be sent.
+  connect(
+      m_item, &TestSceneItem::keyText, this,
+      [this](const QString& text) {
+        if (text == QStringLiteral("\n"))
+          delete std::exchange(m_view, nullptr);
+      },
+      Qt::QueuedConnection);
+  const QPointer<QGraphicsView> view(m_view);
+
+  const QJsonObject result =
+      callResult(QStringLiteral("qt.ui.sendKeys"),
+                 QJsonObject{
+                     {QStringLiteral("objectId"), ObjectRegistry::instance()->objectId(m_item)},
+                     {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(m_view)},
+                     {QStringLiteral("text"), QStringLiteral("x\n")},
+                     {QStringLiteral("sequence"), QStringLiteral("Ctrl+A")}})
+          .toObject();
+
+  QEXPECT_THAT(view.isNull(), IsTrue());
+  QEXPECT_THAT(result, AllOf(JsonField("ok", true), JsonField("targetDestroyed", true),
+                             JsonField("destroyedDuring", QStrEq(QStringLiteral("sendText")))));
+  QEXPECT_THAT(result.contains(QStringLiteral("viewObjectId")), IsFalse());
 }
 
 void TestGraphicsView::inspectGeometryPartCoversGraphicsObjects() {

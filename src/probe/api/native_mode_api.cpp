@@ -46,6 +46,7 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QPersistentModelIndex>
 #include <QPointer>
 #include <QScopeGuard>
 #include <QSet>
@@ -957,23 +958,38 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
   const Qt::KeyboardModifiers modifiers =
       ModifierParser::parse(rawModifiers, QStringLiteral("qt.ui.sendKeys"));
 
+  // Typing runs application code that may destroy the target: Return commits
+  // an in-place editor that then disposes of itself. Each branch holds its
+  // target in a guard and stops at the first step that killed it, reporting
+  // which one, instead of sending the key sequence to freed memory.
+  const auto destroyedDuring = [](QJsonObject reply, const char* step) {
+    reply[QStringLiteral("targetDestroyed")] = true;
+    reply[QStringLiteral("destroyedDuring")] = QString::fromLatin1(step);
+    return reply;
+  };
+
   if (auto* item = qobject_cast<QGraphicsObject*>(obj)) {
     QGraphicsView* requestedView =
         resolveViewParam(params, QStringLiteral("viewObjectId"), QStringLiteral("qt.ui.sendKeys"));
-    QGraphicsView* view =
-        resolveGraphicsItemView(item, requestedView, QStringLiteral("qt.ui.sendKeys"));
+    const QPointer<QGraphicsView> view(
+        resolveGraphicsItemView(item, requestedView, QStringLiteral("qt.ui.sendKeys")));
+    const QJsonObject reply{{QStringLiteral("ok"), true},
+                            {QStringLiteral("target"), QStringLiteral("graphicsItem")}};
     item->setFocus(Qt::OtherFocusReason);
     view->viewport()->setFocus(Qt::OtherFocusReason);
     if (!text.isEmpty()) {
       InputSimulator::sendText(view->viewport(), text, modifiers);
+      if (!view)
+        return destroyedDuring(reply, "sendText");
     }
     if (!sequence.isEmpty()) {
       InputSimulator::sendKeySequence(view->viewport(), sequence);
+      if (!view)
+        return destroyedDuring(reply, "sendKeySequence");
     }
-    return QJsonObject{
-        {QStringLiteral("ok"), true},
-        {QStringLiteral("target"), QStringLiteral("graphicsItem")},
-        {QStringLiteral("viewObjectId"), ObjectRegistry::instance()->objectId(view)}};
+    QJsonObject alive = reply;
+    alive[QStringLiteral("viewObjectId")] = ObjectRegistry::instance()->objectId(view);
+    return alive;
   }
 
 #ifdef QTPILOT_HAS_QML
@@ -986,14 +1002,20 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
           QJsonObject{{QStringLiteral("objectId"), objectId}});
     }
     item->forceActiveFocus();
+    const QPointer<QQuickWindow> window(w);
+    const QJsonObject reply{{QStringLiteral("ok"), true},
+                            {QStringLiteral("target"), QStringLiteral("quickItem")}};
     if (!text.isEmpty()) {
-      InputSimulator::sendText(w, text, modifiers);
+      InputSimulator::sendText(window, text, modifiers);
+      if (!window)
+        return destroyedDuring(reply, "sendText");
     }
     if (!sequence.isEmpty()) {
-      InputSimulator::sendKeySequence(w, sequence);
+      InputSimulator::sendKeySequence(window, sequence);
+      if (!window)
+        return destroyedDuring(reply, "sendKeySequence");
     }
-    return QJsonObject{{QStringLiteral("ok"), true},
-                       {QStringLiteral("target"), QStringLiteral("quickItem")}};
+    return reply;
   }
 #endif
 
@@ -1006,13 +1028,19 @@ QJsonObject handleUiSendKeys(const QJsonObject& params) {
             {QStringLiteral("className"), QString::fromUtf8(obj->metaObject()->className())}});
   }
 
+  const QPointer<QWidget> target(widget);
+  const QJsonObject reply{{QStringLiteral("ok"), true}};
   if (!text.isEmpty()) {
-    InputSimulator::sendText(widget, text, modifiers);
+    InputSimulator::sendText(target, text, modifiers);
+    if (!target)
+      return destroyedDuring(reply, "sendText");
   }
   if (!sequence.isEmpty()) {
-    InputSimulator::sendKeySequence(widget, sequence);
+    InputSimulator::sendKeySequence(target, sequence);
+    if (!target)
+      return destroyedDuring(reply, "sendKeySequence");
   }
-  return QJsonObject{{QStringLiteral("ok"), true}};
+  return reply;
 }
 
 /// @brief A widget point, walked out through any QGraphicsProxyWidget that embeds it.
@@ -2555,6 +2583,44 @@ void NativeModeApi::registerUiMethods() {
                           {QStringLiteral("columnCount"), colCount}});
         }
 
+        // Everything below runs application code -- signal handlers, and the
+        // event processing InputSimulator does after delivering input -- that
+        // may destroy the view, the model or the target row. (A transient
+        // popup editor commits on the click it was waiting for and tears its
+        // list view and model down.) So snapshot the row now, hold the targets
+        // in guards, and re-check them after every step that can run app code.
+        const auto rowData = [&](QAbstractItemModel* m, const QModelIndex& idx) {
+          QJsonObject row = ModelNavigator::indexToRowData(m, idx, {Qt::DisplayRole});
+          row[QStringLiteral("found")] = true;
+          row[QStringLiteral("action")] = action;
+          if (hasItemPath)
+            row[QStringLiteral("itemPath")] = p[QStringLiteral("itemPath")];
+          return row;
+        };
+        const QJsonObject before = rowData(model, rowTarget);
+
+        const QPointer<QAbstractItemView> safeView(view);
+        const QPointer<QComboBox> safeCombo(combo);
+        const QPointer<QAbstractItemModel> safeModel(model);
+        const QPersistentModelIndex target(
+            model->index(rowTarget.row(), column, rowTarget.parent()));
+        // safeModel first: a persistent index is never consulted on a dead model.
+        const auto alive = [&]() {
+          return safeModel && target.isValid() && (safeView || safeCombo);
+        };
+        // A surviving target reports the row as it is after the action; a
+        // destroyed one reports the snapshot and the step it died in.
+        const auto finish = [&](const char* destroyedDuring) {
+          QJsonObject result = before;
+          if (destroyedDuring) {
+            result[QStringLiteral("targetDestroyed")] = true;
+            result[QStringLiteral("destroyedDuring")] = QString::fromLatin1(destroyedDuring);
+          } else {
+            result = rowData(safeModel, target);
+          }
+          return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+        };
+
         if (combo) {
           // Combo boxes: length-1 paths only; actions collapse to setCurrentIndex.
           if (action == QStringLiteral("edit")) {
@@ -2567,7 +2633,9 @@ void NativeModeApi::registerUiMethods() {
           }
           if (action == QStringLiteral("select") || action == QStringLiteral("click") ||
               action == QStringLiteral("doubleClick")) {
-            combo->setCurrentIndex(rowTarget.row());
+            safeCombo->setCurrentIndex(target.row());
+            if (!alive())
+              return finish("setCurrentIndex");
           } else {
             throw JsonRpcException(
                 JsonRpcError::kInvalidParams, QStringLiteral("Unknown action: %1").arg(action),
@@ -2577,35 +2645,47 @@ void NativeModeApi::registerUiMethods() {
                                         QStringLiteral("doubleClick")}}});
           }
         } else {
-          const QModelIndex actionTarget =
-              model->index(rowTarget.row(), column, rowTarget.parent());
-
           const bool wantExpand =
               p.contains(QStringLiteral("expand")) ? p[QStringLiteral("expand")].toBool() : true;
           const bool wantScroll =
               p.contains(QStringLiteral("scroll")) ? p[QStringLiteral("scroll")].toBool() : true;
           if (wantExpand) {
             if (auto* treeView = qobject_cast<QTreeView*>(view)) {
-              for (QModelIndex anc = actionTarget.parent(); anc.isValid(); anc = anc.parent()) {
-                treeView->expand(anc);
+              // Collected up front: an expand can reshape the tree under a walk.
+              QList<QPersistentModelIndex> ancestors;
+              for (QModelIndex anc = target.parent(); anc.isValid(); anc = anc.parent())
+                ancestors.append(anc);
+              for (const QPersistentModelIndex& anc : ancestors) {
+                treeView->expand(anc);  // safeView is treeView, checked by alive()
+                if (!alive())
+                  return finish("expand");
               }
             }
           }
-          if (wantScroll)
-            view->scrollTo(actionTarget);
+          if (wantScroll) {
+            safeView->scrollTo(target);
+            if (!alive())
+              return finish("scrollTo");
+          }
 
-          if (action == QStringLiteral("select")) {
-            view->setCurrentIndex(actionTarget);
-          } else if (action == QStringLiteral("click")) {
-            view->setCurrentIndex(actionTarget);
-            const QRect rect = view->visualRect(actionTarget);
-            InputSimulator::mouseClick(view->viewport(), InputSimulator::MouseButton::Left,
-                                       rect.center());
-          } else if (action == QStringLiteral("doubleClick")) {
-            view->setCurrentIndex(actionTarget);
-            const QRect rect = view->visualRect(actionTarget);
-            InputSimulator::mouseDoubleClick(view->viewport(), InputSimulator::MouseButton::Left,
-                                             rect.center());
+          const bool isClick = action == QStringLiteral("click");
+          const bool isDoubleClick = action == QStringLiteral("doubleClick");
+          if (action == QStringLiteral("select") || isClick || isDoubleClick) {
+            safeView->setCurrentIndex(target);
+            if (!alive())
+              return finish("setCurrentIndex");
+            if (isClick || isDoubleClick) {
+              const QPoint center = safeView->visualRect(target).center();
+              if (isClick) {
+                InputSimulator::mouseClick(safeView->viewport(), InputSimulator::MouseButton::Left,
+                                           center);
+              } else {
+                InputSimulator::mouseDoubleClick(safeView->viewport(),
+                                                 InputSimulator::MouseButton::Left, center);
+              }
+              if (!alive())
+                return finish(isClick ? "click" : "doubleClick");
+            }
           } else if (action == QStringLiteral("edit")) {
             const int editColumn = p.contains(QStringLiteral("editColumn"))
                                        ? p[QStringLiteral("editColumn")].toInt()
@@ -2618,9 +2698,8 @@ void NativeModeApi::registerUiMethods() {
                                      QJsonObject{{QStringLiteral("editColumn"), editColumn},
                                                  {QStringLiteral("columnCount"), colCount}});
             }
-            const QModelIndex editIdx =
-                model->index(rowTarget.row(), editColumn, rowTarget.parent());
-            if (!(model->flags(editIdx) & Qt::ItemIsEditable)) {
+            const QModelIndex editIdx = safeModel->index(target.row(), editColumn, target.parent());
+            if (!(safeModel->flags(editIdx) & Qt::ItemIsEditable)) {
               QJsonArray pathOut;
               for (QModelIndex w = editIdx; w.isValid(); w = w.parent())
                 pathOut.prepend(w.row());
@@ -2629,8 +2708,13 @@ void NativeModeApi::registerUiMethods() {
                                      QJsonObject{{QStringLiteral("path"), pathOut},
                                                  {QStringLiteral("editColumn"), editColumn}});
             }
-            view->setCurrentIndex(editIdx);
-            view->edit(editIdx);
+            const QPersistentModelIndex editTarget(editIdx);
+            safeView->setCurrentIndex(editTarget);
+            if (!alive() || !editTarget.isValid())
+              return finish("setCurrentIndex");
+            safeView->edit(editTarget);
+            if (!alive() || !editTarget.isValid())
+              return finish("edit");
           } else {
             throw JsonRpcException(
                 JsonRpcError::kInvalidParams, QStringLiteral("Unknown action: %1").arg(action),
@@ -2641,12 +2725,7 @@ void NativeModeApi::registerUiMethods() {
           }
         }
 
-        QJsonObject result = ModelNavigator::indexToRowData(model, rowTarget, {Qt::DisplayRole});
-        result[QStringLiteral("found")] = true;
-        result[QStringLiteral("action")] = action;
-        if (hasItemPath)
-          result[QStringLiteral("itemPath")] = p[QStringLiteral("itemPath")];
-        return envelopeToString(ResponseEnvelope::wrap(result, objectId));
+        return finish(nullptr);
       });
 
   // qt.ui.screenshot

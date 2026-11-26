@@ -39,6 +39,9 @@ SUPPORTED_PROTOCOL_VERSION = 1
 
 DEFAULT_CALL_TIMEOUT = 30.0
 
+# Largest probe message accepted, so full-window screenshots from local and remote probes fit.
+MAX_PROBE_MESSAGE_BYTES = 256 * 1024 * 1024
+
 # Sentinel: lets call(timeout=None) mean "wait forever" while an omitted
 # argument still picks up the configured default.
 _UNSET: float = -1.0
@@ -276,7 +279,8 @@ class ProbeConnection:
         try:
             self._ws = await connect(
                 self._ws_url, open_timeout=5, ping_interval=10,
-                ping_timeout=30, close_timeout=5, **options,
+                ping_timeout=30, close_timeout=5, max_size=MAX_PROBE_MESSAGE_BYTES,
+                **options,
             )
         except Exception as exc:
             if security.token:

@@ -50,9 +50,10 @@ QString envelopeToString(const QJsonObject& envelope) {
 /// @brief A resolved computer-use target: either a QWidget (Widgets app) or a
 ///        top-level QWindow / QQuickWindow (pure Qt Quick app).
 struct CuTarget {
-  QWidget* widget = nullptr;
-  // QPointer so a window destroyed mid-action (e.g. a click that closes it,
-  // observed across a processEvents turn) is seen as null rather than dangling.
+  // Both QPointers: an action routinely destroys its own target -- a click on
+  // OK, or Escape, closes a delete-on-close dialog inside the event processing
+  // the action runs -- and the handler then has to see null, not freed memory.
+  QPointer<QWidget> widget;
   QPointer<QWindow> window;
   bool isWindow() const { return !window.isNull(); }
 };
@@ -241,16 +242,19 @@ void maybeAddScreenshot(QJsonObject& result, const QJsonObject& params, const Cu
 }
 
 /// @brief Dispatch a click (press+release) to a widget or window target.
-QWidget* dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y, bool sa,
-                       Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+/// @return The widget clicked, or null if it was a window -- or if the click destroyed it.
+QPointer<QWidget> dispatchClick(const CuTarget& t, InputSimulator::MouseButton button, int x, int y,
+                                bool sa, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
   if (t.isWindow()) {
     InputSimulator::mouseClick(t.window, button, resolveWindowLocal(t.window, x, y, sa), modifiers);
     return nullptr;
-  } else {
-    auto r = resolveWindowCoordinate(t.widget, x, y, sa);
-    InputSimulator::mouseClick(r.widget, button, r.localPos, modifiers);
-    return r.widget;
   }
+  const auto r = resolveWindowCoordinate(t.widget, x, y, sa);
+  // Guarded before the click: one that closes its dialog frees this widget, and
+  // a guard taken afterwards would be built from a dangling pointer.
+  const QPointer<QWidget> clicked(r.widget);
+  InputSimulator::mouseClick(r.widget, button, r.localPos, modifiers);
+  return clicked;
 }
 
 /// @brief Dispatch a double-click to a widget or window target.
@@ -338,21 +342,30 @@ QPoint grabberLocal(QWidget* grabber, int x, int y, bool screenAbsolute) {
                         : grabber->mapFrom(grabber->window(), QPoint(x, y));
 }
 
-/// @brief Update the tracked virtual cursor position after a coordinate-based action.
+/// @brief Where a coordinate-based action lands on screen.
+///
+/// Called before the action runs: the action may destroy the window the
+/// coordinates are relative to, and then there is nothing left to map them.
 /// @param t The active target (for mapToGlobal when using window-relative coords).
 /// @param x X coordinate as provided by the caller.
 /// @param y Y coordinate as provided by the caller.
 /// @param screenAbsolute If true, x/y are already screen-absolute.
-void trackPosition(const CuTarget& t, int x, int y, bool screenAbsolute) {
+QPoint simulatedGlobal(const CuTarget& t, int x, int y, bool screenAbsolute) {
   if (screenAbsolute) {
-    s_lastSimulatedPosition = QPoint(x, y);
-  } else if (t.isWindow()) {
-    s_lastSimulatedPosition = t.window->mapToGlobal(QPoint(x, y));
-  } else if (t.widget) {
-    s_lastSimulatedPosition = t.widget->mapToGlobal(QPoint(x, y));
-  } else {
-    s_lastSimulatedPosition = QPoint(x, y);
+    return QPoint(x, y);
   }
+  if (t.isWindow()) {
+    return t.window->mapToGlobal(QPoint(x, y));
+  }
+  if (t.widget) {
+    return t.widget->mapToGlobal(QPoint(x, y));
+  }
+  return QPoint(x, y);
+}
+
+/// @brief Record @p global as the virtual cursor position once an action has run.
+void trackPosition(const QPoint& global) {
+  s_lastSimulatedPosition = global;
   s_hasSimulatedPosition = true;
 }
 
@@ -421,6 +434,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
@@ -430,14 +444,15 @@ void ComputerUseModeApi::registerMouseMethods() {
 
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.click"));
-    QWidget* clickedWidget =
+    const QPointer<QWidget> clickedWidget =
         dispatchClick(t, parseMouseButton(buttonStr), x, y, screenAbsolute, modifiers);
     if (buttonStr == QStringLiteral("left")) {
-      m_lastKeyboardTarget =
-          clickedWidget && clickedWidget->focusPolicy() != Qt::NoFocus ? clickedWidget : nullptr;
+      m_lastKeyboardTarget = clickedWidget && clickedWidget->focusPolicy() != Qt::NoFocus
+                                 ? clickedWidget.data()
+                                 : nullptr;
     }
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -453,6 +468,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
 
     if (delayMs > 0) {
@@ -463,7 +479,7 @@ void ComputerUseModeApi::registerMouseMethods() {
         p.value(QStringLiteral("modifiers")), QStringLiteral("cu.rightClick"));
     dispatchClick(t, InputSimulator::MouseButton::Right, x, y, screenAbsolute, modifiers);
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -479,6 +495,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
 
     if (delayMs > 0) {
@@ -489,7 +506,7 @@ void ComputerUseModeApi::registerMouseMethods() {
         p.value(QStringLiteral("modifiers")), QStringLiteral("cu.middleClick"));
     dispatchClick(t, InputSimulator::MouseButton::Middle, x, y, screenAbsolute, modifiers);
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -505,6 +522,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     int delayMs = p[QStringLiteral("delay_ms")].toInt(0);
 
     if (delayMs > 0) {
@@ -515,7 +533,7 @@ void ComputerUseModeApi::registerMouseMethods() {
         p.value(QStringLiteral("modifiers")), QStringLiteral("cu.doubleClick"));
     dispatchDoubleClick(t, x, y, screenAbsolute, modifiers);
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -531,6 +549,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.mouseMove"));
 
@@ -555,7 +574,7 @@ void ComputerUseModeApi::registerMouseMethods() {
       InputSimulator::mouseMove(target.widget, target.localPos, Qt::NoButton, modifiers);
     }
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -573,6 +592,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int endX = p[QStringLiteral("endX")].toInt();
     int endY = p[QStringLiteral("endY")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, endX, endY, screenAbsolute);
     const Qt::KeyboardModifiers modifiers =
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.drag"));
 
@@ -619,7 +639,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     }
 
     // Track the END position (where the cursor ends up after drag)
-    trackPosition(t, endX, endY, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -635,6 +655,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
     const Qt::KeyboardModifiers modifiers =
@@ -659,7 +680,7 @@ void ComputerUseModeApi::registerMouseMethods() {
       InputSimulator::mousePress(r.widget, button, r.localPos, modifiers);
     }
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -675,6 +696,7 @@ void ComputerUseModeApi::registerMouseMethods() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     QString buttonStr = p[QStringLiteral("button")].toString(QStringLiteral("left"));
 
     const Qt::KeyboardModifiers modifiers =
@@ -698,7 +720,7 @@ void ComputerUseModeApi::registerMouseMethods() {
       forgetButton();
     }
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;
@@ -726,12 +748,13 @@ void ComputerUseModeApi::registerKeyboardMethods() {
     // Widget apps route to the focused QWidget; pure Qt Quick apps have no
     // focus QWidget, so fall back to the active window (QQuickWindow forwards
     // key events to its focused item).
-    QWidget* focusWidget =
+    // Guarded: typing can close what it types into (Return commits a dialog).
+    const QPointer<QWidget> focusWidget =
         m_lastKeyboardTarget ? m_lastKeyboardTarget.data() : QApplication::focusWidget();
     CuTarget t;
     if (focusWidget) {
-      InputSimulator::sendText(focusWidget, text);
       t.widget = focusWidget->window();
+      InputSimulator::sendText(focusWidget, text);
     } else {
       t = getActiveTarget();
       // getActiveTarget() resolves EITHER a QWidget (Widgets app) or a QWindow.
@@ -782,18 +805,20 @@ void ComputerUseModeApi::registerKeyboardMethods() {
 
     // Widget apps route to the focused QWidget; pure Qt Quick apps fall back to
     // the active window (QQuickWindow forwards key events to its focused item).
-    QWidget* focusWidget =
+    // Guarded: a key can close what it is sent to (Escape, or Enter on a dialog).
+    const QPointer<QWidget> focusWidget =
         m_lastKeyboardTarget ? m_lastKeyboardTarget.data() : QApplication::focusWidget();
     CuTarget t;
     if (focusWidget) {
       const bool isTab = combo.key == Qt::Key_Tab || combo.key == Qt::Key_Backtab;
       const bool moveForward =
           combo.key != Qt::Key_Backtab && !(combo.modifiers & Qt::ShiftModifier);
-      QWidget* tabTarget = isTab ? (moveForward ? focusWidget->nextInFocusChain()
-                                                : focusWidget->previousInFocusChain())
-                                 : nullptr;
-      InputSimulator::sendKey(focusWidget, combo.key, combo.modifiers);
+      const QPointer<QWidget> tabTarget = isTab
+                                              ? (moveForward ? focusWidget->nextInFocusChain()
+                                                             : focusWidget->previousInFocusChain())
+                                              : nullptr;
       t.widget = focusWidget->window();
+      InputSimulator::sendKey(focusWidget, combo.key, combo.modifiers);
       QWidget* reportedFocus = QApplication::focusWidget();
       const bool reportedInputFocus = reportedFocus && reportedFocus != focusWidget &&
                                       reportedFocus->focusPolicy() != Qt::NoFocus &&
@@ -801,7 +826,7 @@ void ComputerUseModeApi::registerKeyboardMethods() {
       if (isTab && !reportedInputFocus && tabTarget && tabTarget != focusWidget) {
         tabTarget->setFocus();
         reportedFocus = QApplication::focusWidget();
-        m_lastKeyboardTarget = reportedFocus ? reportedFocus : tabTarget;
+        m_lastKeyboardTarget = reportedFocus ? reportedFocus : tabTarget.data();
       } else if (reportedFocus) {
         m_lastKeyboardTarget = reportedFocus;
       }
@@ -844,6 +869,7 @@ void ComputerUseModeApi::registerScrollMethod() {
     int x = p[QStringLiteral("x")].toInt();
     int y = p[QStringLiteral("y")].toInt();
     bool screenAbsolute = p[QStringLiteral("screenAbsolute")].toBool(false);
+    const QPoint cursor = simulatedGlobal(t, x, y, screenAbsolute);
     QString direction = p[QStringLiteral("direction")].toString();
     int amount = p[QStringLiteral("amount")].toInt(3);
 
@@ -876,7 +902,7 @@ void ComputerUseModeApi::registerScrollMethod() {
         ModifierParser::parse(p.value(QStringLiteral("modifiers")), QStringLiteral("cu.scroll"));
     dispatchScroll(t, x, y, screenAbsolute, dx, dy, modifiers);
 
-    trackPosition(t, x, y, screenAbsolute);
+    trackPosition(cursor);
 
     QJsonObject result;
     result[QStringLiteral("success")] = true;

@@ -219,6 +219,7 @@ class TestNativeModeApi : public QObject {
   void testUiClick();
   void testUiDoubleClick();
   void testUiSendKeys();
+  void testApiUiSendKeysTextDestroysWidgetBeforeSequence();
 
   // Name map (qt.names.*)
   void testNamesRegisterAndList();
@@ -1260,6 +1261,30 @@ void TestNativeModeApi::testUiSendKeys() {
   QEXPECT_THAT(result.isObject(), IsTrue());
   QEXPECT_THAT(result.toObject(), HasJsonField("ok", Eq(true)));
   QEXPECT_THAT(m_testLineEdit->text(), QStrEq("Hello"));
+}
+
+void TestNativeModeApi::testApiUiSendKeysTextDestroysWidgetBeforeSequence() {
+  // An in-place editor that commits on Return and disposes of itself, queued,
+  // so the teardown runs in the event processing after the text is typed.
+  auto* editor = new QLineEdit();
+  editor->show();
+  QApplication::processEvents();
+  ObjectRegistry::instance()->scanExistingObjects(editor);
+  const QPointer<QLineEdit> safeEditor(editor);
+  connect(
+      editor, &QLineEdit::returnPressed, this, [safeEditor]() { delete safeEditor.data(); },
+      Qt::QueuedConnection);
+  const QString objectId = ObjectRegistry::instance()->objectId(editor);
+
+  const QJsonObject result =
+      callResult("qt.ui.sendKeys",
+                 QJsonObject{{"objectId", objectId}, {"text", "x\n"}, {"sequence", "Ctrl+A"}})
+          .toObject();
+
+  QEXPECT_THAT(safeEditor.isNull(), IsTrue());
+  QEXPECT_THAT(result, HasJsonField("ok", Eq(true)));
+  QEXPECT_THAT(result, HasJsonField("targetDestroyed", Eq(true)));
+  QEXPECT_THAT(result, HasJsonField("destroyedDuring", QStrEq("sendText")));
 }
 
 // ========================================================================

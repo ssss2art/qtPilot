@@ -9,7 +9,9 @@
 #include "transport/jsonrpc_handler.h"
 
 #include <QApplication>
+#include <QDialog>
 #include <QLineEdit>
+#include <QPointer>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QScrollArea>
@@ -81,6 +83,11 @@ class TestComputerUseApi : public QObject {
   void testClickOutOfBounds();
   void testTypeNoFocusedWidget();
   void testIncludeScreenshot();
+
+  // The action closes a delete-on-close dialog: the handler must not touch it after.
+  void testKeyThatClosesTheDialogDoesNotTouchIt();
+  void testClickThatClosesTheDialogDoesNotTouchIt();
+  void testClickThatClosesTheDialogStillTracksTheCursor();
 
  private:
   /// @brief Make a JSON-RPC call and return the full parsed response object.
@@ -635,6 +642,78 @@ void TestComputerUseApi::keyReachesWidgetAppWithoutExplicitFocus() {
 
   QJsonObject response = callRaw(QStringLiteral("cu.key"), QJsonObject{{"key", "ctrl+a"}});
   QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
+}
+
+namespace {
+
+/// @brief A non-modal dialog that deletes itself on close, with a line edit
+/// and an OK button -- the ordinary shape of a property or settings dialog.
+struct ClosingDialog {
+  QPointer<QDialog> dialog;
+  QPointer<QLineEdit> edit;
+  QPointer<QPushButton> ok;
+};
+
+ClosingDialog showClosingDialog() {
+  auto* dialog = new QDialog();
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setFixedSize(240, 120);
+  dialog->move(150, 120);  // off the origin, so window and screen coordinates differ
+  auto* layout = new QVBoxLayout(dialog);
+  auto* edit = new QLineEdit(dialog);
+  auto* ok = new QPushButton(QStringLiteral("OK"), dialog);
+  layout->addWidget(edit);
+  layout->addWidget(ok);
+  QObject::connect(ok, &QPushButton::clicked, dialog, &QDialog::accept);
+  dialog->show();
+  dialog->activateWindow();
+  QApplication::processEvents();
+  edit->setFocus();
+  QApplication::processEvents();
+  return {dialog, edit, ok};
+}
+
+}  // namespace
+
+void TestComputerUseApi::testKeyThatClosesTheDialogDoesNotTouchIt() {
+  const ClosingDialog d = showClosingDialog();
+  QVERIFY(QApplication::focusWidget() == d.edit.data());
+
+  const QJsonObject response = callRaw(QStringLiteral("cu.key"), QJsonObject{{"key", "Escape"}});
+
+  QEXPECT_THAT(d.dialog.isNull(), IsTrue());
+  QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
+}
+
+void TestComputerUseApi::testClickThatClosesTheDialogDoesNotTouchIt() {
+  const ClosingDialog d = showClosingDialog();
+  QVERIFY(QApplication::activeWindow() == d.dialog.data());
+  const QPoint okCenter = d.ok->mapTo(d.dialog, d.ok->rect().center());
+
+  const QJsonObject response = callRaw(QStringLiteral("cu.click"),
+                                       QJsonObject{{"x", okCenter.x()}, {"y", okCenter.y()}});
+
+  QEXPECT_THAT(d.dialog.isNull(), IsTrue());
+  QEXPECT_THAT(response, DoesNotHaveJsonField("error"));
+}
+
+void TestComputerUseApi::testClickThatClosesTheDialogStillTracksTheCursor() {
+  // The virtual cursor is where the click landed on screen, even though the
+  // window it was given relative to no longer exists to map it.
+  const ClosingDialog d = showClosingDialog();
+  QVERIFY(QApplication::activeWindow() == d.dialog.data());
+  const QPoint okCenter = d.ok->mapTo(d.dialog, d.ok->rect().center());
+  const QPoint expectedGlobal = d.dialog->mapToGlobal(okCenter);
+  QVERIFY(expectedGlobal != okCenter);
+
+  callResult(QStringLiteral("cu.click"), QJsonObject{{"x", okCenter.x()}, {"y", okCenter.y()}});
+  QVERIFY(d.dialog.isNull());
+  const QJsonObject cursor =
+      callResult(QStringLiteral("cu.cursorPosition"), QJsonObject()).toObject();
+
+  QEXPECT_THAT(cursor, HasJsonField("virtual", Eq(true)));
+  QEXPECT_THAT(cursor, HasJsonField("screenX", Eq(expectedGlobal.x())));
+  QEXPECT_THAT(cursor, HasJsonField("screenY", Eq(expectedGlobal.y())));
 }
 
 QTEST_MAIN(TestComputerUseApi)

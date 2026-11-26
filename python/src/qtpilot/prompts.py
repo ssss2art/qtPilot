@@ -28,7 +28,7 @@ def register_prompts(mcp: FastMCP) -> None:
             "   - Type text: `qt_ui_sendKeys(objectId=..., text='...')`.\n"
             "   - Touch / multi-touch gestures: `qt_ui_touch(objectId=..., points=[[0, x, y], ...])`; call with `points=[]` (or omit `points`) to lift all fingers.\n"
             "   - Batch multi-step macros in a single turn using `qtpilot_replay_run(steps=[...], exploratory=True)`; these macros do not certify acceptance.\n"
-            "   - Verify visual state with `qt_ui_screenshot()`."
+            "   - Verify visual state with `qt_ui_screenshot()` and open the file it returns."
         )
 
     @mcp.prompt
