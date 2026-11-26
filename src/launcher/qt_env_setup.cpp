@@ -4,6 +4,7 @@
 #include "qt_env_setup.h"
 
 #include <cstdio>
+#include <string>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -128,9 +129,28 @@ QString resolveQtPrefix(const QString& dir) {
   return QString();
 }
 
+/// @brief Read an environment variable preserving full UTF-16 on Windows across Qt 5/6.
+QString readEnvVar(const char* name) {
+#ifdef Q_OS_WIN
+  const QString wideName = QString::fromLatin1(name);
+  const DWORD len =
+      GetEnvironmentVariableW(reinterpret_cast<LPCWSTR>(wideName.utf16()), nullptr, 0);
+  if (len == 0)
+    return QString();
+  std::wstring buf(len, L'\0');
+  const DWORD written =
+      GetEnvironmentVariableW(reinterpret_cast<LPCWSTR>(wideName.utf16()), buf.data(), len);
+  if (written == 0)
+    return QString();
+  return QString::fromWCharArray(buf.data(), static_cast<int>(written));
+#else
+  return qEnvironmentVariable(name);
+#endif
+}
+
 /// @brief Check if QT_PLUGIN_PATH already points to a valid plugins dir.
 bool existingEnvIsAdequate() {
-  const QString pluginPath = qEnvironmentVariable("QT_PLUGIN_PATH");
+  const QString pluginPath = readEnvVar("QT_PLUGIN_PATH");
   if (pluginPath.isEmpty())
     return false;
 
@@ -219,7 +239,7 @@ void applyEnvironment(const QString& binPath, const QString& pluginsPath) {
   }
 
   // Set QT_PLUGIN_PATH if not already set
-  if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH")) {
+  if (readEnvVar("QT_PLUGIN_PATH").isEmpty()) {
     QString nativePluginsPath = QDir::toNativeSeparators(pluginsPath);
     qputenv("QT_PLUGIN_PATH", nativePluginsPath.toLocal8Bit());
     SetEnvironmentVariableW(L"QT_PLUGIN_PATH",

@@ -9,6 +9,7 @@
 #include <QtTest>
 
 #ifdef Q_OS_WIN
+#include <string>
 #include <windows.h>
 #endif
 
@@ -196,7 +197,17 @@ void TestQtEnvSetup::pathsWithSpacesAndUnicode() {
 
   QCOMPARE(result.applied, true);
   QCOMPARE(result.qtDir, QDir(unicodePrefix).absolutePath());
+#ifdef Q_OS_WIN
+  const DWORD envLen = GetEnvironmentVariableW(L"QT_PLUGIN_PATH", nullptr, 0);
+  QVERIFY(envLen > 0);
+  std::wstring envBuf(envLen, L'\0');
+  const DWORD envWritten = GetEnvironmentVariableW(L"QT_PLUGIN_PATH", envBuf.data(), envLen);
+  QVERIFY(envWritten > 0);
+  QCOMPARE(QString::fromWCharArray(envBuf.data(), static_cast<int>(envWritten)),
+           QDir::toNativeSeparators(result.pluginsPath));
+#else
   QCOMPARE(qEnvironmentVariable("QT_PLUGIN_PATH"), QDir::toNativeSeparators(result.pluginsPath));
+#endif
 
   // Also verify multi-entry QT_PLUGIN_PATH works with spaces and Unicode.
   QDir root(tempDir.path());
