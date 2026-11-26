@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <expected>
+
 #include <QString>
 #include <QStringList>
 
@@ -21,6 +23,12 @@ struct LaunchOptions {
   bool runAsAdmin = false;      ///< If true, elevate to admin before launching (Windows only)
 };
 
+/// @brief Outcome of launching a target application with the probe.
+struct LaunchResult {
+  qint64 pid = -1;   ///< Process ID of the launched target
+  int exitCode = 0;  ///< Target exit code (0 when detached)
+};
+
 /// @brief Launch a target application with the qtPilot probe injected.
 ///
 /// On Windows, this uses CreateRemoteThread to inject the probe DLL into
@@ -29,7 +37,7 @@ struct LaunchOptions {
 /// On Linux, this sets LD_PRELOAD and execs the target.
 ///
 /// @param options Launch configuration including target path, probe path, and flags.
-/// @return Process ID on success, -1 on failure.
-qint64 launchWithProbe(const LaunchOptions& options);
+/// @return LaunchResult on success, or an error description on failure.
+std::expected<LaunchResult, QString> launchWithProbe(const LaunchOptions& options);
 
 }  // namespace qtPilot

@@ -55,7 +55,7 @@ void warnIfSipProtected(const QString& targetPath, bool quiet) {
 
 namespace qtPilot {
 
-qint64 launchWithProbe(const LaunchOptions& options) {
+std::expected<LaunchResult, QString> launchWithProbe(const LaunchOptions& options) {
   // Warn about SIP restrictions
   warnIfSipProtected(options.targetExecutable, options.quiet);
 
@@ -75,7 +75,7 @@ qint64 launchWithProbe(const LaunchOptions& options) {
     if (!options.quiet) {
       perror("[injector] fork failed");
     }
-    return -1;
+    return std::unexpected(QStringLiteral("Failed to launch target with probe"));
   }
 
   if (pid == 0) {
@@ -126,16 +126,21 @@ qint64 launchWithProbe(const LaunchOptions& options) {
     fprintf(stderr, "[injector] Started child process with PID %d\n", static_cast<int>(pid));
   }
 
+  int exitCode = 0;
   if (!options.detach) {
     // Wait for the child process
     if (!options.quiet) {
       fprintf(stderr, "[injector] Waiting for process to exit...\n");
     }
 
-    waitForChildForwardingSignals(pid, options.quiet);
+    const int status = waitForChildForwardingSignals(pid, options.quiet);
+    if (status < 0) {
+      return std::unexpected(QStringLiteral("Failed to wait for target process"));
+    }
+    exitCode = exitCodeFromWaitStatus(status);
   }
 
-  return static_cast<qint64>(pid);
+  return LaunchResult{static_cast<qint64>(pid), exitCode};
 }
 
 }  // namespace qtPilot
