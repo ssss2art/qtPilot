@@ -8,6 +8,10 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 namespace {
 
 class EnvVarGuard {
@@ -196,15 +200,19 @@ void TestQtEnvSetup::pathsWithSpacesAndUnicode() {
 
   QCOMPARE(result.applied, true);
   QCOMPARE(result.qtDir, QDir(unicodePrefix).absolutePath());
-  QCOMPARE(QString::fromLocal8Bit(qgetenv("QT_PLUGIN_PATH")),
-           QDir::toNativeSeparators(result.pluginsPath));
+  QCOMPARE(qEnvironmentVariable("QT_PLUGIN_PATH"), QDir::toNativeSeparators(result.pluginsPath));
 
   // Also verify multi-entry QT_PLUGIN_PATH works with spaces and Unicode.
   QDir root(tempDir.path());
   QVERIFY(root.mkpath(QStringLiteral("other dir")));
   const QString multiUnicode =
       root.filePath(QStringLiteral("other dir")) + QDir::listSeparator() + result.pluginsPath;
+#ifdef Q_OS_WIN
+  QVERIFY(
+      SetEnvironmentVariableW(L"QT_PLUGIN_PATH", reinterpret_cast<LPCWSTR>(multiUnicode.utf16())));
+#else
   qputenv("QT_PLUGIN_PATH", multiUnicode.toLocal8Bit());
+#endif
 
   const qtPilot::QtEnvironmentResult envResult =
       qtPilot::ensureQtEnvironment(QString(), QStringLiteral("/nonexistent/app"), true);

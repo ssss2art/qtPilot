@@ -130,13 +130,12 @@ QString resolveQtPrefix(const QString& dir) {
 
 /// @brief Check if QT_PLUGIN_PATH already points to a valid plugins dir.
 bool existingEnvIsAdequate() {
-  QByteArray pluginPath = qgetenv("QT_PLUGIN_PATH");
+  const QString pluginPath = qEnvironmentVariable("QT_PLUGIN_PATH");
   if (pluginPath.isEmpty())
     return false;
 
   // Verify at least one entry in QT_PLUGIN_PATH contains a platforms/ subdir
-  const QStringList entries =
-      QString::fromLocal8Bit(pluginPath).split(QDir::listSeparator(), Qt::SkipEmptyParts);
+  const QStringList entries = pluginPath.split(QDir::listSeparator(), Qt::SkipEmptyParts);
   for (const QString& entry : entries) {
     QDir pluginsDir(entry);
     if (pluginsDir.exists(QStringLiteral("platforms")))
