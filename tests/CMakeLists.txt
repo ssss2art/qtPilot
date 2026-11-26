@@ -162,9 +162,13 @@ qtPilot_add_test(NAME test_qwindow_input SOURCES test_qwindow_input.cpp
     ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
 
 if(QTPILOT_HAS_QML)
+    set(_qml_screenshot_env "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=offscreen")
+    if(NOT APPLE)
+        list(APPEND _qml_screenshot_env "QT_QUICK_BACKEND=software")
+    endif()
     qtPilot_add_test(NAME test_qml_screenshot SOURCES test_qml_screenshot.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
-        ENV "QTPILOT_ENABLED=0;QT_QPA_PLATFORM=minimal")
+        ENV "${_qml_screenshot_env}")
 
     qtPilot_add_test(NAME test_qml_interaction SOURCES test_qml_interaction.cpp
         LIBS Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Quick
