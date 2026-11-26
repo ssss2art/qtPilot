@@ -162,3 +162,111 @@ async def test_a_page_that_fails_a_call_fails_that_request_only() -> None:
         assert await connection.call("ping") == "pong"
     finally:
         await connection.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_page_evaluate_returning_none_fails_that_request_without_closing() -> None:
+    from qtpilot.connection import ProbeError
+
+    class NullReplyPage(FakePage):
+        async def evaluate(self, expression: str, arg: Any = None) -> Any:
+            if expression.startswith("request => qtpilot.call") and json.loads(arg)["method"] == "qt.ping":
+                return None
+            return await super().evaluate(expression, arg)
+
+    connection = PageProbeConnection(NullReplyPage())
+    await connection.connect()
+    try:
+        with pytest.raises(ProbeError):
+            await asyncio.wait_for(connection.call("qt.ping", timeout=2), timeout=2)
+        assert connection.is_connected
+        assert await connection.call("ping") == "pong"
+    finally:
+        await connection.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_connect_when_ready_retries_on_navigation_error_and_handshakes() -> None:
+    from qtpilot.connection import SUPPORTED_PROTOCOL_VERSION
+
+    class NavigatingPage(FakePage):
+        def __init__(self) -> None:
+            super().__init__(bridge=False)
+            self.ready_checks = 0
+
+        async def evaluate(self, expression: str, arg: Any = None) -> Any:
+            if "typeof globalThis.qtpilot?.call" in expression:
+                self.ready_checks += 1
+                if self.ready_checks == 1:
+                    raise RuntimeError("Execution context was destroyed, most likely because of a navigation.")
+                if self.ready_checks == 2:
+                    return False
+                self.bridge = True
+                return True
+            if expression.startswith("request => qtpilot.call") and json.loads(arg)["method"] == "getVersion":
+                request = json.loads(arg)
+                return json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": request["id"],
+                    "result": {
+                        "version": "0.3.1",
+                        "protocolVersion": SUPPORTED_PROTOCOL_VERSION,
+                        "name": "qtPilot",
+                    },
+                })
+            return await super().evaluate(expression, arg)
+
+    page = NavigatingPage()
+    connection = PageProbeConnection(page)
+    version = await asyncio.wait_for(connection.connect_when_ready(ready_timeout=2.0, interval=0.02), timeout=5)
+    try:
+        assert page.ready_checks >= 3
+        assert version["version"] == "0.3.1"
+        assert connection.probe_protocol_version == SUPPORTED_PROTOCOL_VERSION
+        assert await connection.call("ping") == "pong"
+    finally:
+        await connection.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_page_probe_connection_reconnects_cleanly() -> None:
+    class CountingPage(FakePage):
+        def __init__(self) -> None:
+            super().__init__()
+            self.expose_count = 0
+
+        async def expose_function(self, name: str, callback: Callable[[str], None]) -> None:
+            self.expose_count += 1
+            await super().expose_function(name, callback)
+
+    page = CountingPage()
+    connection = PageProbeConnection(page)
+    await connection.connect()
+    try:
+        assert await connection.call("ping") == "pong"
+        await connection.connect()
+        assert page.expose_count == 1
+        assert connection.is_connected
+        assert await connection.call("ping") == "pong"
+    finally:
+        await connection.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_page_socket_send_when_closed_raises_connection_error() -> None:
+    from qtpilot.page_connection import PageSocket
+
+    socket = PageSocket(FakePage(), "__qtpilotDeliver_test")
+    await socket.close()
+    with pytest.raises(ConnectionError, match="closed"):
+        await socket.send('{"jsonrpc":"2.0","id":1,"method":"ping"}')
+
+
+def test_request_id_handles_bad_and_non_dict_json() -> None:
+    from qtpilot.page_connection import _request_id
+
+    assert _request_id("not valid json") is None
+    assert _request_id("[1, 2, 3]") is None
+    assert _request_id("null") is None
+    assert _request_id('{"method": "ping"}') is None
+    assert _request_id('{"id": 42, "method": "ping"}') == 42

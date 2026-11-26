@@ -38,8 +38,7 @@ def register_chrome_tools(mcp: FastMCP) -> None:
     @mcp.tool
     async def chr_formInput(
         ref: str | int,
-        value: str | int | float | bool | None = None,
-        text: str | int | float | bool | None = None,
+        value: str | int | float | bool,
         ctx: Context = None,
     ) -> dict:
         """Set a form input value by accessibility reference.
@@ -47,11 +46,8 @@ def register_chrome_tools(mcp: FastMCP) -> None:
         """
         from qtpilot.server import require_probe
 
-        resolved_val = value if value is not None else text
-        if resolved_val is None:
-            raise ValueError("value or text must be provided")
         return await require_probe().call(
-            "chr.formInput", {"ref": str(ref), "value": resolved_val}
+            "chr.formInput", {"ref": str(ref), "value": value}
         )
 
     @mcp.tool
