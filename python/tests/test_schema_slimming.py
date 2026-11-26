@@ -9,6 +9,11 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
+try:
+    from mcp.shared.exceptions import MCPError as _McpError
+except ImportError:  # pragma: no cover - MCP SDK <2 uses McpError
+    from mcp.shared.exceptions import McpError as _McpError
+
 from qtpilot._mcp_compat import get_tool_input_schema
 from qtpilot.alias_middleware import ALIAS_MAP
 from qtpilot.server import create_server
@@ -193,6 +198,6 @@ class TestSchemaSlimming:
         with patch("qtpilot.server.require_probe", return_value=mock_probe):
             mcp = create_server(mode="all")
             async with Client(mcp) as client:
-                with pytest.raises(ToolError):
+                with pytest.raises((ToolError, _McpError)):
                     await client.call_tool(tool_name, args)
                 mock_probe.call.assert_not_awaited()

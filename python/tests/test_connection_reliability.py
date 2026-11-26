@@ -43,6 +43,7 @@ async def test_recv_loop_ignores_non_dict_json_frames_before_valid_reply() -> No
         await ws.send("null")
         await ws.send("[]")
         await ws.send(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"pong": True}}))
+        await ws.wait_closed()
 
     async with serve(handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]

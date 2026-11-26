@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import Middleware
 
 # Mapping of tool_name -> dict of {alias_param: canonical_param}
@@ -88,7 +89,7 @@ class AliasMiddleware(Middleware):
             # Normalize int ref to str for chr_* tools (reject bool, which subclasses int)
             if tool_name.startswith("chr_") and "ref" in args:
                 if isinstance(args["ref"], bool):
-                    raise ValueError("ref must be str or int, not bool")
+                    raise ToolError("ref must be str or int, not bool")
                 if isinstance(args["ref"], int):
                     args["ref"] = str(args["ref"])
 
