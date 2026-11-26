@@ -253,13 +253,23 @@ void TestUIInteraction::testCaptureRegion() {
 }
 
 void TestUIInteraction::testCaptureRegionEmptyAndOutOfBounds() {
-  QVERIFY_THROWS_EXCEPTION(std::invalid_argument, Screenshot::captureRegion(m_window, QRect()));
-  QVERIFY_THROWS_EXCEPTION(std::invalid_argument,
-                           Screenshot::captureRegion(m_window, QRect(0, 0, 0, 10)));
-  QVERIFY_THROWS_EXCEPTION(std::invalid_argument,
-                           Screenshot::captureRegion(m_window, QRect(0, 0, -5, 10)));
-  QVERIFY_THROWS_EXCEPTION(std::exception,
-                           Screenshot::captureRegion(m_window, QRect(10000, 10000, 50, 50)));
+  for (const QRect& region : {QRect(), QRect(0, 0, 0, 10), QRect(0, 0, -5, 10)}) {
+    bool threwInvalidArgument = false;
+    try {
+      (void)Screenshot::captureRegion(m_window, region);
+    } catch (const std::invalid_argument&) {
+      threwInvalidArgument = true;
+    }
+    QVERIFY(threwInvalidArgument);
+  }
+
+  bool threwOutOfBounds = false;
+  try {
+    (void)Screenshot::captureRegion(m_window, QRect(10000, 10000, 50, 50));
+  } catch (const std::exception&) {
+    threwOutOfBounds = true;
+  }
+  QVERIFY(threwOutOfBounds);
 }
 
 // === HitTest tests ===
